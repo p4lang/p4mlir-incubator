@@ -20,7 +20,6 @@ class P4HIR_Op<string mnemonic, list<Trait> traits = []> :
 // P4HIR operation definitions.
 //===----------------------------------------------------------------------===//
 
-// def P4HIR_ConstOp : P4HIR_Op<"const", [Pure, InferTypeOpAdaptor]> {
 def P4HIR_ConstOp : P4HIR_Op<"const", [Pure]> {
     let summary = "const operation";
     let description = [{

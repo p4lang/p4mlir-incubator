@@ -25,12 +25,4 @@ void P4HIRDialect::initialize() {
       >();
 }
 
-// mlir::LogicalResult ConstOp::inferReturnTypes(
-//     mlir::MLIRContext *context, std::optional<mlir::Location> location,
-//     Adaptor adaptor, llvm::SmallVectorImpl<mlir::Type> &inferedReturnType) {
-//   auto type = adaptor.getValueAttr().getType();
-//   inferedReturnType.push_back(type);
-//   return mlir::success();
-// }
-
 } // namespace P4::P4MLIR::P4HIR
