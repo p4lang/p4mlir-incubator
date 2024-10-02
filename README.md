@@ -2,7 +2,7 @@
 
 P4MLIR is an (experimental) effort looking to leverage [MLIR](https://mlir.llvm.org/) in building [P4](https://p4.org/) compilers.
 
-P4MLIR is structured as both a [standalone MLIR project](https://github.com/llvm/llvm-project/tree/main/mlir/examples/standalone), and a [P4C extension](https://github.com/fruffy/p4dummy). Once it's mature enough, the plan is to move it to be a [P4C](https://github.com/p4lang/p4c) subproject.
+P4MLIR is structured as both a [standalone MLIR project](https://github.com/llvm/llvm-project/tree/main/mlir/examples/standalone), and a [P4C extension](https://github.com/fruffy/p4dummy). Once it's mature enough, the plan is to merge it into the [P4C repo](https://github.com/p4lang/p4c).
 
 ## Developer guide
 
@@ -42,4 +42,17 @@ Some MLIR regression tests have already been performed during the build process.
 ```shell
 cd third_party/llvm-project/build
 ninja check-mlir
+```
+
+#### Build P4MLIR from source
+
+```shell
+./build_tools/build_p4mlir.sh
+```
+
+### Testing
+
+```shell
+cd build
+ninja check-p4mlir
 ```
