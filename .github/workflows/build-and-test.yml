@@ -1,0 +1,37 @@
+name: build-and-test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Cancel any preceding run on the pull request.
+concurrency:
+  group: p4mlir-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    env:
+      IMAGE_TYPE: test
+    steps:
+
+    - name: Checkout repo
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Enable ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: ${{ matrix.os }}
+
+    - name: Install requirements
+      run: |
+        build_tools/ubuntu_install_mlir_requirements.sh
+
+    - name: Build MLIR
+      run: |
+        build_tools/build_mlir.sh
