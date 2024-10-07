@@ -12,10 +12,9 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-20.04
-    env:
-      IMAGE_TYPE: test
+
     steps:
 
     - name: Checkout repo
