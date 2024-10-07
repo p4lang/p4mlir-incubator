@@ -26,12 +26,43 @@ jobs:
     - name: Enable ccache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
-        key: ${{ matrix.os }}
+        key: ${{ runner.os }}
+
+    # --------
+    # Build and test MLIR. Use cache when available.
+    # --------
+
+    - name: Get LLVM hash
+      id: get-llvm-hash
+      run: echo "hash=$(git rev-parse @:./third_party/llvm-project)" >> $GITHUB_OUTPUT
+
+    - name: Get workflow hash
+      id: get-workflow-hash
+      run: echo "hash=$(md5sum $GITHUB_WORKSPACE/.github/workflows/build-and-test.yml | awk '{print $1}')" >> $GITHUB_OUTPUT
+    
+    - name: Cache LLVM
+      id: cache-llvm
+      uses: actions/cache@v3
+      with:
+        path: |
+          third_party/llvm-project/build/bin/llvm-lit
+          install
+        key: ${{ runner.os }}-llvm-${{ steps.get-llvm-hash.outputs.hash }}-${{ steps.get-workflow-hash.outputs.hash }}
 
     - name: Install requirements
+      if: steps.cache-llvm.outputs.cache-hit != 'true'
       run: |
         build_tools/ubuntu_install_mlir_requirements.sh
 
-    - name: Build MLIR
+    - name: Build and test MLIR
+      if: steps.cache-llvm.outputs.cache-hit != 'true'
       run: |
         build_tools/build_mlir.sh
+
+    # --------
+    # Build and test P4MLIR.
+    # --------
+
+    - name: Build and test P4MLIR
+      run: |
+        build_tools/build_p4mlir.sh
