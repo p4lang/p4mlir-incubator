@@ -24,6 +24,7 @@ limitations under the License.
 #include "frontends/p4/toP4/toP4.h"
 #include "frontends/p4/validateParsedProgram.h"
 #include "frontends/p4/validateStringAnnotations.h"
+#include "gc/gc.h"
 #include "ir/ir.h"
 #include "ir/visitor.h"
 #include "lib/compile_context.h"
@@ -130,6 +131,10 @@ int main(int argc, char *const argv[]) {
     BUG_CHECK(options.typeinferenceOnly, "TODO: fill TypeMap");
 
     log_dump(program, "After frontend");
+
+    // MLIR uses thread local storage which is not registered by GC causing
+    // double frees
+    GC_disable();
 
     mlir::MLIRContext context;
     context.getOrLoadDialect<P4::P4MLIR::P4HIR::P4HIRDialect>();

@@ -20,7 +20,7 @@ class P4HIR_TypeNoMnemonic<string name, string typeMnemonic, list<Trait> traits 
 }
 
 //===----------------------------------------------------------------------===//
-// Integer types: signed (int) and unsigned (bit)
+// Integer types: signed (int<>), unsigned (bit<>) and arbitrary width (int)
 //===----------------------------------------------------------------------===//
 
 def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits"> {
@@ -69,6 +69,13 @@ class Int<int width>
   int bitwidth = width;
 }
 
+def InfIntType : P4HIR_Type<"InfInt", "infint"> {
+  let summary = "arbitrary precision integer type";
+  let description = [{
+    `p4hir.infint` represents a P4 `int` type.
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // BooleanType: An alternative here is to represent bool as mlir::i1, but
 // let's be more generic, it could be lowered later on
@@ -96,7 +103,7 @@ def UnknownType : P4HIR_Type<"Unknown", "unknown"> {}
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
-def AnyP4Type : AnyTypeOf<[BitsType, BooleanType,
+def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                            DontcareType, ErrorType, UnknownType]> {}
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD

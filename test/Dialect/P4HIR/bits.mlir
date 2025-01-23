@@ -27,4 +27,8 @@ module {
 
     %10 = p4hir.const #p4hir.int<9223372036854775807> : !p4hir.int<72>
     %11 = p4hir.const #p4hir.int<18446744073709551615> : !p4hir.bit<72>
+    %13 = p4hir.const #p4hir.int<-9223372036854775807> : !p4hir.int<72>
+
+    %12 = p4hir.const #p4hir.int<5> : !p4hir.infint
+    %14 = p4hir.const #p4hir.int<-100500> : !p4hir.infint
 }

@@ -33,9 +33,9 @@ Type BoolType::parse(mlir::AsmParser &parser) { return get(parser.getContext());
 
 void BoolType::print(mlir::AsmPrinter &printer) const {}
 
-Type P4HIRDialect::parseType(DialectAsmParser &parser) const {
-    llvm::SMLoc typeLoc = parser.getCurrentLocation();
-    llvm::StringRef mnemonic;
+Type P4HIRDialect::parseType(mlir::DialectAsmParser &parser) const {
+    SMLoc typeLoc = parser.getCurrentLocation();
+    StringRef mnemonic;
     Type genType;
 
     // Try to parse as a tablegen'd type.
@@ -52,7 +52,7 @@ Type P4HIRDialect::parseType(DialectAsmParser &parser) const {
         })();
 }
 
-void P4HIRDialect::printType(Type type, DialectAsmPrinter &os) const {
+void P4HIRDialect::printType(mlir::Type type, mlir::DialectAsmPrinter &os) const {
     // Try to print as a tablegen'd type.
     if (generatedTypePrinter(type, os).succeeded()) return;
 

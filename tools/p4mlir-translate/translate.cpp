@@ -1,7 +1,9 @@
 #include "translate.h"
 
+#include <climits>
+
+#include "frontends/common/resolveReferences/resolveReferences.h"
 #include "frontends/p4/typeMap.h"
-#include "ir/ir-generated.h"
 #include "ir/ir.h"
 #include "ir/visitor.h"
 #include "lib/big_int.h"
@@ -42,12 +44,14 @@ mlir::Location getLoc(mlir::OpBuilder &builder, const IR::Node *node) {
         start.getColumnNumber());
 }
 
-llvm::APInt toAPInt(const P4::big_int &value, unsigned bitWidth) {
+mlir::APInt toAPInt(const P4::big_int &value, unsigned bitWidth = 0) {
     std::vector<uint64_t> valueBits;
     // Export absolute value into 64-bit unsigned values, most significant bit last
     export_bits(value, std::back_inserter(valueBits), 64, false);
 
-    llvm::APInt apValue(bitWidth, valueBits);
+    if (!bitWidth) bitWidth = valueBits.size() * sizeof(valueBits[0]) * CHAR_BIT;
+
+    mlir::APInt apValue(bitWidth, valueBits);
     if (value < 0) apValue.negate();
 
     return apValue;
@@ -83,6 +87,7 @@ class P4TypeConverter : public P4::Inspector {
     }
 
     bool preorder(const P4::IR::Type_Bits *type) override;
+    bool preorder(const P4::IR::Type_InfInt *type) override;
     bool preorder(const P4::IR::Type_Boolean *type) override;
     bool preorder(const P4::IR::Type_Unknown *type) override;
     bool preorder(const P4::IR::Type_Typedef *type) override {
@@ -198,6 +203,14 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
     return setType(type, mlirType);
 }
 
+bool P4TypeConverter::preorder(const P4::IR::Type_InfInt *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    LOG4("TypeConverting " << dbp(type));
+    auto mlirType = P4HIR::InfIntType::get(converter.context());
+    return setType(type, mlirType);
+}
+
 bool P4TypeConverter::preorder(const P4::IR::Type_Boolean *type) {
     if ((this->type = converter.findType(type))) return false;
 
@@ -223,14 +236,19 @@ bool P4TypeConverter::setType(const P4::IR::Type *type, mlir::Type mlirType) {
 mlir::TypedAttr P4HIRConverter::resolveConstant(const P4::IR::Expression *expr) {
     LOG4("Resolving " << dbp(expr) << " as constant");
     if (const auto *cst = expr->to<P4::IR::Constant>()) {
-        auto type = llvm::cast<P4HIR::BitsType>(getOrCreateType(cst->type));
-        llvm::APInt value = toAPInt(cst->value, type.getWidth());
+        auto type = getOrCreateType(cst->type);
+        mlir::APInt value;
+        if (auto bitType = mlir::dyn_cast<P4HIR::BitsType>(type)) {
+            value = toAPInt(cst->value, bitType.getWidth());
+        } else {
+            value = toAPInt(cst->value);
+        }
 
         return setConstant(cst, P4HIR::IntAttr::get(context(), type, value));
     }
     if (const auto *b = expr->to<P4::IR::BoolLiteral>()) {
         // FIXME: For some reason type inference uses `Type_Unknown` for BoolLiteral (sic!)
-        // auto type = llvm::cast<P4HIR::BoolType>(getOrCreateType(b->type));
+        // auto type = mlir::cast<P4HIR::BoolType>(getOrCreateType(b->type));
         auto type = P4HIR::BoolType::get(context());
 
         return setConstant(b, P4HIR::BoolAttr::get(context(), type, b->value));
@@ -242,11 +260,11 @@ mlir::TypedAttr P4HIRConverter::resolveConstant(const P4::IR::Expression *expr) 
         if (destType == srcType) return setConstant(expr, getOrCreateConstant(cast->expr));
 
         // Fold sign conversions
-        if (auto destBitsType = llvm::dyn_cast<P4HIR::BitsType>(destType)) {
-            if (auto srcBitsType = llvm::dyn_cast<P4HIR::BitsType>(srcType)) {
-                assert(destBitsType->getWidth() == srcBitsType->getWidth() &&
+        if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
+            if (auto srcBitsType = mlir::dyn_cast<P4HIR::BitsType>(srcType)) {
+                assert(destBitsType.getWidth() == srcBitsType.getWidth() &&
                        "expected signess conversion only");
-                auto castee = llvm::cast<P4HIR::IntAttr>(getOrCreateConstant(cast->expr));
+                auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstant(cast->expr));
                 return setConstant(expr,
                                    P4HIR::IntAttr::get(context(), destBitsType, castee.getValue()));
             }

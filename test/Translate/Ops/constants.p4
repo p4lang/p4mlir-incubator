@@ -100,16 +100,14 @@ typedef int<32> int32;
 const int32 izero = (int32)32w0;
 
 const bit<4> fa = 0b0101;
-// FIXME: Support casts
-//const int fb = (int)fa; // 5
-//const bit<7> fc = (bit<7>)fb; // 5
+const int fb = (int)fa; // 5
+const bit<7> fc = (bit<7>)fb; // 5
 
 const int<4> fd = -1;
-// FIXME: Support casts
-// const int fe = (int)fd; // -1
-// const bit<7> ff = (bit<7>)fe; // 0b1111111 = 127
-// const int<7> fg = (int<7>)fe; // 0b1111111 = -1
-// const int fh = (int)fg; // -1
+const int fe = (int)fd; // -1
+const bit<7> ff = (bit<7>)fe; // 0b1111111 = 127
+const int<7> fg = (int<7>)fe; // 0b1111111 = -1
+const int fh = (int)fg; // -1
 
 const int<8> sa = 0;
 const int<8> sb = -1;
@@ -146,5 +144,4 @@ const int<8> so0 = 8s256;
 const int<1> szz0 = 0;
 const int<1> szz1 = 1;
 const int<2> szz2 = 2;
-// FIXME: Support casts
-// const int<1> szz3 = (int<1>) szz2[0:0];
+const int<1> szz3 = (int<1>) szz2[0:0];

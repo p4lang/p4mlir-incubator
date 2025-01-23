@@ -27,7 +27,7 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
     }
 
     if (mlir::isa<P4HIR::IntAttr>(attrType)) {
-        if (!mlir::isa<P4HIR::BitsType>(opType))
+        if (!mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(opType))
             return op->emitOpError("result type (")
                    << opType << ") does not match value type (" << attrType << ")";
         return success();
