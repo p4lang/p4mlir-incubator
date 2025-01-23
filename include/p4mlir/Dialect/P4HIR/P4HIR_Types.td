@@ -100,6 +100,36 @@ def ErrorType : P4HIR_Type<"Error", "error"> {}
 def UnknownType : P4HIR_Type<"Unknown", "unknown"> {}
 
 //===----------------------------------------------------------------------===//
+// ReferenceType
+//===----------------------------------------------------------------------===//
+
+def ReferenceType : P4HIR_Type<"Reference", "ref"> {
+  let summary = "reference type";
+  let description = [{
+    `p4hir.ref` is a type returned by any op referring to an object in P4.
+    This is an implementation detail of P4HIR dialect and should be used in
+    very limited cases (e.g. `p4hir.alloca` result type is a reference type).
+  }];
+
+  let parameters = (ins "mlir::Type":$type);
+
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "mlir::Type":$type), [{
+      return $_get(type.getContext(), type);
+    }]>,
+    TypeBuilder<(ins "mlir::Type":$type), [{
+      return $_get($_ctxt, type);
+    }]>
+  ];
+
+  let assemblyFormat = [{
+    `<` $type `>`
+  }];
+
+  let skipDefaultBuilders = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
