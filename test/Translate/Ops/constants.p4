@@ -95,12 +95,9 @@ const T zz = {
 const bit<32> x = 32w0;
 const bit<32> x1 = ~32w0;
 
-// FIXME: Support casts
-/*
 typedef int<32> int32;
 
 const int32 izero = (int32)32w0;
-*/
 
 const bit<4> fa = 0b0101;
 // FIXME: Support casts

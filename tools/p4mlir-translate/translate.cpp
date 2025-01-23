@@ -5,6 +5,7 @@
 #include "ir/ir.h"
 #include "ir/visitor.h"
 #include "lib/big_int.h"
+#include "llvm/Support/Casting.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
@@ -77,7 +78,7 @@ class P4TypeConverter : public P4::Inspector {
     }
 
     bool preorder(const P4::IR::Type *type) override {
-        ::P4::error("%1%: P4 type not yet supported.", type);
+        ::P4::error("%1%: P4 type not yet supported.", dbp(type));
         return false;
     }
 
@@ -85,11 +86,13 @@ class P4TypeConverter : public P4::Inspector {
     bool preorder(const P4::IR::Type_Boolean *type) override;
     bool preorder(const P4::IR::Type_Unknown *type) override;
     bool preorder(const P4::IR::Type_Typedef *type) override {
+        LOG4("TypeConverting " << dbp(type));
         visit(typeMap->getTypeType(type, true));
         return false;
     }
 
     bool preorder(const P4::IR::Type_Name *name) override {
+        LOG4("TypeConverting " << dbp(name));
         visit(typeMap->getTypeType(name, true));
         return false;
     }
@@ -130,13 +133,20 @@ class P4HIRConverter : public Inspector {
         return cvt.getType();
     }
 
+    mlir::TypedAttr resolveConstant(const P4::IR::Expression *expr);
+
+    mlir::TypedAttr setConstant(const P4::IR::Expression *expr, mlir::TypedAttr attr) {
+        auto [it, inserted] = p4Constants.try_emplace(expr, attr);
+        BUG_CHECK(inserted, "duplicate conversion of %1%", expr);
+        return it->second;
+    }
+
     mlir::TypedAttr getOrCreateConstant(const P4::IR::Expression *expr) {
         auto cst = p4Constants.lookup(expr);
         if (cst) return cst;
 
-        visit(expr);
+        cst = resolveConstant(expr);
 
-        cst = p4Constants.lookup(expr);
         BUG_CHECK(cst, "expected %1% to be converted as constant", expr);
         return cst;
     }
@@ -149,6 +159,7 @@ class P4HIRConverter : public Inspector {
     }
 
     bool preorder(const P4::IR::Type *type) override {
+        LOG4("Converting " << dbp(type));
         P4TypeConverter cvt(*this, typeMap);
         type->apply(cvt);
         return false;
@@ -157,20 +168,32 @@ class P4HIRConverter : public Inspector {
     bool preorder(const IR::P4Program *) override { return true; }
     bool preorder(const IR::Constant *c) override { return !p4Constants.contains(c); }
     bool preorder(const IR::BoolLiteral *b) override { return !p4Constants.contains(b); }
+    bool preorder(const IR::Cast *cast) override {
+        // Cast could be used in constant initializers or as a separate
+        // operation. In former case resolve it to the constant
+        if (typeMap->isCompileTimeConstant(cast)) {
+            resolveConstant(cast);
+            return false;
+        }
+        return true;
+    }
     bool preorder(const IR::Declaration_Constant *decl) override {
         // We only should visit it once
         BUG_CHECK(!p4Values.contains(decl), "duplicate decl conversion %1%", decl);
         return true;
     }
 
-    void postorder(const IR::Constant *cst) override;
-    void postorder(const IR::BoolLiteral *b) override;
+    void postorder(const IR::Constant *cst) override { resolveConstant(cst); }
+
+    void postorder(const IR::BoolLiteral *b) override { resolveConstant(b); }
+
     void postorder(const IR::Declaration_Constant *decl) override;
 };
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
     if ((this->type = converter.findType(type))) return false;
 
+    LOG4("TypeConverting " << dbp(type));
     auto mlirType = P4HIR::BitsType::get(converter.context(), type->width_bits(), type->isSigned);
     return setType(type, mlirType);
 }
@@ -178,6 +201,7 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
 bool P4TypeConverter::preorder(const P4::IR::Type_Boolean *type) {
     if ((this->type = converter.findType(type))) return false;
 
+    LOG4("TypeConverting " << dbp(type));
     auto mlirType = P4HIR::BoolType::get(converter.context());
     return setType(type, mlirType);
 }
@@ -185,6 +209,7 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Boolean *type) {
 bool P4TypeConverter::preorder(const P4::IR::Type_Unknown *type) {
     if ((this->type = converter.findType(type))) return false;
 
+    LOG4("TypeConverting " << dbp(type));
     auto mlirType = P4HIR::UnknownType::get(converter.context());
     return setType(type, mlirType);
 }
@@ -195,7 +220,44 @@ bool P4TypeConverter::setType(const P4::IR::Type *type, mlir::Type mlirType) {
     return false;
 }
 
+mlir::TypedAttr P4HIRConverter::resolveConstant(const P4::IR::Expression *expr) {
+    LOG4("Resolving " << dbp(expr) << " as constant");
+    if (const auto *cst = expr->to<P4::IR::Constant>()) {
+        auto type = llvm::cast<P4HIR::BitsType>(getOrCreateType(cst->type));
+        llvm::APInt value = toAPInt(cst->value, type.getWidth());
+
+        return setConstant(cst, P4HIR::IntAttr::get(context(), type, value));
+    }
+    if (const auto *b = expr->to<P4::IR::BoolLiteral>()) {
+        // FIXME: For some reason type inference uses `Type_Unknown` for BoolLiteral (sic!)
+        // auto type = llvm::cast<P4HIR::BoolType>(getOrCreateType(b->type));
+        auto type = P4HIR::BoolType::get(context());
+
+        return setConstant(b, P4HIR::BoolAttr::get(context(), type, b->value));
+    }
+    if (const auto *cast = expr->to<P4::IR::Cast>()) {
+        mlir::Type destType = getOrCreateType(typeMap->getTypeType(cast->type, true));
+        mlir::Type srcType = getOrCreateType(typeMap->getTypeType(cast->expr->type, true));
+        // Fold equal-type casts (e.g. due to typedefs)
+        if (destType == srcType) return setConstant(expr, getOrCreateConstant(cast->expr));
+
+        // Fold sign conversions
+        if (auto destBitsType = llvm::dyn_cast<P4HIR::BitsType>(destType)) {
+            if (auto srcBitsType = llvm::dyn_cast<P4HIR::BitsType>(srcType)) {
+                assert(destBitsType->getWidth() == srcBitsType->getWidth() &&
+                       "expected signess conversion only");
+                auto castee = llvm::cast<P4HIR::IntAttr>(getOrCreateConstant(cast->expr));
+                return setConstant(expr,
+                                   P4HIR::IntAttr::get(context(), destBitsType, castee.getValue()));
+            }
+        }
+    }
+
+    BUG("cannot resolve this constant yet %1%", expr);
+}
+
 void P4HIRConverter::postorder(const IR::Declaration_Constant *decl) {
+    LOG4("Converting " << dbp(decl));
     auto type = getOrCreateType(decl->type);
     auto init = getOrCreateConstant(decl->initializer);
     auto loc = getLoc(builder, decl);
@@ -203,24 +265,6 @@ void P4HIRConverter::postorder(const IR::Declaration_Constant *decl) {
     auto val = builder.create<P4HIR::ConstOp>(loc, type, init);
     auto [it, inserted] = p4Values.try_emplace(decl, val);
     BUG_CHECK(inserted, "duplicate conversion of %1%", decl);
-}
-
-void P4HIRConverter::postorder(const IR::Constant *cst) {
-    auto type = llvm::cast<P4HIR::BitsType>(getOrCreateType(cst->type));
-    llvm::APInt value = toAPInt(cst->value, type.getWidth());
-
-    auto [it, inserted] = p4Constants.try_emplace(cst, P4HIR::IntAttr::get(context(), type, value));
-    BUG_CHECK(inserted, "duplicate conversion of %1%", cst);
-}
-
-void P4HIRConverter::postorder(const IR::BoolLiteral *b) {
-    // FIXME: For some reason type inference uses `Type_Unknown` for BoolLiteral (sic!)
-    // auto type = llvm::cast<P4HIR::BoolType>(getOrCreateType(b->type));
-    auto type = P4HIR::BoolType::get(context());
-
-    auto [it, inserted] =
-        p4Constants.try_emplace(b, P4HIR::BoolAttr::get(context(), type, b->value));
-    BUG_CHECK(inserted, "duplicate conversion of %1%", b);
 }
 
 }  // namespace
