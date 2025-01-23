@@ -8,6 +8,7 @@ configure_lit_site_cfg(
 set(P4MLIR_TEST_DEPENDS
   FileCheck count not
   p4mlir-opt
+  p4mlir-translate
 )
 
 add_lit_testsuite(check-p4mlir "Running the P4MLIR regression tests"

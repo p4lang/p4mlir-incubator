@@ -12,6 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <cstdlib>
 #include <iostream>
 
 #include "frontends/common/constantFolding.h"
@@ -30,6 +31,14 @@ limitations under the License.
 #include "lib/error.h"
 #include "lib/gc.h"
 #include "options.h"
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include "mlir/Pass/PassManager.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
+#pragma GCC diagnostic pop
+
+#include "translate.h"
 
 namespace {
 void log_dump(const P4::IR::Node *node, const char *head) {
@@ -79,10 +88,10 @@ int main(int argc, char *const argv[]) {
 
     log_dump(program, "Parsed program");
     auto hook = options.getDebugHook();
+    P4::TypeMap typeMap;
     if (!options.parseOnly) {
         if (options.typeinferenceOnly) {
             P4::FrontEndPolicy policy;
-            P4::TypeMap typeMap;
 
             P4::ParseAnnotations *parseAnnotations = policy.getParseAnnotations();
             if (!parseAnnotations) parseAnnotations = new P4::ParseAnnotations();
@@ -118,7 +127,17 @@ int main(int argc, char *const argv[]) {
         }
     }
 
+    BUG_CHECK(options.typeinferenceOnly, "TODO: fill TypeMap");
+
     log_dump(program, "After frontend");
+
+    mlir::MLIRContext context;
+    context.getOrLoadDialect<P4::P4MLIR::P4HIR::P4HIRDialect>();
+
+    auto mod = P4::P4MLIR::toMLIR(context, program, &typeMap);
+    if (!mod) return EXIT_FAILURE;
+
+    mod->print(llvm::outs());
 
     if (P4::Log::verbose()) std::cerr << "Done." << std::endl;
     return P4::errorCount() > 0 ? EXIT_FAILURE : EXIT_SUCCESS;
