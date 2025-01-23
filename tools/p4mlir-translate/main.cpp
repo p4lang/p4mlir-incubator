@@ -35,6 +35,7 @@ limitations under the License.
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass/PassManager.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #pragma GCC diagnostic pop
@@ -142,7 +143,8 @@ int main(int argc, char *const argv[]) {
     auto mod = P4::P4MLIR::toMLIR(context, program, &typeMap);
     if (!mod) return EXIT_FAILURE;
 
-    mod->print(llvm::outs());
+    mlir::OpPrintingFlags flags;
+    mod->print(llvm::outs(), flags.enableDebugInfo(options.printLoc));
 
     if (P4::Log::verbose()) std::cerr << "Done." << std::endl;
     return P4::errorCount() > 0 ? EXIT_FAILURE : EXIT_SUCCESS;

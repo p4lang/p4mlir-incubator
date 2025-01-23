@@ -297,9 +297,14 @@ mlir::OwningOpRef<mlir::ModuleOp> toMLIR(mlir::MLIRContext &context,
                                          const P4::IR::P4Program *program,
                                          const P4::TypeMap *typeMap) {
     mlir::OpBuilder builder(&context);
+
     auto moduleOp = mlir::ModuleOp::create(builder.getUnknownLoc());
     builder.setInsertionPointToEnd(moduleOp.getBody());
 
+    if (auto sourceInfo = program->getSourceInfo(); sourceInfo.isValid()) {
+        moduleOp.setSymName(sourceInfo.getSourceFile().string_view());
+        moduleOp->setLoc(getLoc(builder, program));
+    }
     P4HIRConverter conv(builder, typeMap);
     program->apply(conv);
 

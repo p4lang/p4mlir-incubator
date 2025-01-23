@@ -31,4 +31,11 @@ TranslateOptions::TranslateOptions() {
             return true;
         },
         "parse the P4 input and run minimal set of frontend passes for type inference");
+    registerOption(
+        "--print-loc", nullptr,
+        [this](const char *) {
+            printLoc = true;
+            return true;
+        },
+        "print location information in MLIR dump");
 }
