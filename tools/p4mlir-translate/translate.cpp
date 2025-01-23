@@ -7,7 +7,6 @@
 #include "ir/ir.h"
 #include "ir/visitor.h"
 #include "lib/big_int.h"
-#include "llvm/Support/Casting.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
@@ -16,6 +15,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
@@ -27,12 +27,12 @@
 #include "mlir/IR/Verifier.h"
 #pragma GCC diagnostic pop
 
-namespace P4::P4MLIR {
+using namespace P4::P4MLIR;
 
 namespace {
 
 // Converts P4 SourceLocation stored in 'node' into its MLIR counterpart
-mlir::Location getLoc(mlir::OpBuilder &builder, const IR::Node *node) {
+mlir::Location getLoc(mlir::OpBuilder &builder, const P4::IR::Node *node) {
     CHECK_NULL(node);
     auto sourceInfo = node->getSourceInfo();
     if (!sourceInfo.isValid()) return mlir::UnknownLoc::get(builder.getContext());
@@ -64,20 +64,17 @@ class P4TypeConverter;
 // representation.
 class P4TypeConverter : public P4::Inspector {
  public:
-    P4TypeConverter(P4HIRConverter &converter, const P4::TypeMap *typeMap)
-        : converter(converter), typeMap(typeMap) {
-        CHECK_NULL(typeMap);
-    }
+    P4TypeConverter(P4HIRConverter &converter) : converter(converter) {}
 
-    profile_t init_apply(const IR::Node *node) override {
+    profile_t init_apply(const P4::IR::Node *node) override {
         BUG_CHECK(!type, "Type already converted");
         return Inspector::init_apply(node);
     }
 
-    void end_apply(const IR::Node *) override { BUG_CHECK(type, "Type not converted"); }
+    void end_apply(const P4::IR::Node *) override { BUG_CHECK(type, "Type not converted"); }
 
-    bool preorder(const IR::Node *node) override {
-        BUG_CHECK(node->is<IR::Type>(), "Invalid node");
+    bool preorder(const P4::IR::Node *node) override {
+        BUG_CHECK(node->is<P4::IR::Type>(), "Invalid node");
         return false;
     }
 
@@ -92,26 +89,21 @@ class P4TypeConverter : public P4::Inspector {
     bool preorder(const P4::IR::Type_Unknown *type) override;
     bool preorder(const P4::IR::Type_Typedef *type) override {
         LOG4("TypeConverting " << dbp(type));
-        visit(typeMap->getTypeType(type, true));
+        visit(type->type);
         return false;
     }
 
-    bool preorder(const P4::IR::Type_Name *name) override {
-        LOG4("TypeConverting " << dbp(name));
-        visit(typeMap->getTypeType(name, true));
-        return false;
-    }
+    bool preorder(const P4::IR::Type_Name *name) override;
 
     mlir::Type getType() { return type; }
     bool setType(const P4::IR::Type *type, mlir::Type mlirType);
 
  private:
     P4HIRConverter &converter;
-    const P4::TypeMap *typeMap;
     mlir::Type type = nullptr;
 };
 
-class P4HIRConverter : public Inspector {
+class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     mlir::OpBuilder &builder;
 
     const P4::TypeMap *typeMap = nullptr;
@@ -133,9 +125,13 @@ class P4HIRConverter : public Inspector {
     }
 
     mlir::Type getOrCreateType(const P4::IR::Type *type) {
-        P4TypeConverter cvt(*this, typeMap);
+        P4TypeConverter cvt(*this);
         type->apply(cvt);
         return cvt.getType();
+    }
+
+    mlir::Type getOrCreateType(const P4::IR::Expression *expr) {
+        return getOrCreateType(expr->type);
     }
 
     mlir::TypedAttr resolveConstant(const P4::IR::Expression *expr);
@@ -165,15 +161,15 @@ class P4HIRConverter : public Inspector {
 
     bool preorder(const P4::IR::Type *type) override {
         LOG4("Converting " << dbp(type));
-        P4TypeConverter cvt(*this, typeMap);
+        P4TypeConverter cvt(*this);
         type->apply(cvt);
         return false;
     }
 
-    bool preorder(const IR::P4Program *) override { return true; }
-    bool preorder(const IR::Constant *c) override { return !p4Constants.contains(c); }
-    bool preorder(const IR::BoolLiteral *b) override { return !p4Constants.contains(b); }
-    bool preorder(const IR::Cast *cast) override {
+    bool preorder(const P4::IR::P4Program *) override { return true; }
+    bool preorder(const P4::IR::Constant *c) override { return !p4Constants.contains(c); }
+    bool preorder(const P4::IR::BoolLiteral *b) override { return !p4Constants.contains(b); }
+    bool preorder(const P4::IR::Cast *cast) override {
         // Cast could be used in constant initializers or as a separate
         // operation. In former case resolve it to the constant
         if (typeMap->isCompileTimeConstant(cast)) {
@@ -182,17 +178,17 @@ class P4HIRConverter : public Inspector {
         }
         return true;
     }
-    bool preorder(const IR::Declaration_Constant *decl) override {
+    bool preorder(const P4::IR::Declaration_Constant *decl) override {
         // We only should visit it once
         BUG_CHECK(!p4Values.contains(decl), "duplicate decl conversion %1%", decl);
         return true;
     }
 
-    void postorder(const IR::Constant *cst) override { resolveConstant(cst); }
+    void postorder(const P4::IR::Constant *cst) override { resolveConstant(cst); }
 
-    void postorder(const IR::BoolLiteral *b) override { resolveConstant(b); }
+    void postorder(const P4::IR::BoolLiteral *b) override { resolveConstant(b); }
 
-    void postorder(const IR::Declaration_Constant *decl) override;
+    void postorder(const P4::IR::Declaration_Constant *decl) override;
 };
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
@@ -227,6 +223,14 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Unknown *type) {
     return setType(type, mlirType);
 }
 
+bool P4TypeConverter::preorder(const P4::IR::Type_Name *name) {
+    LOG4("TypeConverting " << dbp(name));
+    const auto *type = converter.resolveType(name);
+    CHECK_NULL(type);
+    visit(type);
+    return false;
+}
+
 bool P4TypeConverter::setType(const P4::IR::Type *type, mlir::Type mlirType) {
     this->type = mlirType;
     converter.setType(type, mlirType);
@@ -254,8 +258,8 @@ mlir::TypedAttr P4HIRConverter::resolveConstant(const P4::IR::Expression *expr) 
         return setConstant(b, P4HIR::BoolAttr::get(context(), type, b->value));
     }
     if (const auto *cast = expr->to<P4::IR::Cast>()) {
-        mlir::Type destType = getOrCreateType(typeMap->getTypeType(cast->type, true));
-        mlir::Type srcType = getOrCreateType(typeMap->getTypeType(cast->expr->type, true));
+        mlir::Type destType = getOrCreateType(cast);
+        mlir::Type srcType = getOrCreateType(cast->expr);
         // Fold equal-type casts (e.g. due to typedefs)
         if (destType == srcType) return setConstant(expr, getOrCreateConstant(cast->expr));
 
@@ -274,7 +278,7 @@ mlir::TypedAttr P4HIRConverter::resolveConstant(const P4::IR::Expression *expr) 
     BUG("cannot resolve this constant yet %1%", expr);
 }
 
-void P4HIRConverter::postorder(const IR::Declaration_Constant *decl) {
+void P4HIRConverter::postorder(const P4::IR::Declaration_Constant *decl) {
     LOG4("Converting " << dbp(decl));
     auto type = getOrCreateType(decl->type);
     auto init = getOrCreateConstant(decl->initializer);
@@ -286,6 +290,8 @@ void P4HIRConverter::postorder(const IR::Declaration_Constant *decl) {
 }
 
 }  // namespace
+
+namespace P4::P4MLIR {
 
 mlir::OwningOpRef<mlir::ModuleOp> toMLIR(mlir::MLIRContext &context,
                                          const P4::IR::P4Program *program,
