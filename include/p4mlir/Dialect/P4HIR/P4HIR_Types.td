@@ -111,19 +111,19 @@ def ReferenceType : P4HIR_Type<"Reference", "ref"> {
     very limited cases (e.g. `p4hir.alloca` result type is a reference type).
   }];
 
-  let parameters = (ins "mlir::Type":$type);
+  let parameters = (ins "mlir::Type":$objectType);
 
   let builders = [
-    TypeBuilderWithInferredContext<(ins "mlir::Type":$type), [{
-      return $_get(type.getContext(), type);
+    TypeBuilderWithInferredContext<(ins "mlir::Type":$objectType), [{
+      return $_get(objectType.getContext(), objectType);
     }]>,
-    TypeBuilder<(ins "mlir::Type":$type), [{
-      return $_get($_ctxt, type);
+    TypeBuilder<(ins "mlir::Type":$objectType), [{
+      return $_get($_ctxt, objectType);
     }]>
   ];
 
   let assemblyFormat = [{
-    `<` $type `>`
+    `<` $objectType `>`
   }];
 
   let skipDefaultBuilders = 1;

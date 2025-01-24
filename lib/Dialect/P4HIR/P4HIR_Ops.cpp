@@ -47,6 +47,17 @@ LogicalResult P4HIR::ConstOp::verify() {
     return checkConstantTypes(getOperation(), getType(), getValue());
 }
 
+//===----------------------------------------------------------------------===//
+// AllocaOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::AllocaOp::build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState,
+                            ::mlir::Type ref, ::mlir::Type objectType, ::llvm::StringRef name) {
+    odsState.addAttribute(getObjectTypeAttrName(odsState.name), ::mlir::TypeAttr::get(objectType));
+    odsState.addAttribute(getNameAttrName(odsState.name), odsBuilder.getStringAttr(name));
+    odsState.addTypes(ref);
+}
+
 void P4HIR::P4HIRDialect::initialize() {
     registerTypes();
     registerAttributes();
