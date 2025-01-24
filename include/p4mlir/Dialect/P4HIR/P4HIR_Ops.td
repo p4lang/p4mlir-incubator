@@ -195,4 +195,43 @@ def CastOp : P4HIR_Op<"cast",
   // FIXME: add verifier.
 }
 
+def UnaryOpKind_Neg   : I32EnumAttrCase<"Neg",   1, "minus">; // unary minus (-)
+def UnaryOpKind_UPlus : I32EnumAttrCase<"UPlus", 2, "plus">;  // unary plus (+)
+def UnaryOpKind_Cmpl  : I32EnumAttrCase<"Cmpl",  3, "cmpl">;  // complement (~)
+def UnaryOpKind_LNot  : I32EnumAttrCase<"LNot",  4, "not">;   // logical not
+
+def UnaryOpKind : I32EnumAttr<"UnaryOpKind",
+  "unary operation (arith and logic) kind",
+  [UnaryOpKind_Neg,  UnaryOpKind_UPlus,
+   UnaryOpKind_Cmpl, UnaryOpKind_LNot]> {
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+}
+
+def UnaryOp : P4HIR_Op<"unary", [Pure, SameOperandsAndResultType]> {
+  let summary = "Unary operations";
+  let description = [{
+    `p4hir.unary` performs the unary operation according to
+    the specified opcode kind: [minus, plus, cmpl, not].
+
+    It requires one input operand and has one result, both types
+    should be the same.
+
+    ```mlir
+    %7 = p4hir.unary(minus, %1) : i32
+    %8 = p4hir.unary(not, %2) : i32
+    ```
+  }];
+
+  let results = (outs AnyP4Type:$result);
+  // FIXME: constraint types for unary operations
+  // FIXME: check type for lnot
+  let arguments = (ins Arg<UnaryOpKind, "unary op kind">:$kind, Arg<AnyP4Type>:$input);
+
+  let assemblyFormat = [{
+      `(` $kind `,` $input `)` `:` type($input) attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD

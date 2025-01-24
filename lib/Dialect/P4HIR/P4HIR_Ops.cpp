@@ -4,11 +4,13 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 #define GET_OP_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.cpp.inc"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.cpp.inc"
+#include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.cpp.inc"
 
 using namespace mlir;
 using namespace P4::P4MLIR;
@@ -45,6 +47,19 @@ LogicalResult P4HIR::ConstOp::verify() {
     // need to additionally check that the value's attribute type is consistent
     // with the result type.
     return checkConstantTypes(getOperation(), getType(), getValue());
+}
+
+LogicalResult P4HIR::UnaryOp::verify() {
+    switch (getKind()) {
+        case P4HIR::UnaryOpKind::Neg:
+        case P4HIR::UnaryOpKind::UPlus:
+        case P4HIR::UnaryOpKind::Cmpl:
+        case P4HIR::UnaryOpKind::LNot:
+            // Nothing to verify.
+            return success();
+    }
+
+    llvm_unreachable("Unknown UnaryOp kind?");
 }
 
 //===----------------------------------------------------------------------===//

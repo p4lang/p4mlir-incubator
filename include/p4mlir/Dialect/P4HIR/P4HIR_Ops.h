@@ -12,9 +12,9 @@
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/MemorySlotInterfaces.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
-
 #define GET_OP_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h.inc"
 
-#endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_H
+#endif  // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_H
