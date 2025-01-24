@@ -135,5 +135,6 @@ def ReferenceType : P4HIR_Type<"Reference", "ref"> {
 
 def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                            DontcareType, ErrorType, UnknownType]> {}
+def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType]> {}
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD

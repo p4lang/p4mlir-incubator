@@ -108,8 +108,15 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     const P4::TypeMap *typeMap = nullptr;
     llvm::DenseMap<const P4::IR::Type *, mlir::Type> p4Types;
+    // TODO: Implement unified constant map
+    // using CTVOrExpr = std::variant<const P4::IR::CompileTimeValue *,
+    //                                const P4::IR::Expression *>;
+    // llvm::DenseMap<CTVOrExpr, mlir::TypedAttr> p4Constants;
     llvm::DenseMap<const P4::IR::Expression *, mlir::TypedAttr> p4Constants;
     llvm::DenseMap<const P4::IR::Node *, mlir::Value> p4Values;
+
+    mlir::TypedAttr resolveConstant(const P4::IR::CompileTimeValue *ctv);
+    mlir::TypedAttr resolveConstantExpr(const P4::IR::Expression *expr);
 
  public:
     P4HIRConverter(mlir::OpBuilder &builder, const P4::TypeMap *typeMap)
@@ -134,28 +141,80 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return getOrCreateType(expr->type);
     }
 
-    mlir::TypedAttr resolveConstant(const P4::IR::Expression *expr);
+    mlir::Type getOrCreateType(const P4::IR::Declaration_Variable *decl) {
+        auto declType = getOrCreateType(decl->type);
+        return P4HIR::ReferenceType::get(builder.getContext(), declType);
+    }
 
-    mlir::TypedAttr setConstant(const P4::IR::Expression *expr, mlir::TypedAttr attr) {
+    mlir::Value materializeConstantExpr(const P4::IR::Expression *expr);
+
+    // TODO: Implement proper CompileTimeValue support
+    /*
+    mlir::TypedAttr setConstant(const P4::IR::CompileTimeValue *ctv, mlir::TypedAttr attr) {
+        auto [it, inserted] = p4Constants.try_emplace(ctv, attr);
+        BUG_CHECK(inserted, "duplicate conversion of %1%", ctv);
+        return it->second;
+    }
+    */
+
+    mlir::TypedAttr setConstantExpr(const P4::IR::Expression *expr, mlir::TypedAttr attr) {
         auto [it, inserted] = p4Constants.try_emplace(expr, attr);
         BUG_CHECK(inserted, "duplicate conversion of %1%", expr);
         return it->second;
     }
 
-    mlir::TypedAttr getOrCreateConstant(const P4::IR::Expression *expr) {
+    // TODO: Implement proper CompileTimeValue support
+    /*
+    mlir::TypedAttr getOrCreateConstant(const P4::IR::CompileTimeValue *ctv) {
+        BUG_CHECK(!ctv->is<P4::IR::Expression>(), "use getOrCreateConstantExpr() instead");
+        auto cst = p4Constants.lookup(ctv);
+        if (cst) return cst;
+
+        cst = resolveConstant(ctv);
+
+        BUG_CHECK(cst, "expected %1% to be converted as constant", ctv);
+        return cst;
+    }
+    */
+
+    mlir::TypedAttr getOrCreateConstantExpr(const P4::IR::Expression *expr) {
         auto cst = p4Constants.lookup(expr);
         if (cst) return cst;
 
-        cst = resolveConstant(expr);
+        cst = resolveConstantExpr(expr);
 
         BUG_CHECK(cst, "expected %1% to be converted as constant", expr);
         return cst;
     }
 
+    mlir::Value getValue(const P4::IR::Node *node) {
+        // If this is a PathExpression, resolve it
+        if (const auto *pe = node->to<P4::IR::PathExpression>()) {
+            node = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
+        }
+
+        if (const auto *decl = node->to<P4::IR::Declaration_Variable>()) {
+            // Getting value out of variable involves involves a load.
+            auto alloca = p4Values.lookup(decl);
+            BUG_CHECK(alloca, "expected %1% (aka %2%) to be converted", node, dbp(node));
+            return builder.create<P4HIR::LoadOp>(getLoc(builder, node), alloca);
+        }
+
+        if (auto val = p4Values.lookup(node)) return val;
+
+        BUG("expected %1% (aka %2%) to be converted", node, dbp(node));
+    }
+
+    mlir::Value setValue(const P4::IR::Node *node, mlir::Value value) {
+        auto [it, inserted] = p4Values.try_emplace(node, value);
+        BUG_CHECK(inserted, "duplicate conversion of %1%", node);
+        return it->second;
+    }
+
     mlir::MLIRContext *context() const { return builder.getContext(); }
 
     bool preorder(const P4::IR::Node *node) override {
-        ::P4::error("%1%: P4 construct not yet supported.", node);
+        ::P4::error("P4 construct not yet supported: %1% (aka %2%)", node, dbp(node));
         return false;
     }
 
@@ -167,28 +226,44 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
     bool preorder(const P4::IR::P4Program *) override { return true; }
-    bool preorder(const P4::IR::Constant *c) override { return !p4Constants.contains(c); }
-    bool preorder(const P4::IR::BoolLiteral *b) override { return !p4Constants.contains(b); }
+    bool preorder(const P4::IR::P4Action *a) override {
+        // TODO: For now simply visit every node of the body
+        visit(a->body);
+        return false;
+    }
+    bool preorder(const P4::IR::BlockStatement *block) override {
+        // TODO: For now simply visit every node of the block, create scope afterwards
+        visit(block->components);
+        return false;
+    }
+
+    bool preorder(const P4::IR::Constant *c) override {
+        materializeConstantExpr(c);
+        return false;
+    }
+    bool preorder(const P4::IR::BoolLiteral *b) override {
+        materializeConstantExpr(b);
+        return false;
+    }
+    bool preorder(const P4::IR::PathExpression *e) override {
+        // Should be resolved eslewhere
+        return false;
+    }
+
     bool preorder(const P4::IR::Cast *cast) override {
         // Cast could be used in constant initializers or as a separate
         // operation. In former case resolve it to the constant
         if (typeMap->isCompileTimeConstant(cast)) {
-            resolveConstant(cast);
+            resolveConstantExpr(cast);
             return false;
         }
         return true;
     }
-    bool preorder(const P4::IR::Declaration_Constant *decl) override {
-        // We only should visit it once
-        BUG_CHECK(!p4Values.contains(decl), "duplicate decl conversion %1%", decl);
-        return true;
-    }
 
-    void postorder(const P4::IR::Constant *cst) override { resolveConstant(cst); }
+    bool preorder(const P4::IR::Declaration_Constant *decl) override;
 
-    void postorder(const P4::IR::BoolLiteral *b) override { resolveConstant(b); }
-
-    void postorder(const P4::IR::Declaration_Constant *decl) override;
+    bool preorder(const P4::IR::Declaration_Variable *) override { return true; }
+    void postorder(const P4::IR::Declaration_Variable *decl) override;
 };
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
@@ -237,8 +312,13 @@ bool P4TypeConverter::setType(const P4::IR::Type *type, mlir::Type mlirType) {
     return false;
 }
 
-mlir::TypedAttr P4HIRConverter::resolveConstant(const P4::IR::Expression *expr) {
-    LOG4("Resolving " << dbp(expr) << " as constant");
+mlir::TypedAttr P4HIRConverter::resolveConstant(const P4::IR::CompileTimeValue *ctv) {
+    BUG("cannot resolve this constant yet %1%", ctv);
+}
+
+mlir::TypedAttr P4HIRConverter::resolveConstantExpr(const P4::IR::Expression *expr) {
+    LOG4("Resolving " << dbp(expr) << " as constant expression");
+
     if (const auto *cst = expr->to<P4::IR::Constant>()) {
         auto type = getOrCreateType(cst->type);
         mlir::APInt value;
@@ -248,45 +328,78 @@ mlir::TypedAttr P4HIRConverter::resolveConstant(const P4::IR::Expression *expr) 
             value = toAPInt(cst->value);
         }
 
-        return setConstant(cst, P4HIR::IntAttr::get(context(), type, value));
+        return setConstantExpr(expr, P4HIR::IntAttr::get(context(), type, value));
     }
     if (const auto *b = expr->to<P4::IR::BoolLiteral>()) {
         // FIXME: For some reason type inference uses `Type_Unknown` for BoolLiteral (sic!)
         // auto type = mlir::cast<P4HIR::BoolType>(getOrCreateType(b->type));
         auto type = P4HIR::BoolType::get(context());
 
-        return setConstant(b, P4HIR::BoolAttr::get(context(), type, b->value));
+        return setConstantExpr(b, P4HIR::BoolAttr::get(context(), type, b->value));
     }
     if (const auto *cast = expr->to<P4::IR::Cast>()) {
         mlir::Type destType = getOrCreateType(cast);
         mlir::Type srcType = getOrCreateType(cast->expr);
         // Fold equal-type casts (e.g. due to typedefs)
-        if (destType == srcType) return setConstant(expr, getOrCreateConstant(cast->expr));
+        if (destType == srcType) return setConstantExpr(expr, getOrCreateConstantExpr(cast->expr));
 
         // Fold sign conversions
         if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
             if (auto srcBitsType = mlir::dyn_cast<P4HIR::BitsType>(srcType)) {
                 assert(destBitsType.getWidth() == srcBitsType.getWidth() &&
                        "expected signess conversion only");
-                auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstant(cast->expr));
-                return setConstant(expr,
-                                   P4HIR::IntAttr::get(context(), destBitsType, castee.getValue()));
+                auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(cast->expr));
+                return setConstantExpr(
+                    expr, P4HIR::IntAttr::get(context(), destBitsType, castee.getValue()));
             }
         }
     }
 
-    BUG("cannot resolve this constant yet %1%", expr);
+    BUG("cannot resolve this constant expression yet %1%", expr);
 }
 
-void P4HIRConverter::postorder(const P4::IR::Declaration_Constant *decl) {
+mlir::Value P4HIRConverter::materializeConstantExpr(const P4::IR::Expression *expr) {
+    LOG4("Materializing constant expression " << dbp(expr));
+    auto type = getOrCreateType(expr->type);
+    auto init = getOrCreateConstantExpr(expr);
+    auto loc = getLoc(builder, expr);
+
+    auto val = builder.create<P4HIR::ConstOp>(loc, type, init);
+    return setValue(expr, val);
+}
+
+bool P4HIRConverter::preorder(const P4::IR::Declaration_Constant *decl) {
     LOG4("Converting " << dbp(decl));
     auto type = getOrCreateType(decl->type);
-    auto init = getOrCreateConstant(decl->initializer);
+    auto init = getOrCreateConstantExpr(decl->initializer);
     auto loc = getLoc(builder, decl);
 
     auto val = builder.create<P4HIR::ConstOp>(loc, type, init);
-    auto [it, inserted] = p4Values.try_emplace(decl, val);
-    BUG_CHECK(inserted, "duplicate conversion of %1%", decl);
+    setValue(decl, val);
+
+    return false;
+}
+
+void P4HIRConverter::postorder(const P4::IR::Declaration_Variable *decl) {
+    LOG4("Converting " << dbp(decl));
+    const auto *init = decl->initializer;
+    mlir::Type objectType;
+    if (init) objectType = getOrCreateType(init);
+    if (!objectType || mlir::isa<P4HIR::UnknownType>(objectType))
+        objectType = getOrCreateType(decl->type);
+
+    auto type = getOrCreateType(decl);
+
+    // TODO: Choose better insertion point for alloca (entry BB or so)
+    auto alloca = builder.create<P4HIR::AllocaOp>(getLoc(builder, decl), type, objectType,
+                                                  decl->name.string_view());
+
+    if (init) {
+        alloca.setInit(true);
+        builder.create<P4HIR::StoreOp>(getLoc(builder, init), getValue(decl->initializer), alloca);
+    }
+
+    setValue(decl, alloca);
 }
 
 }  // namespace

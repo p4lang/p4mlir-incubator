@@ -132,7 +132,7 @@ def LoadOp : P4HIR_Op<"load", [
   let arguments = (ins Arg<ReferenceType, "the reference to load from"/*,
                            [MemRead]*/>:$ref);
   // FIXME: Constraint result type
-  let results = (outs AnyP4Type:$result);
+  let results = (outs LoadableP4Type:$result);
 
   let assemblyFormat = [{
     $ref `:` qualified(type($ref)) `,` type($result) attr-dict
@@ -160,7 +160,7 @@ def StoreOp : P4HIR_Op<"store", [
     ```
   }];
 
-  let arguments = (ins AnyP4Type:$value,
+  let arguments = (ins LoadableP4Type:$value,
                        Arg<ReferenceType, "the object to store the value"/*,
                            [MemWrite]*/>:$ref);
 
