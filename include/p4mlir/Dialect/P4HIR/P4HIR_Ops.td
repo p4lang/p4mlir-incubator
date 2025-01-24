@@ -171,4 +171,28 @@ def StoreOp : P4HIR_Op<"store", [
   // FIXME: add verifier.
 }
 
+// TODO: Decide if we'd want to be more precise and split cast into
+// bitcast, trunc and extensions
+def CastOp : P4HIR_Op<"cast",
+             [Pure/*,
+              DeclareOpInterfaceMethods<PromotableOpInterface>*/]> {
+  let summary = "Conversion between values of different types";
+  let description = [{
+    Apply P4 usual conversions rules between values.
+    ```mlir
+    %4 = p4hir.cast (%3 : !p4hir:bit<32>) : !p4hir:int<32>
+    ```
+  }];
+
+  let arguments = (ins AnyP4Type:$src);
+  let results = (outs AnyP4Type:$result);
+
+  let assemblyFormat = [{
+    `(` $src `:` type($src) `)`
+    `:` type($result) attr-dict
+  }];
+
+  // FIXME: add verifier.
+}
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD

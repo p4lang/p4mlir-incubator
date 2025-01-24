@@ -250,20 +250,13 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return false;
     }
 
-    bool preorder(const P4::IR::Cast *cast) override {
-        // Cast could be used in constant initializers or as a separate
-        // operation. In former case resolve it to the constant
-        if (typeMap->isCompileTimeConstant(cast)) {
-            resolveConstantExpr(cast);
-            return false;
-        }
-        return true;
-    }
+    bool preorder(const P4::IR::Cast *cast) override { return true; }
 
     bool preorder(const P4::IR::Declaration_Constant *decl) override;
 
     bool preorder(const P4::IR::Declaration_Variable *) override { return true; }
     void postorder(const P4::IR::Declaration_Variable *decl) override;
+    void postorder(const P4::IR::Cast *cast) override;
 };
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
@@ -400,6 +393,14 @@ void P4HIRConverter::postorder(const P4::IR::Declaration_Variable *decl) {
     }
 
     setValue(decl, alloca);
+}
+
+void P4HIRConverter::postorder(const P4::IR::Cast *cast) {
+    LOG4("Converting " << dbp(cast));
+    auto src = getValue(cast->expr);
+    auto destType = getOrCreateType(cast->destType);
+
+    setValue(cast, builder.create<P4HIR::CastOp>(getLoc(builder, cast), destType, src));
 }
 
 }  // namespace

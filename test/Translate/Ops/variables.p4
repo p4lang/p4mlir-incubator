@@ -12,10 +12,9 @@ action foo() {
   bit<8> b5 = 8w0b_1010_1010; // same value as above
   bit<8> b6 = 8w170;          // same value as above
   bit<8> b7 = 8w0b1010_1010;  // an 8-bit unsigned number with value 170
-  // FIXME: Implement casts and path resolution
-  // int<8> b8 = (int<8>)b7;
+  int<8> b8 = (int<8>)b7;
   int<42> b9;
-  bit<8> b10 = b7;
+  bit<8> b10 = (bit<8>)b8;
 }
 
 // CHECK-LABEL: module   
@@ -40,7 +39,12 @@ action foo() {
 // CHECK:         %[[VAL_12:.*]] = p4hir.const #p4hir.int<170> : !p4hir.bit<8>
 // CHECK:         %[[VAL_13:.*]] = p4hir.alloca !p4hir.bit<8> ["b7", init] : !p4hir.ref<!p4hir.bit<8>>
 // CHECK:         p4hir.store %[[VAL_12]], %[[VAL_13]] : !p4hir.bit<8>, !p4hir.ref<!p4hir.bit<8>>
+// CHECK:         %[[VAL_14_1:.*]] = p4hir.load %[[VAL_13]] : !p4hir.ref<!p4hir.bit<8>>, !p4hir.bit<8>
+// CHECK:         %[[VAL_15_1:.*]] = p4hir.cast(%[[VAL_14_1]] : !p4hir.bit<8>) : !p4hir.int<8>
+// CHECK:         %[[VAL_16_1:.*]] = p4hir.alloca !p4hir.int<8> ["b8", init] : !p4hir.ref<!p4hir.int<8>>
+// CHECK:         p4hir.store %[[VAL_15_1]], %[[VAL_16_1]] : !p4hir.int<8>, !p4hir.ref<!p4hir.int<8>>
 // CHECK:         %[[VAL_14:.*]] = p4hir.alloca !p4hir.int<42> ["b9"] : !p4hir.ref<!p4hir.int<42>>
+// CHECK:         %[[VAL_14_2:.*]] = p4hir.load %[[VAL_16_1]] : !p4hir.ref<!p4hir.int<8>>, !p4hir.int<8>
+// CHECK:         %[[VAL_16:.*]] = p4hir.cast(%[[VAL_14_2]] : !p4hir.int<8>) : !p4hir.bit<8>
 // CHECK:         %[[VAL_15:.*]] = p4hir.alloca !p4hir.bit<8> ["b10", init] : !p4hir.ref<!p4hir.bit<8>>
-// CHECK:         %[[VAL_16:.*]] = p4hir.load %[[VAL_13]] : !p4hir.ref<!p4hir.bit<8>>, !p4hir.bit<8>
 // CHECK:         p4hir.store %[[VAL_16]], %[[VAL_15]] : !p4hir.bit<8>, !p4hir.ref<!p4hir.bit<8>>
