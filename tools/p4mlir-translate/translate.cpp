@@ -273,17 +273,32 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::NodeTy *) override { return true; } \
     void postorder(const P4::IR::NodeTy *) override;
 
-    HANDLE_IN_POSTORDER(Cast)
+    // Unary ops
     HANDLE_IN_POSTORDER(Neg)
     HANDLE_IN_POSTORDER(LNot)
     HANDLE_IN_POSTORDER(UPlus)
     HANDLE_IN_POSTORDER(Cmpl)
+
+    // Binary ops
+    HANDLE_IN_POSTORDER(Mul)
+    HANDLE_IN_POSTORDER(Div)
+    HANDLE_IN_POSTORDER(Mod)
+    HANDLE_IN_POSTORDER(Add)
+    HANDLE_IN_POSTORDER(Sub)
+    HANDLE_IN_POSTORDER(AddSat)
+    HANDLE_IN_POSTORDER(SubSat)
+    HANDLE_IN_POSTORDER(BOr)
+    HANDLE_IN_POSTORDER(BAnd)
+    HANDLE_IN_POSTORDER(BXor)
+
+    HANDLE_IN_POSTORDER(Cast)
     HANDLE_IN_POSTORDER(Declaration_Variable)
 
 #undef HANDLE_IN_POSTORDER
+    bool preorder(const P4::IR::Declaration_Constant *decl) override;
 
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
-    bool preorder(const P4::IR::Declaration_Constant *decl) override;
+    mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
 };
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
@@ -442,25 +457,43 @@ mlir::Value P4HIRConverter::emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR:
     return builder.create<P4HIR::UnaryOp>(getLoc(builder, unop), kind, getValue(unop->expr));
 }
 
-void P4HIRConverter::postorder(const P4::IR::Neg *neg) {
-    ConversionTracer trace("Converting ", neg);
-    setValue(neg, emitUnOp(neg, P4HIR::UnaryOpKind::Neg));
+mlir::Value P4HIRConverter::emitBinOp(const P4::IR::Operation_Binary *binop,
+                                      P4HIR::BinOpKind kind) {
+    return builder.create<P4HIR::BinOp>(getLoc(builder, binop), kind, getValue(binop->left),
+                                        getValue(binop->right));
 }
 
-void P4HIRConverter::postorder(const P4::IR::LNot *lnot) {
-    ConversionTracer trace("Converting ", lnot);
-    setValue(lnot, emitUnOp(lnot, P4HIR::UnaryOpKind::LNot));
-}
+#define CONVERT_UNOP(Node, Kind)                                  \
+    void P4HIRConverter::postorder(const P4::IR::Node *node) {    \
+        ConversionTracer trace("Converting ", node);              \
+        setValue(node, emitUnOp(node, P4HIR::UnaryOpKind::Kind)); \
+    }
 
-void P4HIRConverter::postorder(const P4::IR::UPlus *plus) {
-    ConversionTracer trace("Converting ", plus);
-    setValue(plus, emitUnOp(plus, P4HIR::UnaryOpKind::UPlus));
-}
+CONVERT_UNOP(Neg, Neg);
+CONVERT_UNOP(UPlus, UPlus);
+CONVERT_UNOP(Cmpl, Cmpl);
+CONVERT_UNOP(LNot, LNot);
 
-void P4HIRConverter::postorder(const P4::IR::Cmpl *cmpl) {
-    ConversionTracer trace("Converting ", cmpl);
-    setValue(cmpl, emitUnOp(cmpl, P4HIR::UnaryOpKind::Cmpl));
-}
+#undef CONVERT_UNOP
+
+#define CONVERT_BINOP(Node, Kind)                                \
+    void P4HIRConverter::postorder(const P4::IR::Node *node) {   \
+        ConversionTracer trace("Converting ", node);             \
+        setValue(node, emitBinOp(node, P4HIR::BinOpKind::Kind)); \
+    }
+
+CONVERT_BINOP(Mul, Mul);
+CONVERT_BINOP(Div, Div);
+CONVERT_BINOP(Mod, Mod);
+CONVERT_BINOP(Add, Add);
+CONVERT_BINOP(Sub, Sub);
+CONVERT_BINOP(AddSat, AddSat);
+CONVERT_BINOP(SubSat, SubSat);
+CONVERT_BINOP(BOr, Or);
+CONVERT_BINOP(BAnd, And);
+CONVERT_BINOP(BXor, Xor);
+
+#undef CONVERT_BINOP
 
 }  // namespace
 

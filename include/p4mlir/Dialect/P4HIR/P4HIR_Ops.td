@@ -217,8 +217,8 @@ def UnaryOp : P4HIR_Op<"unary", [Pure, SameOperandsAndResultType]> {
     should be the same.
 
     ```mlir
-    %7 = p4hir.unary(minus, %1) : i32
-    %8 = p4hir.unary(not, %2) : i32
+    %7 = p4hir.unary(minus, %1) : !p4hir.bit<32>
+    %8 = p4hir.unary(not, %2) : !p4hir.bit<32>
     ```
   }];
 
@@ -232,6 +232,57 @@ def UnaryOp : P4HIR_Op<"unary", [Pure, SameOperandsAndResultType]> {
   }];
 
   let hasVerifier = 1;
+}
+
+def BinOpKind_Mul    : I32EnumAttrCase<"Mul",   1, "mul">;
+def BinOpKind_Div    : I32EnumAttrCase<"Div",   2, "div">;
+def BinOpKind_Mod    : I32EnumAttrCase<"Mod",   3, "mod">;
+def BinOpKind_Add    : I32EnumAttrCase<"Add",   4, "add">;
+def BinOpKind_Sub    : I32EnumAttrCase<"Sub",   5, "sub">;
+def BinOpKind_AddSat : I32EnumAttrCase<"AddSat",6, "sadd">;
+def BinOpKind_SubSat : I32EnumAttrCase<"SubSat",7, "ssub">;
+def BinOpKind_BOr    : I32EnumAttrCase<"Or",    8, "or">;
+def BinOpKind_BXor   : I32EnumAttrCase<"Xor",   9, "xor">;
+def BinOpKind_BAnd   : I32EnumAttrCase<"And",   10,"and">;
+
+def BinOpKind : I32EnumAttr<"BinOpKind",
+  "binary operation (arith and logic) kind",
+  [BinOpKind_Mul, BinOpKind_Div, BinOpKind_Mod,
+   BinOpKind_Add, BinOpKind_Sub,
+   BinOpKind_AddSat, BinOpKind_SubSat,
+   BinOpKind_BOr, BinOpKind_BXor, BinOpKind_BAnd]> {
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+}
+
+def BinOp : P4HIR_Op<"binop", [Pure,
+  SameTypeOperands, SameOperandsAndResultType]> {
+
+  let summary = "Binary operations (arith and logic)";
+  let description = [{
+    p4hir.binop performs the binary operation according to
+    the specified opcode kind: [mul, div, mod, add, sub,
+    sadd, ssub, and, xor, or].
+
+    It requires two input operands and has one result, all types
+    should be the same.
+
+    ```mlir
+    %7 = p4hir.binop(add, %1, %2) : !p4hir.bit<32>
+    %7 = p4hir.binop(mul, %1, %2) : !p4hir.bit<32>
+    ```
+  }];
+
+  // TODO: get more accurate than AnyP4Type
+  let results = (outs AnyP4Type:$result);
+  let arguments = (ins Arg<BinOpKind, "binop kind">:$kind,
+                       AnyP4Type:$lhs, AnyP4Type:$rhs);
+
+  let assemblyFormat = [{
+    `(` $kind `,` $lhs `,` $rhs  `)` `:` type($lhs) attr-dict
+  }];
+
+  // TODO: Implement verification
+  let hasVerifier = 0;
 }
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD
