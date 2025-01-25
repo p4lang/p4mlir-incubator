@@ -7,15 +7,18 @@
 #include "ir/ir.h"
 #include "ir/visitor.h"
 #include "lib/big_int.h"
+#include "lib/indent.h"
+#include "lib/log.h"
+#include "llvm/Support/raw_ostream.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
@@ -60,6 +63,15 @@ mlir::APInt toAPInt(const P4::big_int &value, unsigned bitWidth = 0) {
 class P4HIRConverter;
 class P4TypeConverter;
 
+class ConversionTracer {
+ public:
+    ConversionTracer(const char *Kind, const P4::IR::Node *node) {
+        // TODO: Add TimeTrace here
+        LOG4(P4::IndentCtl::indent << Kind << dbp(node));
+    }
+    ~ConversionTracer() { LOG4_UNINDENT; }
+};
+
 // A dedicated converter for conversion of the P4 types to their destination
 // representation.
 class P4TypeConverter : public P4::Inspector {
@@ -88,7 +100,7 @@ class P4TypeConverter : public P4::Inspector {
     bool preorder(const P4::IR::Type_Boolean *type) override;
     bool preorder(const P4::IR::Type_Unknown *type) override;
     bool preorder(const P4::IR::Type_Typedef *type) override {
-        LOG4("TypeConverting " << dbp(type));
+        ConversionTracer trace("TypeConverting ", type);
         visit(type->type);
         return false;
     }
@@ -206,6 +218,13 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
     mlir::Value setValue(const P4::IR::Node *node, mlir::Value value) {
+        if (LOGGING(4)) {
+            std::string s;
+            llvm::raw_string_ostream os(s);
+            value.print(os);
+            LOG4("Converted " << dbp(node) << " -> \"" << s << "\"");
+        }
+
         auto [it, inserted] = p4Values.try_emplace(node, value);
         BUG_CHECK(inserted, "duplicate conversion of %1%", node);
         return it->second;
@@ -219,7 +238,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
     bool preorder(const P4::IR::Type *type) override {
-        LOG4("Converting " << dbp(type));
+        ConversionTracer trace("Converting ", type);
         P4TypeConverter cvt(*this);
         type->apply(cvt);
         return false;
@@ -250,19 +269,27 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return false;
     }
 
-    bool preorder(const P4::IR::Cast *cast) override { return true; }
+#define HANDLE_IN_POSTORDER(NodeTy)                                 \
+    bool preorder(const P4::IR::NodeTy *) override { return true; } \
+    void postorder(const P4::IR::NodeTy *) override;
 
+    HANDLE_IN_POSTORDER(Cast)
+    HANDLE_IN_POSTORDER(Neg)
+    HANDLE_IN_POSTORDER(LNot)
+    HANDLE_IN_POSTORDER(UPlus)
+    HANDLE_IN_POSTORDER(Cmpl)
+    HANDLE_IN_POSTORDER(Declaration_Variable)
+
+#undef HANDLE_IN_POSTORDER
+
+    mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     bool preorder(const P4::IR::Declaration_Constant *decl) override;
-
-    bool preorder(const P4::IR::Declaration_Variable *) override { return true; }
-    void postorder(const P4::IR::Declaration_Variable *decl) override;
-    void postorder(const P4::IR::Cast *cast) override;
 };
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
     if ((this->type = converter.findType(type))) return false;
 
-    LOG4("TypeConverting " << dbp(type));
+    ConversionTracer trace("TypeConverting ", type);
     auto mlirType = P4HIR::BitsType::get(converter.context(), type->width_bits(), type->isSigned);
     return setType(type, mlirType);
 }
@@ -270,7 +297,7 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
 bool P4TypeConverter::preorder(const P4::IR::Type_InfInt *type) {
     if ((this->type = converter.findType(type))) return false;
 
-    LOG4("TypeConverting " << dbp(type));
+    ConversionTracer trace("TypeConverting ", type);
     auto mlirType = P4HIR::InfIntType::get(converter.context());
     return setType(type, mlirType);
 }
@@ -278,7 +305,7 @@ bool P4TypeConverter::preorder(const P4::IR::Type_InfInt *type) {
 bool P4TypeConverter::preorder(const P4::IR::Type_Boolean *type) {
     if ((this->type = converter.findType(type))) return false;
 
-    LOG4("TypeConverting " << dbp(type));
+    ConversionTracer trace("TypeConverting ", type);
     auto mlirType = P4HIR::BoolType::get(converter.context());
     return setType(type, mlirType);
 }
@@ -286,13 +313,13 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Boolean *type) {
 bool P4TypeConverter::preorder(const P4::IR::Type_Unknown *type) {
     if ((this->type = converter.findType(type))) return false;
 
-    LOG4("TypeConverting " << dbp(type));
+    ConversionTracer trace("TypeConverting ", type);
     auto mlirType = P4HIR::UnknownType::get(converter.context());
     return setType(type, mlirType);
 }
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Name *name) {
-    LOG4("TypeConverting " << dbp(name));
+    ConversionTracer trace("TypeConverting ", name);
     const auto *type = converter.resolveType(name);
     CHECK_NULL(type);
     visit(type);
@@ -352,17 +379,23 @@ mlir::TypedAttr P4HIRConverter::resolveConstantExpr(const P4::IR::Expression *ex
 }
 
 mlir::Value P4HIRConverter::materializeConstantExpr(const P4::IR::Expression *expr) {
-    LOG4("Materializing constant expression " << dbp(expr));
+    ConversionTracer trace("Materializing constant expression ", expr);
+
     auto type = getOrCreateType(expr->type);
     auto init = getOrCreateConstantExpr(expr);
     auto loc = getLoc(builder, expr);
+
+    // Hack: type inference sometimes keeps `Type_Unknown` for some constants, in such case
+    // use type from the initializer
+    if (mlir::isa<P4HIR::UnknownType>(type)) type = init.getType();
 
     auto val = builder.create<P4HIR::ConstOp>(loc, type, init);
     return setValue(expr, val);
 }
 
 bool P4HIRConverter::preorder(const P4::IR::Declaration_Constant *decl) {
-    LOG4("Converting " << dbp(decl));
+    ConversionTracer trace("Converting ", decl);
+
     auto type = getOrCreateType(decl->type);
     auto init = getOrCreateConstantExpr(decl->initializer);
     auto loc = getLoc(builder, decl);
@@ -374,7 +407,8 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Constant *decl) {
 }
 
 void P4HIRConverter::postorder(const P4::IR::Declaration_Variable *decl) {
-    LOG4("Converting " << dbp(decl));
+    ConversionTracer trace("Converting ", decl);
+
     const auto *init = decl->initializer;
     mlir::Type objectType;
     if (init) objectType = getOrCreateType(init);
@@ -396,11 +430,36 @@ void P4HIRConverter::postorder(const P4::IR::Declaration_Variable *decl) {
 }
 
 void P4HIRConverter::postorder(const P4::IR::Cast *cast) {
-    LOG4("Converting " << dbp(cast));
+    ConversionTracer trace("Converting ", cast);
+
     auto src = getValue(cast->expr);
     auto destType = getOrCreateType(cast->destType);
 
     setValue(cast, builder.create<P4HIR::CastOp>(getLoc(builder, cast), destType, src));
+}
+
+mlir::Value P4HIRConverter::emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind) {
+    return builder.create<P4HIR::UnaryOp>(getLoc(builder, unop), kind, getValue(unop->expr));
+}
+
+void P4HIRConverter::postorder(const P4::IR::Neg *neg) {
+    ConversionTracer trace("Converting ", neg);
+    setValue(neg, emitUnOp(neg, P4HIR::UnaryOpKind::Neg));
+}
+
+void P4HIRConverter::postorder(const P4::IR::LNot *lnot) {
+    ConversionTracer trace("Converting ", lnot);
+    setValue(lnot, emitUnOp(lnot, P4HIR::UnaryOpKind::LNot));
+}
+
+void P4HIRConverter::postorder(const P4::IR::UPlus *plus) {
+    ConversionTracer trace("Converting ", plus);
+    setValue(plus, emitUnOp(plus, P4HIR::UnaryOpKind::UPlus));
+}
+
+void P4HIRConverter::postorder(const P4::IR::Cmpl *cmpl) {
+    ConversionTracer trace("Converting ", cmpl);
+    setValue(cmpl, emitUnOp(cmpl, P4HIR::UnaryOpKind::Cmpl));
 }
 
 }  // namespace
