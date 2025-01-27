@@ -47,6 +47,18 @@ mlir::Location getLoc(mlir::OpBuilder &builder, const P4::IR::Node *node) {
         start.getColumnNumber());
 }
 
+mlir::Location getEndLoc(mlir::OpBuilder &builder, const P4::IR::Node *node) {
+    CHECK_NULL(node);
+    auto sourceInfo = node->getSourceInfo();
+    if (!sourceInfo.isValid()) return mlir::UnknownLoc::get(builder.getContext());
+
+    const auto &end = sourceInfo.getEnd();
+
+    return mlir::FileLineColLoc::get(
+        builder.getStringAttr(sourceInfo.getSourceFile().string_view()), end.getLineNumber(),
+        end.getColumnNumber());
+}
+
 mlir::APInt toAPInt(const P4::big_int &value, unsigned bitWidth = 0) {
     std::vector<uint64_t> valueBits;
     // Export absolute value into 64-bit unsigned values, most significant bit last
@@ -247,13 +259,26 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::P4Program *) override { return true; }
     bool preorder(const P4::IR::P4Action *a) override {
-        // TODO: For now simply visit every node of the body
+        // We cannot simply visit each node of the top-level block as
+        // ResolutionContext would not be able to resolve declarations there
+        // (sic!)
         visit(a->body);
         return false;
     }
     bool preorder(const P4::IR::BlockStatement *block) override {
-        // TODO: For now simply visit every node of the block, create scope afterwards
-        visit(block->components);
+        // If this is a top-level block where scope is implied (e.g. function,
+        // action, certain statements) do not create explicit scope.
+        if (getParent<P4::IR::BlockStatement>()) {
+            mlir::OpBuilder::InsertionGuard guard(builder);
+            auto scope = builder.create<P4HIR::ScopeOp>(
+                getLoc(builder, block),                   /*scopeBuilder=*/
+                [&](mlir::OpBuilder &, mlir::Location) {  // nothing is being yielded
+                    visit(block->components);
+                });
+            builder.setInsertionPointToEnd(&scope.getScopeRegion().back());
+            builder.create<P4HIR::YieldOp>(getEndLoc(builder, block));
+        } else
+            visit(block->components);
         return false;
     }
 

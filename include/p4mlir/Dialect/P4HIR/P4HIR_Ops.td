@@ -3,6 +3,7 @@
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/MemorySlotInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -323,5 +324,122 @@ def CmpOp : P4HIR_Op<"cmp", [Pure, SameTypeOperands]> {
   // Already covered by the traits
   let hasVerifier = 0;
 }
+
+def ScopeOp : P4HIR_Op<"scope", [
+       DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       RecursivelySpeculatable, AutomaticAllocationScope,
+       NoRegionArguments]> {
+  let summary = "Represents a P4 scope";
+  let description = [{
+    `p4hir.scope` contains one region and defines a strict "scope" for all new
+    values produced within its blocks.
+
+    The region can contain an arbitrary number of blocks but usually defaults
+    to one and can optionally return a value (useful for representing values
+    coming out of expressions that are not parts of other expressions, short-cut
+    logical operations and simplifying inlining logic) via `p4hir.yield`:
+
+
+    ```mlir
+    %rvalue = p4hir.scope {
+      ...
+      p4hir.yield %value
+    }
+    ```
+
+    The blocks can be terminated by `p4hir.yield` or `p4hir.return`.
+    If `p4hir.scope` yields no value, the `p4hir.yield` can be left out, and
+    will be inserted implicitly.
+  }];
+
+  let results = (outs Optional<AnyP4Type>:$results);
+  let regions = (region AnyRegion:$scopeRegion);
+
+  let hasVerifier = 1;
+  let skipDefaultBuilders = 1;
+  let assemblyFormat = [{
+    custom<OmittedTerminatorRegion>($scopeRegion) (`:` type($results)^)? attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    /// Determine whether the scope is empty, meaning it contains a single block
+    /// terminated by a p4hir.yield.
+    bool isEmpty() {
+      auto &entry = getScopeRegion().front();
+      return getScopeRegion().hasOneBlock() &&
+        llvm::isa<YieldOp>(entry.front());
+      }
+    }];
+
+  let builders = [
+    // Scopes for yielding values.
+    OpBuilder<(ins
+              "llvm::function_ref<void(mlir::OpBuilder &, mlir::Type &, mlir::Location)>":$scopeBuilder)>,
+    // Scopes without yielding values.
+    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$scopeBuilder)>
+  ];
+}
+
+def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
+    ParentOneOf<["ScopeOp",
+                 // "IfOp", "TernaryOp"
+                 // "SwitchOp", "CaseOp",
+                 // "ForInOp", "ForOp",
+                 // "CallOp"
+                 ]>]> {
+  let summary = "Represents the default branching behaviour of a region";
+  let description = [{
+    The `p4hir.yield` operation terminates regions on different P4HIR operations,
+    and it is used to represent the default branching behaviour of a region.
+    Said branching behaviour is determined by the parent operation. For
+    example, a yield in a `p4hir.if` region implies a branch to the exit block,
+    and so on.
+
+    In some cases, it might yield an SSA value and the semantics of how the
+    values are yielded is defined by the parent operation. For example, a
+    `p4hir.ternary` operation yields a value from one of its regions.
+
+    As a general rule, `p4hir.yield` must be explicitly used whenever a region has
+    more than one block and no terminator, or within `p4hir.switch` regions not
+    `p4hir.return` terminated.
+
+    Examples:
+    ```mlir
+    p4hir.if %4 {
+      ...
+      p4hir.yield
+    }
+
+    p4hir.switch (%5) [
+      case (equal, 3) {
+        ...
+        p4hir.yield
+      }, ...
+    ]
+
+    p4hir.scope {
+      ...
+      p4hir.yield
+    }
+
+    %x = p4hir.scope {
+      ...
+      p4hir.yield %val
+    }
+
+    %y = p4hir.ternary {
+      ...
+      p4hir.yield %val : !p4hir.bit<42>
+    } :  !p4hir.bit<42>
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyP4Type>:$args);
+  let assemblyFormat = "($args^ `:` type($args))? attr-dict";
+  let builders = [
+    OpBuilder<(ins), [{ /* nothing to do */ }]>,
+  ];
+}
+
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD
