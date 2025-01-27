@@ -52,6 +52,11 @@ config.substitutions.append(("%p4mlir_libs", config.p4mlir_libs_dir))
 llvm_config.with_environment("PATH", config.llvm_tools_dir, append_path=True)
 
 tool_dirs = [config.p4mlir_tools_dir, config.llvm_tools_dir]
+
+# FIXME: This is a temporary hack. With our current CMake configs, somehow
+# p4mlir-opt ended up in this directory.
+tool_dirs += [os.path.join(config.p4c_binary_dir, "bin")]
+
 tools = [
     "mlir-opt",
     "p4mlir-opt",

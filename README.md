@@ -44,15 +44,15 @@ cd third_party/llvm-project/build
 ninja check-mlir
 ```
 
-#### Build P4MLIR from source
+#### Build P4C with P4MLIR extension from source
 
 ```shell
-./build_tools/build_p4mlir.sh
+./build_tools/build_p4c_with_p4mlir_ext.sh
 ```
 
 ### Testing
 
 ```shell
-cd build
+cd third_party/p4c/build
 ninja check-p4mlir
 ```
