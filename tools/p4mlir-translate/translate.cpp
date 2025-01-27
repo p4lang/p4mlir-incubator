@@ -129,6 +129,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     mlir::TypedAttr resolveConstant(const P4::IR::CompileTimeValue *ctv);
     mlir::TypedAttr resolveConstantExpr(const P4::IR::Expression *expr);
+    mlir::Value resolveReference(const P4::IR::Node *node);
 
  public:
     P4HIRConverter(mlir::OpBuilder &builder, const P4::TypeMap *typeMap)
@@ -295,7 +296,9 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(Declaration_Variable)
 
 #undef HANDLE_IN_POSTORDER
+
     bool preorder(const P4::IR::Declaration_Constant *decl) override;
+    bool preorder(const P4::IR::AssignmentStatement *assign) override;
 
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
@@ -345,6 +348,21 @@ bool P4TypeConverter::setType(const P4::IR::Type *type, mlir::Type mlirType) {
     this->type = mlirType;
     converter.setType(type, mlirType);
     return false;
+}
+
+mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node) {
+    // If this is a PathExpression, resolve it
+    if (const auto *pe = node->to<P4::IR::PathExpression>()) {
+        node = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
+    }
+
+    // The result is expected to be an l-value
+    auto ref = p4Values.lookup(node);
+    BUG_CHECK(ref, "expected %1% (aka %2%) to be converted", node, dbp(node));
+    BUG_CHECK(mlir::isa<P4HIR::ReferenceType>(ref.getType()),
+              "expected reference type for node %1%", node);
+
+    return ref;
 }
 
 mlir::TypedAttr P4HIRConverter::resolveConstant(const P4::IR::CompileTimeValue *ctv) {
@@ -494,6 +512,17 @@ CONVERT_BINOP(BAnd, And);
 CONVERT_BINOP(BXor, Xor);
 
 #undef CONVERT_BINOP
+
+bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
+    ConversionTracer trace("Converting ", assign);
+
+    // TODO: Handle slice on LHS here
+    visit(assign->left);
+    visit(assign->right);
+    auto ref = resolveReference(assign->left);
+    builder.create<P4HIR::StoreOp>(getLoc(builder, assign), getValue(assign->right), ref);
+    return false;
+}
 
 }  // namespace
 
