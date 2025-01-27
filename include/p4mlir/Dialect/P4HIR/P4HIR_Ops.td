@@ -285,4 +285,43 @@ def BinOp : P4HIR_Op<"binop", [Pure,
   let hasVerifier = 0;
 }
 
+def CmpOpKind_LT : I32EnumAttrCase<"Lt", 1, "lt">;
+def CmpOpKind_LE : I32EnumAttrCase<"Le", 2, "le">;
+def CmpOpKind_GT : I32EnumAttrCase<"Gt", 3, "gt">;
+def CmpOpKind_GE : I32EnumAttrCase<"Ge", 4, "ge">;
+def CmpOpKind_EQ : I32EnumAttrCase<"Eq", 5, "eq">;
+def CmpOpKind_NE : I32EnumAttrCase<"Ne", 6, "ne">;
+
+def CmpOpKind : I32EnumAttr<
+    "CmpOpKind",
+    "compare operation kind",
+    [CmpOpKind_LT, CmpOpKind_LE, CmpOpKind_GT,
+     CmpOpKind_GE, CmpOpKind_EQ, CmpOpKind_NE]> {
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+}
+
+def CmpOp : P4HIR_Op<"cmp", [Pure, SameTypeOperands]> {
+  let summary = "Compare values two values and produce a boolean result";
+  let description = [{
+    `p4hir.cmp` compares two input operands of the same type and produces a
+    `p4hir.bool` result. The kinds of comparison available are:
+    [lt,gt,ge,eq,ne]
+
+    ```mlir
+    %7 = p4hir.cmp(gt, %1, %2) : !p4hir.bit<32>, !p4hir.bool
+    ```
+  }];
+
+  let results = (outs BooleanType:$result);
+  let arguments = (ins Arg<CmpOpKind, "cmp kind">:$kind,
+                       AnyP4Type:$lhs, AnyP4Type:$rhs);
+
+  let assemblyFormat = [{
+    `(` $kind `,` $lhs `,` $rhs  `)` `:` type($lhs) `,` type($result) attr-dict
+  }];
+
+  // Already covered by the traits
+  let hasVerifier = 0;
+}
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD

@@ -292,6 +292,14 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(BAnd)
     HANDLE_IN_POSTORDER(BXor)
 
+    // Comparisons
+    HANDLE_IN_POSTORDER(Equ)
+    HANDLE_IN_POSTORDER(Neq)
+    HANDLE_IN_POSTORDER(Leq)
+    HANDLE_IN_POSTORDER(Lss)
+    HANDLE_IN_POSTORDER(Grt)
+    HANDLE_IN_POSTORDER(Geq)
+
     HANDLE_IN_POSTORDER(Cast)
     HANDLE_IN_POSTORDER(Declaration_Variable)
 
@@ -302,6 +310,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
+    mlir::Value emitCmp(const P4::IR::Operation_Relation *relop, P4HIR::CmpOpKind kind);
 };
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
@@ -480,6 +489,11 @@ mlir::Value P4HIRConverter::emitBinOp(const P4::IR::Operation_Binary *binop,
     return builder.create<P4HIR::BinOp>(getLoc(builder, binop), kind, getValue(binop->left),
                                         getValue(binop->right));
 }
+mlir::Value P4HIRConverter::emitCmp(const P4::IR::Operation_Relation *relop,
+                                    P4HIR::CmpOpKind kind) {
+    return builder.create<P4HIR::CmpOp>(getLoc(builder, relop), kind, getValue(relop->left),
+                                        getValue(relop->right));
+}
 
 #define CONVERT_UNOP(Node, Kind)                                  \
     void P4HIRConverter::postorder(const P4::IR::Node *node) {    \
@@ -512,6 +526,21 @@ CONVERT_BINOP(BAnd, And);
 CONVERT_BINOP(BXor, Xor);
 
 #undef CONVERT_BINOP
+
+#define CONVERT_CMP(Node, Kind)                                \
+    void P4HIRConverter::postorder(const P4::IR::Node *node) { \
+        ConversionTracer trace("Converting ", node);           \
+        setValue(node, emitCmp(node, P4HIR::CmpOpKind::Kind)); \
+    }
+
+CONVERT_CMP(Equ, Eq);
+CONVERT_CMP(Neq, Ne);
+CONVERT_CMP(Lss, Lt);
+CONVERT_CMP(Leq, Le);
+CONVERT_CMP(Grt, Gt);
+CONVERT_CMP(Geq, Ge);
+
+#undef CONVERT_CMP
 
 bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
     ConversionTracer trace("Converting ", assign);
