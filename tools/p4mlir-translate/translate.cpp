@@ -143,6 +143,12 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     mlir::TypedAttr resolveConstantExpr(const P4::IR::Expression *expr);
     mlir::Value resolveReference(const P4::IR::Node *node);
 
+    mlir::Value getBoolConstant(mlir::Location loc, bool value) {
+        auto boolType = P4HIR::BoolType::get(context());
+        return builder.create<P4HIR::ConstOp>(loc, boolType,
+                                              P4HIR::BoolAttr::get(context(), boolType, value));
+    }
+
  public:
     P4HIRConverter(mlir::OpBuilder &builder, const P4::TypeMap *typeMap)
         : builder(builder), typeMap(typeMap) {
@@ -332,6 +338,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::Declaration_Constant *decl) override;
     bool preorder(const P4::IR::AssignmentStatement *assign) override;
+    bool preorder(const P4::IR::LOr *lor) override;
+    bool preorder(const P4::IR::LAnd *land) override;
 
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
@@ -575,6 +583,42 @@ bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
     visit(assign->right);
     auto ref = resolveReference(assign->left);
     builder.create<P4HIR::StoreOp>(getLoc(builder, assign), getValue(assign->right), ref);
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::LOr *lor) {
+    // Lower a || b into a ? true : b
+    visit(lor->left);
+
+    auto value = builder.create<P4HIR::TernaryOp>(
+        getLoc(builder, lor), getValue(lor->left),
+        [&](mlir::OpBuilder &b, mlir::Location loc) {
+            b.create<P4HIR::YieldOp>(getEndLoc(builder, lor->left), getBoolConstant(loc, true));
+        },
+        [&](mlir::OpBuilder &b, mlir::Location) {
+            visit(lor->right);
+            b.create<P4HIR::YieldOp>(getEndLoc(builder, lor->right), getValue(lor->right));
+        });
+
+    setValue(lor, value.getResult());
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::LAnd *land) {
+    // Lower a && b into a ? b : false
+    visit(land->left);
+
+    auto value = builder.create<P4HIR::TernaryOp>(
+        getLoc(builder, land), getValue(land->left),
+        [&](mlir::OpBuilder &b, mlir::Location) {
+            visit(land->right);
+            b.create<P4HIR::YieldOp>(getEndLoc(builder, land->right), getValue(land->right));
+        },
+        [&](mlir::OpBuilder &b, mlir::Location loc) {
+            b.create<P4HIR::YieldOp>(getEndLoc(builder, land->left), getBoolConstant(loc, false));
+        });
+
+    setValue(land, value.getResult());
     return false;
 }
 

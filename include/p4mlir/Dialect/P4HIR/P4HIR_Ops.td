@@ -381,8 +381,8 @@ def ScopeOp : P4HIR_Op<"scope", [
 }
 
 def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
-    ParentOneOf<["ScopeOp",
-                 // "IfOp", "TernaryOp"
+    ParentOneOf<["ScopeOp", "TernaryOp",
+                 // "IfOp",
                  // "SwitchOp", "CaseOp",
                  // "ForInOp", "ForOp",
                  // "CallOp"
@@ -439,6 +439,55 @@ def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
   let builders = [
     OpBuilder<(ins), [{ /* nothing to do */ }]>,
   ];
+}
+
+def TernaryOp : P4HIR_Op<"ternary",
+      [DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       RecursivelySpeculatable, AutomaticAllocationScope, NoRegionArguments]> {
+  let summary = "The `cond ? a : b` C/C++ ternary operation";
+  let description = [{
+    The `p4hir.ternary` operation represents operation that is absent in P4 language, but otherwise
+    is useful to represent varios language-level constructs. It is essentialyl a C/C++ ternary. First
+    argument is a `p4hir.bool` condition to evaluate, followed by two regions to execute (true or false).
+    This is different from `p4hir.if` since each region is one block sized and the `p4hir.yield` closing the
+    block scope should have one argument.
+
+    Example:
+
+    ```mlir
+    // x = a && b;
+
+    %x = p4hir.ternary (%a, true_region {
+      ...
+      p4hir.yield %b : !p4hir.bool
+    }, false_region {
+      ...
+      p4hir.yield %a : !p4hir.bool
+    }) -> !p4hir.bool
+    ```
+  }];
+  let arguments = (ins BooleanType:$cond);
+  let regions = (region AnyRegion:$trueRegion,
+                        AnyRegion:$falseRegion);
+  let results = (outs Optional<AnyP4Type>:$result);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$cond,
+      "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$trueBuilder,
+      "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$falseBuilder)
+      >
+  ];
+
+  // All constraints already verified elsewhere.
+  let hasVerifier = 0;
+
+  let assemblyFormat = [{
+    `(` $cond `,`
+      `true` $trueRegion `,`
+      `false` $falseRegion
+    `)` `:` functional-type(operands, results) attr-dict
+  }];
 }
 
 

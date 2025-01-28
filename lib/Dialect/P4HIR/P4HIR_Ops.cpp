@@ -172,6 +172,40 @@ static void printOmittedTerminatorRegion(mlir::OpAsmPrinter &printer, P4HIR::Sco
                         /*printBlockTerminators=*/!omitRegionTerm(scopeRegion));
 }
 
+//===----------------------------------------------------------------------===//
+// TernaryOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::TernaryOp::getSuccessorRegions(mlir::RegionBranchPoint point,
+                                           SmallVectorImpl<RegionSuccessor> &regions) {
+    // The `true` and the `false` region branch back to the parent operation.
+    if (!point.isParent()) {
+        regions.push_back(RegionSuccessor(this->getODSResults(0)));
+        return;
+    }
+
+    // If the condition isn't constant, both regions may be executed.
+    regions.push_back(RegionSuccessor(&getTrueRegion()));
+    regions.push_back(RegionSuccessor(&getFalseRegion()));
+}
+
+void P4HIR::TernaryOp::build(OpBuilder &builder, OperationState &result, Value cond,
+                             function_ref<void(OpBuilder &, Location)> trueBuilder,
+                             function_ref<void(OpBuilder &, Location)> falseBuilder) {
+    result.addOperands(cond);
+    OpBuilder::InsertionGuard guard(builder);
+    Region *trueRegion = result.addRegion();
+    auto *block = builder.createBlock(trueRegion);
+    trueBuilder(builder, result.location);
+    Region *falseRegion = result.addRegion();
+    builder.createBlock(falseRegion);
+    falseBuilder(builder, result.location);
+
+    auto yield = dyn_cast<YieldOp>(block->getTerminator());
+    assert((yield && yield.getNumOperands() <= 1) && "expected zero or one result type");
+    if (yield.getNumOperands() == 1) result.addTypes(TypeRange{yield.getOperandTypes().front()});
+}
+
 void P4HIR::P4HIRDialect::initialize() {
     registerTypes();
     registerAttributes();
