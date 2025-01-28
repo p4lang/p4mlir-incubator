@@ -12,10 +12,6 @@
 using namespace mlir;
 using namespace P4::P4MLIR::P4HIR;
 
-Type BoolType::parse(mlir::AsmParser &parser) { return get(parser.getContext()); }
-
-void BoolType::print(mlir::AsmPrinter &printer) const {}
-
 Attribute IntAttr::parse(AsmParser &parser, Type odsType) {
     mlir::APInt APValue;
 
