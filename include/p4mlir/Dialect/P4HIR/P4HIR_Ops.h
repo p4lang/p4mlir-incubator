@@ -15,6 +15,11 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
+
+namespace P4::P4MLIR::P4HIR {
+void buildTerminatedBody(mlir::OpBuilder &builder, mlir::Location loc);
+}  // namespace  P4::P4MLIR::P4HIR
+
 #define GET_OP_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h.inc"
 

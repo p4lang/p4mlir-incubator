@@ -206,6 +206,103 @@ void P4HIR::TernaryOp::build(OpBuilder &builder, OperationState &result, Value c
     if (yield.getNumOperands() == 1) result.addTypes(TypeRange{yield.getOperandTypes().front()});
 }
 
+//===----------------------------------------------------------------------===//
+// IfOp
+//===----------------------------------------------------------------------===//
+
+ParseResult P4HIR::IfOp::parse(OpAsmParser &parser, OperationState &result) {
+    // Create the regions for 'then'.
+    result.regions.reserve(2);
+    Region *thenRegion = result.addRegion();
+    Region *elseRegion = result.addRegion();
+
+    auto &builder = parser.getBuilder();
+    OpAsmParser::UnresolvedOperand cond;
+    Type boolType = P4HIR::BoolType::get(builder.getContext());
+
+    if (parser.parseOperand(cond) || parser.resolveOperand(cond, boolType, result.operands))
+        return failure();
+
+    // Parse the 'then' region.
+    auto parseThenLoc = parser.getCurrentLocation();
+    if (parser.parseRegion(*thenRegion, /*arguments=*/{},
+                           /*argTypes=*/{}))
+        return failure();
+    if (ensureRegionTerm(parser, *thenRegion, parseThenLoc).failed()) return failure();
+
+    // If we find an 'else' keyword, parse the 'else' region.
+    if (!parser.parseOptionalKeyword("else")) {
+        auto parseElseLoc = parser.getCurrentLocation();
+        if (parser.parseRegion(*elseRegion, /*arguments=*/{}, /*argTypes=*/{})) return failure();
+        if (ensureRegionTerm(parser, *elseRegion, parseElseLoc).failed()) return failure();
+    }
+
+    // Parse the optional attribute list.
+    return parser.parseOptionalAttrDict(result.attributes) ? failure() : success();
+}
+
+void P4HIR::IfOp::print(OpAsmPrinter &p) {
+    p << " " << getCondition() << " ";
+    auto &thenRegion = this->getThenRegion();
+    p.printRegion(thenRegion,
+                  /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/!omitRegionTerm(thenRegion));
+
+    // Print the 'else' regions if it exists and has a block.
+    auto &elseRegion = this->getElseRegion();
+    if (!elseRegion.empty()) {
+        p << " else ";
+        p.printRegion(elseRegion,
+                      /*printEntryBlockArgs=*/false,
+                      /*printBlockTerminators=*/!omitRegionTerm(elseRegion));
+    }
+
+    p.printOptionalAttrDict(getOperation()->getAttrs());
+}
+
+/// Default callback for IfOp builders.
+void P4HIR::buildTerminatedBody(OpBuilder &builder, Location loc) {
+    // add p4hir.yield to the end of the block
+    builder.create<P4HIR::YieldOp>(loc);
+}
+
+void P4HIR::IfOp::getSuccessorRegions(mlir::RegionBranchPoint point,
+                                      SmallVectorImpl<RegionSuccessor> &regions) {
+    // The `then` and the `else` region branch back to the parent operation.
+    if (!point.isParent()) {
+        regions.push_back(RegionSuccessor());
+        return;
+    }
+
+    // Don't consider the else region if it is empty.
+    Region *elseRegion = &this->getElseRegion();
+    if (elseRegion->empty()) elseRegion = nullptr;
+
+    // If the condition isn't constant, both regions may be executed.
+    regions.push_back(RegionSuccessor(&getThenRegion()));
+    // If the else region does not exist, it is not a viable successor.
+    if (elseRegion) regions.push_back(RegionSuccessor(elseRegion));
+}
+
+void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, bool withElseRegion,
+                        function_ref<void(OpBuilder &, Location)> thenBuilder,
+                        function_ref<void(OpBuilder &, Location)> elseBuilder) {
+    assert(thenBuilder && "the builder callback for 'then' must be present");
+
+    result.addOperands(cond);
+
+    OpBuilder::InsertionGuard guard(builder);
+    Region *thenRegion = result.addRegion();
+    builder.createBlock(thenRegion);
+    thenBuilder(builder, result.location);
+
+    Region *elseRegion = result.addRegion();
+    if (!withElseRegion) return;
+
+    builder.createBlock(elseRegion);
+    elseBuilder(builder, result.location);
+}
+
 void P4HIR::P4HIRDialect::initialize() {
     registerTypes();
     registerAttributes();

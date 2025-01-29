@@ -381,8 +381,7 @@ def ScopeOp : P4HIR_Op<"scope", [
 }
 
 def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
-    ParentOneOf<["ScopeOp", "TernaryOp",
-                 // "IfOp",
+    ParentOneOf<["ScopeOp", "TernaryOp", "IfOp",
                  // "SwitchOp", "CaseOp",
                  // "ForInOp", "ForOp",
                  // "CallOp"
@@ -490,5 +489,47 @@ def TernaryOp : P4HIR_Op<"ternary",
   }];
 }
 
+def IfOp : P4HIR_Op<"if",
+      [DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       RecursivelySpeculatable, AutomaticAllocationScope, NoRegionArguments]> {
+  let summary = "The if-then-else operation";
+  let description = [{
+    The `p4hir.if` operation represents an if-then-else construct for
+    conditionally executing two regions of code. The operand is a `p4hir.bool`
+    type.
+
+    Examples:
+
+    ```mlir
+    p4hir.if %b  {
+      ...
+    } else {
+      ...
+    }
+
+    p4hir.if %c  {
+      ...
+    }
+    ```
+
+    `p4hir.if` defines no values and the 'else' can be omitted. The if/else
+    regions must be terminated. If the region has only one block, the terminator
+    can be left out, and `p4hir.yield` terminator will be inserted implictly.
+    Otherwise, the region must be explicitly terminated.
+  }];
+  let arguments = (ins BooleanType:$condition);
+  let regions = (region AnyRegion:$thenRegion, AnyRegion:$elseRegion);
+
+  let hasCustomAssemblyFormat = 1;
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$cond, "bool":$withElseRegion,
+      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>",
+           "P4HIR::buildTerminatedBody">:$thenBuilder,
+      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>",
+           "nullptr">:$elseBuilder)>
+  ];
+}
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD

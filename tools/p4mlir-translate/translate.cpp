@@ -340,6 +340,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::AssignmentStatement *assign) override;
     bool preorder(const P4::IR::LOr *lor) override;
     bool preorder(const P4::IR::LAnd *land) override;
+    bool preorder(const P4::IR::IfStatement *ifs) override;
 
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
@@ -619,6 +620,24 @@ bool P4HIRConverter::preorder(const P4::IR::LAnd *land) {
         });
 
     setValue(land, value.getResult());
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::IfStatement *ifs) {
+    // Materialize condition first
+    visit(ifs->condition);
+
+    // Create if itself
+    builder.create<P4HIR::IfOp>(
+        getLoc(builder, ifs), getValue(ifs->condition), ifs->ifFalse,
+        [&](mlir::OpBuilder &b, mlir::Location) {
+            visit(ifs->ifTrue);
+            P4HIR::buildTerminatedBody(b, getEndLoc(builder, ifs->ifTrue));
+        },
+        [&](mlir::OpBuilder &b, mlir::Location) {
+            visit(ifs->ifFalse);
+            P4HIR::buildTerminatedBody(b, getEndLoc(builder, ifs->ifFalse));
+        });
     return false;
 }
 
