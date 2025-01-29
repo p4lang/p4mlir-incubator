@@ -6,6 +6,7 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include "mlir/IR/BuiltinTypes.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 
 #define GET_TYPEDEF_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h.inc"
