@@ -6,11 +6,9 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 
-static mlir::ParseResult parseActionType(mlir::AsmParser &p,
-                                         llvm::SmallVector<P4::P4MLIR::P4HIR::ParamType> &params);
+static mlir::ParseResult parseActionType(mlir::AsmParser &p, llvm::SmallVector<mlir::Type> &params);
 
-static void printActionType(mlir::AsmPrinter &p,
-                            mlir::ArrayRef<P4::P4MLIR::P4HIR::ParamType> params);
+static void printActionType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params);
 
 #define GET_TYPEDEF_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.cpp.inc"
@@ -69,53 +67,26 @@ void P4HIRDialect::printType(mlir::Type type, mlir::DialectAsmPrinter &os) const
     });
 }
 
+ActionType ActionType::clone(TypeRange inputs, TypeRange results) const {
+    assert(results.size() == 0 && "expected exactly zero result type");
+    return get(getContext(), llvm::to_vector(inputs));
+}
+
 static mlir::ParseResult parseActionType(mlir::AsmParser &p,
-                                         llvm::SmallVector<P4::P4MLIR::P4HIR::ParamType> &params) {
-    if (failed(p.parseLParen())) return mlir::failure();
-
-    // `(` `)`
-    if (succeeded(p.parseOptionalRParen())) return mlir::success();
-
-    // (direction)? type
-    // TODO: Share with FuncType parsing
-    auto parseParamType = [&]() {
+                                         llvm::SmallVector<mlir::Type> &params) {
+    return p.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
         mlir::Type type;
-
-        if (auto maybeType = p.parseOptionalType(type); maybeType.has_value()) {
-            if (!succeeded(*maybeType)) return mlir::failure();
-
-            params.push_back(ParamType::get(type));
-            return mlir::success();
-        }
-
-        auto maybeDirection = mlir::FieldParser<ParamDirection>::parse(p);
-        if (!succeeded(maybeDirection)) return mlir::failure();
-
         if (p.parseType(type)) return mlir::failure();
-        params.push_back(ParamType::get(type, maybeDirection.value()));
+        params.push_back(type);
         return mlir::success();
-    };
-
-    // paramType (`,` paramType)*
-    if (failed(parseParamType())) return mlir::failure();
-    while (succeeded(p.parseOptionalComma())) {
-        if (failed(parseParamType())) return mlir::failure();
-    }
+    });
 
     return p.parseRParen();
 }
 
-static void printActionType(mlir::AsmPrinter &p,
-                            mlir::ArrayRef<P4::P4MLIR::P4HIR::ParamType> params) {
+static void printActionType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params) {
     p << '(';
-    llvm::interleaveComma(params, p, [&p](ParamType type) {
-        auto dir = type.getDir();
-        if (dir != ParamDirection::None) {
-            p.printStrippedAttrOrType(dir);
-            p << ' ';
-        }
-        p.printType(type.getParamType());
-    });
+    llvm::interleaveComma(params, p, [&p](mlir::Type type) { p.printType(type); });
     p << ')';
 }
 

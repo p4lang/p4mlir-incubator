@@ -4,6 +4,7 @@
 include "mlir/IR/OpBase.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/MemorySlotInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -530,6 +531,155 @@ def IfOp : P4HIR_Op<"if",
       CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>",
            "nullptr">:$elseBuilder)>
   ];
+}
+
+def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
+                                                "ActionOp",
+                                             // "SwitchOp", "CaseOp",
+                                             // "ForInOp", "ForOp",
+                                             ]>,
+                                 Terminator]> {
+  let summary = "Return from function or action";
+  let description = [{
+    The "return" operation represents a return operation within a function or action.
+    The operation takes an optional operand and produces no results.
+    The operand type must match the signature of the function that contains
+    the operation.
+
+    ```mlir
+      p4hir.action @foo() {
+        ...
+        p4hir.return
+      }
+
+      p4hir.func @foo() -> !p4hir.bit<32> {
+        ...
+        p4hir.return %0 : !p4hir.bit<32>
+      }
+
+    ```
+  }];
+
+  // The return operation takes an optional input operand to return. This
+  // value must match the return type of the enclosing function.
+  let arguments = (ins Variadic<AnyP4Type>:$input);
+
+  // The return operation only emits the input in the format if it is present.
+  let assemblyFormat = "($input^ `:` type($input))? attr-dict ";
+
+  // Allow building a ReturnOp with no return operand.
+  let builders = [
+    OpBuilder<(ins), [{ build($_builder, $_state, std::nullopt); }]>
+  ];
+
+  let extraClassDeclaration = [{
+    bool hasOperand() { return getNumOperands() != 0; }
+  }];
+
+  let hasVerifier = 1;
+}
+
+def ActionOp : P4HIR_Op<"action", [
+  AutomaticAllocationScope, CallableOpInterface, FunctionOpInterface,
+  IsolatedFromAbove
+]> {
+  let summary = "Define an action";
+  let description = [{
+
+    Similar to `mlir::FuncOp` built-in:
+    > Operations within the function cannot implicitly capture values defined
+    > outside of the function, i.e. Functions are `IsolatedFromAbove`. All
+    > external references must use function arguments or attributes that establish
+    > a symbolic connection (e.g. symbols referenced by name via a string
+    > attribute like SymbolRefAttr). An external function declaration (used when
+    > referring to a function declared in some other module) has no body. While
+    > the MLIR textual form provides a nice inline syntax for function arguments,
+    > they are internally represented as “block arguments” to the first block in
+    > the region.
+    >
+    > Only dialect attribute names may be specified in the attribute dictionaries
+    > for function arguments, results, or the function itself.
+
+    Action parameters might have direction that is specified via `p4hir.dir`
+    attribute. Out and inout parameters must have a reference type. All
+    refence-typed parameters must have a direction and it should be `out` or `input`.
+
+    Example:
+
+    ```mlir
+    // Action with undirection parameter
+    p4hir.action @foo(%arg3 : !p4hir.int<42>) {
+      ...
+    }
+
+    // Action with direction parameters
+    p4hir.action @foo(%arg0 : !p4hir.ref<!bit32> {p4hir.dir = #p4hir<dir inout>},
+                  %arg1 : !bit32 {p4hir.dir = #p4hir<dir in>},
+                  %arg2 : !p4hir.ref<!bit32> {p4hir.dir = #p4hir<dir out>},
+                  %arg3 : !p4hir.int<42>) {
+      ...
+    }
+
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name,
+                       TypeAttrOf<P4HIR_ActionType>:$function_type,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<ArrayAttr>:$annotations);
+  let regions = (region AnyRegion:$body);
+  let skipDefaultBuilders = 1;
+
+  let builders = [OpBuilder<(ins "llvm::StringRef":$name, "ActionType":$type,
+                                  CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs,
+                                  CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs)>];
+
+  let extraClassDeclaration = [{
+    /// Returns the region on the current operation that is callable. Always
+    /// non-null for actions.
+    mlir::Region *getCallableRegion();
+
+    /// Returns the argument types of this action.
+    llvm::ArrayRef<mlir::Type> getArgumentTypes() {
+       return getFunctionType().getInputs();
+    }
+
+    /// Returns the `i`th argument type. Asserts if out of bounds.
+    mlir::Type getArgumentType(unsigned i) {
+      return getArgumentTypes()[i];
+    }
+
+    /// Returns attribute name used to store directions
+    llvm::StringRef getDirectionAttrName() const {  return "p4hir.dir"; }
+
+    /// Return the `i`th argument direction.
+    ParamDirection getArgumentDirection(unsigned i) {
+      mlir::ArrayAttr argAttrs = getArgAttrsAttr();
+      if (!argAttrs)
+        return ParamDirection::None;
+
+      if (auto dirAttr =
+            mlir::cast<mlir::DictionaryAttr>(argAttrs[i]).get(getDirectionAttrName()))
+         return mlir::cast<ParamDirectionAttr>(dirAttr).getValue();
+
+      return ParamDirection::None;
+    }
+
+    /// Returns the result types of this action. Required for FunctionOp
+    /// interface, so return empty.
+    llvm::ArrayRef<mlir::Type> getResultTypes() {
+       return {};
+    }
+
+    /// Hook for OpTrait::FunctionOpInterfaceTrait, called after verifying that
+    /// the 'type' attribute is present and checks if it holds a function type.
+    /// Ensures getType, getNumFuncArguments, and getNumFuncResults can be
+    /// called safely.
+    llvm::LogicalResult verifyType();
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD

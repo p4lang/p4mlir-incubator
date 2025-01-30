@@ -59,4 +59,25 @@ def P4HIR_IntAttr : P4HIR_Attr<"Int", "int", [TypedAttrInterface]> {
   let hasCustomAssemblyFormat = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// ParamDirAttr
+//===----------------------------------------------------------------------===//
+
+def ParamDirection_None : I32EnumAttrCase<"None", 1, "undir">;
+def ParamDirection_In   : I32EnumAttrCase<"In",   2, "in">;
+def ParamDirection_Out  : I32EnumAttrCase<"Out",  3, "out">;
+def ParamDirection_InOut: I32EnumAttrCase<"InOut",4, "inout">;
+
+def ParamDirection : I32EnumAttr<
+    "ParamDirection",
+    "direction of parameter",
+    [ParamDirection_None, ParamDirection_In,
+     ParamDirection_Out, ParamDirection_InOut]> {
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+  let genSpecializedAttr = 0;
+}
+
+def ParamDirAttr : EnumAttr<P4HIR_Dialect, ParamDirection, "dir">;
+
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_ATTRS_TD

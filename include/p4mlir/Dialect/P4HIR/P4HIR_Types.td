@@ -133,52 +133,6 @@ def ReferenceType : P4HIR_Type<"Reference", "ref"> {
 //===----------------------------------------------------------------------===//
 // ParameterType
 //===----------------------------------------------------------------------===//
-def ParamDirection_None : I32EnumAttrCase<"None", 1, "undir">;
-def ParamDirection_In   : I32EnumAttrCase<"In",   2, "in">;
-def ParamDirection_Out  : I32EnumAttrCase<"Out",  3, "out">;
-def ParamDirection_InOut: I32EnumAttrCase<"InOut",4, "inout">;
-
-def ParamDirection : I32EnumAttr<
-    "ParamDirection",
-    "direction of parameter",
-    [ParamDirection_None, ParamDirection_In,
-     ParamDirection_Out, ParamDirection_InOut]> {
-  let cppNamespace = "::P4::P4MLIR::P4HIR";
-}
-
-def ParamType : P4HIR_Type<"Param", "param"> {
-  let parameters = (ins "mlir::Type":$paramType,
-                    DefaultValuedParameter<"ParamDirection", "ParamDirection::None">:$dir);
-
-  let builders = [
-    TypeBuilderWithInferredContext<(ins "mlir::Type":$paramType,
-                                        CArg<"ParamDirection", "ParamDirection::None">:$dir), [{
-      return $_get(paramType.getContext(), paramType, dir);
-    }]>,
-    TypeBuilder<(ins "mlir::Type":$paramType,
-                     CArg<"ParamDirection", "ParamDirection::None">:$dir), [{
-      return $_get($_ctxt, paramType, dir);
-    }]>
-  ];
-
-
-  // Normally parameter types do not exist on their own, they are just part of
-  // FuncType / ActionType. The latter use custom parsers / printers for parameter
-  // types. Still, this one is useful for dumps.
-  let assemblyFormat = [{
-    `<` $paramType ( `,` $dir^ )? `>`
-  }];
-
-  let skipDefaultBuilders = 1;
-
-  // FIXME: check that out and inout parameters are references and evething else
-  // is value typed.
-  // FIXME: refine paramType type constraint
-}
-
-//===----------------------------------------------------------------------===//
-// ParameterType
-//===----------------------------------------------------------------------===//
 
 def P4HIR_ActionType : P4HIR_Type<"Action", "action"> {
   let summary = "P4 action type";
@@ -190,11 +144,11 @@ def P4HIR_ActionType : P4HIR_Type<"Action", "action"> {
 
     ```mlir
     !p4hir.action<()>
-    !p4hir.action<(in !p4hir.bit<32>, out !p4hir.int<42>)>
+    !p4hir.action<(!p4hir.bit<32>, !p4hir.int<42>)>
     ```
   }];
 
-  let parameters = (ins ArrayRefParameter<"ParamType">:$inputs);
+  let parameters = (ins ArrayRefParameter<"mlir::Type">:$inputs);
 
   // Use a custom parser to handle the argument types in better way.
   let assemblyFormat = [{
@@ -203,14 +157,14 @@ def P4HIR_ActionType : P4HIR_Type<"Action", "action"> {
 
   let extraClassDeclaration = [{
     /// Returns the `i`th input operand type. Asserts if out of bounds.
-    P4HIR::ParamType getInput(unsigned i) const { return getInputs()[i]; }
+    mlir::Type getInput(unsigned i) const { return getInputs()[i]; }
 
     /// Returns the number of arguments to the function.
     unsigned getNumInputs() const { return getInputs().size(); }
 
     /// Returns a clone of this action type with the given argument
-    /// and result types.
-    ActionType clone(mlir::TypeRange inputs) const;
+    /// and result types. Required for FunctionOp interface
+    ActionType clone(mlir::TypeRange inputs, mlir::TypeRange outputs) const;
   }];
 }
 

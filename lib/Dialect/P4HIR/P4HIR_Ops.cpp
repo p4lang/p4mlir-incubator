@@ -1,7 +1,9 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/Interfaces/FunctionImplementation.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
@@ -301,6 +303,130 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
 
     builder.createBlock(elseRegion);
     elseBuilder(builder, result.location);
+}
+
+mlir::LogicalResult P4HIR::ReturnOp::verify() {
+    // TODO: Implement checks:
+    //  - If we're inside action, then there should not be any operands
+    //  - Otherwise, we're inside function, ensure operand type matches with result type
+    return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ActionOp
+//===----------------------------------------------------------------------===//
+
+// Hook for OpTrait::FunctionLike, called after verifying that the 'type'
+// attribute is present.  This can check for preconditions of the
+// getNumArguments hook not failing.
+LogicalResult P4HIR::ActionOp::verifyType() {
+    auto type = getFunctionType();
+    if (!isa<P4HIR::ActionType>(type))
+        return emitOpError("requires '" + getFunctionTypeAttrName().str() +
+                           "' attribute of action type");
+
+    return success();
+}
+
+LogicalResult P4HIR::ActionOp::verify() {
+    // TODO: Check that all reference-typed arguments have direction indicated
+    return success();
+}
+
+mlir::Region *P4HIR::ActionOp::getCallableRegion() { return &getBody(); }
+
+void P4HIR::ActionOp::build(OpBuilder &builder, OperationState &result, llvm::StringRef name,
+                            P4HIR::ActionType type, ArrayRef<NamedAttribute> attrs,
+                            ArrayRef<DictionaryAttr> argAttrs) {
+    result.addRegion();
+    result.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
+    result.addAttribute(getFunctionTypeAttrName(result.name), TypeAttr::get(type));
+
+    result.attributes.append(attrs.begin(), attrs.end());
+    if (argAttrs.empty()) return;
+
+    function_interface_impl::addArgAndResultAttrs(
+        builder, result, argAttrs,
+        /*resultAttrs=*/std::nullopt, getArgAttrsAttrName(result.name), builder.getStringAttr(""));
+}
+
+void P4HIR::ActionOp::print(OpAsmPrinter &p) {
+    // Print function name, signature, and control.
+    p << ' ';
+    p.printSymbolName(getSymName());
+    auto fnType = getFunctionType();
+    llvm::SmallVector<Type, 1> resultTypes;
+    function_interface_impl::printFunctionSignature(p, *this, fnType.getInputs(), false, {});
+
+    if (mlir::ArrayAttr annotations = getAnnotationsAttr()) {
+        p << ' ';
+        p.printAttribute(annotations);
+    }
+
+    function_interface_impl::printFunctionAttributes(
+        p, *this,
+        // These are all omitted since they are custom printed already.
+        {getFunctionTypeAttrName(), getArgAttrsAttrName()});
+
+    // Print the body if this is not an external function.
+    Region &body = getOperation()->getRegion(0);
+    p << ' ';
+    p.printRegion(body, /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/true);
+}
+
+ParseResult P4HIR::ActionOp::parse(OpAsmParser &parser, OperationState &state) {
+    llvm::SMLoc loc = parser.getCurrentLocation();
+    auto &builder = parser.getBuilder();
+
+    // Parse the name as a symbol.
+    StringAttr nameAttr;
+    if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(), state.attributes))
+        return failure();
+
+    llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
+    llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
+    llvm::SmallVector<Type, 8> argTypes;
+    llvm::SmallVector<Type, 0> resultTypes;
+    bool isVariadic = false;
+    if (function_interface_impl::parseFunctionSignature(parser, /*allowVariadic=*/false, arguments,
+                                                        isVariadic, resultTypes, resultAttrs))
+        return failure();
+
+    // Actions have no results
+    if (!resultTypes.empty())
+        return parser.emitError(loc, "actions should not produce any results");
+
+    // Build the action function type.
+    for (auto &arg : arguments) argTypes.push_back(arg.type);
+
+    if (auto fnType = P4HIR::ActionType::get(builder.getContext(), argTypes)) {
+        state.addAttribute(getFunctionTypeAttrName(state.name), TypeAttr::get(fnType));
+    } else
+        return failure();
+
+    // Parse an OptionalAttr<ArrayAttr>:$annotations
+    mlir::ArrayAttr annotations;
+    if (auto oa = parser.parseOptionalAttribute(annotations); oa.has_value())
+        state.addAttribute(getAnnotationsAttrName(state.name), annotations);
+
+    // If additional attributes are present, parse them.
+    if (parser.parseOptionalAttrDictWithKeyword(state.attributes)) return failure();
+
+    // Add the attributes to the function arguments.
+    assert(resultAttrs.size() == resultTypes.size());
+    function_interface_impl::addArgAndResultAttrs(builder, state, arguments, resultAttrs,
+                                                  getArgAttrsAttrName(state.name),
+                                                  builder.getStringAttr(""));
+
+    // Parse the action body. We need to strip out !p4hir.param wrappers types
+    auto *body = state.addRegion();
+    ParseResult parseResult = parser.parseRegion(*body, arguments, /*enableNameShadowing=*/false);
+    if (failed(parseResult)) return failure();
+    // Body was parsed, make sure its not empty.
+    if (body->empty()) return parser.emitError(loc, "expected non-empty action body");
+
+    return success();
 }
 
 void P4HIR::P4HIRDialect::initialize() {
