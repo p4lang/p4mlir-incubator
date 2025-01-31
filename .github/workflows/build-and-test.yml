@@ -49,7 +49,6 @@ jobs:
         key: ${{ runner.os }}-llvm-${{ steps.get-llvm-hash.outputs.hash }}-${{ steps.get-workflow-hash.outputs.hash }}
 
     - name: Install requirements
-      if: steps.cache-llvm.outputs.cache-hit != 'true'
       run: |
         build_tools/ubuntu_install_mlir_requirements.sh
 
@@ -64,4 +63,4 @@ jobs:
 
     - name: Build and test P4MLIR
       run: |
-        build_tools/build_p4mlir.sh
+        build_tools/build_p4mlir_ext.sh

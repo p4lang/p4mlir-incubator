@@ -44,15 +44,21 @@ cd third_party/llvm-project/build
 ninja check-mlir
 ```
 
-#### Build P4MLIR from source
+*IMPORTANT*: P4C uses C++ RTTI and Exceptions. These are turned off by default
+in LLVM and therefore LLVM/MLIR prebuilt binaries that is likely available from
+your distribution will be not usable with P4MLIR. One needs to build LLVM/MLIR
+from source enabling RTTI (`-DLLVM_ENABLE_RTTI=ON`) and exceptions
+(`-DLLVM_ENABLE_EH=ON`).
+
+#### Build P4C with P4MLIR extension from source
 
 ```shell
-./build_tools/build_p4mlir.sh
+./build_tools/build_p4c_with_p4mlir_ext.sh
 ```
 
 ### Testing
 
 ```shell
-cd build
+cd third_party/p4c/build
 ninja check-p4mlir
 ```

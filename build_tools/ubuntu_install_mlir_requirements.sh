@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 #
-# Reference:
-# - https://mlir.llvm.org/getting_started/
-# - https://llvm.org/docs/GettingStarted.html#requirements
+# Install common build tools
 
 set -ex
 
@@ -13,10 +11,25 @@ sudo apt-get install -y \
     clang \
     lld \
     ninja-build \
+    pkg-config \
     python-is-python3 \
     python3 \
-    python3-pip \
-    zlib1g-dev
+    python3-pip
 
 pip install --upgrade \
     cmake
+
+# Install additional LLVM & MLIR dependencies
+# https://llvm.org/docs/GettingStarted.html#requirements
+# https://mlir.llvm.org/getting_started/
+sudo apt-get install -y \
+    zlib1g-dev
+
+# Install additional P4C dependencies
+# https://github.com/p4lang/p4c/blob/main/README.md#ubuntu-dependencies
+sudo apt-get install -y \
+    bison \
+    flex \
+    libboost-dev \
+    libboost-iostreams-dev \
+    libfl-dev
