@@ -53,8 +53,8 @@ action int_binops() {
     int<10> r13 = lhs ^ rhs;
 }
 
-// CHECK-LABEL:   module
-// CHECK-NEXT:    %[[VAL_0:.*]] = p4hir.alloca !p4hir.bit<10> ["res"] : !p4hir.ref<!p4hir.bit<10>>
+// CHECK-LABEL:   p4hir.action @bit_binops()
+// CHECK:         %[[VAL_0:.*]] = p4hir.alloca !p4hir.bit<10> ["res"] : !p4hir.ref<!p4hir.bit<10>>
 // CHECK:         %[[VAL_1:.*]] = p4hir.const #p4hir.int<1> : !p4hir.bit<10>
 // CHECK:         %[[VAL_2:.*]] = p4hir.cast(%[[VAL_1]] : !p4hir.bit<10>) : !p4hir.bit<10>
 // CHECK:         %[[VAL_3:.*]] = p4hir.alloca !p4hir.bit<10> ["lhs", init] : !p4hir.ref<!p4hir.bit<10>>
@@ -139,6 +139,7 @@ action int_binops() {
 // CHECK:         %[[VAL_67:.*]] = p4hir.binop(xor, %[[VAL_65]], %[[VAL_66]]) : !p4hir.bit<10>
 // CHECK:         %[[VAL_68:.*]] = p4hir.alloca !p4hir.bit<10> ["r14", init] : !p4hir.ref<!p4hir.bit<10>>
 // CHECK:         p4hir.store %[[VAL_67]], %[[VAL_68]] : !p4hir.bit<10>, !p4hir.ref<!p4hir.bit<10>>
+// CHECK-LABEL: p4hir.action @int_binops()
 // CHECK:         %[[VAL_69:.*]] = p4hir.alloca !p4hir.int<10> ["res"] : !p4hir.ref<!p4hir.int<10>>
 // CHECK:         %[[VAL_70:.*]] = p4hir.const #p4hir.int<1> : !p4hir.int<10>
 // CHECK:         %[[VAL_71:.*]] = p4hir.cast(%[[VAL_70]] : !p4hir.int<10>) : !p4hir.int<10>

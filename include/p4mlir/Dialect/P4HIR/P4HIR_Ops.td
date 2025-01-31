@@ -650,7 +650,7 @@ def ActionOp : P4HIR_Op<"action", [
     }
 
     /// Returns attribute name used to store directions
-    llvm::StringRef getDirectionAttrName() const {  return "p4hir.dir"; }
+    static llvm::StringRef getDirectionAttrName() { return "p4hir.dir"; }
 
     /// Return the `i`th argument direction.
     ParamDirection getArgumentDirection(unsigned i) {

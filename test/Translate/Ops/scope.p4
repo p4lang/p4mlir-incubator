@@ -1,6 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
-// CHECK-LABEL: module
+// CHECK-LABEL:   p4hir.action @scope()
 action scope() {
     bool res;
     // Outer alloca

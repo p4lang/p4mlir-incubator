@@ -12,8 +12,8 @@ action assign() {
     res = lhs + rhs;
 }
 
-// CHECK-LABEL:   module
-// CHECK-NEXT:    %[[VAL_0:.*]] = p4hir.alloca !p4hir.bit<10> ["res"] : !p4hir.ref<!p4hir.bit<10>>
+// CHECK-LABEL:   p4hir.action @assign()
+// CHECK:         %[[VAL_0:.*]] = p4hir.alloca !p4hir.bit<10> ["res"] : !p4hir.ref<!p4hir.bit<10>>
 // CHECK:         %[[VAL_1:.*]] = p4hir.const #p4hir.int<1> : !p4hir.bit<10>
 // CHECK:         %[[VAL_2:.*]] = p4hir.cast(%[[VAL_1]] : !p4hir.bit<10>) : !p4hir.bit<10>
 // CHECK:         %[[VAL_3:.*]] = p4hir.alloca !p4hir.bit<10> ["lhs", init] : !p4hir.ref<!p4hir.bit<10>>

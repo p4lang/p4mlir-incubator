@@ -338,16 +338,17 @@ mlir::Region *P4HIR::ActionOp::getCallableRegion() { return &getBody(); }
 void P4HIR::ActionOp::build(OpBuilder &builder, OperationState &result, llvm::StringRef name,
                             P4HIR::ActionType type, ArrayRef<NamedAttribute> attrs,
                             ArrayRef<DictionaryAttr> argAttrs) {
-    result.addRegion();
     result.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
     result.addAttribute(getFunctionTypeAttrName(result.name), TypeAttr::get(type));
-
     result.attributes.append(attrs.begin(), attrs.end());
-    if (argAttrs.empty()) return;
 
     function_interface_impl::addArgAndResultAttrs(
         builder, result, argAttrs,
         /*resultAttrs=*/std::nullopt, getArgAttrsAttrName(result.name), builder.getStringAttr(""));
+
+    auto *region = result.addRegion();
+    Block &first = region->emplaceBlock();
+    for (auto argType : type.getInputs()) first.addArgument(argType, result.location);
 }
 
 void P4HIR::ActionOp::print(OpAsmPrinter &p) {
@@ -419,7 +420,7 @@ ParseResult P4HIR::ActionOp::parse(OpAsmParser &parser, OperationState &state) {
                                                   getArgAttrsAttrName(state.name),
                                                   builder.getStringAttr(""));
 
-    // Parse the action body. We need to strip out !p4hir.param wrappers types
+    // Parse the action body.
     auto *body = state.addRegion();
     ParseResult parseResult = parser.parseRegion(*body, arguments, /*enableNameShadowing=*/false);
     if (failed(parseResult)) return failure();

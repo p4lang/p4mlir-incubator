@@ -4,12 +4,16 @@
 
 #include "frontends/common/resolveReferences/resolveReferences.h"
 #include "frontends/p4/typeMap.h"
+#include "ir/ir-generated.h"
 #include "ir/ir.h"
 #include "ir/visitor.h"
 #include "lib/big_int.h"
 #include "lib/indent.h"
 #include "lib/log.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
@@ -118,9 +122,11 @@ class P4TypeConverter : public P4::Inspector {
     }
 
     bool preorder(const P4::IR::Type_Name *name) override;
+    bool preorder(const P4::IR::Type_Action *act) override;
 
-    mlir::Type getType() { return type; }
+    mlir::Type getType() const { return type; }
     bool setType(const P4::IR::Type *type, mlir::Type mlirType);
+    mlir::Type convert(const P4::IR::Type *type);
 
  private:
     P4HIRConverter &converter;
@@ -224,16 +230,14 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             node = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
         }
 
-        if (const auto *decl = node->to<P4::IR::Declaration_Variable>()) {
-            // Getting value out of variable involves involves a load.
-            auto alloca = p4Values.lookup(decl);
-            BUG_CHECK(alloca, "expected %1% (aka %2%) to be converted", node, dbp(node));
-            return builder.create<P4HIR::LoadOp>(getLoc(builder, node), alloca);
-        }
+        auto val = p4Values.lookup(node);
+        BUG_CHECK(val, "expected %1% (aka %2%) to be converted", node, dbp(node));
 
-        if (auto val = p4Values.lookup(node)) return val;
+        if (mlir::isa<P4HIR::ReferenceType>(val.getType()))
+            // Getting value out of variable involves a load.
+            return builder.create<P4HIR::LoadOp>(getLoc(builder, node), val);
 
-        BUG("expected %1% (aka %2%) to be converted", node, dbp(node));
+        return val;
     }
 
     mlir::Value setValue(const P4::IR::Node *node, mlir::Value value) {
@@ -264,13 +268,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
     bool preorder(const P4::IR::P4Program *) override { return true; }
-    bool preorder(const P4::IR::P4Action *a) override {
-        // We cannot simply visit each node of the top-level block as
-        // ResolutionContext would not be able to resolve declarations there
-        // (sic!)
-        visit(a->body);
-        return false;
-    }
+    bool preorder(const P4::IR::P4Action *a) override;
     bool preorder(const P4::IR::BlockStatement *block) override {
         // If this is a top-level block where scope is implied (e.g. function,
         // action, certain statements) do not create explicit scope.
@@ -333,6 +331,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     HANDLE_IN_POSTORDER(Cast)
     HANDLE_IN_POSTORDER(Declaration_Variable)
+    HANDLE_IN_POSTORDER(ReturnStatement)
 
 #undef HANDLE_IN_POSTORDER
 
@@ -387,10 +386,35 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Name *name) {
     return false;
 }
 
+bool P4TypeConverter::preorder(const P4::IR::Type_Action *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    llvm::SmallVector<mlir::Type, 4> argTypes;
+
+    BUG_CHECK(type->returnType == nullptr, "actions should not have return type set");
+    CHECK_NULL(type->parameters);
+
+    for (const auto *p : type->parameters->parameters) {
+        mlir::Type type = convert(p->type);
+        argTypes.push_back(p->hasOut() ? P4HIR::ReferenceType::get(type) : type);
+    }
+
+    auto mlirType = P4HIR::ActionType::get(converter.context(), argTypes);
+    return setType(type, mlirType);
+}
+
 bool P4TypeConverter::setType(const P4::IR::Type *type, mlir::Type mlirType) {
     this->type = mlirType;
     converter.setType(type, mlirType);
     return false;
+}
+
+mlir::Type P4TypeConverter::convert(const P4::IR::Type *type) {
+    if ((this->type = converter.findType(type))) return getType();
+
+    visit(type);
+    return getType();
 }
 
 mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node) {
@@ -588,6 +612,8 @@ bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
 }
 
 bool P4HIRConverter::preorder(const P4::IR::LOr *lor) {
+    ConversionTracer trace("Converting ", lor);
+
     // Lower a || b into a ? true : b
     visit(lor->left);
 
@@ -606,6 +632,8 @@ bool P4HIRConverter::preorder(const P4::IR::LOr *lor) {
 }
 
 bool P4HIRConverter::preorder(const P4::IR::LAnd *land) {
+    ConversionTracer trace("Converting ", land);
+
     // Lower a && b into a ? b : false
     visit(land->left);
 
@@ -624,6 +652,8 @@ bool P4HIRConverter::preorder(const P4::IR::LAnd *land) {
 }
 
 bool P4HIRConverter::preorder(const P4::IR::IfStatement *ifs) {
+    ConversionTracer trace("Converting ", ifs);
+
     // Materialize condition first
     visit(ifs->condition);
 
@@ -639,6 +669,80 @@ bool P4HIRConverter::preorder(const P4::IR::IfStatement *ifs) {
             P4HIR::buildTerminatedBody(b, getEndLoc(builder, ifs->ifFalse));
         });
     return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
+    ConversionTracer trace("Converting ", act);
+
+    // FIXME: Get rid of typeMap: ensure action knows its type
+    auto actType = mlir::cast<P4HIR::ActionType>(getOrCreateType(typeMap->getType(act, true)));
+    const auto &params = act->getParameters()->parameters;
+
+    // Create attributes for directions
+    llvm::SmallVector<mlir::DictionaryAttr, 4> argAttrs;
+    for (const auto *p : params) {
+        P4HIR::ParamDirection dir;
+        switch (p->direction) {
+            case P4::IR::Direction::None:
+                dir = P4HIR::ParamDirection::None;
+                break;
+            case P4::IR::Direction::In:
+                dir = P4HIR::ParamDirection::In;
+                break;
+            case P4::IR::Direction::Out:
+                dir = P4HIR::ParamDirection::Out;
+                break;
+            case P4::IR::Direction::InOut:
+                dir = P4HIR::ParamDirection::InOut;
+                break;
+        };
+
+        mlir::NamedAttribute dirAttr(
+            mlir::StringAttr::get(context(), P4HIR::ActionOp::getDirectionAttrName()),
+            P4HIR::ParamDirectionAttr::get(context(), dir));
+
+        argAttrs.emplace_back(mlir::DictionaryAttr::get(context(), dirAttr));
+    }
+    assert(actType.getNumInputs() == argAttrs.size() && "invalid parameter conversion");
+
+    auto action =
+        builder.create<P4HIR::ActionOp>(getLoc(builder, act), act->name.string_view(), actType,
+                                        llvm::ArrayRef<mlir::NamedAttribute>(), argAttrs);
+
+    // Iterate over parameters again binding parameter values to arguments of first BB
+    auto &body = action.getBody();
+
+    assert(body.getNumArguments() == params.size() && "invalid parameter conversion");
+    for (auto [param, bodyArg] : llvm::zip(params, body.getArguments())) setValue(param, bodyArg);
+
+    // We cannot simply visit each node of the top-level block as
+    // ResolutionContext would not be able to resolve declarations there
+    // (sic!)
+    {
+        mlir::OpBuilder::InsertionGuard guard(builder);
+        builder.setInsertionPointToStart(&body.front());
+        visit(act->body);
+
+        // Check if body's last block is not terminated.
+        mlir::Block &b = body.back();
+        if (!b.mightHaveTerminator()) {
+            builder.setInsertionPointToEnd(&b);
+            builder.create<P4HIR::ReturnOp>(getEndLoc(builder, act));
+        }
+    }
+
+    return false;
+}
+
+void P4HIRConverter::postorder(const P4::IR::ReturnStatement *ret) {
+    // TODO: ReturnOp is a terminator, so it cannot be in the middle of block;
+    // ensure nothing is created afterwards
+    if (ret->expression) {
+        auto retVal = getValue(ret->expression);
+        builder.create<P4HIR::ReturnOp>(getLoc(builder, ret), retVal);
+    } else {
+        builder.create<P4HIR::ReturnOp>(getLoc(builder, ret));
+    }
 }
 
 }  // namespace
