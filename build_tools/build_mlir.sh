@@ -17,6 +17,7 @@ LLVM_INSTALL_DIR=$P4MLIR_REPO_DIR/install
 mkdir -p "$LLVM_BUILD_DIR"
 cd "$LLVM_BUILD_DIR"
 
+# Note that P4C uses both RTTI and C++ exceptions, so we need to build LLVM/MLIR having them enabled as well
 cmake -G Ninja "$LLVM_REPO_DIR"/llvm \
    -DCMAKE_INSTALL_PREFIX="$LLVM_INSTALL_DIR" \
    -DLLVM_ENABLE_PROJECTS=mlir \
@@ -26,7 +27,11 @@ cmake -G Ninja "$LLVM_REPO_DIR"/llvm \
    -DLLVM_ENABLE_ASSERTIONS=ON \
    -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DLLVM_ENABLE_LLD=ON \
    -DLLVM_CCACHE_BUILD=ON \
-   -DLLVM_INSTALL_UTILS=ON
+   -DLLVM_INSTALL_UTILS=ON \
+   -DLLVM_INCLUDE_TESTS=OFF \
+   -DLLVM_INCLUDE_BENCHMARKS=OFF \
+   -DLLVM_ENABLE_RTTI=ON \
+   -DLLVM_ENABLE_EH=ON
 
 ninja
 ninja check-mlir
