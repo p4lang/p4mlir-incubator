@@ -64,4 +64,4 @@ jobs:
 
     - name: Build and test P4MLIR
       run: |
-        build_tools/build_p4mlir_ext.sh
+        build_tools/build_p4c_with_p4mlir_ext.sh
