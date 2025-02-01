@@ -129,6 +129,8 @@ int main(int argc, char *const argv[]) {
         }
     }
 
+    if (P4::errorCount() > 0) return EXIT_FAILURE;
+
     BUG_CHECK(options.typeinferenceOnly, "TODO: fill TypeMap");
 
     log_dump(program, "After frontend");

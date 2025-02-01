@@ -13,6 +13,5 @@ class TypeMap;
 
 namespace P4::P4MLIR {
 mlir::OwningOpRef<mlir::ModuleOp> toMLIR(mlir::MLIRContext &context,
-                                         const P4::IR::P4Program *program,
-                                         const P4::TypeMap *typeMap);
+                                         const P4::IR::P4Program *program, P4::TypeMap *typeMap);
 }  // namespace P4::P4MLIR

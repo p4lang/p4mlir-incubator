@@ -1,19 +1,23 @@
 #include "translate.h"
 
+#include <algorithm>
 #include <climits>
 
-#include "frontends/common/resolveReferences/resolveReferences.h"
-#include "frontends/p4/typeMap.h"
 #include "ir/ir-generated.h"
+#include "p4mlir/third_party/llvm-project/mlir/include/mlir/IR/Value.h"
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcovered-switch-default"
+#include "frontends/common/resolveReferences/resolveReferences.h"
+#include "frontends/p4/methodInstance.h"
+#include "frontends/p4/typeMap.h"
 #include "ir/ir.h"
 #include "ir/visitor.h"
 #include "lib/big_int.h"
 #include "lib/indent.h"
 #include "lib/log.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/BuiltinAttributes.h"
+#pragma GCC diagnostic pop
+
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
@@ -23,9 +27,14 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseMapInfoVariant.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -136,7 +145,7 @@ class P4TypeConverter : public P4::Inspector {
 class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     mlir::OpBuilder &builder;
 
-    const P4::TypeMap *typeMap = nullptr;
+    P4::TypeMap *typeMap = nullptr;
     llvm::DenseMap<const P4::IR::Type *, mlir::Type> p4Types;
     // TODO: Implement unified constant map
     // using CTVOrExpr = std::variant<const P4::IR::CompileTimeValue *,
@@ -144,6 +153,9 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     // llvm::DenseMap<CTVOrExpr, mlir::TypedAttr> p4Constants;
     llvm::DenseMap<const P4::IR::Expression *, mlir::TypedAttr> p4Constants;
     llvm::DenseMap<const P4::IR::Node *, mlir::Value> p4Values;
+    using P4Symbol = std::variant<const P4::IR::P4Action *>;
+    // TODO: Implement better scoped symbol table
+    llvm::DenseMap<P4Symbol, mlir::SymbolRefAttr> p4Symbols;
 
     mlir::TypedAttr resolveConstant(const P4::IR::CompileTimeValue *ctv);
     mlir::TypedAttr resolveConstantExpr(const P4::IR::Expression *expr);
@@ -156,7 +168,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
  public:
-    P4HIRConverter(mlir::OpBuilder &builder, const P4::TypeMap *typeMap)
+    P4HIRConverter(mlir::OpBuilder &builder, P4::TypeMap *typeMap)
         : builder(builder), typeMap(typeMap) {
         CHECK_NULL(typeMap);
     }
@@ -340,6 +352,12 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::LOr *lor) override;
     bool preorder(const P4::IR::LAnd *land) override;
     bool preorder(const P4::IR::IfStatement *ifs) override;
+    bool preorder(const P4::IR::MethodCallStatement *) override {
+        // We handle MethodCallExpression instead
+        return true;
+    }
+
+    bool preorder(const P4::IR::MethodCallExpression *mce) override;
 
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
@@ -379,11 +397,13 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Unknown *type) {
 }
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Name *name) {
+    if ((this->type = converter.findType(name))) return false;
+
     ConversionTracer trace("TypeConverting ", name);
     const auto *type = converter.resolveType(name);
     CHECK_NULL(type);
-    visit(type);
-    return false;
+    mlir::Type mlirType = convert(type);
+    return setType(name, mlirType);
 }
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Action *type) {
@@ -674,6 +694,9 @@ bool P4HIRConverter::preorder(const P4::IR::IfStatement *ifs) {
 bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
     ConversionTracer trace("Converting ", act);
 
+    // TODO: Actions might reference some control locals, we need to make
+    // them visible somehow (e.g. via additional arguments)
+
     // FIXME: Get rid of typeMap: ensure action knows its type
     auto actType = mlir::cast<P4HIR::ActionType>(getOrCreateType(typeMap->getType(act, true)));
     const auto &params = act->getParameters()->parameters;
@@ -731,10 +754,15 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
         }
     }
 
+    auto [it, inserted] = p4Symbols.try_emplace(act, mlir::SymbolRefAttr::get(action));
+    BUG_CHECK(inserted, "duplicate translation of %1%", act);
+
     return false;
 }
 
 void P4HIRConverter::postorder(const P4::IR::ReturnStatement *ret) {
+    ConversionTracer trace("Converting ", ret);
+
     // TODO: ReturnOp is a terminator, so it cannot be in the middle of block;
     // ensure nothing is created afterwards
     if (ret->expression) {
@@ -745,13 +773,89 @@ void P4HIRConverter::postorder(const P4::IR::ReturnStatement *ret) {
     }
 }
 
+bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
+    ConversionTracer trace("Converting ", mce);
+    const auto *instance =
+        P4::MethodInstance::resolve(mce, this, typeMap, false, getChildContext());
+    const auto &params = instance->originalMethodType->parameters->parameters;
+
+    // TODO: Actions might have some parameters coming from control plane
+
+    // Prepare call arguments. Note that this involves creating temporaries to
+    // model copy-in/out semantics. To limit the lifetime of those temporaries, do
+    // everything in the dedicated block scope. If there are no out parameters,
+    // then emit everything direct.
+    auto convertCall = [&](mlir::OpBuilder &b, mlir::Location loc) {
+        llvm::SmallVector<mlir::Value, 4> operands;
+        for (auto [idx, arg] : llvm::enumerate(*mce->arguments)) {
+            ConversionTracer trace("Converting ", arg);
+            visit(arg->expression);
+            mlir::Value argVal;
+            switch (auto dir = params[idx]->direction) {
+                case P4::IR::Direction::None:
+                case P4::IR::Direction::In:
+                    // Nothing to do special, just pass things direct
+                    argVal = getValue(arg->expression);
+                    break;
+                case P4::IR::Direction::Out:
+                case P4::IR::Direction::InOut: {
+                    // Just create temporary to hold the output value, initialize in case of inout
+                    auto ref = resolveReference(arg->expression);
+                    auto type = mlir::cast<P4HIR::ReferenceType>(ref.getType());
+
+                    auto copyIn = b.create<P4HIR::AllocaOp>(loc, type, type.getObjectType(),
+                                                            params[idx]->name.string_view());
+
+                    if (dir == P4::IR::Direction::InOut) {
+                        copyIn.setInit(true);
+                        b.create<P4HIR::StoreOp>(loc, getValue(arg->expression), copyIn);
+                    }
+                    argVal = copyIn;
+                    break;
+                }
+            }
+            operands.push_back(argVal);
+        }
+
+        if (const auto *actCall = instance->to<P4::ActionCall>()) {
+            auto actSym = p4Symbols.lookup(actCall->action);
+            BUG_CHECK(actSym, "expected reference action to be converted: %1%", actCall->action);
+
+            b.create<P4HIR::CallOp>(loc, actSym, operands);
+        } else {
+            BUG("unsupported call type: %1%", instance);
+        }
+
+        for (auto [idx, arg] : llvm::enumerate(*mce->arguments)) {
+            // Determine the direction of the parameter
+            if (!params[idx]->hasOut()) continue;
+
+            mlir::Value copyOut = operands[idx];
+            mlir::Value dest = resolveReference(arg->expression);
+            b.create<P4HIR::StoreOp>(
+                getEndLoc(builder, mce),
+                builder.create<P4HIR::LoadOp>(getEndLoc(builder, mce), copyOut), dest);
+        }
+    };
+
+    if (std::any_of(params.begin(), params.end(), [](const auto *p) { return p->hasOut(); })) {
+        mlir::OpBuilder::InsertionGuard guard(builder);
+        auto scope = builder.create<P4HIR::ScopeOp>(getLoc(builder, mce), convertCall);
+        builder.setInsertionPointToEnd(&scope.getScopeRegion().back());
+        builder.create<P4HIR::YieldOp>(getEndLoc(builder, mce));
+    } else {
+        convertCall(builder, getLoc(builder, mce));
+    }
+
+    return false;
+}
+
 }  // namespace
 
 namespace P4::P4MLIR {
 
 mlir::OwningOpRef<mlir::ModuleOp> toMLIR(mlir::MLIRContext &context,
-                                         const P4::IR::P4Program *program,
-                                         const P4::TypeMap *typeMap) {
+                                         const P4::IR::P4Program *program, P4::TypeMap *typeMap) {
     mlir::OpBuilder builder(&context);
 
     auto moduleOp = mlir::ModuleOp::create(builder.getUnknownLoc());
