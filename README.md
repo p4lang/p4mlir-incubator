@@ -1,6 +1,8 @@
 # P4MLIR
 
-P4MLIR is an (experimental) effort looking to leverage [MLIR](https://mlir.llvm.org/) in building [P4](https://p4.org/) compilers.
+**WARNING**: This is an experimental project in incubation, not ready for any serious use yet.
+
+P4MLIR aims to explore leveraging [MLIR](https://mlir.llvm.org/) in building [P4](https://p4.org/) compilers.
 
 P4MLIR is structured as both a [standalone MLIR project](https://github.com/llvm/llvm-project/tree/main/mlir/examples/standalone), and a [P4C extension](https://github.com/fruffy/p4dummy). Once it's mature enough, the plan is to merge it into the [P4C repo](https://github.com/p4lang/p4c).
 
