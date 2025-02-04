@@ -3,6 +3,7 @@
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
@@ -63,9 +64,9 @@ LogicalResult P4HIR::UnaryOp::verify() {
 // AllocaOp
 //===----------------------------------------------------------------------===//
 
-void P4HIR::AllocaOp::build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState,
-                            ::mlir::Type ref, ::mlir::Type objectType, ::llvm::StringRef name) {
-    odsState.addAttribute(getObjectTypeAttrName(odsState.name), ::mlir::TypeAttr::get(objectType));
+void P4HIR::AllocaOp::build(mlir::OpBuilder &odsBuilder, mlir::OperationState &odsState,
+                            mlir::Type ref, mlir::Type objectType, const llvm::Twine &name) {
+    odsState.addAttribute(getObjectTypeAttrName(odsState.name), mlir::TypeAttr::get(objectType));
     odsState.addAttribute(getNameAttrName(odsState.name), odsBuilder.getStringAttr(name));
     odsState.addTypes(ref);
 }
@@ -264,6 +265,11 @@ void P4HIR::IfOp::print(OpAsmPrinter &p) {
 
 /// Default callback for IfOp builders.
 void P4HIR::buildTerminatedBody(OpBuilder &builder, Location loc) {
+    Block *block = builder.getBlock();
+
+    // Region is properly terminated: nothing to do.
+    if (block->mightHaveTerminator()) return;
+
     // add p4hir.yield to the end of the block
     builder.create<P4HIR::YieldOp>(loc);
 }
@@ -306,9 +312,22 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
 }
 
 mlir::LogicalResult P4HIR::ReturnOp::verify() {
-    // TODO: Implement checks:
-    //  - If we're inside action, then there should not be any operands
-    //  - Otherwise, we're inside function, ensure operand type matches with result type
+    // Returns can be present in multiple different scopes, get the
+    // wrapping function and start from there.
+    auto *fnOp = getOperation()->getParentOp();
+    while (!isa<P4HIR::FuncOp>(fnOp)) fnOp = fnOp->getParentOp();
+
+    // ReturnOps currently only have a single optional operand.
+    if (getNumOperands() > 1) return emitOpError() << "expects at most 1 return operand";
+
+    // Ensure returned type matches the function signature.
+    auto expectedTy = cast<P4HIR::FuncOp>(fnOp).getFunctionType().getReturnType();
+    auto actualTy =
+        (getNumOperands() == 0 ? P4HIR::VoidType::get(getContext()) : getOperand(0).getType());
+    if (actualTy != expectedTy)
+        return emitOpError() << "returns " << actualTy << " but enclosing function returns "
+                             << expectedTy;
+
     return success();
 }
 
@@ -319,45 +338,58 @@ mlir::LogicalResult P4HIR::ReturnOp::verify() {
 // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
 // attribute is present.  This can check for preconditions of the
 // getNumArguments hook not failing.
-LogicalResult P4HIR::ActionOp::verifyType() {
+LogicalResult P4HIR::FuncOp::verifyType() {
     auto type = getFunctionType();
-    if (!isa<P4HIR::ActionType>(type))
+    if (!isa<P4HIR::FuncType>(type))
         return emitOpError("requires '" + getFunctionTypeAttrName().str() +
-                           "' attribute of action type");
+                           "' attribute of function type");
+    if (auto rt = type.getReturnTypes(); !rt.empty() && mlir::isa<P4HIR::VoidType>(rt.front()))
+        return emitOpError(
+            "The return type for a function returning void should "
+            "be empty instead of an explicit !p4hir.void");
 
     return success();
 }
 
-LogicalResult P4HIR::ActionOp::verify() {
+LogicalResult P4HIR::FuncOp::verify() {
     // TODO: Check that all reference-typed arguments have direction indicated
+    // TODO: Check that actions do have body
     return success();
 }
 
-mlir::Region *P4HIR::ActionOp::getCallableRegion() { return &getBody(); }
+void P4HIR::FuncOp::build(OpBuilder &builder, OperationState &result, llvm::StringRef name,
+                          P4HIR::FuncType type, ArrayRef<NamedAttribute> attrs,
+                          ArrayRef<DictionaryAttr> argAttrs) {
+    result.addRegion();
 
-void P4HIR::ActionOp::build(OpBuilder &builder, OperationState &result, llvm::StringRef name,
-                            P4HIR::ActionType type, ArrayRef<NamedAttribute> attrs,
-                            ArrayRef<DictionaryAttr> argAttrs) {
     result.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
     result.addAttribute(getFunctionTypeAttrName(result.name), TypeAttr::get(type));
     result.attributes.append(attrs.begin(), attrs.end());
+    // We default to private visibility
+    result.addAttribute(SymbolTable::getVisibilityAttrName(), builder.getStringAttr("private"));
 
-    function_interface_impl::addArgAndResultAttrs(
-        builder, result, argAttrs,
-        /*resultAttrs=*/std::nullopt, getArgAttrsAttrName(result.name), builder.getStringAttr(""));
-
-    auto *region = result.addRegion();
-    Block &first = region->emplaceBlock();
-    for (auto argType : type.getInputs()) first.addArgument(argType, result.location);
+    function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                                  /*resultAttrs=*/std::nullopt,
+                                                  getArgAttrsAttrName(result.name),
+                                                  getResAttrsAttrName(result.name));
 }
 
-void P4HIR::ActionOp::print(OpAsmPrinter &p) {
+void P4HIR::FuncOp::createEntryBlock() {
+    assert(empty() && "can only create entry block for empty function");
+    Block &first = getFunctionBody().emplaceBlock();
+    auto loc = getFunctionBody().getLoc();
+    for (auto argType : getFunctionType().getInputs()) first.addArgument(argType, loc);
+}
+
+void P4HIR::FuncOp::print(OpAsmPrinter &p) {
+    if (getAction()) p << " action";
+
     // Print function name, signature, and control.
     p << ' ';
     p.printSymbolName(getSymName());
     auto fnType = getFunctionType();
-    llvm::SmallVector<Type, 1> resultTypes;
-    function_interface_impl::printFunctionSignature(p, *this, fnType.getInputs(), false, {});
+    function_interface_impl::printFunctionSignature(p, *this, fnType.getInputs(), false,
+                                                    fnType.getReturnTypes());
 
     if (mlir::ArrayAttr annotations = getAnnotationsAttr()) {
         p << ' ';
@@ -367,23 +399,37 @@ void P4HIR::ActionOp::print(OpAsmPrinter &p) {
     function_interface_impl::printFunctionAttributes(
         p, *this,
         // These are all omitted since they are custom printed already.
-        {getFunctionTypeAttrName(), getArgAttrsAttrName()});
+        {getFunctionTypeAttrName(), SymbolTable::getVisibilityAttrName(), getArgAttrsAttrName(),
+         getActionAttrName(), getResAttrsAttrName()});
 
     // Print the body if this is not an external function.
     Region &body = getOperation()->getRegion(0);
-    p << ' ';
-    p.printRegion(body, /*printEntryBlockArgs=*/false,
-                  /*printBlockTerminators=*/true);
+    if (!body.empty()) {
+        p << ' ';
+        p.printRegion(body, /*printEntryBlockArgs=*/false,
+                      /*printBlockTerminators=*/true);
+    }
 }
 
-ParseResult P4HIR::ActionOp::parse(OpAsmParser &parser, OperationState &state) {
+ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
     llvm::SMLoc loc = parser.getCurrentLocation();
     auto &builder = parser.getBuilder();
+
+    // Parse action marker
+    auto actionNameAttr = getActionAttrName(state.name);
+    bool isAction = false;
+    if (::mlir::succeeded(parser.parseOptionalKeyword(actionNameAttr.strref()))) {
+        isAction = true;
+        state.addAttribute(actionNameAttr, parser.getBuilder().getUnitAttr());
+    }
 
     // Parse the name as a symbol.
     StringAttr nameAttr;
     if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(), state.attributes))
         return failure();
+
+    // We default to private visibility
+    state.addAttribute(SymbolTable::getVisibilityAttrName(), builder.getStringAttr("private"));
 
     llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
     llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
@@ -395,13 +441,19 @@ ParseResult P4HIR::ActionOp::parse(OpAsmParser &parser, OperationState &state) {
         return failure();
 
     // Actions have no results
-    if (!resultTypes.empty())
+    if (isAction && !resultTypes.empty())
         return parser.emitError(loc, "actions should not produce any results");
+    else if (resultTypes.size() > 1)
+        return parser.emitError(loc, "functions only supports zero or one results");
 
-    // Build the action function type.
+    // Build the function type.
     for (auto &arg : arguments) argTypes.push_back(arg.type);
 
-    if (auto fnType = P4HIR::ActionType::get(builder.getContext(), argTypes)) {
+    // Fetch return type or set it to void if empty/ommited.
+    mlir::Type returnType =
+        (resultTypes.empty() ? P4HIR::VoidType::get(builder.getContext()) : resultTypes.front());
+
+    if (auto fnType = P4HIR::FuncType::get(argTypes, returnType)) {
         state.addAttribute(getFunctionTypeAttrName(state.name), TypeAttr::get(fnType));
     } else
         return failure();
@@ -418,14 +470,19 @@ ParseResult P4HIR::ActionOp::parse(OpAsmParser &parser, OperationState &state) {
     assert(resultAttrs.size() == resultTypes.size());
     function_interface_impl::addArgAndResultAttrs(builder, state, arguments, resultAttrs,
                                                   getArgAttrsAttrName(state.name),
-                                                  builder.getStringAttr(""));
+                                                  getResAttrsAttrName(state.name));
 
     // Parse the action body.
     auto *body = state.addRegion();
-    ParseResult parseResult = parser.parseRegion(*body, arguments, /*enableNameShadowing=*/false);
-    if (failed(parseResult)) return failure();
-    // Body was parsed, make sure its not empty.
-    if (body->empty()) return parser.emitError(loc, "expected non-empty action body");
+    if (OptionalParseResult parseResult =
+            parser.parseOptionalRegion(*body, arguments, /*enableNameShadowing=*/false);
+        parseResult.has_value()) {
+        if (failed(*parseResult)) return failure();
+        // Function body was parsed, make sure its not empty.
+        if (body->empty()) return parser.emitError(loc, "expected non-empty function body");
+    } else if (isAction) {
+        parser.emitError(loc, "action shall have a body");
+    }
 
     return success();
 }
@@ -434,7 +491,7 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
     // Check that the callee attribute was specified.
     auto fnAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
     if (!fnAttr) return emitOpError("requires a 'callee' symbol reference attribute");
-    ActionOp fn = symbolTable.lookupNearestSymbolFrom<ActionOp>(*this, fnAttr);
+    FuncOp fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(*this, fnAttr);
     if (!fn)
         return emitOpError() << "'" << fnAttr.getValue() << "' does not reference a valid function";
 
@@ -449,23 +506,26 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
                    << fnType.getInput(i) << ", but provided " << getOperand(i).getType()
                    << " for operand number " << i;
 
-    // FIXME: Generalize to functions
-    if (0 != getNumResults()) return emitOpError("incorrect number of results for callee");
+    // Actions must not return any results
+    if (fn.getAction() && getNumResults() != 0)
+        return emitOpError("incorrect number of results for action call");
 
-    /*
-    if (fnType.getNumResults( != getNumResults())
-      return emitOpError("incorrect number of results for callee");
+    // Void function must not return any results.
+    if (fnType.isVoid() && getNumResults() != 0)
+        return emitOpError("callee returns void but call has results");
 
-    for (unsigned i = 0, e = fnType.getNumResults(); i != e; ++i)
-      if (getResult(i).getType() != fnType.getResult(i)) {
-        auto diag = emitOpError("result type mismatch at index ") << i;
-        diag.attachNote() << "      op result types: " << getResultTypes();
-        diag.attachNote() << "function result types: " << fnType.getResults();
-        return diag;
-        }*/
+    // Non-void function calls must return exactly one result.
+    if (!fnType.isVoid() && getNumResults() != 1)
+        return emitOpError("incorrect number of results for callee");
+
+    // Parent function and return value types must match.
+    if (!fnType.isVoid() && getResultTypes().front() != fnType.getReturnType())
+        return emitOpError("result type mismatch: expected ")
+               << fnType.getReturnType() << ", but provided " << getResult().getType();
 
     return success();
 }
+
 void P4HIR::P4HIRDialect::initialize() {
     registerTypes();
     registerAttributes();

@@ -6,9 +6,11 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 
-static mlir::ParseResult parseActionType(mlir::AsmParser &p, llvm::SmallVector<mlir::Type> &params);
+static mlir::ParseResult parseFuncType(mlir::AsmParser &p, mlir::Type &optionalResultType,
+                                       llvm::SmallVector<mlir::Type> &params);
 
-static void printActionType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params);
+static void printFuncType(mlir::AsmPrinter &p, mlir::Type optionalResultType,
+                          mlir::ArrayRef<mlir::Type> params);
 
 #define GET_TYPEDEF_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.cpp.inc"
@@ -67,27 +69,72 @@ void P4HIRDialect::printType(mlir::Type type, mlir::DialectAsmPrinter &os) const
     });
 }
 
-ActionType ActionType::clone(TypeRange inputs, TypeRange results) const {
-    assert(results.size() == 0 && "expected exactly zero result type");
-    return get(getContext(), llvm::to_vector(inputs));
+FuncType FuncType::clone(TypeRange inputs, TypeRange results) const {
+    assert(results.size() == 1 && "expected exactly one result type");
+    return get(llvm::to_vector(inputs), results[0]);
 }
 
-static mlir::ParseResult parseActionType(mlir::AsmParser &p,
-                                         llvm::SmallVector<mlir::Type> &params) {
-    return p.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+static mlir::ParseResult parseFuncType(mlir::AsmParser &p, mlir::Type &optionalReturnType,
+                                       llvm::SmallVector<mlir::Type> &params) {
+    // Parse return type, if any
+    if (succeeded(p.parseOptionalLParen())) {
+        // If we have already a '(', the function has no return type
+        optionalReturnType = {};
+    } else {
         mlir::Type type;
         if (p.parseType(type)) return mlir::failure();
-        params.push_back(type);
-        return mlir::success();
-    });
+        if (mlir::isa<VoidType>(type))
+            // An explicit !p4hir.void means also no return type.
+            optionalReturnType = {};
+        else
+            // Otherwise use the actual type.
+            optionalReturnType = type;
+        if (p.parseLParen()) return mlir::failure();
+    }
+
+    // `(` `)`
+    if (succeeded(p.parseOptionalRParen())) return mlir::success();
+
+    if (p.parseCommaSeparatedList([&]() -> ParseResult {
+            mlir::Type type;
+            if (p.parseType(type)) return mlir::failure();
+            params.push_back(type);
+            return mlir::success();
+        }))
+        return mlir::failure();
 
     return p.parseRParen();
 }
 
-static void printActionType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params) {
+static void printFuncType(mlir::AsmPrinter &p, mlir::Type optionalReturnType,
+                          mlir::ArrayRef<mlir::Type> params) {
+    if (optionalReturnType) p << optionalReturnType << ' ';
     p << '(';
     llvm::interleaveComma(params, p, [&p](mlir::Type type) { p.printType(type); });
     p << ')';
+}
+
+// Return the actual return type or an explicit !p4hir.void if the function does
+// not return anything
+mlir::Type FuncType::getReturnType() const {
+    if (isVoid()) return P4HIR::VoidType::get(getContext());
+    return static_cast<detail::FuncTypeStorage *>(getImpl())->optionalReturnType;
+}
+
+/// Returns the result type of the function as an ArrayRef, enabling better
+/// integration with generic MLIR utilities.
+llvm::ArrayRef<mlir::Type> FuncType::getReturnTypes() const {
+    if (isVoid()) return {};
+    return static_cast<detail::FuncTypeStorage *>(getImpl())->optionalReturnType;
+}
+
+// Whether the function returns void
+bool FuncType::isVoid() const {
+    auto rt = static_cast<detail::FuncTypeStorage *>(getImpl())->optionalReturnType;
+    assert(!rt || !mlir::isa<VoidType>(rt) &&
+                      "The return type for a function returning void should be empty "
+                      "instead of a real !p4hir.void");
+    return !rt;
 }
 
 void P4HIRDialect::registerTypes() {

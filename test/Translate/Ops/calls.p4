@@ -36,13 +36,13 @@ action bazz(in int<16> arg1) {
     // CHECK: p4hir.call @bar() : () -> ()
     bar();
     // CHECK: p4hir.scope
-    // CHECK: %[[VAR_A:.*]] = p4hir.alloca !p4hir.int<16> ["a"] : !p4hir.ref<!p4hir.int<16>>
+    // CHECK: %[[VAR_A:.*]] = p4hir.alloca !p4hir.int<16> ["a_out"] : !p4hir.ref<!p4hir.int<16>>
     // CHECK: p4hir.call @quuz(%[[VAR_A]]) : (!p4hir.ref<!p4hir.int<16>>) -> ()
     // CHECK: p4hir.load %[[VAR_A]] : !p4hir.ref<!p4hir.int<16>>, !p4hir.int<16>
     int<16> val;
     quuz(val);
     // CHECK: p4hir.scope
-    // CHECK: %[[VAR_X:.*]] = p4hir.alloca !p4hir.int<16> ["x", init] : !p4hir.ref<!p4hir.int<16>>
+    // CHECK: %[[VAR_X:.*]] = p4hir.alloca !p4hir.int<16> ["x_inout", init] : !p4hir.ref<!p4hir.int<16>>
     // CHECK: %[[VAL_X:.*]] = p4hir.load %[[VAL:.*]] : !p4hir.ref<!p4hir.int<16>>, !p4hir.int<16>
     // CHECK: p4hir.store %[[VAL_X]], %[[VAR_X]] : !p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>
     // CHECK: p4hir.call @baz(%[[VAR_X]])

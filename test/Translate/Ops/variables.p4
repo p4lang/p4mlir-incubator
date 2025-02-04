@@ -17,7 +17,7 @@ action foo() {
   bit<8> b10 = (bit<8>)b8;
 }
 
-// CHECK-LABEL: p4hir.action @foo()   
+// CHECK-LABEL: p4hir.func action @foo()   
 // CHECK:         %[[VAL_0:.*]] = p4hir.const #p4hir.int<255> : !p4hir.bit<32>
 // CHECK:         %[[VAL_1:.*]] = p4hir.alloca !p4hir.bit<32> ["b0", init] : !p4hir.ref<!p4hir.bit<32>>
 // CHECK:         p4hir.store %[[VAL_0]], %[[VAL_1]] : !p4hir.bit<32>, !p4hir.ref<!p4hir.bit<32>>

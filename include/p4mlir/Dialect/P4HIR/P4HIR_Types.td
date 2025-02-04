@@ -100,6 +100,15 @@ def DontcareType : P4HIR_Type<"Dontcare", "dontcare"> {}
 def ErrorType : P4HIR_Type<"Error", "error"> {}
 def UnknownType : P4HIR_Type<"Unknown", "unknown"> {}
 
+def VoidType : P4HIR_Type<"Void", "void"> {
+  let summary = "void type";
+  let description = [{
+    Represents absense of result of actions and methods, or `void` type for functions.
+  }];
+  let extraClassDeclaration = [{
+    std::string getAlias() const { return "void"; };
+  }];
+}
 //===----------------------------------------------------------------------===//
 // ReferenceType
 //===----------------------------------------------------------------------===//
@@ -130,29 +139,40 @@ def ReferenceType : P4HIR_Type<"Reference", "ref"> {
   let skipDefaultBuilders = 1;
 }
 
-//===----------------------------------------------------------------------===//
-// ParameterType
-//===----------------------------------------------------------------------===//
-
-def P4HIR_ActionType : P4HIR_Type<"Action", "action"> {
-  let summary = "P4 action type";
+def FuncType : P4HIR_Type<"Func", "func"> {
+  let summary = "P4 function-like type (actions, methods, functions)";
   let description = [{
-    The `!p4hir.action` is an action type. It is essentially a list of parameter
-    types. There is no return type for actions.
-
+    The `!p4hir.func` is a function type.
     Example:
 
     ```mlir
-    !p4hir.action<()>
-    !p4hir.action<(!p4hir.bit<32>, !p4hir.int<42>)>
+    !p4hir.func<()>
+    !p4hir.func<!p4hir.bit<32>(!p4hir.bit<32>, !p4hir.int<42>)>
     ```
   }];
 
-  let parameters = (ins ArrayRefParameter<"mlir::Type">:$inputs);
+  let parameters = (ins ArrayRefParameter<"mlir::Type">:$inputs,
+                        "mlir::Type":$optionalReturnType);
+
+  let builders = [
+    // Construct with an actual return type or explicit !p4hir.void
+    TypeBuilderWithInferredContext<(ins
+      "llvm::ArrayRef<mlir::Type>":$inputs, "mlir::Type":$returnType), [{
+      return $_get(returnType.getContext(), inputs,
+                       mlir::isa<P4HIR::VoidType>(returnType) ? nullptr
+                                                            : returnType);
+    }]>,
+
+    // Construct without return type
+    TypeBuilder<(ins "llvm::ArrayRef<mlir::Type>":$inputs), [{
+      return $_get($_ctxt, inputs, nullptr);
+    }]>
+
+  ];
 
   // Use a custom parser to handle the argument types in better way.
   let assemblyFormat = [{
-    `<` custom<ActionType>($inputs) `>`
+    `<` custom<FuncType>($optionalReturnType, $inputs) `>`
   }];
 
   let extraClassDeclaration = [{
@@ -162,9 +182,20 @@ def P4HIR_ActionType : P4HIR_Type<"Action", "action"> {
     /// Returns the number of arguments to the function.
     unsigned getNumInputs() const { return getInputs().size(); }
 
+    /// Returns the result type of the function as an actual return type or
+    /// explicit !p4hir.void
+    mlir::Type getReturnType() const;
+
+    /// Returns the result type of the function as an ArrayRef, enabling better
+    /// integration with generic MLIR utilities.
+    llvm::ArrayRef<mlir::Type> getReturnTypes() const;
+
     /// Returns a clone of this action type with the given argument
     /// and result types. Required for FunctionOp interface
-    ActionType clone(mlir::TypeRange inputs, mlir::TypeRange outputs) const;
+    FuncType clone(mlir::TypeRange inputs, mlir::TypeRange outputs) const;
+
+    /// Returns whether the function returns void.
+    bool isVoid() const;
   }];
 }
 
@@ -174,6 +205,8 @@ def P4HIR_ActionType : P4HIR_Type<"Action", "action"> {
 
 def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                            DontcareType, ErrorType, UnknownType]> {}
+def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType]> {}
+
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD
