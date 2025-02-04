@@ -353,6 +353,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::Declaration_Constant *decl) override;
     bool preorder(const P4::IR::AssignmentStatement *assign) override;
+    bool preorder(const P4::IR::Mux *mux) override;
     bool preorder(const P4::IR::LOr *lor) override;
     bool preorder(const P4::IR::LAnd *land) override;
     bool preorder(const P4::IR::IfStatement *ifs) override;
@@ -700,6 +701,29 @@ bool P4HIRConverter::preorder(const P4::IR::LAnd *land) {
         });
 
     setValue(land, value.getResult());
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::Mux *mux) {
+    ConversionTracer trace("Converting ", mux);
+
+    // Materialize condition first
+    visit(mux->e0);
+
+    // Make the value itself
+    auto value = builder.create<P4HIR::TernaryOp>(
+        getLoc(builder, mux), getValue(mux->e0),
+        [&](mlir::OpBuilder &b, mlir::Location) {
+            visit(mux->e1);
+            b.create<P4HIR::YieldOp>(getEndLoc(builder, mux->e1), getValue(mux->e1));
+        },
+        [&](mlir::OpBuilder &b, mlir::Location) {
+            visit(mux->e2);
+            b.create<P4HIR::YieldOp>(getEndLoc(builder, mux->e2), getValue(mux->e2));
+        });
+
+    setValue(mux, value.getResult());
+
     return false;
 }
 
