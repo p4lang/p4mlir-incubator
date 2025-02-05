@@ -16,7 +16,7 @@ bit<16> max(in bit<16> left, in bit<16> right) {
 
 // CHECK-LABEL: p4hir.func action @bar(%arg0: !p4hir.bit<16> {p4hir.dir = #p4hir<dir in>}, %arg1: !p4hir.bit<16> {p4hir.dir = #p4hir<dir in>}, %arg2: !p4hir.ref<!p4hir.bit<16>> {p4hir.dir = #p4hir<dir out>}) {
 // CHECK:    %[[CALL:.*]] = p4hir.call @max(%arg0, %arg1) : (!p4hir.bit<16>, !p4hir.bit<16>) -> !p4hir.bit<16>
-// CHECK:    p4hir.store %[[CALL]], %arg2 : !p4hir.bit<16>, !p4hir.ref<!p4hir.bit<16>>
+// CHECK:    p4hir.assign %[[CALL]], %arg2 : <!p4hir.bit<16>>
 // CHECK:    p4hir.return
 
 action bar(in bit<16> arg1, in bit<16> arg2, out bit<16> res) {
@@ -42,23 +42,23 @@ action test_param() {
 }
 
 // CHECK-LABEL: p4hir.func action @test_param() {
-// CHECK:    %[[A:.*]] = p4hir.alloca !p4hir.bit<1> ["a"] : !p4hir.ref<!p4hir.bit<1>>
+// CHECK:    %[[A:.*]] = p4hir.variable ["a"] : <!p4hir.bit<1>>
 // CHECK:    p4hir.scope {
-// CHECK:      %[[X_INOUT:.*]] = p4hir.alloca !p4hir.bit<1> ["x_inout", init] : !p4hir.ref<!p4hir.bit<1>>
-// CHECK:      %[[A_VAL:.*]] = p4hir.load %[[A]] : !p4hir.ref<!p4hir.bit<1>>, !p4hir.bit<1>
-// CHECK:      p4hir.store %[[A_VAL]], %[[X_INOUT]] : !p4hir.bit<1>, !p4hir.ref<!p4hir.bit<1>>
+// CHECK:      %[[X_INOUT:.*]] = p4hir.variable ["x_inout", init] : <!p4hir.bit<1>>
+// CHECK:      %[[A_VAL:.*]] = p4hir.read %[[A]] : <!p4hir.bit<1>>
+// CHECK:      p4hir.assign %[[A_VAL]], %[[X_INOUT]] : <!p4hir.bit<1>>
 // CHECK:      %[[G_VAL:.*]] = p4hir.scope {
-// CHECK:        %[[Z_INOUT:.*]] = p4hir.alloca !p4hir.bit<1> ["z_inout", init] : !p4hir.ref<!p4hir.bit<1>>
-// CHECK:        %[[A_VAL2:.*]] = p4hir.load %[[A]] : !p4hir.ref<!p4hir.bit<1>>, !p4hir.bit<1>
-// CHECK:        p4hir.store %[[A_VAL2]], %[[Z_INOUT]] : !p4hir.bit<1>, !p4hir.ref<!p4hir.bit<1>>
+// CHECK:        %[[Z_INOUT:.*]] = p4hir.variable ["z_inout", init] : <!p4hir.bit<1>>
+// CHECK:        %[[A_VAL2:.*]] = p4hir.read %[[A]] : <!p4hir.bit<1>>
+// CHECK:        p4hir.assign %[[A_VAL2]], %[[Z_INOUT]] : <!p4hir.bit<1>>
 // CHECK:        %[[G_RES:.*]] = p4hir.call @g(%[[Z_INOUT]]) : (!p4hir.ref<!p4hir.bit<1>>) -> !p4hir.bit<1>
-// CHECK:        %[[A_OUT_VAL:.*]] = p4hir.load %[[Z_INOUT]] : !p4hir.ref<!p4hir.bit<1>>, !p4hir.bit<1>
-// CHECK:        p4hir.store %[[A_OUT_VAL]], %[[A]] : !p4hir.bit<1>, !p4hir.ref<!p4hir.bit<1>>
+// CHECK:        %[[A_OUT_VAL:.*]] = p4hir.read %[[Z_INOUT]] : <!p4hir.bit<1>>
+// CHECK:        p4hir.assign %[[A_OUT_VAL]], %[[A]] : <!p4hir.bit<1>>
 // CHECK:        p4hir.yield %[[G_RES]] : !p4hir.bit<1>
 // CHECK:      } : !p4hir.bit<1>
 // CHECK:      p4hir.call @f(%[[X_INOUT]], %[[G_VAL]]) : (!p4hir.ref<!p4hir.bit<1>>, !p4hir.bit<1>) -> ()
-// CHECK:      %[[A_OUT_VAL2:.*]] = p4hir.load %[[X_INOUT]] : !p4hir.ref<!p4hir.bit<1>>, !p4hir.bit<1>
-// CHECK:      p4hir.store %[[A_OUT_VAL2]], %[[A]] : !p4hir.bit<1>, !p4hir.ref<!p4hir.bit<1>>
+// CHECK:      %[[A_OUT_VAL2:.*]] = p4hir.read %[[X_INOUT]] : <!p4hir.bit<1>>
+// CHECK:      p4hir.assign %[[A_OUT_VAL2]], %[[A]] : <!p4hir.bit<1>>
 // CHECK:    }
 // CHECK:    p4hir.return
 // CHECK:  }

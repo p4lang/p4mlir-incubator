@@ -61,14 +61,11 @@ LogicalResult P4HIR::UnaryOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// AllocaOp
+// VariableOp
 //===----------------------------------------------------------------------===//
 
-void P4HIR::AllocaOp::build(mlir::OpBuilder &odsBuilder, mlir::OperationState &odsState,
-                            mlir::Type ref, mlir::Type objectType, const llvm::Twine &name) {
-    odsState.addAttribute(getObjectTypeAttrName(odsState.name), mlir::TypeAttr::get(objectType));
-    odsState.addAttribute(getNameAttrName(odsState.name), odsBuilder.getStringAttr(name));
-    odsState.addTypes(ref);
+void P4HIR::VariableOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    if (getName() && !getName()->empty()) setNameFn(getResult(), *getName());
 }
 
 //===----------------------------------------------------------------------===//

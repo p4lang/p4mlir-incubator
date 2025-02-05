@@ -4,27 +4,27 @@
 
 // CHECK-LABEL:   p4hir.func action @foo()
 // CHECK:         %[[VAL_0:.*]] = p4hir.const #p4hir.bool<true> : !p4hir.bool
-// CHECK:         %[[VAL_1:.*]] = p4hir.alloca !p4hir.bool ["b0", init] : !p4hir.ref<!p4hir.bool>
-// CHECK:         p4hir.store %[[VAL_0]], %[[VAL_1]] : !p4hir.bool, !p4hir.ref<!p4hir.bool>
+// CHECK:         %[[VAL_1:.*]] = p4hir.variable ["b0", init] : <!p4hir.bool>
+// CHECK:         p4hir.assign %[[VAL_0]], %[[VAL_1]] : <!p4hir.bool>
 // CHECK:         %[[VAL_2:.*]] = p4hir.const #p4hir.int<255> : !p4hir.int<32>
-// CHECK:         %[[VAL_3:.*]] = p4hir.alloca !p4hir.int<32> ["b2", init] : !p4hir.ref<!p4hir.int<32>>
-// CHECK:         p4hir.store %[[VAL_2]], %[[VAL_3]] : !p4hir.int<32>, !p4hir.ref<!p4hir.int<32>>
-// CHECK:         %[[VAL_4:.*]] = p4hir.load %[[VAL_3]] : !p4hir.ref<!p4hir.int<32>>, !p4hir.int<32>
+// CHECK:         %[[VAL_3:.*]] = p4hir.variable ["b2", init] : <!p4hir.int<32>>
+// CHECK:         p4hir.assign %[[VAL_2]], %[[VAL_3]] : <!p4hir.int<32>>
+// CHECK:         %[[VAL_4:.*]] = p4hir.read %[[VAL_3]] : <!p4hir.int<32>>
 // CHECK:         %[[VAL_5:.*]] = p4hir.unary(minus, %[[VAL_4]]) : !p4hir.int<32>
-// CHECK:         %[[VAL_6:.*]] = p4hir.alloca !p4hir.int<32> ["b3", init] : !p4hir.ref<!p4hir.int<32>>
-// CHECK:         p4hir.store %[[VAL_5]], %[[VAL_6]] : !p4hir.int<32>, !p4hir.ref<!p4hir.int<32>>
-// CHECK:         %[[VAL_7:.*]] = p4hir.load %[[VAL_3]] : !p4hir.ref<!p4hir.int<32>>, !p4hir.int<32>
+// CHECK:         %[[VAL_6:.*]] = p4hir.variable ["b3", init] : <!p4hir.int<32>>
+// CHECK:         p4hir.assign %[[VAL_5]], %[[VAL_6]] : <!p4hir.int<32>>
+// CHECK:         %[[VAL_7:.*]] = p4hir.read %[[VAL_3]] : <!p4hir.int<32>>
 // CHECK:         %[[VAL_8:.*]] = p4hir.unary(cmpl, %[[VAL_7]]) : !p4hir.int<32>
-// CHECK:         %[[VAL_9:.*]] = p4hir.alloca !p4hir.int<32> ["b4", init] : !p4hir.ref<!p4hir.int<32>>
-// CHECK:         p4hir.store %[[VAL_8]], %[[VAL_9]] : !p4hir.int<32>, !p4hir.ref<!p4hir.int<32>>
-// CHECK:         %[[VAL_10:.*]] = p4hir.load %[[VAL_1]] : !p4hir.ref<!p4hir.bool>, !p4hir.bool
+// CHECK:         %[[VAL_9:.*]] = p4hir.variable ["b4", init] : <!p4hir.int<32>>
+// CHECK:         p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!p4hir.int<32>>
+// CHECK:         %[[VAL_10:.*]] = p4hir.read %[[VAL_1]] : <!p4hir.bool>
 // CHECK:         %[[VAL_11:.*]] = p4hir.unary(not, %[[VAL_10]]) : !p4hir.bool
-// CHECK:         %[[VAL_12:.*]] = p4hir.alloca !p4hir.bool ["b5", init] : !p4hir.ref<!p4hir.bool>
-// CHECK:         p4hir.store %[[VAL_11]], %[[VAL_12]] : !p4hir.bool, !p4hir.ref<!p4hir.bool>
-// CHECK:         %[[VAL_13:.*]] = p4hir.load %[[VAL_3]] : !p4hir.ref<!p4hir.int<32>>, !p4hir.int<32>
+// CHECK:         %[[VAL_12:.*]] = p4hir.variable ["b5", init] : <!p4hir.bool>
+// CHECK:         p4hir.assign %[[VAL_11]], %[[VAL_12]] : <!p4hir.bool>
+// CHECK:         %[[VAL_13:.*]] = p4hir.read %[[VAL_3]] : <!p4hir.int<32>>
 // CHECK:         %[[VAL_14:.*]] = p4hir.unary(plus, %[[VAL_13]]) : !p4hir.int<32>
-// CHECK:         %[[VAL_15:.*]] = p4hir.alloca !p4hir.int<32> ["b6", init] : !p4hir.ref<!p4hir.int<32>>
-// CHECK:         p4hir.store %[[VAL_14]], %[[VAL_15]] : !p4hir.int<32>, !p4hir.ref<!p4hir.int<32>>
+// CHECK:         %[[VAL_15:.*]] = p4hir.variable ["b6", init] : <!p4hir.int<32>>
+// CHECK:         p4hir.assign %[[VAL_14]], %[[VAL_15]] : <!p4hir.int<32>>
 
 action foo() {
   bool    b0 = true;

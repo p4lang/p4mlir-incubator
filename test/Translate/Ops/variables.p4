@@ -19,32 +19,32 @@ action foo() {
 
 // CHECK-LABEL: p4hir.func action @foo()   
 // CHECK:         %[[VAL_0:.*]] = p4hir.const #p4hir.int<255> : !p4hir.bit<32>
-// CHECK:         %[[VAL_1:.*]] = p4hir.alloca !p4hir.bit<32> ["b0", init] : !p4hir.ref<!p4hir.bit<32>>
-// CHECK:         p4hir.store %[[VAL_0]], %[[VAL_1]] : !p4hir.bit<32>, !p4hir.ref<!p4hir.bit<32>>
+// CHECK:         %[[VAL_1:.*]] = p4hir.variable ["b0", init] : <!p4hir.bit<32>>
+// CHECK:         p4hir.assign %[[VAL_0]], %[[VAL_1]] : <!p4hir.bit<32>>
 // CHECK:         %[[VAL_2:.*]] = p4hir.const #p4hir.int<255> : !p4hir.int<32>
-// CHECK:         %[[VAL_3:.*]] = p4hir.alloca !p4hir.int<32> ["b2", init] : !p4hir.ref<!p4hir.int<32>>
-// CHECK:         p4hir.store %[[VAL_2]], %[[VAL_3]] : !p4hir.int<32>, !p4hir.ref<!p4hir.int<32>>
+// CHECK:         %[[VAL_3:.*]] = p4hir.variable ["b2", init] : <!p4hir.int<32>>
+// CHECK:         p4hir.assign %[[VAL_2]], %[[VAL_3]] : <!p4hir.int<32>>
 // CHECK:         %[[VAL_4:.*]] = p4hir.const #p4hir.int<-255> : !p4hir.int<32>
-// CHECK:         %[[VAL_5:.*]] = p4hir.alloca !p4hir.int<32> ["b3", init] : !p4hir.ref<!p4hir.int<32>>
-// CHECK:         p4hir.store %[[VAL_4]], %[[VAL_5]] : !p4hir.int<32>, !p4hir.ref<!p4hir.int<32>>
+// CHECK:         %[[VAL_5:.*]] = p4hir.variable ["b3", init] : <!p4hir.int<32>>
+// CHECK:         p4hir.assign %[[VAL_4]], %[[VAL_5]] : <!p4hir.int<32>>
 // CHECK:         %[[VAL_6:.*]] = p4hir.const #p4hir.int<170> : !p4hir.bit<8>
-// CHECK:         %[[VAL_7:.*]] = p4hir.alloca !p4hir.bit<8> ["b4", init] : !p4hir.ref<!p4hir.bit<8>>
-// CHECK:         p4hir.store %[[VAL_6]], %[[VAL_7]] : !p4hir.bit<8>, !p4hir.ref<!p4hir.bit<8>>
+// CHECK:         %[[VAL_7:.*]] = p4hir.variable ["b4", init] : <!p4hir.bit<8>>
+// CHECK:         p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!p4hir.bit<8>>
 // CHECK:         %[[VAL_8:.*]] = p4hir.const #p4hir.int<170> : !p4hir.bit<8>
-// CHECK:         %[[VAL_9:.*]] = p4hir.alloca !p4hir.bit<8> ["b5", init] : !p4hir.ref<!p4hir.bit<8>>
-// CHECK:         p4hir.store %[[VAL_8]], %[[VAL_9]] : !p4hir.bit<8>, !p4hir.ref<!p4hir.bit<8>>
+// CHECK:         %[[VAL_9:.*]] = p4hir.variable ["b5", init] : <!p4hir.bit<8>>
+// CHECK:         p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!p4hir.bit<8>>
 // CHECK:         %[[VAL_10:.*]] = p4hir.const #p4hir.int<170> : !p4hir.bit<8>
-// CHECK:         %[[VAL_11:.*]] = p4hir.alloca !p4hir.bit<8> ["b6", init] : !p4hir.ref<!p4hir.bit<8>>
-// CHECK:         p4hir.store %[[VAL_10]], %[[VAL_11]] : !p4hir.bit<8>, !p4hir.ref<!p4hir.bit<8>>
+// CHECK:         %[[VAL_11:.*]] = p4hir.variable ["b6", init] : <!p4hir.bit<8>>
+// CHECK:         p4hir.assign %[[VAL_10]], %[[VAL_11]] : <!p4hir.bit<8>>
 // CHECK:         %[[VAL_12:.*]] = p4hir.const #p4hir.int<170> : !p4hir.bit<8>
-// CHECK:         %[[VAL_13:.*]] = p4hir.alloca !p4hir.bit<8> ["b7", init] : !p4hir.ref<!p4hir.bit<8>>
-// CHECK:         p4hir.store %[[VAL_12]], %[[VAL_13]] : !p4hir.bit<8>, !p4hir.ref<!p4hir.bit<8>>
-// CHECK:         %[[VAL_14_1:.*]] = p4hir.load %[[VAL_13]] : !p4hir.ref<!p4hir.bit<8>>, !p4hir.bit<8>
+// CHECK:         %[[VAL_13:.*]] = p4hir.variable ["b7", init] : <!p4hir.bit<8>>
+// CHECK:         p4hir.assign %[[VAL_12]], %[[VAL_13]] : <!p4hir.bit<8>>
+// CHECK:         %[[VAL_14_1:.*]] = p4hir.read %[[VAL_13]] : <!p4hir.bit<8>>
 // CHECK:         %[[VAL_15_1:.*]] = p4hir.cast(%[[VAL_14_1]] : !p4hir.bit<8>) : !p4hir.int<8>
-// CHECK:         %[[VAL_16_1:.*]] = p4hir.alloca !p4hir.int<8> ["b8", init] : !p4hir.ref<!p4hir.int<8>>
-// CHECK:         p4hir.store %[[VAL_15_1]], %[[VAL_16_1]] : !p4hir.int<8>, !p4hir.ref<!p4hir.int<8>>
-// CHECK:         %[[VAL_14:.*]] = p4hir.alloca !p4hir.int<42> ["b9"] : !p4hir.ref<!p4hir.int<42>>
-// CHECK:         %[[VAL_14_2:.*]] = p4hir.load %[[VAL_16_1]] : !p4hir.ref<!p4hir.int<8>>, !p4hir.int<8>
+// CHECK:         %[[VAL_16_1:.*]] = p4hir.variable ["b8", init] : <!p4hir.int<8>>
+// CHECK:         p4hir.assign %[[VAL_15_1]], %[[VAL_16_1]] : <!p4hir.int<8>>
+// CHECK:         %[[VAL_14:.*]] = p4hir.variable ["b9"] : <!p4hir.int<42>>
+// CHECK:         %[[VAL_14_2:.*]] = p4hir.read %[[VAL_16_1]] : <!p4hir.int<8>>
 // CHECK:         %[[VAL_16:.*]] = p4hir.cast(%[[VAL_14_2]] : !p4hir.int<8>) : !p4hir.bit<8>
-// CHECK:         %[[VAL_15:.*]] = p4hir.alloca !p4hir.bit<8> ["b10", init] : !p4hir.ref<!p4hir.bit<8>>
-// CHECK:         p4hir.store %[[VAL_16]], %[[VAL_15]] : !p4hir.bit<8>, !p4hir.ref<!p4hir.bit<8>>
+// CHECK:         %[[VAL_15:.*]] = p4hir.variable ["b10", init] : <!p4hir.bit<8>>
+// CHECK:         p4hir.assign %[[VAL_16]], %[[VAL_15]] : <!p4hir.bit<8>>

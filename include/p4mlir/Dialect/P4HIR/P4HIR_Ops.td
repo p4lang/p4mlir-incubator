@@ -2,6 +2,7 @@
 #define P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
@@ -50,22 +51,11 @@ def ConstOp : P4HIR_Op<"const",
     let hasVerifier = 1;
 }
 
-class AllocaTypesMatchWith<string summary, string lhsArg, string rhsArg,
-                     string transform, string comparator = "std::equal_to<>()">
-  : PredOpTrait<summary, CPred<
-      comparator # "(" #
-      !subst("$_self", "$" # lhsArg # ".getType()", transform) #
-             ", $" # rhsArg # ")">> {
-  string lhs = lhsArg;
-  string rhs = rhsArg;
-  string transformer = transform;
-}
-
-def AllocaOp : P4HIR_Op<"alloca", [
-  AllocaTypesMatchWith<"'objectType' matches referenced type of 'object'",
-                 "ref", "objectType",
-                 "mlir::cast<P4HIR::ReferenceType>($_self).getObjectType()">/*,
-                 DeclareOpInterfaceMethods<PromotableAllocationOpInterface>*/]> {
+def VariableOp : P4HIR_Op<"variable", [
+                 DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+/*,
+                 DeclareOpInterfaceMethods<PromotableAllocationOpInterface>,
+                 DeclareOpInterfaceMethods<DestructurableAllocationOpInterface>*/]> {
   let summary = "Defines a scope-local variable";
   let description = [{
     The `p4hir.alloca` operation defines a scope-local variable.
@@ -80,53 +70,51 @@ def AllocaOp : P4HIR_Op<"alloca", [
 
     ```mlir
     // bit<32> count = 3;
-    %0 = p4hir.alloca !p4hir.bit<32> ["count", init] : !p4hir.ref<!p4hir.bit<32>>
+    %0 = p4hir.variable ["count", init] : <!p4hir.bit<32>>
     ...
     ```
   }];
 
   let arguments = (ins
-    TypeAttr:$objectType,
-    StrAttr:$name,
+    OptionalAttr<StrAttr>:$name,
     UnitAttr:$init
   );
 
   let results = (outs Res<ReferenceType, ""/*,
                       [MemAlloc<AutomaticAllocationScopeResource>]*/>:$ref);
 
-  let skipDefaultBuilders = 1;
-  let builders = [
-    OpBuilder<(ins "mlir::Type":$ref, "mlir::Type":$objectType, "const llvm::Twine &":$name)>,
-  ];
+  //let skipDefaultBuilders = 1;
+  //let builders = [
+  //  OpBuilder<(ins "mlir::Type":$ref, "mlir::Type":$objectType, "const llvm::Twine &":$name)>,
+  //];
 
   let assemblyFormat = [{
-    $objectType ` `
-    `[` $name
+    ` ` `[` $name
        (`,` `init` $init^)?
     `]`
-     attr-dict `:` qualified(type($ref))
+     attr-dict `:` type($ref)
   }];
 
   let hasVerifier = 0;
 }
 
-def LoadOp : P4HIR_Op<"load", [
+def ReadOp : P4HIR_Op<"read", [
   TypesMatchWith<"type of 'result' matches object type of 'ref'",
                  "ref", "result",
                  "mlir::cast<P4HIR::ReferenceType>($_self).getObjectType()">/*,
                  DeclareOpInterfaceMethods<PromotableMemOpInterface>*/]> {
 
-  let summary = "Load value from variable";
+  let summary = "Read value from variable";
   let description = [{
-    `p4hir.load` reads a value given an object reference
+    `p4hir.read` reads a value given a variable reference
     backed up by a `p4hir.ref` type.
 
     Example:
 
     ```mlir
 
-    // Read from local variable, address in %0.
-    %1 = p4hir.load %0 : !p4hir.ref<!p4hir.bit<32>>, !p4hir.bit<32>
+    // Read from local variable, reference in %0.
+    %1 = p4hir.read %0 : <!p4hir.bit<32>>
 
     ```
   }];
@@ -137,28 +125,28 @@ def LoadOp : P4HIR_Op<"load", [
   let results = (outs LoadableP4Type:$result);
 
   let assemblyFormat = [{
-    $ref `:` qualified(type($ref)) `,` type($result) attr-dict
+    $ref `:` type($ref) attr-dict
   }];
 
   // FIXME: add verifier.
 }
 
-def StoreOp : P4HIR_Op<"store", [
+def AssignOp : P4HIR_Op<"assign", [
   TypesMatchWith<"type of 'value' matches object type of 'addr'",
                  "ref", "value",
                  "mlir::cast<ReferenceType>($_self).getObjectType()">/*,
                  DeclareOpInterfaceMethods<PromotableMemOpInterface>*/]> {
 
-  let summary = "Store value to variable";
+  let summary = "Assign value to variable";
   let description = [{
-    `p4hir.store` stores a value (first operand) to the object referenced
+    `p4hir.assign` stores a value (first operand) to the object referenced
     in the second operand.
 
     Example:
 
     ```mlir
     // Store a function argument to local variable, address in %0.
-    p4hir.store %arg0, %0 : !p4hir.bit<32>, !p4hir.ref<!p4hir.bit<32>>
+    p4hir.assign %arg0, %0 : <!p4hir.bit<32>>
     ```
   }];
 
@@ -167,7 +155,7 @@ def StoreOp : P4HIR_Op<"store", [
                            [MemWrite]*/>:$ref);
 
   let assemblyFormat = [{
-    $value `,` $ref attr-dict `:` type($value) `,` qualified(type($ref))
+    $value `,` $ref attr-dict `:` type($ref)
   }];
 
   // FIXME: add verifier.

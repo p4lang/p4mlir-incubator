@@ -2,11 +2,11 @@
 
 action iftest() {
    // CHECK-LABEL: module
-   // CHECK: %[[B:.*]] = p4hir.alloca !p4hir.bool ["b"] : !p4hir.ref<!p4hir.bool>
-   // CHECK: %[[B_VAL:.*]] = p4hir.load %[[B]] : !p4hir.ref<!p4hir.bool>, !p4hir.bool
+   // CHECK: %[[B:.*]] = p4hir.variable ["b"] : <!p4hir.bool>
+   // CHECK: %[[B_VAL:.*]] = p4hir.read %[[B]] : <!p4hir.bool>
    // CHECK: p4hir.if %[[B_VAL]] {
    // CHECK: }
-   // CHECK: %[[B_VAL:.*]] = p4hir.load %0 : !p4hir.ref<!p4hir.bool>, !p4hir.bool
+   // CHECK: %[[B_VAL:.*]] = p4hir.read %[[B]] : <!p4hir.bool>
    // CHECK: %[[NOT_B_VAL:.*]] = p4hir.unary(not, %[[B_VAL]]) : !p4hir.bool
    // CHECK: p4hir.if %[[NOT_B_VAL]] {
    // CHECK: } else {

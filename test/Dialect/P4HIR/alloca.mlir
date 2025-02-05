@@ -5,13 +5,13 @@
 !int64 = !p4hir.int<64>
 
 module  {
-   %0 = p4hir.alloca !bit32 ["tmp"] : !p4hir.ref<!bit32>
-   %1 = p4hir.alloca !int64 ["foo", init] : !p4hir.ref<!int64>
-   %2 = p4hir.alloca !p4hir.infint ["bar"] : !p4hir.ref<!p4hir.infint>
+   %0 = p4hir.variable ["tmp"] : <!bit32>
+   %1 = p4hir.variable ["foo", init] : <!int64>
+   %2 = p4hir.variable ["bar"] : <!p4hir.infint>
 }
 
 // CHECK: module {
-// CHECK-NEXT: p4hir.alloca !p4hir.bit<32> ["tmp"] : !p4hir.ref<!p4hir.bit<32>>
-// CHECK-NEXT: p4hir.alloca !p4hir.int<64> ["foo", init] : !p4hir.ref<!p4hir.int<64>>
-// CHECK-NEXT: p4hir.alloca !p4hir.infint ["bar"] : !p4hir.ref<!p4hir.infint>
+// CHECK-NEXT: p4hir.variable ["tmp"] : <!p4hir.bit<32>>
+// CHECK-NEXT: p4hir.variable ["foo", init] : <!p4hir.int<64>>
+// CHECK-NEXT: p4hir.variable ["bar"] : <!p4hir.infint>
 // CHECK-NEXT: }
