@@ -624,6 +624,11 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
             return AliasResult::FinalAlias;
         }
 
+        if (auto dirAttr = mlir::dyn_cast<P4HIR::ParamDirectionAttr>(attr)) {
+            os << stringifyEnum(dirAttr.getValue());
+            return AliasResult::FinalAlias;
+        }
+
         return AliasResult::NoAlias;
     }
 };
