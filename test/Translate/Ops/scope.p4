@@ -21,10 +21,10 @@ action scope() {
     {
       bit<10> lhs = 1;
       bit<10> rhs = 2;
-      // CHECK: %[[RES_1:.*]] = p4hir.variable ["res"] : <!p4hir.bit<10>>      
+      // CHECK: %[[RES_1:.*]] = p4hir.variable ["res"] : <!b10i>      
       bit<10> res;
       // This should store into inner res, not outer
-      // CHECK: p4hir.assign %{{.*}}, %[[RES_1]] : <!p4hir.bit<10>>
+      // CHECK: p4hir.assign %{{.*}}, %[[RES_1]] : <!b10i>
       res = lhs * rhs;
     }
 }

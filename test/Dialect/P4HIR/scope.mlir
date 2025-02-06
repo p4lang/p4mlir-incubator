@@ -26,8 +26,8 @@ module {
     } : !bit32
     // CHECK: %0 = p4hir.scope {
     //          [...]
-    // CHECK:   p4hir.yield %{{.*}} : !p4hir.bit<32>
-    // CHECK: } : !p4hir.bit<32>
+    // CHECK:   p4hir.yield %{{.*}} : !b32i
+    // CHECK: } : !b32i
   //  p4hir.return
   //}
 

@@ -11,7 +11,7 @@ module  {
 }
 
 // CHECK: module {
-// CHECK-NEXT: p4hir.variable ["tmp"] : <!p4hir.bit<32>>
-// CHECK-NEXT: p4hir.variable ["foo", init] : <!p4hir.int<64>>
-// CHECK-NEXT: p4hir.variable ["bar"] : <!p4hir.infint>
+// CHECK-NEXT: p4hir.variable ["tmp"] : <!b32i>
+// CHECK-NEXT: p4hir.variable ["foo", init] : <!i64i>
+// CHECK-NEXT: p4hir.variable ["bar"] : <!infint>
 // CHECK-NEXT: }

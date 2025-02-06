@@ -18,33 +18,33 @@ action foo() {
 }
 
 // CHECK-LABEL: p4hir.func action @foo()   
-// CHECK:         %[[VAL_0:.*]] = p4hir.const #p4hir.int<255> : !p4hir.bit<32>
-// CHECK:         %[[VAL_1:.*]] = p4hir.variable ["b0", init] : <!p4hir.bit<32>>
-// CHECK:         p4hir.assign %[[VAL_0]], %[[VAL_1]] : <!p4hir.bit<32>>
-// CHECK:         %[[VAL_2:.*]] = p4hir.const #p4hir.int<255> : !p4hir.int<32>
-// CHECK:         %[[VAL_3:.*]] = p4hir.variable ["b2", init] : <!p4hir.int<32>>
-// CHECK:         p4hir.assign %[[VAL_2]], %[[VAL_3]] : <!p4hir.int<32>>
-// CHECK:         %[[VAL_4:.*]] = p4hir.const #p4hir.int<-255> : !p4hir.int<32>
-// CHECK:         %[[VAL_5:.*]] = p4hir.variable ["b3", init] : <!p4hir.int<32>>
-// CHECK:         p4hir.assign %[[VAL_4]], %[[VAL_5]] : <!p4hir.int<32>>
-// CHECK:         %[[VAL_6:.*]] = p4hir.const #p4hir.int<170> : !p4hir.bit<8>
-// CHECK:         %[[VAL_7:.*]] = p4hir.variable ["b4", init] : <!p4hir.bit<8>>
-// CHECK:         p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!p4hir.bit<8>>
-// CHECK:         %[[VAL_8:.*]] = p4hir.const #p4hir.int<170> : !p4hir.bit<8>
-// CHECK:         %[[VAL_9:.*]] = p4hir.variable ["b5", init] : <!p4hir.bit<8>>
-// CHECK:         p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!p4hir.bit<8>>
-// CHECK:         %[[VAL_10:.*]] = p4hir.const #p4hir.int<170> : !p4hir.bit<8>
-// CHECK:         %[[VAL_11:.*]] = p4hir.variable ["b6", init] : <!p4hir.bit<8>>
-// CHECK:         p4hir.assign %[[VAL_10]], %[[VAL_11]] : <!p4hir.bit<8>>
-// CHECK:         %[[VAL_12:.*]] = p4hir.const #p4hir.int<170> : !p4hir.bit<8>
-// CHECK:         %[[VAL_13:.*]] = p4hir.variable ["b7", init] : <!p4hir.bit<8>>
-// CHECK:         p4hir.assign %[[VAL_12]], %[[VAL_13]] : <!p4hir.bit<8>>
-// CHECK:         %[[VAL_14_1:.*]] = p4hir.read %[[VAL_13]] : <!p4hir.bit<8>>
-// CHECK:         %[[VAL_15_1:.*]] = p4hir.cast(%[[VAL_14_1]] : !p4hir.bit<8>) : !p4hir.int<8>
-// CHECK:         %[[VAL_16_1:.*]] = p4hir.variable ["b8", init] : <!p4hir.int<8>>
-// CHECK:         p4hir.assign %[[VAL_15_1]], %[[VAL_16_1]] : <!p4hir.int<8>>
-// CHECK:         %[[VAL_14:.*]] = p4hir.variable ["b9"] : <!p4hir.int<42>>
-// CHECK:         %[[VAL_14_2:.*]] = p4hir.read %[[VAL_16_1]] : <!p4hir.int<8>>
-// CHECK:         %[[VAL_16:.*]] = p4hir.cast(%[[VAL_14_2]] : !p4hir.int<8>) : !p4hir.bit<8>
-// CHECK:         %[[VAL_15:.*]] = p4hir.variable ["b10", init] : <!p4hir.bit<8>>
-// CHECK:         p4hir.assign %[[VAL_16]], %[[VAL_15]] : <!p4hir.bit<8>>
+// CHECK:         %[[VAL_0:.*]] = p4hir.const #int255_b32i
+// CHECK:         %[[VAL_1:.*]] = p4hir.variable ["b0", init] : <!b32i>
+// CHECK:         p4hir.assign %[[VAL_0]], %[[VAL_1]] : <!b32i>
+// CHECK:         %[[VAL_2:.*]] = p4hir.const #int255_i32i
+// CHECK:         %[[VAL_3:.*]] = p4hir.variable ["b2", init] : <!i32i>
+// CHECK:         p4hir.assign %[[VAL_2]], %[[VAL_3]] : <!i32i>
+// CHECK:         %[[VAL_4:.*]] = p4hir.const #int-255_i32i
+// CHECK:         %[[VAL_5:.*]] = p4hir.variable ["b3", init] : <!i32i>
+// CHECK:         p4hir.assign %[[VAL_4]], %[[VAL_5]] : <!i32i>
+// CHECK:         %[[VAL_6:.*]] = p4hir.const #int-86_b8i
+// CHECK:         %[[VAL_7:.*]] = p4hir.variable ["b4", init] : <!b8i>
+// CHECK:         p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!b8i>
+// CHECK:         %[[VAL_8:.*]] = p4hir.const #int-86_b8i
+// CHECK:         %[[VAL_9:.*]] = p4hir.variable ["b5", init] : <!b8i>
+// CHECK:         p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!b8i>
+// CHECK:         %[[VAL_10:.*]] = p4hir.const #int-86_b8i
+// CHECK:         %[[VAL_11:.*]] = p4hir.variable ["b6", init] : <!b8i>
+// CHECK:         p4hir.assign %[[VAL_10]], %[[VAL_11]] : <!b8i>
+// CHECK:         %[[VAL_12:.*]] = p4hir.const #int-86_b8i
+// CHECK:         %[[VAL_13:.*]] = p4hir.variable ["b7", init] : <!b8i>
+// CHECK:         p4hir.assign %[[VAL_12]], %[[VAL_13]] : <!b8i>
+// CHECK:         %[[VAL_14_1:.*]] = p4hir.read %[[VAL_13]] : <!b8i>
+// CHECK:         %[[VAL_15_1:.*]] = p4hir.cast(%[[VAL_14_1]] : !b8i) : !i8i
+// CHECK:         %[[VAL_16_1:.*]] = p4hir.variable ["b8", init] : <!i8i>
+// CHECK:         p4hir.assign %[[VAL_15_1]], %[[VAL_16_1]] : <!i8i>
+// CHECK:         %[[VAL_14:.*]] = p4hir.variable ["b9"] : <!i42i>
+// CHECK:         %[[VAL_14_2:.*]] = p4hir.read %[[VAL_16_1]] : <!i8i>
+// CHECK:         %[[VAL_16:.*]] = p4hir.cast(%[[VAL_14_2]] : !i8i) : !b8i
+// CHECK:         %[[VAL_15:.*]] = p4hir.variable ["b10", init] : <!b8i>
+// CHECK:         p4hir.assign %[[VAL_16]], %[[VAL_15]] : <!b8i>

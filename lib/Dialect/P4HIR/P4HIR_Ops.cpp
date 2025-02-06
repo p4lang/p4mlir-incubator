@@ -47,6 +47,44 @@ LogicalResult P4HIR::ConstOp::verify() {
     return checkConstantTypes(getOperation(), getType(), getValue());
 }
 
+void P4HIR::ConstOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    auto type = getType();
+    if (auto intCst = mlir::dyn_cast<P4HIR::IntAttr>(getValue())) {
+        auto intType = mlir::dyn_cast<P4HIR::BitsType>(type);
+
+        // Build a complex name with the value and type.
+        llvm::SmallString<32> specialNameBuffer;
+        llvm::raw_svector_ostream specialName(specialNameBuffer);
+        specialName << 'c' << intCst.getValue();
+        if (intType) specialName << '_' << intType.getAlias();
+        setNameFn(getResult(), specialName.str());
+    } else if (auto boolCst = mlir::dyn_cast<P4HIR::BoolAttr>(getValue())) {
+        setNameFn(getResult(), boolCst.getValue() ? "true" : "false");
+    } else {
+        setNameFn(getResult(), "cst");
+    }
+}
+
+//===----------------------------------------------------------------------===//
+// CastOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::CastOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "cast");
+}
+
+//===----------------------------------------------------------------------===//
+// ReadOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::ReadOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "val");
+}
+
+//===----------------------------------------------------------------------===//
+// UnaryOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult P4HIR::UnaryOp::verify() {
     switch (getKind()) {
         case P4HIR::UnaryOpKind::Neg:
@@ -58,6 +96,26 @@ LogicalResult P4HIR::UnaryOp::verify() {
     }
 
     llvm_unreachable("Unknown UnaryOp kind?");
+}
+
+void P4HIR::UnaryOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), stringifyEnum(getKind()));
+}
+
+//===----------------------------------------------------------------------===//
+// BinaryOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), stringifyEnum(getKind()));
+}
+
+//===----------------------------------------------------------------------===//
+// CmpOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::CmpOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), stringifyEnum(getKind()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -329,7 +387,7 @@ mlir::LogicalResult P4HIR::ReturnOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// ActionOp
+// FuncOp
 //===----------------------------------------------------------------------===//
 
 // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
@@ -484,6 +542,10 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
     return success();
 }
 
+void P4HIR::CallOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    if (getResult()) setNameFn(getResult(), "call");
+}
+
 LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
     auto fnAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
@@ -523,6 +585,50 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
     return success();
 }
 
+namespace {
+struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
+    using OpAsmDialectInterface::OpAsmDialectInterface;
+
+    AliasResult getAlias(Type type, raw_ostream &os) const final {
+        if (auto infintType = mlir::dyn_cast<P4HIR::InfIntType>(type)) {
+            os << infintType.getAlias();
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(type)) {
+            os << bitsType.getAlias();
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto voidType = mlir::dyn_cast<P4HIR::VoidType>(type)) {
+            os << voidType.getAlias();
+            return AliasResult::OverridableAlias;
+        }
+
+        return AliasResult::NoAlias;
+    }
+
+    AliasResult getAlias(Attribute attr, raw_ostream &os) const final {
+        if (auto boolAttr = mlir::dyn_cast<P4HIR::BoolAttr>(attr)) {
+            os << (boolAttr.getValue() ? "true" : "false");
+            return AliasResult::FinalAlias;
+        }
+
+        if (auto intAttr = mlir::dyn_cast<P4HIR::IntAttr>(attr)) {
+            os << "int" << intAttr.getValue();
+            if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(intAttr.getType()))
+                os << "_" << bitsType.getAlias();
+            else if (auto infintType = mlir::dyn_cast<P4HIR::InfIntType>(intAttr.getType()))
+                os << "_" << infintType.getAlias();
+
+            return AliasResult::FinalAlias;
+        }
+
+        return AliasResult::NoAlias;
+    }
+};
+}  // namespace
+
 void P4HIR::P4HIRDialect::initialize() {
     registerTypes();
     registerAttributes();
@@ -530,6 +636,7 @@ void P4HIR::P4HIRDialect::initialize() {
 #define GET_OP_LIST
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.cpp.inc"  // NOLINT
         >();
+    addInterfaces<P4HIROpAsmDialectInterface>();
 }
 
 #define GET_OP_CLASSES

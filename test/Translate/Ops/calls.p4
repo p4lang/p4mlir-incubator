@@ -26,28 +26,28 @@ action quuz(out int<16> a) {
 
 // CHECK-LABEL: bazz
 action bazz(in int<16> arg1) {
-    // CHECK: p4hir.call @foo(%arg0, %{{.*}}) : (!p4hir.int<16>, !p4hir.bit<10>) -> ()
+    // CHECK: p4hir.call @foo(%arg0, %{{.*}}) : (!i16i, !b10i) -> ()
     foo(arg1, 7);
     bit<10> x1 = 5;
-    // CHECK: p4hir.call @foo(%arg0, %{{.*}}) : (!p4hir.int<16>, !p4hir.bit<10>) -> ()    
+    // CHECK: p4hir.call @foo(%arg0, %{{.*}}) : (!i16i, !b10i) -> ()    
     foo(arg1, x1);
-    // CHECK: p4hir.call @foo(%{{.*}}, %{{.*}}) : (!p4hir.int<16>, !p4hir.bit<10>) -> ()
+    // CHECK: p4hir.call @foo(%{{.*}}, %{{.*}}) : (!i16i, !b10i) -> ()
     foo(4, 2);
     // CHECK: p4hir.call @bar() : () -> ()
     bar();
     // CHECK: p4hir.scope
-    // CHECK: %[[VAR_A:.*]] = p4hir.variable ["a_out"] : <!p4hir.int<16>>
-    // CHECK: p4hir.call @quuz(%[[VAR_A]]) : (!p4hir.ref<!p4hir.int<16>>) -> ()
-    // CHECK: p4hir.read %[[VAR_A]] : <!p4hir.int<16>>
+    // CHECK: %[[VAR_A:.*]] = p4hir.variable ["a_out"] : <!i16i>
+    // CHECK: p4hir.call @quuz(%[[VAR_A]]) : (!p4hir.ref<!i16i>) -> ()
+    // CHECK: p4hir.read %[[VAR_A]] : <!i16i>
     int<16> val;
     quuz(val);
     // CHECK: p4hir.scope
-    // CHECK: %[[VAR_X:.*]] = p4hir.variable ["x_inout", init] : <!p4hir.int<16>>
-    // CHECK: %[[VAL_X:.*]] = p4hir.read %[[VAL:.*]] : <!p4hir.int<16>>
-    // CHECK: p4hir.assign %[[VAL_X]], %[[VAR_X]] : <!p4hir.int<16>>
+    // CHECK: %[[VAR_X:.*]] = p4hir.variable ["x_inout", init] : <!i16i>
+    // CHECK: %[[VAL_X:.*]] = p4hir.read %[[VAL:.*]] : <!i16i>
+    // CHECK: p4hir.assign %[[VAL_X]], %[[VAR_X]] : <!i16i>
     // CHECK: p4hir.call @baz(%[[VAR_X]])
-    // CHECK: %[[OUT_X:.*]] = p4hir.read %[[VAR_X]] : <!p4hir.int<16>>
-    // CHECK: p4hir.assign %[[OUT_X]], %[[VAL]] : <!p4hir.int<16>>
+    // CHECK: %[[OUT_X:.*]] = p4hir.read %[[VAR_X]] : <!i16i>
+    // CHECK: p4hir.assign %[[OUT_X]], %[[VAL]] : <!i16i>
     baz(val);
     return;
 }

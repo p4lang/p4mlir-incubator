@@ -16,10 +16,10 @@ module  {
 }
 
 // CHECK: module {
-// CHECK-NEXT: %[[VAL_0:.*]] = p4hir.variable ["tmp"] : <!p4hir.bit<32>>
-// CHECK-NEXT: %[[VAL_1:.*]] = p4hir.variable ["foo", init] : <!p4hir.int<64>>
-// CHECK-NEXT: p4hir.variable ["bar"] : <!p4hir.infint>
-// CHECK-NEXT: p4hir.read %[[VAL_0]] : <!p4hir.bit<32>>
-// CHECK-NEXT: %[[CONST_0:.*]] = p4hir.const #p4hir.int<65535> : !p4hir.int<64>
-// CHECK-NEXT: p4hir.assign %[[CONST_0]], %[[VAL_1]] : <!p4hir.int<64>>
+// CHECK-NEXT: %[[VAL_0:.*]] = p4hir.variable ["tmp"] : <!b32i>
+// CHECK-NEXT: %[[VAL_1:.*]] = p4hir.variable ["foo", init] : <!i64i>
+// CHECK-NEXT: p4hir.variable ["bar"] : <!infint>
+// CHECK-NEXT: p4hir.read %[[VAL_0]] : <!b32i>
+// CHECK-NEXT: %[[CONST_0:.*]] = p4hir.const #int65535_i64i
+// CHECK-NEXT: p4hir.assign %[[CONST_0]], %[[VAL_1]] : <!i64i>
 // CHECK-NEXT: }

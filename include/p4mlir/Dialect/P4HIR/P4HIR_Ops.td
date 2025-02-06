@@ -26,7 +26,8 @@ class P4HIR_Op<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 def ConstOp : P4HIR_Op<"const",
-    [ConstantLike, Pure, AllTypesMatch<["value", "res"]>]> {
+    [ConstantLike, Pure, AllTypesMatch<["value", "res"]>,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
     let summary = "Defines a P4 constant";
     let description = [{
         The `p4hir.const` operation turns a literal into an SSA value.
@@ -101,8 +102,9 @@ def VariableOp : P4HIR_Op<"variable", [
 def ReadOp : P4HIR_Op<"read", [
   TypesMatchWith<"type of 'result' matches object type of 'ref'",
                  "ref", "result",
-                 "mlir::cast<P4HIR::ReferenceType>($_self).getObjectType()">/*,
-                 DeclareOpInterfaceMethods<PromotableMemOpInterface>*/]> {
+                 "mlir::cast<P4HIR::ReferenceType>($_self).getObjectType()">,/*,
+  DeclareOpInterfaceMethods<PromotableMemOpInterface>*/
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
 
   let summary = "Read value from variable";
   let description = [{
@@ -134,7 +136,7 @@ def ReadOp : P4HIR_Op<"read", [
 def AssignOp : P4HIR_Op<"assign", [
   TypesMatchWith<"type of 'value' matches object type of 'addr'",
                  "ref", "value",
-                 "mlir::cast<ReferenceType>($_self).getObjectType()">/*,
+                 "mlir::cast<ReferenceType>($_self).getObjectType()">,/*,
                  DeclareOpInterfaceMethods<PromotableMemOpInterface>*/]> {
 
   let summary = "Assign value to variable";
@@ -166,7 +168,9 @@ def AssignOp : P4HIR_Op<"assign", [
 // TODO: Add CastOpInterface
 def CastOp : P4HIR_Op<"cast",
              [Pure/*,
-              DeclareOpInterfaceMethods<PromotableOpInterface>*/]> {
+              DeclareOpInterfaceMethods<PromotableOpInterface>*/,
+              DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+              ]> {
   let summary = "Conversion between values of different types";
   let description = [{
     Apply P4 usual conversions rules between values.
@@ -198,7 +202,9 @@ def UnaryOpKind : I32EnumAttr<"UnaryOpKind",
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
 
-def UnaryOp : P4HIR_Op<"unary", [Pure, SameOperandsAndResultType]> {
+def UnaryOp : P4HIR_Op<"unary",
+  [Pure, SameOperandsAndResultType,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Unary operations";
   let description = [{
     `p4hir.unary` performs the unary operation according to
@@ -246,7 +252,8 @@ def BinOpKind : I32EnumAttr<"BinOpKind",
 }
 
 def BinOp : P4HIR_Op<"binop", [Pure,
-  SameTypeOperands, SameOperandsAndResultType]> {
+  SameTypeOperands, SameOperandsAndResultType,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
 
   let summary = "Binary operations (arith and logic)";
   let description = [{
@@ -291,7 +298,9 @@ def CmpOpKind : I32EnumAttr<
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
 
-def CmpOp : P4HIR_Op<"cmp", [Pure, SameTypeOperands]> {
+def CmpOp : P4HIR_Op<"cmp",
+  [Pure, SameTypeOperands,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Compare values two values and produce a boolean result";
   let description = [{
     `p4hir.cmp` compares two input operands of the same type and produces a
@@ -718,7 +727,8 @@ def FuncOp : P4HIR_Op<"func", [
 
 def CallOp : P4HIR_Op<"call",
   [NoRegionArguments, CallOpInterface,
-   DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "call operation";
   let description = [{
     The `call` operation represents a direct call to a method (action, function, etc.) that
@@ -776,7 +786,7 @@ def CallOp : P4HIR_Op<"call",
     operand_iterator arg_operand_end() { return operand_end(); }
 
     /// Return the callee of this operation.
-    ::mlir::CallInterfaceCallable getCallableForCallee() {
+    mlir::CallInterfaceCallable getCallableForCallee() {
       return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
     }
 

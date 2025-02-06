@@ -41,6 +41,10 @@ def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits"> {
 
     static mlir::Type parse(mlir::AsmParser &parser, bool isSigned);
     void print(mlir::AsmPrinter &printer) const;
+
+    std::string getAlias() const {
+      return (isSigned() ? 'i' : 'b') + std::to_string(getWidth()) + 'i';
+    };
   }];
 }
 
@@ -75,6 +79,11 @@ def InfIntType : P4HIR_Type<"InfInt", "infint"> {
   let description = [{
     `p4hir.infint` represents a P4 `int` type.
   }];
+
+  let extraClassDeclaration = [{
+    llvm::StringRef getAlias() const { return "infint"; };
+  }];
+
 }
 
 //===----------------------------------------------------------------------===//
@@ -89,6 +98,10 @@ def BooleanType : P4HIR_Type<"Bool", "bool"> {
   }];
 
   let hasCustomAssemblyFormat = 1;
+  let extraClassDeclaration = [{
+    llvm::StringRef getAlias() const { return "bool"; };
+  }];
+
 }
 
 //===----------------------------------------------------------------------===//
@@ -106,7 +119,7 @@ def VoidType : P4HIR_Type<"Void", "void"> {
     Represents absense of result of actions and methods, or `void` type for functions.
   }];
   let extraClassDeclaration = [{
-    std::string getAlias() const { return "void"; };
+    llvm::StringRef getAlias() const { return "void"; };
   }];
 }
 //===----------------------------------------------------------------------===//
