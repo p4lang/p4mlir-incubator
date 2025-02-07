@@ -163,7 +163,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     mlir::Value getBoolConstant(mlir::Location loc, bool value) {
         auto boolType = P4HIR::BoolType::get(context());
-        return builder.create<P4HIR::ConstOp>(loc, boolType,
+        return builder.create<P4HIR::ConstOp>(loc,
                                               P4HIR::BoolAttr::get(context(), boolType, value));
     }
 
@@ -534,26 +534,20 @@ mlir::TypedAttr P4HIRConverter::resolveConstantExpr(const P4::IR::Expression *ex
 mlir::Value P4HIRConverter::materializeConstantExpr(const P4::IR::Expression *expr) {
     ConversionTracer trace("Materializing constant expression ", expr);
 
-    auto type = getOrCreateType(expr->type);
     auto init = getOrCreateConstantExpr(expr);
     auto loc = getLoc(builder, expr);
 
-    // Hack: type inference sometimes keeps `Type_Unknown` for some constants, in such case
-    // use type from the initializer
-    if (mlir::isa<P4HIR::UnknownType>(type)) type = init.getType();
-
-    auto val = builder.create<P4HIR::ConstOp>(loc, type, init);
+    auto val = builder.create<P4HIR::ConstOp>(loc, init);
     return setValue(expr, val);
 }
 
 bool P4HIRConverter::preorder(const P4::IR::Declaration_Constant *decl) {
     ConversionTracer trace("Converting ", decl);
 
-    auto type = getOrCreateType(decl->type);
     auto init = getOrCreateConstantExpr(decl->initializer);
     auto loc = getLoc(builder, decl);
 
-    auto val = builder.create<P4HIR::ConstOp>(loc, type, init);
+    auto val = builder.create<P4HIR::ConstOp>(loc, init, decl->name.string_view());
     setValue(decl, val);
 
     return false;

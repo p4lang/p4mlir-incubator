@@ -48,6 +48,11 @@ LogicalResult P4HIR::ConstOp::verify() {
 }
 
 void P4HIR::ConstOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    if (getName() && !getName()->empty()) {
+        setNameFn(getResult(), *getName());
+        return;
+    }
+
     auto type = getType();
     if (auto intCst = mlir::dyn_cast<P4HIR::IntAttr>(getValue())) {
         auto intType = mlir::dyn_cast<P4HIR::BitsType>(type);

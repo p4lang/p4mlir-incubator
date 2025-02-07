@@ -37,17 +37,33 @@ def ConstOp : P4HIR_Op<"const",
         Example:
 
         ```mlir
-        %0 = p4hir.const p4hir.int<-128> : !p4hir.int<8>
+        %0 = p4hir.const #p4hir.int<-128> : !p4hir.int<8>
         ```
     }];
 
-    // The constant operation takes an attribute as the only input.
-    let arguments = (ins TypedAttrInterface:$value);
+    // The constant operation takes a constant value (via typed attributes) and
+    // optional name.
+
+    let arguments = (ins TypedAttrInterface:$value, OptionalAttr<StrAttr>:$name);
 
     // The constant operation returns a single value of AnyP4Type.
     let results = (outs AnyP4Type:$res);
 
-    let assemblyFormat = "attr-dict $value";
+    let assemblyFormat = [{
+        (` ` `[` $name^ `]`)? $value attr-dict
+    }];
+
+    // Allow building a ConstantOp with no name, etc.
+    let builders = [
+      OpBuilder<(ins "mlir::TypedAttr":$value), [{
+        build($_builder, $_state, value.getType(), value, {});
+      }]>,
+      OpBuilder<(ins "mlir::TypedAttr":$value, "const llvm::Twine &":$name), [{
+        build($_builder, $_state,
+              value.getType(), value, $_builder.getStringAttr(name));
+      }]>
+
+    ];
 
     let hasVerifier = 1;
 }
@@ -83,11 +99,6 @@ def VariableOp : P4HIR_Op<"variable", [
 
   let results = (outs Res<ReferenceType, ""/*,
                       [MemAlloc<AutomaticAllocationScopeResource>]*/>:$ref);
-
-  //let skipDefaultBuilders = 1;
-  //let builders = [
-  //  OpBuilder<(ins "mlir::Type":$ref, "mlir::Type":$objectType, "const llvm::Twine &":$name)>,
-  //];
 
   let assemblyFormat = [{
     ` ` `[` $name
