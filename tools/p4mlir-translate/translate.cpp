@@ -916,8 +916,9 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                     auto copyIn = b.create<P4HIR::VariableOp>(
                         loc, ref,
                         mlir::StringAttr::get(
-                            context(), llvm::Twine(params[idx]->name.string_view()) +
-                                           (dir == P4::IR::Direction::InOut ? "_inout" : "_out")));
+                            context(),
+                            llvm::Twine(params[idx]->name.string_view()) +
+                                (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
 
                     if (dir == P4::IR::Direction::InOut) {
                         copyIn.setInit(true);

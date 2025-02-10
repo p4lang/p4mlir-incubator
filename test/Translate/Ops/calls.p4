@@ -36,13 +36,13 @@ action bazz(in int<16> arg1) {
     // CHECK: p4hir.call @bar() : () -> ()
     bar();
     // CHECK: p4hir.scope
-    // CHECK: %[[VAR_A:.*]] = p4hir.variable ["a_out"] : <!i16i>
+    // CHECK: %[[VAR_A:.*]] = p4hir.variable ["a_out_arg"] : <!i16i>
     // CHECK: p4hir.call @quuz(%[[VAR_A]]) : (!p4hir.ref<!i16i>) -> ()
     // CHECK: p4hir.read %[[VAR_A]] : <!i16i>
     int<16> val;
     quuz(val);
     // CHECK: p4hir.scope
-    // CHECK: %[[VAR_X:.*]] = p4hir.variable ["x_inout", init] : <!i16i>
+    // CHECK: %[[VAR_X:.*]] = p4hir.variable ["x_inout_arg", init] : <!i16i>
     // CHECK: %[[VAL_X:.*]] = p4hir.read %[[VAL:.*]] : <!i16i>
     // CHECK: p4hir.assign %[[VAL_X]], %[[VAR_X]] : <!i16i>
     // CHECK: p4hir.call @baz(%[[VAR_X]])

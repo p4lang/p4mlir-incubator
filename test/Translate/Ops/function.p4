@@ -44,11 +44,11 @@ action test_param() {
 // CHECK-LABEL: p4hir.func action @test_param() {
 // CHECK:    %[[A:.*]] = p4hir.variable ["a"] : <!b1i>
 // CHECK:    p4hir.scope {
-// CHECK:      %[[X_INOUT:.*]] = p4hir.variable ["x_inout", init] : <!b1i>
+// CHECK:      %[[X_INOUT:.*]] = p4hir.variable ["x_inout_arg", init] : <!b1i>
 // CHECK:      %[[A_VAL:.*]] = p4hir.read %[[A]] : <!b1i>
 // CHECK:      p4hir.assign %[[A_VAL]], %[[X_INOUT]] : <!b1i>
 // CHECK:      %[[G_VAL:.*]] = p4hir.scope {
-// CHECK:        %[[Z_INOUT:.*]] = p4hir.variable ["z_inout", init] : <!b1i>
+// CHECK:        %[[Z_INOUT:.*]] = p4hir.variable ["z_inout_arg", init] : <!b1i>
 // CHECK:        %[[A_VAL2:.*]] = p4hir.read %[[A]] : <!b1i>
 // CHECK:        p4hir.assign %[[A_VAL2]], %[[Z_INOUT]] : <!b1i>
 // CHECK:        %[[G_RES:.*]] = p4hir.call @g(%[[Z_INOUT]]) : (!p4hir.ref<!b1i>) -> !b1i
