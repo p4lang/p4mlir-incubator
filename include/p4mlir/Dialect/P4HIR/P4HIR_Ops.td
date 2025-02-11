@@ -294,6 +294,48 @@ def BinOp : P4HIR_Op<"binop", [Pure,
   let hasVerifier = 0;
 }
 
+def ConcatOp : P4HIR_Op<"concat", [Pure]> {
+
+  let summary = "Concatenation of bit-strings and/or fixed-width signed integers";
+  let description = [{
+    p4hir.concat performs concatenation of bit-strings and/or fixed-width signed integers.
+
+    # TODO: improve description after the exact operation implementation
+
+    The two operands must be either bit<W> or int<W>, and they can be of different signedness and width.
+    The result has the same signedness as the left operand and the width equal to the sum of the two operands' width.
+    In concatenation, the left operand is placed as the most significant bits.
+
+    ```mlir
+    // bit<5> lhs = 3;
+    %0 = p4hir.const #p4hir.int<3> : !p4hir.bit<5>
+    // bit<10> rlhs = 4;
+    %1 = p4hir.const #p4hir.int<4> : !p4hir.bit<10>
+    %2 = p4hir.concat(%0 : !p4hir.bit<5>, %1 : !p4hir.bit<10>) : !p4hir.bit<15>
+    ```
+  }];
+
+  let results = (outs BitsType:$result);
+  let arguments = (ins BitsType:$lhs, BitsType:$rhs);
+
+  // Custom builder to infer the result type with the proper width
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
+      auto lhsBits = lhs.getType().cast<BitsType>();
+      auto rhsBits = rhs.getType().cast<BitsType>();
+      auto resultWidth = lhsBits.getWidth() + rhsBits.getWidth();
+      auto resultType = BitsType::get($_builder.getContext(), resultWidth, lhsBits.isSigned());
+      build($_builder, $_state, resultType, lhs, rhs);
+    }]>
+  ];
+
+  let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
+  }];
+}
+
 def CmpOpKind_LT : I32EnumAttrCase<"Lt", 1, "lt">;
 def CmpOpKind_LE : I32EnumAttrCase<"Le", 2, "le">;
 def CmpOpKind_GT : I32EnumAttrCase<"Gt", 3, "gt">;

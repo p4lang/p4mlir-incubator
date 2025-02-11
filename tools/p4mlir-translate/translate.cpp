@@ -337,6 +337,9 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(BAnd)
     HANDLE_IN_POSTORDER(BXor)
 
+    // Concat
+    HANDLE_IN_POSTORDER(Concat)
+
     // Comparisons
     HANDLE_IN_POSTORDER(Equ)
     HANDLE_IN_POSTORDER(Neq)
@@ -366,6 +369,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
+    mlir::Value emitConcatOp(const P4::IR::Concat *concatop);
     mlir::Value emitCmp(const P4::IR::Operation_Relation *relop, P4HIR::CmpOpKind kind);
 };
 
@@ -588,6 +592,12 @@ mlir::Value P4HIRConverter::emitBinOp(const P4::IR::Operation_Binary *binop,
     return builder.create<P4HIR::BinOp>(getLoc(builder, binop), kind, getValue(binop->left),
                                         getValue(binop->right));
 }
+
+mlir::Value P4HIRConverter::emitConcatOp(const P4::IR::Concat *concatop) {
+    return builder.create<P4HIR::ConcatOp>(getLoc(builder, concatop),
+                                           getValue(concatop->left), getValue(concatop->right));
+}
+
 mlir::Value P4HIRConverter::emitCmp(const P4::IR::Operation_Relation *relop,
                                     P4HIR::CmpOpKind kind) {
     return builder.create<P4HIR::CmpOp>(getLoc(builder, relop), kind, getValue(relop->left),
@@ -625,6 +635,11 @@ CONVERT_BINOP(BAnd, And);
 CONVERT_BINOP(BXor, Xor);
 
 #undef CONVERT_BINOP
+
+void P4HIRConverter::postorder(const P4::IR::Concat *concat) {
+    ConversionTracer trace("Converting ", concat);
+    setValue(concat, emitConcatOp(concat));
+}
 
 #define CONVERT_CMP(Node, Kind)                                \
     void P4HIRConverter::postorder(const P4::IR::Node *node) { \

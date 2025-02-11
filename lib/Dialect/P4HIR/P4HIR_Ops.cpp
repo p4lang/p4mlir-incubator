@@ -116,6 +116,33 @@ void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 }
 
 //===----------------------------------------------------------------------===//
+// ConcatOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult P4HIR::ConcatOp::verify() {
+    auto lhsType = llvm::dyn_cast<BitsType>(getOperand(0).getType());
+    if (lhsType == nullptr)
+      return emitOpError() << "Left-hand side operand for the concat operation must be of BitsType";
+
+    auto rhsType = llvm::dyn_cast<BitsType>(getOperand(1).getType());
+    if (lhsType == nullptr)
+      return emitOpError() << "Right-hand side operand for the concat operation must be of BitsType";
+
+    auto resultType = llvm::dyn_cast<BitsType>(getResult().getType());
+    if (resultType == nullptr)
+      return emitOpError() << "The result of the concat operation must be of BitsType";
+
+    auto expectedWidth = lhsType.getWidth() + rhsType.getWidth();
+    if (resultType.getWidth() != expectedWidth)
+      return emitOpError() << "Result width of the concat operation must be the sum of the operand widths";
+
+    if (resultType.isSigned() != lhsType.isSigned())
+      return emitOpError() << "Resulted signedness of the concat operation must match the signedness of the left-hand side operand";
+
+    return success();
+}
+
+//===----------------------------------------------------------------------===//
 // CmpOp
 //===----------------------------------------------------------------------===//
 
