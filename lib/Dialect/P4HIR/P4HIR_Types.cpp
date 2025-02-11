@@ -2,8 +2,10 @@
 
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 
@@ -348,12 +350,54 @@ void EnumType::print(AsmPrinter &p) const {
     p << ">";
 }
 
-bool EnumType::contains(mlir::StringRef field) { return indexOf(field).has_value(); }
-
 std::optional<size_t> EnumType::indexOf(mlir::StringRef field) {
     for (auto it : llvm::enumerate(getFields()))
         if (mlir::cast<StringAttr>(it.value()).getValue() == field) return it.index();
     return {};
+}
+
+void SerEnumType::print(AsmPrinter &p) const {
+    auto fields = getFields();
+    p << '<';
+    p.printString(getName());
+    p << ", ";
+    p.printType(getType());
+    if (!fields.empty()) p << ", ";
+    llvm::interleaveComma(fields, p, [&](NamedAttribute enumerator) {
+        p.printKeywordOrString(enumerator.getName());
+        p << " : ";
+        p.printAttribute(enumerator.getValue());
+    });
+    p << ">";
+}
+
+Type SerEnumType::parse(AsmParser &p) {
+    std::string name;
+    llvm::SmallVector<NamedAttribute> fields;
+    P4HIR::BitsType type;
+
+    // Parse "<name, type, " part
+    if (p.parseLess() || p.parseKeywordOrString(&name) || p.parseComma() ||
+        p.parseCustomTypeWithFallback<P4HIR::BitsType>(type) || p.parseComma())
+        return {};
+
+    if (p.parseCommaSeparatedList([&]() {
+            StringRef caseName;
+            P4HIR::IntAttr attr;
+            // Parse fields "name : #value"
+            if (p.parseKeyword(&caseName) || p.parseColon() ||
+                p.parseCustomAttributeWithFallback<P4HIR::IntAttr>(attr))
+                return failure();
+
+            fields.emplace_back(StringAttr::get(p.getContext(), caseName), attr);
+            return success();
+        }))
+        return {};
+
+    // Parse closing >
+    if (p.parseGreater()) return {};
+
+    return get(name, type, fields);
 }
 
 void P4HIRDialect::registerTypes() {

@@ -15,6 +15,13 @@
 
 !Suits = !p4hir.enum<"Suits", Clubs, Diamonds, Hearths, Spades>
 
+#b1 = #p4hir.int<1> : !bit42
+#b2 = #p4hir.int<2> : !bit42
+#b3 = #p4hir.int<3> : !bit42
+#b4 = #p4hir.int<4> : !bit42
+
+!SuitsSerializable = !p4hir.ser.enum<"Suits", !bit42, Clubs : #b1, Diamonds : #b2, Hearths : #b3, Spades : #b4>
+
 // No need to check stuff. If it parses, it's fine.
 // CHECK: module
 module {
