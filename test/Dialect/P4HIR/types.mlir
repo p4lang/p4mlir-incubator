@@ -13,6 +13,8 @@
 !struct = !p4hir.struct<"struct_name", boolfield : !p4hir.bool, bitfield : !bit42>
 !nested_struct = !p4hir.struct<"another_name", neststructfield : !struct, bitfield : !bit42>
 
+!Suits = !p4hir.enum<"Suits", Clubs, Diamonds, Hearths, Spades>
+
 // No need to check stuff. If it parses, it's fine.
 // CHECK: module
 module {

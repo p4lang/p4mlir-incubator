@@ -315,6 +315,47 @@ void StructType::getInnerTypes(SmallVectorImpl<Type> &types) {
     for (const auto &field : getElements()) types.push_back(field.type);
 }
 
+Type EnumType::parse(AsmParser &p) {
+    std::string name;
+    llvm::SmallVector<Attribute> fields;
+    bool parsedName = false;
+    if (p.parseCommaSeparatedList(AsmParser::Delimiter::LessGreater, [&]() {
+            // First, try to parse name
+            if (!parsedName) {
+                if (p.parseKeywordOrString(&name)) return failure();
+                parsedName = true;
+                return success();
+            }
+
+            StringRef caseName;
+            if (p.parseKeyword(&caseName)) return failure();
+            fields.push_back(StringAttr::get(p.getContext(), name));
+            return success();
+        }))
+        return {};
+
+    return get(p.getContext(), name, ArrayAttr::get(p.getContext(), fields));
+}
+
+void EnumType::print(AsmPrinter &p) const {
+    auto fields = getFields();
+    p << '<';
+    p.printString(getName());
+    if (!fields.empty()) p << ", ";
+    llvm::interleaveComma(fields, p, [&](Attribute enumerator) {
+        p << mlir::cast<StringAttr>(enumerator).getValue();
+    });
+    p << ">";
+}
+
+bool EnumType::contains(mlir::StringRef field) { return indexOf(field).has_value(); }
+
+std::optional<size_t> EnumType::indexOf(mlir::StringRef field) {
+    for (auto it : llvm::enumerate(getFields()))
+        if (mlir::cast<StringAttr>(it.value()).getValue() == field) return it.index();
+    return {};
+}
+
 void P4HIRDialect::registerTypes() {
     addTypes<
 #define GET_TYPEDEF_LIST

@@ -252,14 +252,41 @@ def StructType : P4HIR_Type<"Struct", "struct", [
 }
 
 //===----------------------------------------------------------------------===//
+// EnumType
+//===----------------------------------------------------------------------===//
+def EnumType : P4HIR_Type<"Enum", "enum", []> {
+  let summary = "enum type";
+  let description = [{
+    Represents an enumeration of values
+    !p4hir.enum<"name", Case1, Case2>
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+
+  let parameters = (
+    ins StringRefParameter<"enum name">:$name, "mlir::ArrayAttr":$fields);
+
+  let extraClassDeclaration = [{
+    /// Returns true if the requested field is part of this enum
+    bool contains(mlir::StringRef field);
+
+    /// Returns the index of the requested field, or a nullopt if the field is
+    // not part of this enum.
+    std::optional<size_t> indexOf(mlir::StringRef field);
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
 def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StructType,
+                           EnumType,
                            DontcareType, ErrorType, UnknownType]> {}
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
-def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StructType]> {}
+def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StructType, EnumType]> {}
 
 /// A ref type with the specified constraints on the nested type.
 class SpecificRefType<Type type> : ConfinedType<ReferenceType,

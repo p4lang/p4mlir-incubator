@@ -87,6 +87,34 @@ def P4HIR_AggAttr : P4HIR_Attr<"Agg", "aggregate", [TypedAttrInterface]> {
 
 }
 
+//===----------------------------------------------------------------------===//
+// EnumFieldAttr
+//===----------------------------------------------------------------------===//
+// An attribute to indicate an enumeration value.
+def P4HIR_EnumFieldAttr : P4HIR_Attr<"EnumField", "enum.field", [TypedAttrInterface]> {
+ let summary = "Enumeration field attribute";
+  let description = [{
+    This attribute represents a field of an enumeration.
+
+    Examples:
+    ```mlir
+      #p4hir.enum.field<A, !p4hir.enum<"name", A, B, C>> : !p4hir.enum<"name", A, B, C>
+    ```
+  }];
+  let parameters = (ins AttributeSelfTypeParameter<"">:$type, "::mlir::StringAttr":$field);
+
+  // Force all clients to go through custom builder so we can check
+  // whether the requested enum value is part of the provided enum type.
+  let skipDefaultBuilders = 1;
+  let hasCustomAssemblyFormat = 1;
+
+  let builders = [
+    AttrBuilderWithInferredContext<(ins "mlir::Type":$type, "mlir::StringAttr": $value)>,
+    AttrBuilderWithInferredContext<(ins "mlir::Type":$type, "mlir::StringRef": $value), [{
+      return $_get(type.getContext(), type, mlir::StringAttr::get(type.getContext(), value));
+    }]>
+  ];
+}
 
 //===----------------------------------------------------------------------===//
 // ParamDirAttr

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <climits>
 
+#include "ir/ir-generated.h"
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -132,7 +134,8 @@ class P4TypeConverter : public P4::Inspector {
     bool preorder(const P4::IR::Type_Action *act) override;
     bool preorder(const P4::IR::Type_Method *m) override;
     bool preorder(const P4::IR::Type_Void *v) override;
-    bool preorder(const P4::IR::Type_Struct *v) override;
+    bool preorder(const P4::IR::Type_Struct *s) override;
+    bool preorder(const P4::IR::Type_Enum *e) override;
 
     mlir::Type getType() const { return type; }
     bool setType(const P4::IR::Type *type, mlir::Type mlirType);
@@ -353,9 +356,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(Cast)
     HANDLE_IN_POSTORDER(Declaration_Variable)
     HANDLE_IN_POSTORDER(ReturnStatement)
-    HANDLE_IN_POSTORDER(Member)
 
 #undef HANDLE_IN_POSTORDER
+
+    void postorder(const P4::IR::Member *m) override;
 
     bool preorder(const P4::IR::Declaration_Constant *decl) override;
     bool preorder(const P4::IR::AssignmentStatement *assign) override;
@@ -370,6 +374,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::MethodCallExpression *mce) override;
     bool preorder(const P4::IR::StructExpression *str) override;
+    bool preorder(const P4::IR::Member *m) override;
 
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
@@ -479,6 +484,19 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Struct *type) {
     return setType(type, mlirType);
 }
 
+bool P4TypeConverter::preorder(const P4::IR::Type_Enum *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    llvm::SmallVector<mlir::Attribute, 4> fields;
+    for (const auto *field : type->members) {
+        fields.push_back(mlir::StringAttr::get(converter.context(), field->name.string_view()));
+    }
+    auto mlirType = P4HIR::EnumType::get(converter.context(), type->name.string_view(),
+                                         mlir::ArrayAttr::get(converter.context(), fields));
+    return setType(type, mlirType);
+}
+
 bool P4TypeConverter::setType(const P4::IR::Type *type, mlir::Type mlirType) {
     this->type = mlirType;
     converter.setType(type, mlirType);
@@ -585,6 +603,12 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
         return setConstantExpr(expr, P4HIR::AggAttr::get(type, builder.getArrayAttr(fields)));
     }
     if (const auto *m = expr->to<P4::IR::Member>()) {
+        if (const auto *typeNameExpr = m->expr->to<P4::IR::TypeNameExpression>()) {
+            auto baseType = mlir::cast<P4HIR::EnumType>(getOrCreateType(typeNameExpr->typeName));
+            return setConstantExpr(expr,
+                                   P4HIR::EnumFieldAttr::get(baseType, m->member.string_view()));
+        }
+
         auto base = mlir::cast<P4HIR::AggAttr>(getOrCreateConstantExpr(m->expr));
         auto structType = mlir::cast<P4HIR::StructType>(base.getType());
 
@@ -999,8 +1023,9 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                     auto ref = resolveReference(arg->expression);
                     auto copyIn = b.create<P4HIR::VariableOp>(
                         loc, ref.getType(),
-                        b.getStringAttr(llvm::Twine(params[idx]->name.string_view()) +
-                                        (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
+                        b.getStringAttr(
+                            llvm::Twine(params[idx]->name.string_view()) +
+                            (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
 
                     if (dir == P4::IR::Direction::InOut) {
                         copyIn.setInit(true);
@@ -1070,6 +1095,21 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
 
     return false;
 }
+
+bool P4HIRConverter::preorder(const P4::IR::Member *m) {
+    // This is just enum constant
+    if (const auto *typeNameExpr = m->expr->to<P4::IR::TypeNameExpression>()) {
+        auto enumType = mlir::cast<P4HIR::EnumType>(getOrCreateType(typeNameExpr->typeName));
+        setValue(m, builder.create<P4HIR::ConstOp>(
+                        getLoc(builder, m),
+                        P4HIR::EnumFieldAttr::get(enumType, m->member.name.string_view())));
+        return false;
+    }
+
+    // Handle other members in postorder traversal
+    return true;
+}
+
 void P4HIRConverter::postorder(const P4::IR::Member *m) {
     // Resolve member rvalue expression to something we can reason about
     // TODO: Likely we can do similar things for the majority of struct-like
