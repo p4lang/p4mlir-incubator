@@ -1,6 +1,7 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"

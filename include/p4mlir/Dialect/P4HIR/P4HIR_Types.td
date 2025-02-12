@@ -310,6 +310,24 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", []> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// ValidType: type used to represent validity bit in headers. We explicitly
+// want it to be distinct from bool type to ensure we can always identify it
+// by the type.
+//===----------------------------------------------------------------------===//
+
+def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit"> {
+  let summary = "Valid bit type";
+  let description = [{
+    `p4hir.valid.bit` represents valid bit in headers.
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+  let extraClassDeclaration = [{
+    llvm::StringRef getAlias() const { return "validity"; };
+  }];
+
+}
 
 //===----------------------------------------------------------------------===//
 // P4HIR type constraints.

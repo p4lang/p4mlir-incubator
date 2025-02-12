@@ -22,6 +22,11 @@
 
 !SuitsSerializable = !p4hir.ser_enum<"Suits", !bit42, Clubs : #b1, Diamonds : #b2, Hearths : #b3, Spades : #b4>
 
+!validity = !p4hir.validity.bit
+
+#valid = #p4hir<validity.bit valid>
+#invalid = #p4hir<validity.bit invalid>
+
 // No need to check stuff. If it parses, it's fine.
 // CHECK: module
 module {

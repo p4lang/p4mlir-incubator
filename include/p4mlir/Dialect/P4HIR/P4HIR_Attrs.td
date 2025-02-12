@@ -117,6 +117,22 @@ def P4HIR_EnumFieldAttr : P4HIR_Attr<"EnumField", "enum_field", [TypedAttrInterf
 }
 
 //===----------------------------------------------------------------------===//
+// ValidAttr
+//===----------------------------------------------------------------------===//
+
+def ValidityBit_Invalid: I32BitEnumAttrCaseNone<"Invalid", "invalid">;
+def ValidityBit_Valid  : I32BitEnumAttrCaseBit<"Valid", 0, "valid">;
+
+def ValidityBit : I32BitEnumAttr<
+    "ValidityBit",
+    "validity of a header",
+    [ValidityBit_Invalid, ValidityBit_Valid]> {
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+  let genSpecializedAttr = 0;
+}
+def ValidityBitAttr : EnumAttr<P4HIR_Dialect, ValidityBit, "validity.bit">;
+
+//===----------------------------------------------------------------------===//
 // ParamDirAttr
 //===----------------------------------------------------------------------===//
 

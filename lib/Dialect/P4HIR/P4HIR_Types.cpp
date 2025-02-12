@@ -400,6 +400,10 @@ Type SerEnumType::parse(AsmParser &p) {
     return get(name, type, fields);
 }
 
+Type ValidBitType::parse(mlir::AsmParser &parser) { return get(parser.getContext()); }
+
+void ValidBitType::print(mlir::AsmPrinter &printer) const {}
+
 void P4HIRDialect::registerTypes() {
     addTypes<
 #define GET_TYPEDEF_LIST
