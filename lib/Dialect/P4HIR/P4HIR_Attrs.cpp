@@ -92,6 +92,36 @@ LogicalResult IntAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type
     return success();
 }
 
+Attribute EnumFieldAttr::parse(AsmParser &p, Type) {
+    StringRef field;
+    P4HIR::EnumType type;
+    if (p.parseLess() || p.parseKeyword(&field) || p.parseComma() ||
+        p.parseCustomTypeWithFallback<P4HIR::EnumType>(type) || p.parseGreater())
+        return {};
+
+    return EnumFieldAttr::get(type, field);
+}
+
+void EnumFieldAttr::print(AsmPrinter &p) const {
+    p << "<" << getField().getValue() << ", ";
+    p.printType(getType());
+    p << ">";
+}
+
+EnumFieldAttr EnumFieldAttr::get(mlir::Type type, StringAttr value) {
+    EnumType enumType = llvm::dyn_cast<EnumType>(type);
+    if (!enumType) return nullptr;
+
+    // Check whether the provided value is a member of the enum type.
+    if (!enumType.contains(value.getValue())) {
+        //    emitError() << "enum value '" << value.getValue()
+        //                   << "' is not a member of enum type " << enumType;
+        return nullptr;
+    }
+
+    return Base::get(value.getContext(), type, value);
+}
+
 void P4HIRDialect::registerAttributes() {
     addAttributes<
 #define GET_ATTRDEF_LIST

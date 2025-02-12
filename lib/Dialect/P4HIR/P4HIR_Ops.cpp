@@ -43,6 +43,13 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
         return success();
     }
 
+    if (mlir::isa<P4HIR::EnumFieldAttr>(attrType)) {
+        if (!mlir::isa<P4HIR::EnumType, P4HIR::SerEnumType>(opType))
+            return op->emitOpError("result type (") << opType << ") is not an enum type";
+
+        return success();
+    }
+
     assert(isa<TypedAttr>(attrType) && "expected typed attribute");
     return op->emitOpError("constant with type ")
            << cast<TypedAttr>(attrType).getType() << " not supported";
@@ -73,6 +80,17 @@ void P4HIR::ConstOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
         setNameFn(getResult(), specialName.str());
     } else if (auto boolCst = mlir::dyn_cast<P4HIR::BoolAttr>(getValue())) {
         setNameFn(getResult(), boolCst.getValue() ? "true" : "false");
+    } else if (auto enumCst = mlir::dyn_cast<P4HIR::EnumFieldAttr>(getValue())) {
+        llvm::SmallString<32> specialNameBuffer;
+        llvm::raw_svector_ostream specialName(specialNameBuffer);
+        if (auto enumType = mlir::dyn_cast<P4HIR::EnumType>(enumCst.getType()))
+            specialName << enumType.getName() << '_' << enumCst.getField().getValue();
+        else {
+            specialName << mlir::cast<P4HIR::SerEnumType>(enumCst.getType()).getName() << '_'
+                        << enumCst.getField().getValue();
+        }
+
+        setNameFn(getResult(), specialName.str());
     } else {
         setNameFn(getResult(), "cst");
     }
@@ -838,6 +856,16 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
             return AliasResult::OverridableAlias;
         }
 
+        if (auto enumType = mlir::dyn_cast<P4HIR::EnumType>(type)) {
+            os << enumType.getName();
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(type)) {
+            os << serEnumType.getName();
+            return AliasResult::OverridableAlias;
+        }
+
         return AliasResult::NoAlias;
     }
 
@@ -859,6 +887,16 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
 
         if (auto dirAttr = mlir::dyn_cast<P4HIR::ParamDirectionAttr>(attr)) {
             os << stringifyEnum(dirAttr.getValue());
+            return AliasResult::FinalAlias;
+        }
+
+        if (auto enumFieldAttr = mlir::dyn_cast<P4HIR::EnumFieldAttr>(attr)) {
+            if (auto enumType = mlir::dyn_cast<P4HIR::EnumType>(enumFieldAttr.getType()))
+                os << enumType.getName() << "_" << enumFieldAttr.getField().getValue();
+            else
+                os << mlir::cast<P4HIR::SerEnumType>(enumFieldAttr.getType()).getName() << "_"
+                   << enumFieldAttr.getField().getValue();
+
             return AliasResult::FinalAlias;
         }
 

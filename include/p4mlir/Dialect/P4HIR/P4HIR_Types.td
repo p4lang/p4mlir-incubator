@@ -252,13 +252,76 @@ def StructType : P4HIR_Type<"Struct", "struct", [
 }
 
 //===----------------------------------------------------------------------===//
+// EnumType & SerEnumType
+//===----------------------------------------------------------------------===//
+def EnumType : P4HIR_Type<"Enum", "enum", []> {
+  let summary = "enum type";
+  let description = [{
+    Represents an enumeration of values
+    !p4hir.enum<"name", Case1, Case2>
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+
+  let parameters = (ins StringRefParameter<"enum name">:$name,
+                        "mlir::ArrayAttr":$fields);
+
+  let extraClassDeclaration = [{
+    /// Returns true if the requested field is part of this enum
+    bool contains(mlir::StringRef field) { return indexOf(field).has_value(); }
+
+    /// Returns the index of the requested field, or a nullopt if the field is
+    /// not part of this enum.
+    std::optional<size_t> indexOf(mlir::StringRef field);
+  }];
+}
+
+def SerEnumType : P4HIR_Type<"SerEnum", "ser.enum", []> {
+  let summary = "serializable enum type";
+  let description = [{
+    Represents an enumeration of values backed by some integer value
+    !p4hir.ser.enum<"name", !p4hir.bit<32>, Case1 : 42, Case2 : 0>
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+
+  let parameters = (ins StringRefParameter<"enum name">:$name,
+                        "P4HIR::BitsType":$type, "mlir::DictionaryAttr":$fields);
+
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "llvm::StringRef":$name,
+                        "P4HIR::BitsType":$type, "mlir::DictionaryAttr":$fields), [{
+      return $_get(type.getContext(), name, type, fields);
+    }]>,
+    TypeBuilderWithInferredContext<(ins "llvm::StringRef":$name,
+                        "P4HIR::BitsType":$type, "llvm::ArrayRef<mlir::NamedAttribute>":$fields), [{
+      return $_get(type.getContext(), name, type,
+                   DictionaryAttr::get(type.getContext(), fields));
+    }]>
+
+  ];
+
+  let extraClassDeclaration = [{
+    /// Returns true if the requested field is part of this enum
+    bool contains(mlir::StringRef field) { return getFields().contains(field); }
+
+    /// Returns the underlying value of the requested field. Must be BitsAttr.
+    mlir::Attribute valueOf(mlir::StringRef field) { return getFields().get(field); }
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
 def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StructType,
+                           EnumType, SerEnumType,
                            DontcareType, ErrorType, UnknownType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
-def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StructType]> {}
+def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StructType,
+                                EnumType, SerEnumType]> {}
+def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 
 /// A ref type with the specified constraints on the nested type.
 class SpecificRefType<Type type> : ConfinedType<ReferenceType,
