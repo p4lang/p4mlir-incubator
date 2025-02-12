@@ -14,3 +14,11 @@ mlir_tablegen(P4HIR_Attrs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=p4hir)
 
 add_public_tablegen_target(P4MLIR_P4HIR_IncGen)
 add_dependencies(mlir-headers P4MLIR_P4HIR_IncGen)
+
+set(LLVM_TARGET_DEFINITIONS P4HIR_TypeInterfaces.td)
+mlir_tablegen(P4HIR_TypeInterfaces.h.inc -gen-type-interface-decls)
+mlir_tablegen(P4HIR_TypeInterfaces.cpp.inc -gen-type-interface-defs)
+
+add_public_tablegen_target(P4MLIR_P4HIR_TypeInterfacesIncGen)
+add_dependencies(mlir-headers P4MLIR_P4HIR_TypeInterfacesIncGen)
+

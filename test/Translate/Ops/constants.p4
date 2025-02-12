@@ -20,8 +20,6 @@ const int<32> btwotwo = (int<32>)btwo;
 const bit<32> btwothree = (bit<32>)btwotwo;
 const bit<6>  btwofour = (bit<6>)(bit<32>)(int<32>)btwo;
 
-// TODO: Support constant structs
-/*
 struct S {
     bit<32> a;
     bit<32> b;
@@ -39,7 +37,6 @@ const T zz = {
     { 32w0, 32w1 },
     { 32w2, 32w3 }
 };
-*/
 
 const bit<32> x = 32w0;
 const bit<32> x1 = ~32w0;
@@ -122,9 +119,10 @@ const int<1> szz3 = (int<1>) szz2[0:0];
 // CHECK: #[[$ATTR_23:.+]] = #p4hir.int<2> : !b6i
 // CHECK: #[[$ATTR_24:.+]] = #p4hir.int<2> : !i32i
 // CHECK: #[[$ATTR_25:.+]] = #p4hir.int<2> : !i8i
-// CHECK: #[[$ATTR_26:.+]] = #p4hir.int<5> : !b4i
-// CHECK: #[[$ATTR_27:.+]] = #p4hir.int<5> : !b7i
-// CHECK: #[[$ATTR_28:.+]] = #p4hir.int<5> : !infint
+// CHECK: #[[$ATTR_26:.+]] = #p4hir.int<3> : !b32i
+// CHECK: #[[$ATTR_27:.+]] = #p4hir.int<5> : !b4i
+// CHECK: #[[$ATTR_28:.+]] = #p4hir.int<5> : !b7i
+// CHECK: #[[$ATTR_29:.+]] = #p4hir.int<5> : !infint
 
 // CHECK-LABEL:   module
 // CHECK-NEXT:    %[[VAL_0:.*]] = p4hir.const ["bzero"] #[[$ATTR_14]]
@@ -139,48 +137,51 @@ const int<1> szz3 = (int<1>) szz2[0:0];
 // CHECK:         %[[VAL_9:.*]] = p4hir.const ["btwotwo"] #[[$ATTR_24]]
 // CHECK:         %[[VAL_10:.*]] = p4hir.const ["btwothree"] #[[$ATTR_22]]
 // CHECK:         %[[VAL_11:.*]] = p4hir.const ["btwofour"] #[[$ATTR_23]]
-// CHECK:         %[[VAL_12:.*]] = p4hir.const ["x"] #[[$ATTR_14]]
-// CHECK:         %[[VAL_13:.*]] = p4hir.const ["x1"] #[[$ATTR_4]]
-// CHECK:         %[[VAL_14:.*]] = p4hir.const ["izero"] #[[$ATTR_17]]
-// CHECK:         %[[VAL_15:.*]] = p4hir.const ["fa"] #[[$ATTR_26]]
-// CHECK:         %[[VAL_16:.*]] = p4hir.const ["fb"] #[[$ATTR_28]]
-// CHECK:         %[[VAL_17:.*]] = p4hir.const ["fc"] #[[$ATTR_27]]
-// CHECK:         %[[VAL_18:.*]] = p4hir.const ["fd"] #[[$ATTR_7]]
-// CHECK:         %[[VAL_19:.*]] = p4hir.const ["fe"] #[[$ATTR_10]]
-// CHECK:         %[[VAL_20:.*]] = p4hir.const ["ff"] #[[$ATTR_5]]
-// CHECK:         %[[VAL_21:.*]] = p4hir.const ["fg"] #[[$ATTR_8]]
-// CHECK:         %[[VAL_22:.*]] = p4hir.const ["fh"] #[[$ATTR_10]]
-// CHECK:         %[[VAL_23:.*]] = p4hir.const ["sa"] #[[$ATTR_18]]
-// CHECK:         %[[VAL_24:.*]] = p4hir.const ["sb"] #[[$ATTR_9]]
-// CHECK:         %[[VAL_25:.*]] = p4hir.const ["sc"] #[[$ATTR_12]]
-// CHECK:         %[[VAL_26:.*]] = p4hir.const ["sd"] #[[$ATTR_2]]
-// CHECK:         %[[VAL_27:.*]] = p4hir.const ["se"] #[[$ATTR_3]]
-// CHECK:         %[[VAL_28:.*]] = p4hir.const ["sf"] #[[$ATTR_19]]
-// CHECK:         %[[VAL_29:.*]] = p4hir.const ["sg"] #[[$ATTR_21]]
-// CHECK:         %[[VAL_30:.*]] = p4hir.const ["sh"] #[[$ATTR_18]]
-// CHECK:         %[[VAL_31:.*]] = p4hir.const ["si"] #[[$ATTR_21]]
-// CHECK:         %[[VAL_32:.*]] = p4hir.const ["sj"] #[[$ATTR_25]]
-// CHECK:         %[[VAL_33:.*]] = p4hir.const ["sk"] #[[$ATTR_19]]
-// CHECK:         %[[VAL_34:.*]] = p4hir.const ["sl"] #[[$ATTR_3]]
-// CHECK:         %[[VAL_35:.*]] = p4hir.const ["sm"] #[[$ATTR_2]]
-// CHECK:         %[[VAL_36:.*]] = p4hir.const ["sn"] #[[$ATTR_9]]
-// CHECK:         %[[VAL_37:.*]] = p4hir.const ["so"] #[[$ATTR_18]]
-// CHECK:         %[[VAL_38:.*]] = p4hir.const ["sa0"] #[[$ATTR_18]]
-// CHECK:         %[[VAL_39:.*]] = p4hir.const ["sb0"] #[[$ATTR_9]]
-// CHECK:         %[[VAL_40:.*]] = p4hir.const ["sc0"] #[[$ATTR_12]]
-// CHECK:         %[[VAL_41:.*]] = p4hir.const ["sd0"] #[[$ATTR_2]]
-// CHECK:         %[[VAL_42:.*]] = p4hir.const ["se0"] #[[$ATTR_3]]
-// CHECK:         %[[VAL_43:.*]] = p4hir.const ["sf0"] #[[$ATTR_19]]
-// CHECK:         %[[VAL_44:.*]] = p4hir.const ["sg0"] #[[$ATTR_21]]
-// CHECK:         %[[VAL_45:.*]] = p4hir.const ["sh0"] #[[$ATTR_18]]
-// CHECK:         %[[VAL_46:.*]] = p4hir.const ["si0"] #[[$ATTR_21]]
-// CHECK:         %[[VAL_47:.*]] = p4hir.const ["sj0"] #[[$ATTR_25]]
-// CHECK:         %[[VAL_48:.*]] = p4hir.const ["sk0"] #[[$ATTR_19]]
-// CHECK:         %[[VAL_49:.*]] = p4hir.const ["sl0"] #[[$ATTR_3]]
-// CHECK:         %[[VAL_50:.*]] = p4hir.const ["sm0"] #[[$ATTR_2]]
-// CHECK:         %[[VAL_51:.*]] = p4hir.const ["sn0"] #[[$ATTR_9]]
-// CHECK:         %[[VAL_52:.*]] = p4hir.const ["so0"] #[[$ATTR_18]]
-// CHECK:         %[[VAL_53:.*]] = p4hir.const ["szz0"] #[[$ATTR_16]]
-// CHECK:         %[[VAL_54:.*]] = p4hir.const ["szz1"] #[[$ATTR_6]]
-// CHECK:         %[[VAL_55:.*]] = p4hir.const ["szz2"] #[[$ATTR_11]]
-// CHECK:         %[[VAL_56:.*]] = p4hir.const ["szz3"] #[[$ATTR_16]]
+// CHECK:         %[[VAL_12:.*]] = p4hir.const ["v"] #p4hir.aggregate<[#[[$ATTR_26]], #[[$ATTR_20]]]> : !S
+// CHECK:         %[[VAL_13:.*]] = p4hir.const ["zz"] #p4hir.aggregate<[#p4hir.aggregate<[#[[$ATTR_14]], #[[$ATTR_20]]]> : !S, #p4hir.aggregate<[#[[$ATTR_22]], #[[$ATTR_26]]]> : !S]> : !T
+// CHECK:         %[[VAL_14:.*]] = p4hir.const ["x"] #[[$ATTR_14]]
+// CHECK:         %[[VAL_15:.*]] = p4hir.const ["x1"] #[[$ATTR_4]]
+// CHECK:         %[[VAL_16:.*]] = p4hir.const ["izero"] #[[$ATTR_17]]
+// CHECK:         %[[VAL_17:.*]] = p4hir.const ["fa"] #[[$ATTR_27]]
+// CHECK:         %[[VAL_18:.*]] = p4hir.const ["fb"] #[[$ATTR_29]]
+// CHECK:         %[[VAL_19:.*]] = p4hir.const ["fc"] #[[$ATTR_28]]
+// CHECK:         %[[VAL_20:.*]] = p4hir.const ["fd"] #[[$ATTR_7]]
+// CHECK:         %[[VAL_21:.*]] = p4hir.const ["fe"] #[[$ATTR_10]]
+// CHECK:         %[[VAL_22:.*]] = p4hir.const ["ff"] #[[$ATTR_5]]
+// CHECK:         %[[VAL_23:.*]] = p4hir.const ["fg"] #[[$ATTR_8]]
+// CHECK:         %[[VAL_24:.*]] = p4hir.const ["fh"] #[[$ATTR_10]]
+// CHECK:         %[[VAL_25:.*]] = p4hir.const ["sa"] #[[$ATTR_18]]
+// CHECK:         %[[VAL_26:.*]] = p4hir.const ["sb"] #[[$ATTR_9]]
+// CHECK:         %[[VAL_27:.*]] = p4hir.const ["sc"] #[[$ATTR_12]]
+// CHECK:         %[[VAL_28:.*]] = p4hir.const ["sd"] #[[$ATTR_2]]
+// CHECK:         %[[VAL_29:.*]] = p4hir.const ["se"] #[[$ATTR_3]]
+// CHECK:         %[[VAL_30:.*]] = p4hir.const ["sf"] #[[$ATTR_19]]
+// CHECK:         %[[VAL_31:.*]] = p4hir.const ["sg"] #[[$ATTR_21]]
+// CHECK:         %[[VAL_32:.*]] = p4hir.const ["sh"] #[[$ATTR_18]]
+// CHECK:         %[[VAL_33:.*]] = p4hir.const ["si"] #[[$ATTR_21]]
+// CHECK:         %[[VAL_34:.*]] = p4hir.const ["sj"] #[[$ATTR_25]]
+// CHECK:         %[[VAL_35:.*]] = p4hir.const ["sk"] #[[$ATTR_19]]
+// CHECK:         %[[VAL_36:.*]] = p4hir.const ["sl"] #[[$ATTR_3]]
+// CHECK:         %[[VAL_37:.*]] = p4hir.const ["sm"] #[[$ATTR_2]]
+// CHECK:         %[[VAL_38:.*]] = p4hir.const ["sn"] #[[$ATTR_9]]
+// CHECK:         %[[VAL_39:.*]] = p4hir.const ["so"] #[[$ATTR_18]]
+// CHECK:         %[[VAL_40:.*]] = p4hir.const ["sa0"] #[[$ATTR_18]]
+// CHECK:         %[[VAL_41:.*]] = p4hir.const ["sb0"] #[[$ATTR_9]]
+// CHECK:         %[[VAL_42:.*]] = p4hir.const ["sc0"] #[[$ATTR_12]]
+// CHECK:         %[[VAL_43:.*]] = p4hir.const ["sd0"] #[[$ATTR_2]]
+// CHECK:         %[[VAL_44:.*]] = p4hir.const ["se0"] #[[$ATTR_3]]
+// CHECK:         %[[VAL_45:.*]] = p4hir.const ["sf0"] #[[$ATTR_19]]
+// CHECK:         %[[VAL_46:.*]] = p4hir.const ["sg0"] #[[$ATTR_21]]
+// CHECK:         %[[VAL_47:.*]] = p4hir.const ["sh0"] #[[$ATTR_18]]
+// CHECK:         %[[VAL_48:.*]] = p4hir.const ["si0"] #[[$ATTR_21]]
+// CHECK:         %[[VAL_49:.*]] = p4hir.const ["sj0"] #[[$ATTR_25]]
+// CHECK:         %[[VAL_50:.*]] = p4hir.const ["sk0"] #[[$ATTR_19]]
+// CHECK:         %[[VAL_51:.*]] = p4hir.const ["sl0"] #[[$ATTR_3]]
+// CHECK:         %[[VAL_52:.*]] = p4hir.const ["sm0"] #[[$ATTR_2]]
+// CHECK:         %[[VAL_53:.*]] = p4hir.const ["sn0"] #[[$ATTR_9]]
+// CHECK:         %[[VAL_54:.*]] = p4hir.const ["so0"] #[[$ATTR_18]]
+// CHECK:         %[[VAL_55:.*]] = p4hir.const ["szz0"] #[[$ATTR_16]]
+// CHECK:         %[[VAL_56:.*]] = p4hir.const ["szz1"] #[[$ATTR_6]]
+// CHECK:         %[[VAL_57:.*]] = p4hir.const ["szz2"] #[[$ATTR_11]]
+// CHECK:         %[[VAL_58:.*]] = p4hir.const ["szz3"] #[[$ATTR_16]]
+

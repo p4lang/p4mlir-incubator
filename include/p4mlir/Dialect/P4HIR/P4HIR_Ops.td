@@ -857,4 +857,98 @@ def CallOp : P4HIR_Op<"call",
   }];
 }
 
+def StructOp : P4HIR_Op<"struct",
+  [Pure,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "Create a struct from constituent parts.";
+  // FIXME: Better constraint type
+  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let results = (outs StructType:$result);
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+def StructExtractOp : P4HIR_Op<"struct_extract",
+    [Pure,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
+  let summary = "Extract a named field from a struct.";
+  let description = [{
+    ```
+    %result = p4hir.struct_extract %input["field"] : !p4hir.struct<field: type>
+    TODO: Support the nested extractions
+    %result2 = p4hir.struct_extract %input["field1", "field2"] : !p4hir.struct<field1: !p4hir.struct<field2: type>>
+
+    ```
+  }];
+
+  let arguments = (ins StructType:$input, I32Attr:$fieldIndex);
+  // FIXME: Better constraint type
+  let results = (outs AnyP4Type:$result);
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$input, "StructType::FieldInfo":$field)>,
+    OpBuilder<(ins "mlir::Value":$input, "mlir::StringAttr":$fieldName)>,
+    OpBuilder<(ins "mlir::Value":$input, "llvm::StringRef":$fieldName), [{
+      build($_builder, $_state, input, $_builder.getStringAttr(fieldName));
+    }]>
+  ];
+
+  let extraClassDeclaration = [{
+    /// Return the name attribute of the accessed field.
+    mlir::StringAttr getFieldNameAttr() {
+      StructType type = getInput().getType();
+      return type.getElements()[getFieldIndex()].name;
+    }
+
+    /// Return the name of the accessed field.
+    llvm::StringRef getFieldName() {
+      return getFieldNameAttr().getValue();
+    }
+  }];
+}
+
+def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
+    [Pure,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
+  let summary = "Project from a struct reference to a reference to a named struct field";
+  let description = [{
+    ```
+    %result = p4hir.struct_extract_ref %input["field"] : <!p4hir.struct<field: type>>
+    TODO: Support the nested extractions
+    %result2 = p4hir.struct_extract_ref %input["field1", "field2"] : <!p4hir.struct<field1: !p4hir.struct<field2: type>>>
+
+    ```
+  }];
+
+  let arguments = (ins StructRefType:$input, I32Attr:$fieldIndex);
+  let results = (outs ReferenceType:$result);
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$input, "StructType::FieldInfo":$field)>,
+    OpBuilder<(ins "mlir::Value":$input, "mlir::StringAttr":$fieldName)>,
+    OpBuilder<(ins "mlir::Value":$input, "llvm::StringRef":$fieldName), [{
+      build($_builder, $_state, input, $_builder.getStringAttr(fieldName));
+    }]>
+  ];
+
+  let extraClassDeclaration = [{
+    /// Return the name attribute of the accessed field.
+    mlir::StringAttr getFieldNameAttr() {
+      auto type = mlir::cast<StructType>(mlir::cast<ReferenceType>(getInput().getType()).getObjectType());
+      return type.getElements()[getFieldIndex()].name;
+    }
+
+    /// Return the name of the accessed field.
+    llvm::StringRef getFieldName() {
+      return getFieldNameAttr().getValue();
+    }
+  }];
+}
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD

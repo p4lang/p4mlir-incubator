@@ -60,6 +60,35 @@ def P4HIR_IntAttr : P4HIR_Attr<"Int", "int", [TypedAttrInterface]> {
 }
 
 //===----------------------------------------------------------------------===//
+// AggAttr
+//===----------------------------------------------------------------------===//
+
+def P4HIR_AggAttr : P4HIR_Attr<"Agg", "aggregate", [TypedAttrInterface]> {
+  let summary = "An Attribute containing an aggregate value";
+  let description = [{
+    An aggregate attribute is a literal attribute that represents an aggregate
+    value of the specified type. For nested aggregates, embedded arrays are
+    used.
+  }];
+  let parameters = (ins AttributeSelfTypeParameter<"">:$type,
+                        "mlir::ArrayAttr":$fields);
+
+  let builders = [
+    AttrBuilderWithInferredContext<(ins "mlir::Type":$type,
+                                        "mlir::ArrayAttr":$members), [{
+      return $_get(type.getContext(), type, members);
+    }]>
+  ];
+  // let genVerifyDecl = 1;
+  //let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = [{
+    `<` $fields `>`
+  }];
+
+}
+
+
+//===----------------------------------------------------------------------===//
 // ParamDirAttr
 //===----------------------------------------------------------------------===//
 
