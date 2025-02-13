@@ -130,7 +130,12 @@ def ValidityBit : I32BitEnumAttr<
   let cppNamespace = "::P4::P4MLIR::P4HIR";
   let genSpecializedAttr = 0;
 }
-def ValidityBitAttr : EnumAttr<P4HIR_Dialect, ValidityBit, "validity.bit">;
+def ValidityBitAttr : EnumAttr<P4HIR_Dialect, ValidityBit, "validity.bit",
+                               [TypedAttrInterface]> {
+  let extraClassDeclaration = [{
+    mlir::Type getType() { return P4HIR::ValidBitType::get(getContext()); }
+  }];
+}
 
 //===----------------------------------------------------------------------===//
 // ParamDirAttr

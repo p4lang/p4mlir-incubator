@@ -223,31 +223,183 @@ def FuncType : P4HIR_Type<"Func", "func"> {
 // StructType
 //===----------------------------------------------------------------------===//
 
-// A packed struct. Declares the P4HIR::StructType in C++.
-def StructType : P4HIR_Type<"Struct", "struct", [
-  DeclareTypeInterfaceMethods<DestructurableTypeInterface>,
-  DeclareTypeInterfaceMethods<FieldIDTypeInterface>
+class StructLikeType<string name, string typeMnemonic>
+  : P4HIR_Type<name, typeMnemonic,  [
+  StructLikeTypeInterface,
+  DestructurableTypeInterface,
+  FieldIDTypeInterface
 ]> {
+  let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
+
+  let parameters = (
+    ins StringRefParameter<"struct name">:$name,
+        ArrayRefParameter<"P4HIR::FieldInfo", "struct fields">:$elements
+  );
+
+  string extra2ClassDeclaration = "";
+  let extraClassDeclaration = !strconcat([{
+    mlir::Type getFieldType(mlir::StringRef fieldName) {
+      for (const auto &field : getElements())
+        if (field.name == fieldName) return field.type;
+       return {};
+    }
+
+    std::optional<P4HIR::FieldInfo> getField(mlir::StringRef fieldName) {
+      for (const auto &field : getElements())
+        if (field.name == fieldName) return field;
+       return {};
+    }
+
+    llvm::ArrayRef<P4HIR::FieldInfo> getFields() {
+      return getElements();
+    }
+
+    void getInnerTypes(mlir::SmallVectorImpl<mlir::Type> &types) {
+      for (const auto &field : getElements()) types.push_back(field.type);
+    }
+    
+    std::optional<unsigned> getFieldIndex(mlir::StringRef fieldName) {
+      llvm::ArrayRef<P4HIR::FieldInfo> elems = getElements();
+      for (size_t idx = 0, numElems = elems.size(); idx < numElems; ++idx)
+        if (elems[idx].name == fieldName) return idx;
+      return {};
+    }
+    
+    std::optional<unsigned> getFieldIndex(mlir::StringAttr fieldName) {
+      llvm::ArrayRef<P4HIR::FieldInfo> elems = getElements();
+      for (size_t idx = 0, numElems = elems.size(); idx < numElems; ++idx)
+        if (elems[idx].name == fieldName) return idx;
+      return {};
+    }
+
+    // FieldID type interface implementation
+    std::pair<unsigned, llvm::SmallVector<unsigned>> getFieldIDsStruct() const {
+      unsigned fieldID = 0;
+      auto elements = getElements();
+      llvm::SmallVector<unsigned> fieldIDs;
+      fieldIDs.reserve(elements.size());
+      for (auto &element : elements) {
+          auto type = element.type;
+          fieldID += 1;
+          fieldIDs.push_back(fieldID);
+          // Increment the field ID for the next field by the number of subfields.
+          fieldID += FieldIdImpl::getMaxFieldID(type);
+      }
+      return {fieldID, fieldIDs};
+    }
+
+    std::pair<mlir::Type, unsigned> getSubTypeByFieldID(unsigned fieldID) const {
+      if (fieldID == 0) return {*this, 0};
+      auto [maxId, fieldIDs] = getFieldIDsStruct();
+      auto *it = std::prev(llvm::upper_bound(fieldIDs, fieldID));
+      auto subfieldIndex = std::distance(fieldIDs.begin(), it);
+      auto subfieldType = getElements()[subfieldIndex].type;
+      auto subfieldID = fieldID - fieldIDs[subfieldIndex];
+      return {subfieldType, subfieldID};
+    }
+
+    mlir::Type getTypeAtIndex(mlir::Attribute index) const {
+      auto indexAttr = mlir::dyn_cast<mlir::IntegerAttr>(index);
+      if (!indexAttr) return {};
+
+      return getSubTypeByFieldID(indexAttr.getInt()).first;
+    }
+
+    unsigned getFieldID(unsigned index) const {
+      auto [maxId, fieldIDs] = getFieldIDsStruct();
+      return fieldIDs[index];
+    }
+
+    unsigned getMaxFieldID() const {
+      unsigned fieldID = 0;
+      for (const auto &field : getElements()) fieldID += 1 + FieldIdImpl::getMaxFieldID(field.type);
+      return fieldID;
+    }
+
+    unsigned getIndexForFieldID(unsigned fieldID) const {
+      assert(!getElements().empty() && "struct must have >0 fields");
+      auto [maxId, fieldIDs] = getFieldIDsStruct();
+      auto *it = std::prev(llvm::upper_bound(fieldIDs, fieldID));
+      return std::distance(fieldIDs.begin(), it);
+    }
+
+    std::pair<unsigned, unsigned> getIndexAndSubfieldID(unsigned fieldID) const {
+      auto index = getIndexForFieldID(fieldID);
+      auto elementFieldID = getFieldID(index);
+      return {index, fieldID - elementFieldID};
+    }
+
+    std::pair<unsigned, bool> projectToChildFieldID(unsigned fieldID,
+                                                    unsigned index) const {
+      auto [maxId, fieldIDs] = getFieldIDsStruct();
+      auto childRoot = fieldIDs[index];
+      auto rangeEnd = index + 1 >= getElements().size() ? maxId : (fieldIDs[index + 1] - 1);
+      return std::make_pair(fieldID - childRoot, fieldID >= childRoot && fieldID <= rangeEnd);
+    }
+
+    std::optional<llvm::DenseMap<mlir::Attribute, mlir::Type>> getSubelementIndexMap() const {
+      llvm::DenseMap<mlir::Attribute, mlir::Type> destructured;
+      for (auto [i, field] : llvm::enumerate(getElements()))
+          destructured.try_emplace(mlir::IntegerAttr::get(mlir::IndexType::get(getContext()), i), field.type);
+      return destructured;
+    }
+  }], "\n", extra2ClassDeclaration);
+}
+
+// A packed struct. Declares the P4HIR::StructType in C++.
+def StructType : StructLikeType<"Struct", "struct"> {
   let summary = "struct type";
   let description = [{
     Represents a structure of name, value pairs.
     !p4hir.struct<"name", fieldName1: Type1, fieldName2: Type2>
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// ValidType: type used to represent validity bit in headers. We explicitly
+// want it to be distinct from bool type to ensure we can always identify it
+// by the type.
+//===----------------------------------------------------------------------===//
+
+def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit"> {
+  let summary = "Valid bit type";
+  let description = [{
+    `p4hir.valid.bit` represents valid bit in headers.
+  }];
 
   let hasCustomAssemblyFormat = 1;
-  let genVerifyDecl = 1;
-
-  let parameters = (
-    ins StringRefParameter<"struct name">:$name, ArrayRefParameter<
-      "P4HIR::StructType::FieldInfo", "struct fields">:$elements
-  );
-
   let extraClassDeclaration = [{
-    using FieldInfo = P4HIR::detail::FieldInfo;
-    mlir::Type getFieldType(mlir::StringRef fieldName);
-    void getInnerTypes(mlir::SmallVectorImpl<mlir::Type>&);
-    std::optional<unsigned> getFieldIndex(mlir::StringRef fieldName);
-    std::optional<unsigned> getFieldIndex(mlir::StringAttr fieldName);
+    llvm::StringRef getAlias() const { return "validity_bit"; };
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// HeaderType
+//===----------------------------------------------------------------------===//
+
+// A header. Declares the P4HIR::HeaderType in C++.
+def HeaderType : StructLikeType<"Header", "header"> {
+  let summary = "header type";
+  let description = [{
+    Represents a structure of name, value pairs.
+    !p4hir.header<"name", fieldName1: Type1, fieldName2: Type2>
+
+    Special field named "__valid" of type !p4hir.validity.bit is used to
+    represent validity bit
+  }];
+
+  // We skip default builders entirely to consistently add validity bit field on fly
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    TypeBuilder<(ins "llvm::StringRef":$name,
+                      "llvm::ArrayRef<P4HIR::FieldInfo>":$fields)>
+  ];
+
+  // This adds more C++ stuff into parent extraClassDeclaration
+  let extra2ClassDeclaration = [{
+    static constexpr llvm::StringRef validityBit = "__valid";
   }];
 }
 
@@ -311,36 +463,22 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", []> {
 }
 
 //===----------------------------------------------------------------------===//
-// ValidType: type used to represent validity bit in headers. We explicitly
-// want it to be distinct from bool type to ensure we can always identify it
-// by the type.
-//===----------------------------------------------------------------------===//
-
-def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit"> {
-  let summary = "Valid bit type";
-  let description = [{
-    `p4hir.valid.bit` represents valid bit in headers.
-  }];
-
-  let hasCustomAssemblyFormat = 1;
-  let extraClassDeclaration = [{
-    llvm::StringRef getAlias() const { return "validity"; };
-  }];
-
-}
-
-//===----------------------------------------------------------------------===//
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
-def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StructType,
+def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
+                           StructType, HeaderType,
                            EnumType, SerEnumType,
+                           ValidBitType,
                            DontcareType, ErrorType, UnknownType]> {}
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
-def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StructType,
-                                EnumType, SerEnumType]> {}
+def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
+                                StructType, HeaderType,
+                                EnumType, SerEnumType,
+                                ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
+def StructLikeType : AnyTypeOf<[StructType, HeaderType]>;
 
 /// A ref type with the specified constraints on the nested type.
 class SpecificRefType<Type type> : ConfinedType<ReferenceType,
@@ -352,5 +490,6 @@ class SpecificRefType<Type type> : ConfinedType<ReferenceType,
 }
 
 def StructRefType : SpecificRefType<StructType>;
+def StructLikeRefType : SpecificRefType<StructLikeType>;
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD

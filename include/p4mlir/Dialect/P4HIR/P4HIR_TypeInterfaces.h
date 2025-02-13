@@ -1,9 +1,17 @@
 #ifndef P4MLIR_DIALECT_P4HIR_P4HIR_TYPEINTERFACES_H
 #define P4MLIR_DIALECT_P4HIR_P4HIR_TYPEINTERFACES_H
 
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Types.h"
 
 namespace P4::P4MLIR::P4HIR {
+
+/// Struct defining a field. Used in structs and header
+struct FieldInfo {
+    mlir::StringAttr name;
+    mlir::Type type;
+};
+
 namespace FieldIdImpl {
 unsigned getMaxFieldID(::mlir::Type);
 

@@ -10,6 +10,7 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 using namespace mlir;
@@ -38,7 +39,7 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
     if (mlir::isa<P4HIR::IntAttr, P4HIR::BoolAttr>(attrType)) return success();
 
     if (mlir::isa<P4HIR::AggAttr>(attrType)) {
-        if (!mlir::isa<P4HIR::StructType>(opType))
+        if (!mlir::isa<P4HIR::StructType, P4HIR::HeaderType>(opType))
             return op->emitOpError("result type (") << opType << ") is not an aggregate type";
 
         return success();
@@ -47,6 +48,13 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
     if (mlir::isa<P4HIR::EnumFieldAttr>(attrType)) {
         if (!mlir::isa<P4HIR::EnumType, P4HIR::SerEnumType>(opType))
             return op->emitOpError("result type (") << opType << ") is not an enum type";
+
+        return success();
+    }
+
+    if (mlir::isa<P4HIR::ValidityBitAttr>(attrType)) {
+        if (!mlir::isa<P4HIR::ValidBitType>(opType))
+            return op->emitOpError("result type (") << opType << ") is not a validity bit type";
 
         return success();
     }
@@ -81,6 +89,8 @@ void P4HIR::ConstOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
         setNameFn(getResult(), specialName.str());
     } else if (auto boolCst = mlir::dyn_cast<P4HIR::BoolAttr>(getValue())) {
         setNameFn(getResult(), boolCst.getValue() ? "true" : "false");
+    } else if (auto validityCst = mlir::dyn_cast<P4HIR::ValidityBitAttr>(getValue())) {
+        setNameFn(getResult(), stringifyEnum(validityCst.getValue()));
     } else if (auto enumCst = mlir::dyn_cast<P4HIR::EnumFieldAttr>(getValue())) {
         llvm::SmallString<32> specialNameBuffer;
         llvm::raw_svector_ostream specialName(specialNameBuffer);
@@ -672,7 +682,7 @@ void P4HIR::StructOp::print(OpAsmPrinter &printer) {
 }
 
 LogicalResult P4HIR::StructOp::verify() {
-    auto elements = mlir::cast<StructType>(getType()).getElements();
+    auto elements = mlir::cast<StructLikeTypeInterface>(getType()).getFields();
 
     if (elements.size() != getInput().size()) return emitOpError("struct field count mismatch");
 
@@ -684,8 +694,15 @@ LogicalResult P4HIR::StructOp::verify() {
 }
 
 void P4HIR::StructOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
-    llvm::SmallString<32> name("struct_");
-    name += getType().getName();
+    llvm::SmallString<32> name;
+    if (auto structType = mlir::dyn_cast<StructType>(getType())) {
+        name += "struct_";
+        name += structType.getName();
+    } else if (auto headerType = mlir::dyn_cast<HeaderType>(getType())) {
+        name += "hdr_";
+        name += headerType.getName();
+    }
+
     setNameFn(getResult(), name);
 }
 
@@ -695,16 +712,18 @@ void P4HIR::StructOp::getAsmResultNames(function_ref<void(Value, StringRef)> set
 
 /// Ensure an aggregate op's field index is within the bounds of
 /// the aggregate type and the accessed field is of 'elementType'.
-template <typename AggregateOp, typename AggregateType>
-static LogicalResult verifyAggregateFieldIndexAndType(AggregateOp &op, AggregateType aggType,
+template <typename AggregateOp>
+static LogicalResult verifyAggregateFieldIndexAndType(AggregateOp &op,
+                                                      P4HIR::StructLikeTypeInterface aggType,
                                                       Type elementType) {
     auto index = op.getFieldIndex();
-    if (index >= aggType.getElements().size())
+    auto fields = aggType.getFields();
+    if (index >= fields.size())
         return op.emitOpError() << "field index " << index
                                 << " exceeds element count of aggregate type";
 
-    if (elementType != aggType.getElements()[index].type)
-        return op.emitOpError() << "type " << aggType.getElements()[index].type
+    if (elementType != fields[index].type)
+        return op.emitOpError() << "type " << fields[index].type
                                 << " of accessed field in aggregate at index " << index
                                 << " does not match expected type " << elementType;
 
@@ -712,8 +731,8 @@ static LogicalResult verifyAggregateFieldIndexAndType(AggregateOp &op, Aggregate
 }
 
 LogicalResult P4HIR::StructExtractOp::verify() {
-    return verifyAggregateFieldIndexAndType<StructExtractOp, StructType>(
-        *this, getInput().getType(), getType());
+    return verifyAggregateFieldIndexAndType(
+        *this, mlir::cast<StructLikeTypeInterface>(getInput().getType()), getType());
 }
 
 template <typename AggregateType>
@@ -798,19 +817,20 @@ ParseResult P4HIR::StructExtractOp::parse(OpAsmParser &parser, OperationState &r
 void P4HIR::StructExtractOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
 
 void P4HIR::StructExtractOp::build(OpBuilder &builder, OperationState &odsState, Value input,
-                                   StructType::FieldInfo field) {
-    auto fieldIndex = mlir::cast<StructType>(input.getType()).getFieldIndex(field.name);
+                                   P4HIR::FieldInfo field) {
+    auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(input.getType());
+    auto fieldIndex = structType.getFieldIndex(field.name);
     assert(fieldIndex.has_value() && "field name not found in aggregate type");
     build(builder, odsState, field.type, input, *fieldIndex);
 }
 
 void P4HIR::StructExtractOp::build(OpBuilder &builder, OperationState &odsState, Value input,
                                    StringAttr fieldName) {
-    auto structType = mlir::cast<StructType>(input.getType());
+    auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(input.getType());
     auto fieldIndex = structType.getFieldIndex(fieldName);
+    auto fieldType = structType.getFieldType(fieldName);
     assert(fieldIndex.has_value() && "field name not found in aggregate type");
-    auto resultType = structType.getElements()[*fieldIndex].type;
-    build(builder, odsState, resultType, input, *fieldIndex);
+    build(builder, odsState, fieldType, input, *fieldIndex);
 }
 
 void P4HIR::StructExtractOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
@@ -818,7 +838,9 @@ void P4HIR::StructExtractOp::getAsmResultNames(function_ref<void(Value, StringRe
 }
 
 void P4HIR::StructExtractRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
-    setNameFn(getResult(), getFieldName());
+    llvm::SmallString<16> name = getFieldName();
+    name += "_field_ref";
+    setNameFn(getResult(), name);
 }
 
 ParseResult P4HIR::StructExtractRefOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -828,16 +850,15 @@ ParseResult P4HIR::StructExtractRefOp::parse(OpAsmParser &parser, OperationState
 void P4HIR::StructExtractRefOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
 
 LogicalResult P4HIR::StructExtractRefOp::verify() {
-    auto type =
-        mlir::cast<StructType>(mlir::cast<ReferenceType>(getInput().getType()).getObjectType());
-    return verifyAggregateFieldIndexAndType<StructExtractRefOp, StructType>(
-        *this, type, getType().getObjectType());
+    auto type = mlir::cast<StructLikeTypeInterface>(
+        mlir::cast<ReferenceType>(getInput().getType()).getObjectType());
+    return verifyAggregateFieldIndexAndType(*this, type, getType().getObjectType());
 }
 
 void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
-                                      StructType::FieldInfo field) {
-    auto structType =
-        mlir::cast<StructType>(mlir::cast<ReferenceType>(input.getType()).getObjectType());
+                                      P4HIR::FieldInfo field) {
+    auto structLikeType = mlir::cast<ReferenceType>(input.getType()).getObjectType();
+    auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(structLikeType);
     auto fieldIndex = structType.getFieldIndex(field.name);
     assert(fieldIndex.has_value() && "field name not found in aggregate type");
     build(builder, odsState, ReferenceType::get(field.type), input, *fieldIndex);
@@ -845,12 +866,12 @@ void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsSta
 
 void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
                                       StringAttr fieldName) {
-    auto structType =
-        mlir::cast<StructType>(mlir::cast<ReferenceType>(input.getType()).getObjectType());
+    auto structLikeType = mlir::cast<ReferenceType>(input.getType()).getObjectType();
+    auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(structLikeType);
     auto fieldIndex = structType.getFieldIndex(fieldName);
+    auto fieldType = structType.getFieldType(fieldName);
     assert(fieldIndex.has_value() && "field name not found in aggregate type");
-    auto resultType = ReferenceType::get(structType.getElements()[*fieldIndex].type);
-    build(builder, odsState, resultType, input, *fieldIndex);
+    build(builder, odsState, ReferenceType::get(fieldType), input, *fieldIndex);
 }
 
 namespace {
@@ -868,6 +889,11 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
             return AliasResult::OverridableAlias;
         }
 
+        if (auto validBitType = mlir::dyn_cast<P4HIR::ValidBitType>(type)) {
+            os << validBitType.getAlias();
+            return AliasResult::OverridableAlias;
+        }
+
         if (auto voidType = mlir::dyn_cast<P4HIR::VoidType>(type)) {
             os << voidType.getAlias();
             return AliasResult::OverridableAlias;
@@ -875,6 +901,11 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
 
         if (auto structType = mlir::dyn_cast<P4HIR::StructType>(type)) {
             os << structType.getName();
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto headerType = mlir::dyn_cast<P4HIR::HeaderType>(type)) {
+            os << headerType.getName();
             return AliasResult::OverridableAlias;
         }
 
@@ -909,6 +940,11 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
 
         if (auto dirAttr = mlir::dyn_cast<P4HIR::ParamDirectionAttr>(attr)) {
             os << stringifyEnum(dirAttr.getValue());
+            return AliasResult::FinalAlias;
+        }
+
+        if (auto validAttr = mlir::dyn_cast<P4HIR::ValidityBitAttr>(attr)) {
+            os << stringifyEnum(validAttr.getValue());
             return AliasResult::FinalAlias;
         }
 

@@ -135,6 +135,7 @@ class P4TypeConverter : public P4::Inspector {
     bool preorder(const P4::IR::Type_Struct *s) override;
     bool preorder(const P4::IR::Type_Enum *e) override;
     bool preorder(const P4::IR::Type_SerEnum *se) override;
+    bool preorder(const P4::IR::Type_Header *h) override;
 
     mlir::Type getType() const { return type; }
     bool setType(const P4::IR::Type *type, mlir::Type mlirType);
@@ -162,12 +163,17 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     llvm::DenseMap<P4Symbol, mlir::SymbolRefAttr> p4Symbols;
 
     mlir::TypedAttr resolveConstant(const P4::IR::CompileTimeValue *ctv);
-    mlir::Value resolveReference(const P4::IR::Node *node, bool unchecked = true);
+    mlir::Value resolveReference(const P4::IR::Node *node, bool unchecked = false);
 
     mlir::Value getBoolConstant(mlir::Location loc, bool value) {
+        // TODO: BoolType is excessive here
         auto boolType = P4HIR::BoolType::get(context());
         return builder.create<P4HIR::ConstOp>(loc,
                                               P4HIR::BoolAttr::get(context(), boolType, value));
+    }
+    mlir::Value getValidHeaderConstant(mlir::Location loc,
+                                       P4HIR::ValidityBit valid = P4HIR::ValidityBit::Valid) {
+        return builder.create<P4HIR::ConstOp>(loc, P4HIR::ValidityBitAttr::get(context(), valid));
     }
 
  public:
@@ -318,6 +324,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         // Should be resolved eslewhere
         return false;
     }
+    bool preorder(const P4::IR::InvalidHeader *h) override {
+        // Should be resolved eslewhere
+        return false;
+    }
 
 #define HANDLE_IN_POSTORDER(NodeTy)                                 \
     bool preorder(const P4::IR::NodeTy *) override { return true; } \
@@ -345,8 +355,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(Concat)
 
     // Comparisons
-    HANDLE_IN_POSTORDER(Equ)
-    HANDLE_IN_POSTORDER(Neq)
+    // == and != are a bit special and requires some postorder handling
     HANDLE_IN_POSTORDER(Leq)
     HANDLE_IN_POSTORDER(Lss)
     HANDLE_IN_POSTORDER(Grt)
@@ -374,6 +383,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::MethodCallExpression *mce) override;
     bool preorder(const P4::IR::StructExpression *str) override;
     bool preorder(const P4::IR::Member *m) override;
+    bool preorder(const P4::IR::Equ *) override;
+    bool preorder(const P4::IR::Neq *) override;
+    void postorder(const P4::IR::Equ *) override;
+    void postorder(const P4::IR::Neq *) override;
 
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
@@ -473,13 +486,27 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Struct *type) {
     if ((this->type = converter.findType(type))) return false;
 
     ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<P4HIR::StructType::FieldInfo, 4> fields;
+    llvm::SmallVector<P4HIR::FieldInfo, 4> fields;
     for (const auto *field : type->fields) {
         fields.push_back({mlir::StringAttr::get(converter.context(), field->name.string_view()),
                           convert(field->type)});
     }
 
     auto mlirType = P4HIR::StructType::get(converter.context(), type->name.string_view(), fields);
+    return setType(type, mlirType);
+}
+
+bool P4TypeConverter::preorder(const P4::IR::Type_Header *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    llvm::SmallVector<P4HIR::FieldInfo, 4> fields;
+    for (const auto *field : type->fields) {
+        fields.push_back({mlir::StringAttr::get(converter.context(), field->name.string_view()),
+                          convert(field->type)});
+    }
+
+    auto mlirType = P4HIR::HeaderType::get(converter.context(), type->name.string_view(), fields);
     return setType(type, mlirType);
 }
 
@@ -680,7 +707,17 @@ void P4HIRConverter::postorder(const P4::IR::Declaration_Variable *decl) {
 
     if (const auto *init = decl->initializer) {
         var.setInit(true);
-        builder.create<P4HIR::AssignOp>(getLoc(builder, init), getValue(decl->initializer), var);
+        auto loc = getLoc(builder, init);
+        // Handle special case of InvalidHeader initializer, we'd want to
+        // initialize validity bit only, not the whole header
+        if (init->is<P4::IR::InvalidHeader>()) {
+            auto invalid = getValidHeaderConstant(loc, P4HIR::ValidityBit::Invalid);
+            auto validityBitRef =
+                builder.create<P4HIR::StructExtractRefOp>(loc, var, P4HIR::HeaderType::validityBit);
+            builder.create<P4HIR::AssignOp>(loc, invalid, validityBitRef);
+        } else {
+            builder.create<P4HIR::AssignOp>(loc, getValue(decl->initializer), var);
+        }
     }
 
     setValue(decl, var);
@@ -768,13 +805,61 @@ CONVERT_CMP(Geq, Ge);
 
 #undef CONVERT_CMP
 
+bool P4HIRConverter::preorder(const P4::IR::Equ *eq) {
+    // If RHS is InvalidHeader we'd essentially need to turn this into
+    // isInvalid() equivalent
+    if (eq->right->is<P4::IR::InvalidHeader>()) {
+        auto loc = getLoc(builder, eq);
+        visit(eq->left);
+        auto invalid = getValidHeaderConstant(loc, P4HIR::ValidityBit::Invalid);
+        auto validityBitField = builder.create<P4HIR::StructExtractOp>(
+            loc, getValue(eq->left), P4HIR::HeaderType::validityBit);
+
+        setValue(
+            eq, builder.create<P4HIR::CmpOp>(loc, P4HIR::CmpOpKind::Eq, validityBitField, invalid));
+        return false;
+    }
+
+    return true;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::Neq *ne) {
+    // If RHS is InvalidHeader we'd essentially need to turn this into
+    // isInvalid() equivalent
+    if (ne->right->is<P4::IR::InvalidHeader>()) {
+        auto loc = getLoc(builder, ne);
+        visit(ne->left);
+        auto invalid = getValidHeaderConstant(loc, P4HIR::ValidityBit::Valid);
+        auto validityBitField = builder.create<P4HIR::StructExtractOp>(
+            loc, getValue(ne->left), P4HIR::HeaderType::validityBit);
+
+        setValue(
+            ne, builder.create<P4HIR::CmpOp>(loc, P4HIR::CmpOpKind::Eq, validityBitField, invalid));
+        return false;
+    }
+
+    return true;
+}
+
 bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
     ConversionTracer trace("Converting ", assign);
 
     // TODO: Handle slice on LHS here
     auto ref = resolveReference(assign->left);
-    visit(assign->right);
-    builder.create<P4HIR::AssignOp>(getLoc(builder, assign), getValue(assign->right), ref);
+    auto loc = getLoc(builder, assign);
+
+    // Assignment of InvalidHeader is special: we do not materialize the whole
+    // header, we need to assign validty bit only
+    if (assign->right->is<P4::IR::InvalidHeader>()) {
+        auto invalid = getValidHeaderConstant(loc, P4HIR::ValidityBit::Invalid);
+        auto validityBitRef =
+            builder.create<P4HIR::StructExtractRefOp>(loc, ref, P4HIR::HeaderType::validityBit);
+        builder.create<P4HIR::AssignOp>(loc, invalid, validityBitRef);
+    } else {
+        visit(assign->right);
+        builder.create<P4HIR::AssignOp>(loc, getValue(assign->right), ref);
+    }
+
     return false;
 }
 
@@ -1022,6 +1107,35 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
     bool emitScope =
         std::any_of(params.begin(), params.end(), [](const auto *p) { return p->hasOut(); });
     auto convertCall = [&](mlir::OpBuilder &b, mlir::Type &resultType, mlir::Location loc) {
+        mlir::Value callResult;
+
+        // Special case: lower builtin methods
+        if (const auto *bCall = instance->to<P4::BuiltInMethod>()) {
+            assert(!emitScope && "should not be inside scope");
+
+            // TODO: Are there cases when we do not have l-value here?
+            auto ref = resolveReference(bCall->appliedTo);
+            auto loc = getLoc(builder, mce);
+            auto validityBitRef =
+                b.create<P4HIR::StructExtractRefOp>(loc, ref, P4HIR::HeaderType::validityBit);
+            if (bCall->name == P4::IR::Type_Header::setValid ||
+                bCall->name == P4::IR::Type_Header::setInvalid) {
+                auto validVal =
+                    getValidHeaderConstant(loc, bCall->name == P4::IR::Type_Header::setInvalid
+                                                    ? P4HIR::ValidityBit::Invalid
+                                                    : P4HIR::ValidityBit::Valid);
+                b.create<P4HIR::AssignOp>(loc, validVal, validityBitRef);
+            } else if (bCall->name == P4::IR::Type_Header::isValid) {
+                auto validityBit = b.create<P4HIR::ReadOp>(loc, validityBitRef);
+                callResult = builder.create<P4HIR::CmpOp>(loc, P4HIR::CmpOpKind::Eq, validityBit,
+                                                          getValidHeaderConstant(loc));
+            } else
+                BUG("Unsupported builtin method: %1%", bCall->name);
+
+            setValue(mce, callResult);
+            return;
+        }
+
         llvm::SmallVector<mlir::Value, 4> operands;
         for (auto [idx, arg] : llvm::enumerate(*mce->arguments)) {
             ConversionTracer trace("Converting ", arg);
@@ -1054,7 +1168,6 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             operands.push_back(argVal);
         }
 
-        mlir::Value callResult;
         if (const auto *actCall = instance->to<P4::ActionCall>()) {
             auto actSym = p4Symbols.lookup(actCall->action);
             BUG_CHECK(actSym, "expected reference action to be converted: %1%", actCall->action);
@@ -1134,7 +1247,7 @@ void P4HIRConverter::postorder(const P4::IR::Member *m) {
     // TODO: Likely we can do similar things for the majority of struct-like
     // types
     auto parentType = getOrCreateType(m->expr);
-    if (auto structType = mlir::dyn_cast<P4HIR::StructType>(parentType)) {
+    if (mlir::isa<P4HIR::StructType, P4HIR::HeaderType>(parentType)) {
         // We can access to parent using struct operations
         auto parent = getValue(m->expr);
         auto field = builder.create<P4HIR::StructExtractOp>(getLoc(builder, m), parent,
@@ -1147,14 +1260,18 @@ void P4HIRConverter::postorder(const P4::IR::Member *m) {
 
 bool P4HIRConverter::preorder(const P4::IR::StructExpression *str) {
     auto type = getOrCreateType(str->structType);
-    llvm::SmallVector<mlir::Value, 4> fields;
 
+    auto loc = getLoc(builder, str);
+    llvm::SmallVector<mlir::Value, 4> fields;
     for (const auto *field : str->components) {
         visit(field->expression);
         fields.push_back(getValue(field->expression));
     }
 
-    setValue(str, builder.create<P4HIR::StructOp>(getLoc(builder, str), type, fields).getResult());
+    // If this is header, make it valid as well
+    if (mlir::isa<P4HIR::HeaderType>(type)) fields.push_back(getValidHeaderConstant(loc));
+
+    setValue(str, builder.create<P4HIR::StructOp>(loc, type, fields).getResult());
 
     return false;
 }

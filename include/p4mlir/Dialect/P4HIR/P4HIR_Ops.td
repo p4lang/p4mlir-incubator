@@ -859,7 +859,7 @@ def StructOp : P4HIR_Op<"struct",
   let summary = "Create a struct from constituent parts.";
   // FIXME: Better constraint type
   let arguments = (ins Variadic<AnyP4Type>:$input);
-  let results = (outs StructType:$result);
+  let results = (outs StructLikeType:$result);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
@@ -878,14 +878,14 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
     ```
   }];
 
-  let arguments = (ins StructType:$input, I32Attr:$fieldIndex);
+  let arguments = (ins StructLikeType:$input, I32Attr:$fieldIndex);
   // FIXME: Better constraint type
   let results = (outs AnyP4Type:$result);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::Value":$input, "StructType::FieldInfo":$field)>,
+    OpBuilder<(ins "mlir::Value":$input, "P4HIR::FieldInfo":$field)>,
     OpBuilder<(ins "mlir::Value":$input, "mlir::StringAttr":$fieldName)>,
     OpBuilder<(ins "mlir::Value":$input, "llvm::StringRef":$fieldName), [{
       build($_builder, $_state, input, $_builder.getStringAttr(fieldName));
@@ -895,8 +895,8 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
   let extraClassDeclaration = [{
     /// Return the name attribute of the accessed field.
     mlir::StringAttr getFieldNameAttr() {
-      StructType type = getInput().getType();
-      return type.getElements()[getFieldIndex()].name;
+      auto type = mlir::cast<P4HIR::StructLikeTypeInterface>(getInput().getType());
+      return type.getFields()[getFieldIndex()].name;
     }
 
     /// Return the name of the accessed field.
@@ -920,13 +920,13 @@ def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
     ```
   }];
 
-  let arguments = (ins StructRefType:$input, I32Attr:$fieldIndex);
+  let arguments = (ins StructLikeRefType:$input, I32Attr:$fieldIndex);
   let results = (outs ReferenceType:$result);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::Value":$input, "StructType::FieldInfo":$field)>,
+    OpBuilder<(ins "mlir::Value":$input, "P4HIR::FieldInfo":$field)>,
     OpBuilder<(ins "mlir::Value":$input, "mlir::StringAttr":$fieldName)>,
     OpBuilder<(ins "mlir::Value":$input, "llvm::StringRef":$fieldName), [{
       build($_builder, $_state, input, $_builder.getStringAttr(fieldName));
@@ -936,8 +936,8 @@ def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
   let extraClassDeclaration = [{
     /// Return the name attribute of the accessed field.
     mlir::StringAttr getFieldNameAttr() {
-      auto type = mlir::cast<StructType>(mlir::cast<ReferenceType>(getInput().getType()).getObjectType());
-      return type.getElements()[getFieldIndex()].name;
+      auto type = mlir::cast<StructLikeTypeInterface>(mlir::cast<ReferenceType>(getInput().getType()).getObjectType());
+      return type.getFields()[getFieldIndex()].name;
     }
 
     /// Return the name of the accessed field.
