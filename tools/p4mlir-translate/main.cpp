@@ -20,6 +20,7 @@ limitations under the License.
 #include "frontends/common/parser_options.h"
 #include "frontends/p4/checkNamedArgs.h"
 #include "frontends/p4/createBuiltins.h"
+#include "frontends/p4/defaultValues.h"
 #include "frontends/p4/frontend.h"
 #include "frontends/p4/toP4/toP4.h"
 #include "frontends/p4/validateParsedProgram.h"
@@ -116,6 +117,8 @@ int main(int argc, char *const argv[]) {
                 new SetStrictStruct(&typeMap, true),  // Next pass uses strict struct checking
                 new P4::TypeInference(&typeMap, false, false),  // insert casts, don't check arrays
                 new SetStrictStruct(&typeMap, false),
+                new P4::DefaultValues(&typeMap),
+                new P4::TypeChecking(nullptr, &typeMap, true),
             });
             passes.setName("TypeInference");
             passes.setStopOnError(true);

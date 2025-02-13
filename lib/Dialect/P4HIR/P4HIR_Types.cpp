@@ -1,10 +1,12 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/MLIRContext.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
@@ -141,12 +143,12 @@ bool FuncType::isVoid() const {
     return !rt;
 }
 
-namespace P4::P4MLIR::P4HIR::detail {
+namespace P4::P4MLIR::P4HIR {
 bool operator==(const FieldInfo &a, const FieldInfo &b) {
     return a.name == b.name && a.type == b.type;
 }
 llvm::hash_code hash_value(const FieldInfo &fi) { return llvm::hash_combine(fi.name, fi.type); }
-}  // namespace P4::P4MLIR::P4HIR::detail
+}  // namespace P4::P4MLIR::P4HIR
 
 /// Parse a list of unique field names and types within <> plus name. E.g.:
 /// <name, foo: i7, bar: i8>
@@ -206,8 +208,15 @@ Type StructType::parse(AsmParser &p) {
     return get(p.getContext(), name, parameters);
 }
 
+Type HeaderType::parse(AsmParser &p) {
+    llvm::SmallVector<FieldInfo, 4> parameters;
+    std::string name;
+    if (parseFields(p, name, parameters)) return {};
+    return get(p.getContext(), name, parameters);
+}
+
 LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
-                                 ArrayRef<StructType::FieldInfo> elements) {
+                                 ArrayRef<FieldInfo> elements) {
     llvm::SmallDenseSet<StringAttr> fieldNameSet;
     LogicalResult result = success();
     fieldNameSet.reserve(elements.size());
@@ -220,101 +229,39 @@ LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, S
     return result;
 }
 
+LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
+                                 ArrayRef<FieldInfo> elements) {
+    llvm::SmallDenseSet<StringAttr> fieldNameSet;
+    LogicalResult result = success();
+    fieldNameSet.reserve(elements.size());
+    for (const auto &elt : elements)
+        if (!fieldNameSet.insert(elt.name).second) {
+            result = failure();
+            emitError() << "duplicate field name '" << elt.name.getValue()
+                        << "' in p4hir.header type";
+        }
+
+    if (elements.empty()) emitError() << "empty p4hir.header type";
+
+    if (elements.back().name != validityBit ||
+        !mlir::isa<P4HIR::ValidBitType>(elements.back().type))
+        emitError() << "last field of p4hir.header type should be validity bit";
+
+    // TODO: Check field types & nesting
+
+    return result;
+}
+
 void StructType::print(AsmPrinter &p) const { printFields(p, getName(), getElements()); }
+void HeaderType::print(AsmPrinter &p) const { printFields(p, getName(), getElements()); }
 
-Type StructType::getFieldType(mlir::StringRef fieldName) {
-    for (const auto &field : getElements())
-        if (field.name == fieldName) return field.type;
-    return Type();
-}
+HeaderType HeaderType::get(mlir::MLIRContext *context, llvm::StringRef name,
+                           llvm::ArrayRef<FieldInfo> fields) {
+    llvm::SmallVector<FieldInfo, 4> realFields(fields);
+    realFields.push_back(
+        {mlir::StringAttr::get(context, validityBit), P4HIR::ValidBitType::get(context)});
 
-std::optional<unsigned> StructType::getFieldIndex(mlir::StringRef fieldName) {
-    ArrayRef<StructType::FieldInfo> elems = getElements();
-    for (size_t idx = 0, numElems = elems.size(); idx < numElems; ++idx)
-        if (elems[idx].name == fieldName) return idx;
-    return {};
-}
-
-std::optional<unsigned> StructType::getFieldIndex(mlir::StringAttr fieldName) {
-    ArrayRef<StructType::FieldInfo> elems = getElements();
-    for (size_t idx = 0, numElems = elems.size(); idx < numElems; ++idx)
-        if (elems[idx].name == fieldName) return idx;
-    return {};
-}
-
-static std::pair<unsigned, SmallVector<unsigned>> getFieldIDsStruct(const StructType &st) {
-    unsigned fieldID = 0;
-    auto elements = st.getElements();
-    SmallVector<unsigned> fieldIDs;
-    fieldIDs.reserve(elements.size());
-    for (auto &element : elements) {
-        auto type = element.type;
-        fieldID += 1;
-        fieldIDs.push_back(fieldID);
-        // Increment the field ID for the next field by the number of subfields.
-        fieldID += FieldIdImpl::getMaxFieldID(type);
-    }
-    return {fieldID, fieldIDs};
-}
-
-std::pair<Type, unsigned> StructType::getSubTypeByFieldID(unsigned fieldID) const {
-    if (fieldID == 0) return {*this, 0};
-    auto [maxId, fieldIDs] = getFieldIDsStruct(*this);
-    auto *it = std::prev(llvm::upper_bound(fieldIDs, fieldID));
-    auto subfieldIndex = std::distance(fieldIDs.begin(), it);
-    auto subfieldType = getElements()[subfieldIndex].type;
-    auto subfieldID = fieldID - fieldIDs[subfieldIndex];
-    return {subfieldType, subfieldID};
-}
-
-Type StructType::getTypeAtIndex(Attribute index) const {
-    auto indexAttr = llvm::dyn_cast<IntegerAttr>(index);
-    if (!indexAttr) return {};
-
-    return getSubTypeByFieldID(indexAttr.getInt()).first;
-}
-
-unsigned StructType::getFieldID(unsigned index) const {
-    auto [maxId, fieldIDs] = getFieldIDsStruct(*this);
-    return fieldIDs[index];
-}
-
-unsigned StructType::getMaxFieldID() const {
-    unsigned fieldID = 0;
-    for (const auto &field : getElements()) fieldID += 1 + FieldIdImpl::getMaxFieldID(field.type);
-    return fieldID;
-}
-
-unsigned StructType::getIndexForFieldID(unsigned fieldID) const {
-    assert(!getElements().empty() && "struct must have >0 fields");
-    auto [maxId, fieldIDs] = getFieldIDsStruct(*this);
-    auto *it = std::prev(llvm::upper_bound(fieldIDs, fieldID));
-    return std::distance(fieldIDs.begin(), it);
-}
-
-std::pair<unsigned, unsigned> StructType::getIndexAndSubfieldID(unsigned fieldID) const {
-    auto index = getIndexForFieldID(fieldID);
-    auto elementFieldID = getFieldID(index);
-    return {index, fieldID - elementFieldID};
-}
-
-std::optional<DenseMap<Attribute, Type>> StructType::getSubelementIndexMap() const {
-    DenseMap<Attribute, Type> destructured;
-    for (auto [i, field] : llvm::enumerate(getElements()))
-        destructured.try_emplace(IntegerAttr::get(IndexType::get(getContext()), i), field.type);
-    return destructured;
-}
-
-std::pair<unsigned, bool> StructType::projectToChildFieldID(unsigned fieldID,
-                                                            unsigned index) const {
-    auto [maxId, fieldIDs] = getFieldIDsStruct(*this);
-    auto childRoot = fieldIDs[index];
-    auto rangeEnd = index + 1 >= getElements().size() ? maxId : (fieldIDs[index + 1] - 1);
-    return std::make_pair(fieldID - childRoot, fieldID >= childRoot && fieldID <= rangeEnd);
-}
-
-void StructType::getInnerTypes(SmallVectorImpl<Type> &types) {
-    for (const auto &field : getElements()) types.push_back(field.type);
+    return Base::get(context, name, realFields);
 }
 
 Type EnumType::parse(AsmParser &p) {
@@ -399,6 +346,10 @@ Type SerEnumType::parse(AsmParser &p) {
 
     return get(name, type, fields);
 }
+
+Type ValidBitType::parse(mlir::AsmParser &parser) { return get(parser.getContext()); }
+
+void ValidBitType::print(mlir::AsmPrinter &printer) const {}
 
 void P4HIRDialect::registerTypes() {
     addTypes<
