@@ -331,6 +331,72 @@ def ConcatOp : P4HIR_Op<"concat", [Pure]> {
   }];
 }
 
+def ShlOp : P4HIR_Op<"shl",  [Pure]> {
+  let summary = "Arithmetic shift left operation";
+  let description = [{
+    `p4hir.shl` performs arithmetic shift left.
+    The left operand is the value to shift, the right operand is the shift amount.
+    The result has the same type as the left operand.
+
+    ```mlir
+    %0 = p4hir.const #p4hir.int<1> : !p4hir.bit<32>
+    %1 = p4hir.const #p4hir.int<2> : !p4hir.bit<8>
+    %2 = p4hir.const #p4hir.int<3> : !p4hir.infint
+    %3 = p4hir.shl(%0 : !p4hir.bit<32>, %1 : !p4hir.bit<8>) : !p4hir.bit<32>
+    %4 = p4hir.shl(%0 : !p4hir.bit<32>, %2 : !p4hir.infint) : !p4hir.bit<32>
+    ```
+  }];
+
+  let results = (outs AnyIntP4Type:$result);
+  let arguments = (ins AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
+
+  // Custom builder to infer the result type with the proper width
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
+      build($_builder, $_state, lhs.getType(), lhs, rhs);
+    }]>
+  ];
+
+  let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
+  }];
+}
+
+def ShrOp : P4HIR_Op<"shr", [Pure]> {
+  let summary = "Arithmetic shift right operation";
+  let description = [{
+    `p4hir.shr` performs arithmetic shift right.
+    The left operand is the value to shift, the right operand is the shift amount.
+    The result has the same type as the left operand.
+
+    ```mlir
+    %0 = p4hir.const #p4hir.int<1> : !p4hir.bit<32>
+    %1 = p4hir.const #p4hir.int<2> : !p4hir.bit<8>
+    %2 = p4hir.const #p4hir.int<3> : !p4hir.infint
+    %3 = p4hir.shr(%0 : !p4hir.bit<32>, %1 : !p4hir.bit<8>) : !p4hir.bit<32>
+    %4 = p4hir.shr(%0 : !p4hir.bit<32>, %2 : !p4hir.infint) : !p4hir.bit<32>
+    ```
+  }];
+
+  let results = (outs AnyIntP4Type:$result);
+  let arguments = (ins AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
+
+  // Custom builder to infer the result type with the proper width
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
+      build($_builder, $_state, lhs.getType(), lhs, rhs);
+    }]>
+  ];
+
+  let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
+  }];
+}
+
 def CmpOpKind_LT : I32EnumAttrCase<"Lt", 1, "lt">;
 def CmpOpKind_LE : I32EnumAttrCase<"Le", 2, "le">;
 def CmpOpKind_GT : I32EnumAttrCase<"Gt", 3, "gt">;
