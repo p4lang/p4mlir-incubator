@@ -19,7 +19,7 @@ cd "$LLVM_BUILD_DIR"
 
 # Configure CMake flags
 # Note that P4C uses both RTTI and C++ exceptions, so we need to build LLVM/MLIR having them enabled as well
-CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=\"$LLVM_INSTALL_DIR\""
+CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=$LLVM_INSTALL_DIR"
 CMAKE_FLAGS+=" -DLLVM_ENABLE_PROJECTS=mlir"
 CMAKE_FLAGS+=" -DLLVM_BUILD_EXAMPLES=OFF"
 CMAKE_FLAGS+=" -DLLVM_TARGETS_TO_BUILD="Native""
