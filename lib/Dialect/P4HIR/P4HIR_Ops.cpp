@@ -1,5 +1,7 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 
+#include <string>
+
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/LogicalResult.h"
@@ -52,6 +54,13 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
         return success();
     }
 
+    if (mlir::isa<P4HIR::ErrorCodeAttr>(attrType)) {
+        if (!mlir::isa<P4HIR::ErrorType>(opType))
+            return op->emitOpError("result type (") << opType << ") is not an error type";
+
+        return success();
+    }
+
     if (mlir::isa<P4HIR::ValidityBitAttr>(attrType)) {
         if (!mlir::isa<P4HIR::ValidBitType>(opType))
             return op->emitOpError("result type (") << opType << ") is not a validity bit type";
@@ -91,6 +100,10 @@ void P4HIR::ConstOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
         setNameFn(getResult(), boolCst.getValue() ? "true" : "false");
     } else if (auto validityCst = mlir::dyn_cast<P4HIR::ValidityBitAttr>(getValue())) {
         setNameFn(getResult(), stringifyEnum(validityCst.getValue()));
+    } else if (auto errorCst = mlir::dyn_cast<P4HIR::ErrorCodeAttr>(getValue())) {
+        llvm::SmallString<32> error("error_");
+        error += errorCst.getField().getValue();
+        setNameFn(getResult(), error);
     } else if (auto enumCst = mlir::dyn_cast<P4HIR::EnumFieldAttr>(getValue())) {
         llvm::SmallString<32> specialNameBuffer;
         llvm::raw_svector_ostream specialName(specialNameBuffer);
@@ -919,6 +932,11 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
             return AliasResult::OverridableAlias;
         }
 
+        if (auto errorType = mlir::dyn_cast<P4HIR::ErrorType>(type)) {
+            os << errorType.getAlias();
+            return AliasResult::OverridableAlias;
+        }
+
         return AliasResult::NoAlias;
     }
 
@@ -945,6 +963,11 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
 
         if (auto validAttr = mlir::dyn_cast<P4HIR::ValidityBitAttr>(attr)) {
             os << stringifyEnum(validAttr.getValue());
+            return AliasResult::FinalAlias;
+        }
+
+        if (auto errorAttr = mlir::dyn_cast<P4HIR::ErrorCodeAttr>(attr)) {
+            os << "error_" << errorAttr.getField().getValue();
             return AliasResult::FinalAlias;
         }
 
@@ -975,5 +998,5 @@ void P4HIR::P4HIRDialect::initialize() {
 
 #define GET_OP_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.cpp.inc"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.cpp.inc"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.cpp.inc"  // NOLINT
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.cpp.inc"

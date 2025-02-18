@@ -1,7 +1,7 @@
 // RUN: p4mlir-opt %s | FileCheck %s
 
 !unknown = !p4hir.unknown
-!error = !p4hir.error
+!error = !p4hir.error<ErrorA, ErrorB>
 !dontcare = !p4hir.dontcare
 !bit42 = !p4hir.bit<42>
 !ref = !p4hir.ref<!p4hir.bit<42>>

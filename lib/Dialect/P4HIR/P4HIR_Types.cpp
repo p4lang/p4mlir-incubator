@@ -303,6 +303,34 @@ std::optional<size_t> EnumType::indexOf(mlir::StringRef field) {
     return {};
 }
 
+Type ErrorType::parse(AsmParser &p) {
+    llvm::SmallVector<Attribute> fields;
+    if (p.parseCommaSeparatedList(AsmParser::Delimiter::LessGreater, [&]() {
+            StringRef caseName;
+            if (p.parseKeyword(&caseName)) return failure();
+            fields.push_back(StringAttr::get(p.getContext(), name));
+            return success();
+        }))
+        return {};
+
+    return get(p.getContext(), ArrayAttr::get(p.getContext(), fields));
+}
+
+void ErrorType::print(AsmPrinter &p) const {
+    auto fields = getFields();
+    p << '<';
+    llvm::interleaveComma(fields, p, [&](Attribute enumerator) {
+        p << mlir::cast<StringAttr>(enumerator).getValue();
+    });
+    p << ">";
+}
+
+std::optional<size_t> ErrorType::indexOf(mlir::StringRef field) {
+    for (auto it : llvm::enumerate(getFields()))
+        if (mlir::cast<StringAttr>(it.value()).getValue() == field) return it.index();
+    return {};
+}
+
 void SerEnumType::print(AsmPrinter &p) const {
     auto fields = getFields();
     p << '<';

@@ -99,7 +99,7 @@ class ConversionTracer {
 // representation.
 class P4TypeConverter : public P4::Inspector {
  public:
-    P4TypeConverter(P4HIRConverter &converter) : converter(converter) {}
+    explicit P4TypeConverter(P4HIRConverter &converter) : converter(converter) {}
 
     profile_t init_apply(const P4::IR::Node *node) override {
         BUG_CHECK(!type, "Type already converted");
@@ -134,6 +134,7 @@ class P4TypeConverter : public P4::Inspector {
     bool preorder(const P4::IR::Type_Void *v) override;
     bool preorder(const P4::IR::Type_Struct *s) override;
     bool preorder(const P4::IR::Type_Enum *e) override;
+    bool preorder(const P4::IR::Type_Error *e) override;
     bool preorder(const P4::IR::Type_SerEnum *se) override;
     bool preorder(const P4::IR::Type_Header *h) override;
 
@@ -523,6 +524,19 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Enum *type) {
     return setType(type, mlirType);
 }
 
+bool P4TypeConverter::preorder(const P4::IR::Type_Error *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    llvm::SmallVector<mlir::Attribute, 4> cases;
+    for (const auto *field : type->members) {
+        cases.push_back(mlir::StringAttr::get(converter.context(), field->name.string_view()));
+    }
+    auto mlirType = P4HIR::ErrorType::get(converter.context(),
+                                          mlir::ArrayAttr::get(converter.context(), cases));
+    return setType(type, mlirType);
+}
+
 bool P4TypeConverter::preorder(const P4::IR::Type_SerEnum *type) {
     if ((this->type = converter.findType(type))) return false;
 
@@ -647,9 +661,15 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
     }
     if (const auto *m = expr->to<P4::IR::Member>()) {
         if (const auto *typeNameExpr = m->expr->to<P4::IR::TypeNameExpression>()) {
-            auto baseType = mlir::cast<P4HIR::EnumType>(getOrCreateType(typeNameExpr->typeName));
+            auto baseType = getOrCreateType(typeNameExpr->typeName);
+            if (auto errorType = mlir::dyn_cast<P4HIR::ErrorType>(baseType)) {
+                return setConstantExpr(
+                    expr, P4HIR::ErrorCodeAttr::get(errorType, m->member.string_view()));
+            }
+
+            auto enumType = mlir::cast<P4HIR::EnumType>(baseType);
             return setConstantExpr(expr,
-                                   P4HIR::EnumFieldAttr::get(baseType, m->member.string_view()));
+                                   P4HIR::EnumFieldAttr::get(enumType, m->member.string_view()));
         }
 
         auto base = mlir::cast<P4HIR::AggAttr>(getOrCreateConstantExpr(m->expr));
@@ -665,6 +685,9 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
 
             if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(fieldType))
                 return setConstantExpr(expr, mlir::cast<P4HIR::IntAttr>(field));
+
+            if (mlir::isa<P4HIR::ErrorType>(fieldType))
+                return setConstantExpr(expr, mlir::cast<P4HIR::ErrorCodeAttr>(field));
 
             return setConstantExpr(expr, mlir::cast<P4HIR::AggAttr>(field));
         } else
@@ -1229,12 +1252,18 @@ bool P4HIRConverter::preorder(const P4::IR::Member *m) {
     // This is just enum constant
     if (const auto *typeNameExpr = m->expr->to<P4::IR::TypeNameExpression>()) {
         auto type = getOrCreateType(typeNameExpr->typeName);
-        BUG_CHECK((mlir::isa<P4HIR::EnumType, P4HIR::SerEnumType>(type)),
+        BUG_CHECK((mlir::isa<P4HIR::EnumType, P4HIR::SerEnumType, P4HIR::ErrorType>(type)),
                   "unexpected type for expression %1%", typeNameExpr);
 
-        setValue(m, builder.create<P4HIR::ConstOp>(
-                        getLoc(builder, m),
-                        P4HIR::EnumFieldAttr::get(type, m->member.name.string_view())));
+        if (mlir::isa<P4HIR::ErrorType>(type))
+            setValue(m, builder.create<P4HIR::ConstOp>(
+                            getLoc(builder, m),
+                            P4HIR::ErrorCodeAttr::get(type, m->member.name.string_view())));
+        else
+            setValue(m, builder.create<P4HIR::ConstOp>(
+                            getLoc(builder, m),
+                            P4HIR::EnumFieldAttr::get(type, m->member.name.string_view())));
+
         return false;
     }
 

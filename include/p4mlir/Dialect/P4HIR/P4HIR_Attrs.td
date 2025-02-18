@@ -117,6 +117,36 @@ def P4HIR_EnumFieldAttr : P4HIR_Attr<"EnumField", "enum_field", [TypedAttrInterf
 }
 
 //===----------------------------------------------------------------------===//
+// ErrorAttr
+//===----------------------------------------------------------------------===//
+// An attribute to indicate a particular error code.
+// TODO: Decide if we'd want to unify with EnumFieldAttr?
+def P4HIR_ErrorCodeAttr : P4HIR_Attr<"ErrorCode", "error", [TypedAttrInterface]> {
+ let summary = "Error code attribute";
+  let description = [{
+    This attribute represents an error code.
+
+    Examples:
+    ```mlir
+      #p4hir.error<ErrorA, !p4hir.error<ErrorA, ErrorB, ErrorC>> : !p4hir.error<ErrorA, ErrorB, ErrorC>
+    ```
+  }];
+  let parameters = (ins AttributeSelfTypeParameter<"">:$type, "::mlir::StringAttr":$field);
+
+  // Force all clients to go through custom builder so we can check
+  // whether the requested error value is part of the provided error type.
+  let skipDefaultBuilders = 1;
+  let hasCustomAssemblyFormat = 1;
+
+  let builders = [
+    AttrBuilderWithInferredContext<(ins "mlir::Type":$type, "mlir::StringAttr": $value)>,
+    AttrBuilderWithInferredContext<(ins "mlir::Type":$type, "mlir::StringRef": $value), [{
+      return $_get(type.getContext(), type, mlir::StringAttr::get(type.getContext(), value));
+    }]>
+  ];
+}
+
+//===----------------------------------------------------------------------===//
 // ValidAttr
 //===----------------------------------------------------------------------===//
 

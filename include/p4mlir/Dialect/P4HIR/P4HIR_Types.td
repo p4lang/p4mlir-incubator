@@ -111,8 +111,6 @@ def BooleanType : P4HIR_Type<"Bool", "bool"> {
 //===----------------------------------------------------------------------===//
 
 def DontcareType : P4HIR_Type<"Dontcare", "dontcare"> {}
-// FIXME: Add string for error here & declarations
-def ErrorType : P4HIR_Type<"Error", "error"> {}
 def UnknownType : P4HIR_Type<"Unknown", "unknown"> {}
 
 def VoidType : P4HIR_Type<"Void", "void"> {
@@ -404,7 +402,7 @@ def HeaderType : StructLikeType<"Header", "header"> {
 }
 
 //===----------------------------------------------------------------------===//
-// EnumType & SerEnumType
+// EnumType, ErrorType  & SerEnumType
 //===----------------------------------------------------------------------===//
 def EnumType : P4HIR_Type<"Enum", "enum", []> {
   let summary = "enum type";
@@ -425,6 +423,29 @@ def EnumType : P4HIR_Type<"Enum", "enum", []> {
     /// Returns the index of the requested field, or a nullopt if the field is
     /// not part of this enum.
     std::optional<size_t> indexOf(mlir::StringRef field);
+  }];
+}
+
+def ErrorType : P4HIR_Type<"Error", "error", []> {
+  let summary = "error type";
+  let description = [{
+    Represents an enumeration of error values, essentially an enum
+    !p4hir.error<Case1, Case2>
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+
+  let parameters = (ins "mlir::ArrayAttr":$fields);
+
+  let extraClassDeclaration = [{
+    /// Returns true if the requested field is part of this enum
+    bool contains(mlir::StringRef field) { return indexOf(field).has_value(); }
+
+    /// Returns the index of the requested field, or a nullopt if the field is
+    /// not part of this enum.
+    std::optional<size_t> indexOf(mlir::StringRef field);
+
+    llvm::StringRef getAlias() const { return "error"; };
   }];
 }
 
@@ -475,7 +496,7 @@ def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                                 StructType, HeaderType,
-                                EnumType, SerEnumType,
+                                EnumType, SerEnumType, ErrorType,
                                 ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def StructLikeType : AnyTypeOf<[StructType, HeaderType]>;

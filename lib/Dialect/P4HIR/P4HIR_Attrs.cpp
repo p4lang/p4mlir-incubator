@@ -122,6 +122,36 @@ EnumFieldAttr EnumFieldAttr::get(mlir::Type type, StringAttr value) {
     return Base::get(value.getContext(), type, value);
 }
 
+Attribute ErrorCodeAttr::parse(AsmParser &p, Type) {
+    StringRef field;
+    P4HIR::ErrorType type;
+    if (p.parseLess() || p.parseKeyword(&field) || p.parseComma() ||
+        p.parseCustomTypeWithFallback<P4HIR::ErrorType>(type) || p.parseGreater())
+        return {};
+
+    return EnumFieldAttr::get(type, field);
+}
+
+void ErrorCodeAttr::print(AsmPrinter &p) const {
+    p << "<" << getField().getValue() << ", ";
+    p.printType(getType());
+    p << ">";
+}
+
+ErrorCodeAttr ErrorCodeAttr::get(mlir::Type type, StringAttr value) {
+    ErrorType errorType = llvm::dyn_cast<ErrorType>(type);
+    if (!errorType) return nullptr;
+
+    // Check whether the provided value is a member of the enum type.
+    if (!errorType.contains(value.getValue())) {
+        //    emitError() << "error code '" << value.getValue()
+        //                   << "' is not a member of error type " << errorType;
+        return nullptr;
+    }
+
+    return Base::get(value.getContext(), type, value);
+}
+
 void P4HIRDialect::registerAttributes() {
     addAttributes<
 #define GET_ATTRDEF_LIST
