@@ -191,7 +191,7 @@ def FuncType : P4HIR_Type<"Func", "func"> {
 
   // Use a custom parser to handle the argument types in better way.
   let assemblyFormat = [{
-    `<` custom<FuncType>($optionalReturnType, $inputs) `>`
+    `<` custom<FuncType>($inputs, $optionalReturnType) `>`
   }];
 
   let extraClassDeclaration = [{
@@ -217,6 +217,18 @@ def FuncType : P4HIR_Type<"Func", "func"> {
     bool isVoid() const;
   }];
 }
+
+//===----------------------------------------------------------------------===//
+// ParserType
+//===----------------------------------------------------------------------===//
+def ParserType : P4HIR_Type<"Parser", "parser"> {
+  let parameters = (ins StringRefParameter<"parser type name">:$name,
+                        ArrayRefParameter<"mlir::Type">:$inputs);
+  let assemblyFormat = [{
+    `<` $name `,` custom<FuncType>($inputs) `>`
+  }];
+}
+
 
 //===----------------------------------------------------------------------===//
 // StructType
@@ -484,6 +496,35 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", []> {
   }];
 }
 
+
+//===----------------------------------------------------------------------===//
+// SetType
+//===----------------------------------------------------------------------===//
+def SetType : P4HIR_Type<"Set", "set", []> {
+  let summary = "set type";
+  let description = [{
+    Represents a set of values
+    !p4hir.set<!p4hir.bit<32>>
+  }];
+
+  let parameters = (ins "mlir::Type":$elementType);
+
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "mlir::Type":$elementType), [{
+      return $_get(elementType.getContext(), elementType);
+    }]>,
+    TypeBuilder<(ins "mlir::Type":$elementType), [{
+      return $_get($_ctxt, elementType);
+    }]>
+  ];
+
+  let assemblyFormat = [{
+    `<` $elementType `>`
+  }];
+
+  let skipDefaultBuilders = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
@@ -492,7 +533,8 @@ def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                            StructType, HeaderType, Builtin_Tuple,
                            EnumType, SerEnumType,
                            ValidBitType,
-                           DontcareType, ErrorType, UnknownType]> {}
+                           DontcareType, ErrorType, UnknownType,
+                           SetType]> {}
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,

@@ -139,6 +139,7 @@ class P4TypeConverter : public P4::Inspector {
     bool preorder(const P4::IR::Type_SerEnum *se) override;
     bool preorder(const P4::IR::Type_Header *h) override;
     bool preorder(const P4::IR::Type_BaseList *l) override;  // covers both Type_Tuple and Type_List
+    bool preorder(const P4::IR::Type_Parser *p) override;
 
     mlir::Type getType() const { return type; }
     bool setType(const P4::IR::Type *type, mlir::Type mlirType);
@@ -308,6 +309,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::P4Program *) override { return true; }
     bool preorder(const P4::IR::P4Action *a) override;
     bool preorder(const P4::IR::Function *f) override;
+
+    bool preorder(const P4::IR::P4Parser *a) override;
+    bool preorder(const P4::IR::ParserState *s) override;
+
     bool preorder(const P4::IR::Method *m) override;
     bool preorder(const P4::IR::BlockStatement *block) override {
         // If this is a top-level block where scope is implied (e.g. function,
@@ -477,9 +482,9 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Method *type) {
     llvm::SmallVector<mlir::Type, 4> argTypes;
 
     CHECK_NULL(type->parameters);
-    CHECK_NULL(type->returnType);
 
-    mlir::Type resultType = convert(type->returnType);
+    mlir::Type resultType =
+        type->returnType ? convert(type->returnType) : P4HIR::VoidType::get(converter.context());
 
     for (const auto *p : type->parameters->parameters) {
         mlir::Type type = convert(p->type);
@@ -487,6 +492,19 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Method *type) {
     }
 
     auto mlirType = P4HIR::FuncType::get(argTypes, resultType);
+    return setType(type, mlirType);
+}
+
+bool P4TypeConverter::preorder(const P4::IR::Type_Parser *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+
+    llvm::SmallVector<mlir::Type, 4> argTypes;
+    for (const auto *p : type->getApplyParameters()->parameters)
+        argTypes.push_back(convert(p->type));
+
+    auto mlirType = P4HIR::ParserType::get(converter.context(), type->name.string_view(), argTypes);
     return setType(type, mlirType);
 }
 
@@ -1164,7 +1182,7 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
     auto convertCall = [&](mlir::OpBuilder &b, mlir::Type &resultType, mlir::Location loc) {
         mlir::Value callResult;
 
-        // Special case: lower builtin methods
+        // Special case: lower builtin methods.
         if (const auto *bCall = instance->to<P4::BuiltInMethod>()) {
             assert(!emitScope && "should not be inside scope");
 
@@ -1224,11 +1242,13 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
         }
 
         if (const auto *actCall = instance->to<P4::ActionCall>()) {
+            LOG4("resolved as action call");
             auto actSym = p4Symbols.lookup(actCall->action);
             BUG_CHECK(actSym, "expected reference action to be converted: %1%", actCall->action);
 
             b.create<P4HIR::CallOp>(loc, actSym, operands);
         } else if (const auto *fCall = instance->to<P4::FunctionCall>()) {
+            LOG4("resolved as function call");
             auto fSym = p4Symbols.lookup(fCall->function);
             auto callResultType = getOrCreateType(instance->originalMethodType->returnType);
 
@@ -1236,6 +1256,7 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
 
             callResult = b.create<P4HIR::CallOp>(loc, fSym, callResultType, operands).getResult();
         } else if (const auto *fCall = instance->to<P4::ExternCall>()) {
+            LOG4("resolved as extern call");
             auto fSym = p4Symbols.lookup(fCall->method);
             auto callResultType = getOrCreateType(instance->originalMethodType->returnType);
 
@@ -1362,6 +1383,169 @@ void P4HIRConverter::postorder(const P4::IR::ArrayIndex *arr) {
     }
 
     BUG("cannot handle this array yet: %1%", arr);
+}
+
+bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
+    auto applyType = mlir::cast<P4HIR::FuncType>(getOrCreateType(parser->getApplyMethodType()));
+    auto ctorType =
+        mlir::cast<P4HIR::FuncType>(getOrCreateType(parser->getConstructorMethodType()));
+
+    BUG_CHECK(ctorType.getNumInputs() == 0, "does not yet support constructors with parameters");
+
+    auto loc = getLoc(builder, parser);
+    auto parserOp =
+        builder.create<P4HIR::ParserOp>(loc, parser->name.string_view(), applyType, ctorType);
+
+    // TODO: Move to build()
+    mlir::Block &first = parserOp.getBody().emplaceBlock();
+    for (auto argType : applyType.getInputs()) first.addArgument(argType, loc);
+
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&first);
+
+    // Iterate over parameters again binding parameter values to arguments of first BB
+    auto &body = parserOp.getBody();
+    const auto &params = parser->getApplyParameters()->parameters;
+
+    assert(body.getNumArguments() == params.size() && "invalid parameter conversion");
+    for (auto [param, bodyArg] : llvm::zip(params, body.getArguments())) setValue(param, bodyArg);
+
+    // Materialize locals
+    visit(parser->parserLocals);
+
+    // Walk over all states, materializing the bodies
+    visit(parser->states);
+
+    // Create default transition (to start state)
+    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
+    auto startStateSymbol =
+        mlir::SymbolRefAttr::get(builder.getContext(), P4::IR::ParserState::start.string_view());
+
+    builder.create<P4HIR::ParserTransitionOp>(
+        getEndLoc(builder, parser), mlir::SymbolRefAttr::get(parserSymbol, {startStateSymbol}));
+    parserOp.dump();
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
+    auto stateOp =
+        builder.create<P4HIR::ParserStateOp>(getLoc(builder, state), state->name.string_view());
+    // TODO: Move to build()
+    mlir::Block &first = stateOp.getBody().emplaceBlock();
+
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&first);
+
+    // Materialize all state components
+    visit(state->components);
+
+    const auto *parser = findContext<P4::IR::P4Parser>();
+    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
+
+    // accept / reject states are special, their bodies contain only accept / reject ops
+    if (state->name == P4::IR::ParserState::accept) {
+        builder.create<P4HIR::ParserAcceptOp>(getLoc(builder, state));
+        return false;
+    } else if (state->name == P4::IR::ParserState::reject) {
+        builder.create<P4HIR::ParserRejectOp>(getLoc(builder, state));
+        return false;
+    }
+
+    // Normal transition is either PathExpression or SelectExpression
+    if (const auto *pe = state->selectExpression->to<P4::IR::PathExpression>()) {
+        auto loc = getLoc(builder, pe);
+        const auto *nextState = resolvePath(pe->path, false)->checkedTo<P4::IR::ParserState>();
+        auto nextStateSymbol =
+            mlir::SymbolRefAttr::get(builder.getContext(), nextState->name.string_view());
+        builder.create<P4HIR::ParserTransitionOp>(
+            loc, mlir::SymbolRefAttr::get(parserSymbol, {nextStateSymbol}));
+    } else {
+        const auto *select = state->selectExpression->checkedTo<P4::IR::SelectExpression>();
+
+        // Materialize value to select over. Select is always a ListExpression,
+        // even if it contains a single value. Lists ae lowered to tuples,
+        // however, single value cases are not single-value tuples. Unwrap
+        // single-value ListExpression down to the sole component.
+        const P4::IR::Expression *selectArg = select->select;
+        if (select->select->components.size() == 1) selectArg = select->select->components.front();
+
+        visit(selectArg);
+
+        // Create select itself
+        auto transitionSelectOp = builder.create<P4HIR::ParserTransitionSelectOp>(
+            getLoc(builder, select), getValue(selectArg));
+
+        // TODO: Move to build()
+        mlir::Block &first = transitionSelectOp.getBody().emplaceBlock();
+
+        mlir::OpBuilder::InsertionGuard guard(builder);
+        builder.setInsertionPointToStart(&first);
+
+        bool hasDefaultCase = false;
+        for (const auto *selectCase : select->selectCases) {
+            const auto *nextState =
+                resolvePath(selectCase->state->path, false)->checkedTo<P4::IR::ParserState>();
+            auto nextStateSymbol =
+                mlir::SymbolRefAttr::get(builder.getContext(), nextState->name.string_view());
+            builder.create<P4HIR::ParserSelectCaseOp>(
+                getLoc(builder, selectCase),
+                [&](mlir::OpBuilder &b, mlir::Location) {
+                    const auto *keyset = selectCase->keyset;
+                    auto endLoc = getEndLoc(builder, keyset);
+                    mlir::Value keyVal;
+
+                    // Type inference does not do proper type unification for the key,
+                    // so we'd need to do this by ourselves
+                    auto convertElement = [&](const P4::IR::Expression *expr) -> mlir::Value {
+                        // Universal set
+                        if (expr->is<P4::IR::DefaultExpression>())
+                            return b.create<P4HIR::UniversalSetOp>(endLoc).getResult();
+
+                        visit(expr);
+                        auto elVal = getValue(expr);
+                        if (!mlir::isa<P4HIR::SetType>(elVal.getType()))
+                            elVal = b.create<P4HIR::SetOp>(getEndLoc(builder, expr), elVal);
+                        return elVal;
+                    };
+
+                    if (const auto *keyList = keyset->to<P4::IR::ListExpression>()) {
+                        // Set product
+                        llvm::SmallVector<mlir::Value, 4> elements;
+                        for (const auto *element : keyList->components)
+                            elements.push_back(convertElement(element));
+                        // Treat product consisting entirely of universal sets as default case
+                        hasDefaultCase |= llvm::all_of(elements, [](mlir::Value el) {
+                            return mlir::isa<P4HIR::UniversalSetOp>(el.getDefiningOp());
+                        });
+                        keyVal = b.create<P4HIR::SetProductOp>(endLoc, elements);
+                    } else {
+                        keyVal = convertElement(keyset);
+                        hasDefaultCase |= mlir::isa<P4HIR::UniversalSetOp>(keyVal.getDefiningOp());
+                    }
+                    b.create<P4HIR::YieldOp>(endLoc, keyVal);
+                },
+                mlir::SymbolRefAttr::get(parserSymbol, {nextStateSymbol}));
+        }
+
+        // If there is no default case, then synthesize one explicitly
+        // FIXME: signal `error.NoMatch` error.
+        if (!hasDefaultCase) {
+            auto rejectStateSymbol = mlir::SymbolRefAttr::get(
+                builder.getContext(), P4::IR::ParserState::reject.string_view());
+
+            auto endLoc = getEndLoc(builder, select);
+            builder.create<P4HIR::ParserSelectCaseOp>(
+                endLoc,
+                [&](mlir::OpBuilder &b, mlir::Location) {
+                    b.create<P4HIR::YieldOp>(
+                        endLoc, builder.create<P4HIR::UniversalSetOp>(endLoc).getResult());
+                },
+                mlir::SymbolRefAttr::get(parserSymbol, {rejectStateSymbol}));
+        }
+    }
+
+    return false;
 }
 
 }  // namespace
