@@ -10,6 +10,9 @@ const S x = { 42, false };
 const tuple<bit<32>, bit<32>> t = { 0, 1 };
 const bit<32> f = t[0];
 
+const tuple<bit<32>> singleT = { 42 };
+const bit<32> singleF = singleT[0];
+
 // CHECK: p4hir.const ["t"] #p4hir.aggregate<[#int0_b32i, #int1_b32i]> : tuple<!b32i, !b32i>
 // CHECK: p4hir.const ["f"] #int0_b32i
 
