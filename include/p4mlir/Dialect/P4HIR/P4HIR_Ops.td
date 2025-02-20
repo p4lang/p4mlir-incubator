@@ -947,4 +947,52 @@ def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
   }];
 }
 
+def TupleOp : P4HIR_Op<"tuple",
+  [Pure,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "Create a tuplet from constituent parts.";
+  // FIXME: Better constraint type
+  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let results = (outs Builtin_Tuple:$result);
+  let hasCustomAssemblyFormat = 1;
+  // FIXME: use declarative format
+  // let assemblyFormat = [{
+  //   `(` $input `)` attr-dict `:` type($result)
+  // }];
+
+  let hasVerifier = 1;
+}
+
+def TupleExtractOp : P4HIR_Op<"tuple_extract",
+    [Pure,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
+  let summary = "Extract a field from a tuple.";
+  let description = [{
+    ```
+    %result = p4hir.tuple_extract %input[0] : !tuple<!bit32, !bit64>
+
+    ```
+  }];
+
+  // TODO: find a way to use fieldid inteerface on tuples...
+  let arguments = (ins Builtin_Tuple:$input, I32Attr:$fieldIndex);
+  // FIXME: Better constraint type
+  let results = (outs AnyP4Type:$result);
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$input, "unsigned":$fieldIndex)>,
+    OpBuilder<(ins "mlir::Value":$input, "P4HIR::IntAttr":$fieldIndex), [{
+      build($_builder, $_state, input, fieldIndex.getUInt());
+    }]>
+  ];
+
+  // FIXME: use declarative format
+  // let assemblyFormat = [{
+  //   $input `[` $fieldIndex `]` attr-dict `:` type($result)
+  // }];
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD

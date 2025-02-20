@@ -2,6 +2,7 @@
 #define P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD
 
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/Interfaces/MemorySlotInterfaces.td"
 
@@ -488,14 +489,14 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", []> {
 //===----------------------------------------------------------------------===//
 
 def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
-                           StructType, HeaderType,
+                           StructType, HeaderType, Builtin_Tuple,
                            EnumType, SerEnumType,
                            ValidBitType,
                            DontcareType, ErrorType, UnknownType]> {}
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
-                                StructType, HeaderType,
+                                StructType, HeaderType, Builtin_Tuple,
                                 EnumType, SerEnumType, ErrorType,
                                 ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;

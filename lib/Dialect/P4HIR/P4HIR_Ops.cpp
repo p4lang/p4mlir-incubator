@@ -6,6 +6,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
@@ -41,7 +42,7 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
     if (mlir::isa<P4HIR::IntAttr, P4HIR::BoolAttr>(attrType)) return success();
 
     if (mlir::isa<P4HIR::AggAttr>(attrType)) {
-        if (!mlir::isa<P4HIR::StructType, P4HIR::HeaderType>(opType))
+        if (!mlir::isa<P4HIR::StructType, P4HIR::HeaderType, mlir::TupleType>(opType))
             return op->emitOpError("result type (") << opType << ") is not an aggregate type";
 
         return success();
@@ -885,6 +886,109 @@ void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsSta
     auto fieldType = structType.getFieldType(fieldName);
     assert(fieldIndex.has_value() && "field name not found in aggregate type");
     build(builder, odsState, ReferenceType::get(fieldType), input, *fieldIndex);
+}
+
+//===----------------------------------------------------------------------===//
+// StructOp
+//===----------------------------------------------------------------------===//
+
+ParseResult P4HIR::TupleOp::parse(OpAsmParser &parser, OperationState &result) {
+    llvm::SMLoc inputOperandsLoc = parser.getCurrentLocation();
+    llvm::SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
+    Type declType;
+
+    if (parser.parseLParen() || parser.parseOperandList(operands) || parser.parseRParen() ||
+        parser.parseOptionalAttrDict(result.attributes) || parser.parseColonType(declType))
+        return failure();
+
+    auto tupleType = mlir::dyn_cast<mlir::TupleType>(declType);
+    if (!tupleType) return parser.emitError(parser.getNameLoc(), "expected !tuple type");
+
+    result.addTypes(tupleType);
+    if (parser.resolveOperands(operands, tupleType.getTypes(), inputOperandsLoc, result.operands))
+        return failure();
+    return success();
+}
+
+void P4HIR::TupleOp::print(OpAsmPrinter &printer) {
+    printer << " (";
+    printer.printOperands(getInput());
+    printer << ")";
+    printer.printOptionalAttrDict((*this)->getAttrs());
+    printer << " : " << getType();
+}
+
+LogicalResult P4HIR::TupleOp::verify() {
+    auto elementTypes = getType().getTypes();
+
+    if (elementTypes.size() != getInput().size()) return emitOpError("tuple field count mismatch");
+
+    for (const auto &[field, value] : llvm::zip(elementTypes, getInput()))
+        if (field != value.getType()) return emitOpError("tuple field types do not match");
+
+    return success();
+}
+
+void P4HIR::TupleOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    setNameFn(getResult(), "tuple");
+}
+
+// TODO: This duplicates lots of things above for structs. Find a way to generalize
+LogicalResult P4HIR::TupleExtractOp::verify() {
+    auto index = getFieldIndex();
+    auto fields = getInput().getType();
+    if (index >= fields.size())
+        return emitOpError() << "field index " << index
+                             << " exceeds element count of aggregate type";
+
+    if (getType() != fields.getType(index))
+        return emitOpError() << "type " << fields.getType(index)
+                             << " of accessed field in aggregate at index " << index
+                             << " does not match expected type " << getType();
+
+    return success();
+}
+
+ParseResult P4HIR::TupleExtractOp::parse(OpAsmParser &parser, OperationState &result) {
+    OpAsmParser::UnresolvedOperand operand;
+    unsigned fieldIndex = -1U;
+    mlir::TupleType declType;
+
+    if (parser.parseOperand(operand) || parser.parseLSquare() || parser.parseInteger(fieldIndex) ||
+        parser.parseRSquare() || parser.parseOptionalAttrDict(result.attributes) ||
+        parser.parseColon() || parser.parseType<mlir::TupleType>(declType))
+        return failure();
+
+    auto indexAttr = IntegerAttr::get(IntegerType::get(parser.getContext(), 32), fieldIndex);
+    result.addAttribute("fieldIndex", indexAttr);
+    Type resultType = declType.getType(fieldIndex);
+    result.addTypes(resultType);
+
+    if (parser.resolveOperand(operand, declType, result.operands)) return failure();
+    return success();
+}
+
+void P4HIR::TupleExtractOp::print(OpAsmPrinter &printer) {
+    printer << " ";
+    printer.printOperand(getInput());
+    printer << "[" << getFieldIndex() << "]";
+    printer.printOptionalAttrDict((*this)->getAttrs(), {"fieldIndex"});
+    printer << " : ";
+    printer << getInput().getType();
+}
+
+void P4HIR::TupleExtractOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    llvm::SmallString<16> name;
+    llvm::raw_svector_ostream specialName(name);
+    specialName << 't' << getFieldIndex();
+
+    setNameFn(getResult(), name);
+}
+
+void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, Value input,
+                                  unsigned fieldIndex) {
+    auto tupleType = mlir::cast<mlir::TupleType>(input.getType());
+    build(builder, odsState, tupleType.getType(fieldIndex), input, fieldIndex);
 }
 
 namespace {

@@ -33,6 +33,7 @@
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Types.h"
@@ -137,6 +138,7 @@ class P4TypeConverter : public P4::Inspector {
     bool preorder(const P4::IR::Type_Error *e) override;
     bool preorder(const P4::IR::Type_SerEnum *se) override;
     bool preorder(const P4::IR::Type_Header *h) override;
+    bool preorder(const P4::IR::Type_BaseList *l) override;  // covers both Type_Tuple and Type_List
 
     mlir::Type getType() const { return type; }
     bool setType(const P4::IR::Type *type, mlir::Type mlirType);
@@ -172,6 +174,17 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return builder.create<P4HIR::ConstOp>(loc,
                                               P4HIR::BoolAttr::get(context(), boolType, value));
     }
+    mlir::TypedAttr getTypedConstant(mlir::Type type, mlir::Attribute constant) {
+        if (mlir::isa<P4HIR::BoolType>(type)) return mlir::cast<P4HIR::BoolAttr>(constant);
+
+        if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(type))
+            return mlir::cast<P4HIR::IntAttr>(constant);
+
+        if (mlir::isa<P4HIR::ErrorType>(type)) return mlir::cast<P4HIR::ErrorCodeAttr>(constant);
+
+        return mlir::cast<P4HIR::AggAttr>(constant);
+    }
+
     mlir::Value getValidHeaderConstant(mlir::Location loc,
                                        P4HIR::ValidityBit valid = P4HIR::ValidityBit::Valid) {
         return builder.create<P4HIR::ConstOp>(loc, P4HIR::ValidityBitAttr::get(context(), valid));
@@ -365,6 +378,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(Cast)
     HANDLE_IN_POSTORDER(Declaration_Variable)
     HANDLE_IN_POSTORDER(ReturnStatement)
+    HANDLE_IN_POSTORDER(ArrayIndex)
 
 #undef HANDLE_IN_POSTORDER
 
@@ -383,6 +397,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::MethodCallExpression *mce) override;
     bool preorder(const P4::IR::StructExpression *str) override;
+    bool preorder(const P4::IR::ListExpression *lst) override;
     bool preorder(const P4::IR::Member *m) override;
     bool preorder(const P4::IR::Equ *) override;
     bool preorder(const P4::IR::Neq *) override;
@@ -554,6 +569,19 @@ bool P4TypeConverter::preorder(const P4::IR::Type_SerEnum *type) {
     return setType(type, mlirType);
 }
 
+bool P4TypeConverter::preorder(const P4::IR::Type_BaseList *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    llvm::SmallVector<mlir::Type, 4> fields;
+    for (const auto *field : type->components) {
+        fields.push_back(convert(field));
+    }
+
+    auto mlirType = mlir::TupleType::get(converter.context(), fields);
+    return setType(type, mlirType);
+}
+
 bool P4TypeConverter::setType(const P4::IR::Type *type, mlir::Type mlirType) {
     this->type = mlirType;
     converter.setType(type, mlirType);
@@ -652,12 +680,26 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
             }
         }
     }
+    if (const auto *lst = expr->to<P4::IR::ListExpression>()) {
+        auto type = getOrCreateType(lst->type);
+        llvm::SmallVector<mlir::Attribute, 4> fields;
+        for (const auto *field : lst->components) fields.push_back(getOrCreateConstantExpr(field));
+        return setConstantExpr(expr, P4HIR::AggAttr::get(type, builder.getArrayAttr(fields)));
+    }
     if (const auto *str = expr->to<P4::IR::StructExpression>()) {
         auto type = getOrCreateType(str->type);
         llvm::SmallVector<mlir::Attribute, 4> fields;
         for (const auto *field : str->components)
             fields.push_back(getOrCreateConstantExpr(field->expression));
         return setConstantExpr(expr, P4HIR::AggAttr::get(type, builder.getArrayAttr(fields)));
+    }
+    if (const auto *arr = expr->to<P4::IR::ArrayIndex>()) {
+        auto base = mlir::cast<P4HIR::AggAttr>(getOrCreateConstantExpr(arr->left));
+        auto idx = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(arr->right));
+
+        auto field = base.getFields()[idx.getUInt()];
+        auto fieldType = getOrCreateType(arr->type);
+        return setConstantExpr(expr, getTypedConstant(fieldType, field));
     }
     if (const auto *m = expr->to<P4::IR::Member>()) {
         if (const auto *typeNameExpr = m->expr->to<P4::IR::TypeNameExpression>()) {
@@ -679,17 +721,7 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
             auto field = base.getFields()[*maybeIdx];
             auto fieldType = structType.getFieldType(m->member.string_view());
 
-            // TODO: We'd likely would want to convert this to some kind of interface,
-            if (mlir::isa<P4HIR::BoolType>(fieldType))
-                return setConstantExpr(expr, mlir::cast<P4HIR::BoolAttr>(field));
-
-            if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(fieldType))
-                return setConstantExpr(expr, mlir::cast<P4HIR::IntAttr>(field));
-
-            if (mlir::isa<P4HIR::ErrorType>(fieldType))
-                return setConstantExpr(expr, mlir::cast<P4HIR::ErrorCodeAttr>(field));
-
-            return setConstantExpr(expr, mlir::cast<P4HIR::AggAttr>(field));
+            return setConstantExpr(expr, getTypedConstant(fieldType, field));
         } else
             BUG("invalid member reference %1%", m);
     }
@@ -1303,6 +1335,33 @@ bool P4HIRConverter::preorder(const P4::IR::StructExpression *str) {
     setValue(str, builder.create<P4HIR::StructOp>(loc, type, fields).getResult());
 
     return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::ListExpression *lst) {
+    auto type = getOrCreateType(lst->type);
+
+    auto loc = getLoc(builder, lst);
+    llvm::SmallVector<mlir::Value, 4> fields;
+    for (const auto *field : lst->components) {
+        visit(field);
+        fields.push_back(getValue(field));
+    }
+
+    setValue(lst, builder.create<P4HIR::TupleOp>(loc, type, fields).getResult());
+
+    return false;
+}
+
+void P4HIRConverter::postorder(const P4::IR::ArrayIndex *arr) {
+    auto lhs = getValue(arr->left);
+    auto loc = getLoc(builder, arr);
+    if (mlir::isa<mlir::TupleType>(lhs.getType())) {
+        auto idx = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(arr->right));
+        setValue(arr, builder.create<P4HIR::TupleExtractOp>(loc, lhs, idx).getResult());
+        return;
+    }
+
+    BUG("cannot handle this array yet: %1%", arr);
 }
 
 }  // namespace
