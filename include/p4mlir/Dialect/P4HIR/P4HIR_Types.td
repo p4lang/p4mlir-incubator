@@ -222,5 +222,4 @@ def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType]> {}
 
-
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD

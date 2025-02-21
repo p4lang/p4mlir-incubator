@@ -340,6 +340,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     // Concat
     HANDLE_IN_POSTORDER(Concat)
 
+    // Shift
+    HANDLE_IN_POSTORDER(Shl)
+    HANDLE_IN_POSTORDER(Shr)
+
     // Comparisons
     HANDLE_IN_POSTORDER(Equ)
     HANDLE_IN_POSTORDER(Neq)
@@ -640,6 +644,21 @@ void P4HIRConverter::postorder(const P4::IR::Concat *concat) {
     ConversionTracer trace("Converting ", concat);
     setValue(concat, emitConcatOp(concat));
 }
+
+#define CONVERT_SHL_SHR_OP(P4C_Shift, PHIR_Shift)             \
+void P4HIRConverter::postorder(const P4::IR::P4C_Shift *op) { \
+    ConversionTracer trace("Converting ", op);                \
+    auto result = builder.create<P4HIR::PHIR_Shift>(          \
+        getLoc(builder, op),                                  \
+        getValue(op->left),                                   \
+        getValue(op->right));                                 \
+    setValue(op, result);                                     \
+}
+
+CONVERT_SHL_SHR_OP(Shl, ShlOp);
+CONVERT_SHL_SHR_OP(Shr, ShrOp);
+
+#undef CONVERT_SHL_SHR_OP
 
 #define CONVERT_CMP(Node, Kind)                                \
     void P4HIRConverter::postorder(const P4::IR::Node *node) { \
