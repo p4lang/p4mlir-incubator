@@ -210,22 +210,24 @@ LogicalResult P4HIR::ConcatOp::verify() {
 // ShlOp & ShrOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult verifyArithmeticShiftOperation(::mlir::Operation *op, ::mlir::Value rhs,
-                                             ::mlir::Type resultType) {
-    auto rhsType = rhs.getType();
-    if (mlir::isa<P4HIR::BitsType>(rhsType) && cast<P4HIR::BitsType>(rhsType).isSigned()) {
-        return op->emitOpError()
-               << "the right-hand side operand of an arithmetic shift must be unsigned";
+LogicalResult verifyArithmeticShiftOperation(Operation *op, Type rhsType) {
+    if (auto rhsBitsType = dyn_cast<P4HIR::BitsType>(rhsType)) {
+        if (rhsBitsType.isSigned()) {
+            return op->emitOpError()
+                   << "the right-hand side operand of an arithmetic shift must be unsigned";
+        }
     }
-    return ::mlir::success();
+    return success();
 }
 
 LogicalResult P4HIR::ShlOp::verify() {
-    return verifyArithmeticShiftOperation(getOperation(), getOperand(1), getResult().getType());
+    auto rhsType = getOperand(1).getType();
+    return verifyArithmeticShiftOperation(getOperation(), rhsType);
 }
 
 LogicalResult P4HIR::ShrOp::verify() {
-    return verifyArithmeticShiftOperation(getOperation(), getOperand(1), getResult().getType());
+    auto rhsType = getOperand(1).getType();
+    return verifyArithmeticShiftOperation(getOperation(), rhsType);
 }
 
 //===----------------------------------------------------------------------===//
