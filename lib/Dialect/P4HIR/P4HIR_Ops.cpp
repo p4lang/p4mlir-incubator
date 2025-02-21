@@ -210,57 +210,22 @@ LogicalResult P4HIR::ConcatOp::verify() {
 // ShlOp & ShrOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult verifyArithmeticShiftOperation(::mlir::Operation *op, ::mlir::Type lhsType,
-                                            ::mlir::Type rhsType, ::mlir::Type resultType) {
-    if (::mlir::isa<P4HIR::InfIntType>(lhsType)) {
-        if (!::mlir::isa<P4HIR::InfIntType>(rhsType))
-            // This is the error message from P4 frontend
-            return op->emitOpError()
-                   << "shift result type is arbitrary-precision int, but right operand is not "
-                      "constant; width of left operand of shift needs to be specified or both "
-                      "operands need to be constant";
-
-        if (!::mlir::isa<P4HIR::InfIntType>(resultType))
-            return op->emitOpError() << "the resulting type of an arithmetic shift operation must "
-                                        "equal the type of the left-hand side operand";
+LogicalResult verifyArithmeticShiftOperation(::mlir::Operation *op, ::mlir::Value rhs,
+                                             ::mlir::Type resultType) {
+    auto rhsType = rhs.getType();
+    if (mlir::isa<P4HIR::BitsType>(rhsType) && cast<P4HIR::BitsType>(rhsType).isSigned()) {
+        return op->emitOpError()
+               << "the right-hand side operand of an arithmetic shift must be unsigned";
     }
-
-    if (::mlir::isa<P4HIR::BitsType>(lhsType)) {
-        if (!::mlir::isa<P4HIR::BitsType>(resultType))
-            return op->emitOpError() << "the resulting type of an arithmetic shift operation must "
-                                        "equal the type of the left-hand side operand";
-
-        auto lhsBitsType = cast<P4HIR::BitsType>(lhsType);
-        auto resultBitsType = cast<P4HIR::BitsType>(resultType);
-
-        if (resultBitsType.isSigned() != lhsBitsType.isSigned())
-            return op->emitOpError() << "the signedness of the arithmetic shift result must match "
-                                        "the signedness of the left-hand side operand";
-
-        auto actualResultWidth = resultBitsType.getWidth();
-        auto expectedResultWidth = lhsBitsType.getWidth();
-        if (actualResultWidth != expectedResultWidth)
-            return op->emitOpError() << "the resulting width of an arithmetic shift operation must "
-                                        "equal the width of the left-hand side operand";
-    }
-
-    if (::mlir::isa<P4HIR::BitsType>(rhsType)) {
-        if (cast<P4HIR::BitsType>(rhsType).isSigned())
-            return op->emitOpError()
-                   << "the right-hand side operand of an arithmetic shift must be unsigned";
-    }
-
     return ::mlir::success();
 }
 
 LogicalResult P4HIR::ShlOp::verify() {
-    return verifyArithmeticShiftOperation(getOperation(), getOperand(0).getType(),
-                                         getOperand(1).getType(), getResult().getType());
+    return verifyArithmeticShiftOperation(getOperation(), getOperand(1), getResult().getType());
 }
 
 LogicalResult P4HIR::ShrOp::verify() {
-    return verifyArithmeticShiftOperation(getOperation(), getOperand(0).getType(),
-                                         getOperand(1).getType(), getResult().getType());
+    return verifyArithmeticShiftOperation(getOperation(), getOperand(1), getResult().getType());
 }
 
 //===----------------------------------------------------------------------===//
