@@ -1051,7 +1051,9 @@ def ParserAcceptOp : P4HIR_Op<"parser_accept",
 
 def ParserRejectOp : P4HIR_Op<"parser_reject",
    [Terminator,
-    ParentOneOf<["ParserStateOp"]>]> {
+    ParentOneOf<["ParserStateOp",
+                 "IfOp" // for verify() lowering
+               ]>]> {
   let arguments = (ins OptionalAttr<P4HIR_ErrorCodeAttr>:$error);
   let assemblyFormat = "attr-dict (`with` `error` $error^)?";
 
