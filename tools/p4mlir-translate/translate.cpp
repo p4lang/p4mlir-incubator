@@ -466,8 +466,6 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
     mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
     mlir::Value emitConcatOp(const P4::IR::Concat *concatop);
-    mlir::Value emitShlOp(const P4::IR::Shl *op);
-    mlir::Value emitShrOp(const P4::IR::Shr *op);
     mlir::Value emitCmp(const P4::IR::Operation_Relation *relop, P4HIR::CmpOpKind kind);
 };
 
@@ -961,16 +959,6 @@ mlir::Value P4HIRConverter::emitConcatOp(const P4::IR::Concat *concatop) {
                                            getValue(concatop->right));
 }
 
-mlir::Value P4HIRConverter::emitShlOp(const P4::IR::Shl *op) {
-    return builder.create<P4HIR::ShlOp>(getLoc(builder, op), getValue(op->left),
-                                        getValue(op->right));
-}
-
-mlir::Value P4HIRConverter::emitShrOp(const P4::IR::Shr *op) {
-    return builder.create<P4HIR::ShrOp>(getLoc(builder, op), getValue(op->left),
-                                        getValue(op->right));
-}
-
 mlir::Value P4HIRConverter::emitCmp(const P4::IR::Operation_Relation *relop,
                                     P4HIR::CmpOpKind kind) {
     return builder.create<P4HIR::CmpOp>(getLoc(builder, relop), kind, getValue(relop->left),
@@ -1014,15 +1002,20 @@ void P4HIRConverter::postorder(const P4::IR::Concat *concat) {
     setValue(concat, emitConcatOp(concat));
 }
 
-void P4HIRConverter::postorder(const P4::IR::Shl *op) {
-    ConversionTracer trace("Converting ", op);
-    setValue(op, emitShlOp(op));
+#define CONVERT_SHL_SHR_OP(P4C_Shift, PHIR_Shift)             \
+void P4HIRConverter::postorder(const P4::IR::P4C_Shift *op) { \
+    ConversionTracer trace("Converting ", op);                \
+    auto result = builder.create<P4HIR::PHIR_Shift>(          \
+        getLoc(builder, op),                                  \
+        getValue(op->left),                                   \
+        getValue(op->right));                                 \
+    setValue(op, result);                                     \
 }
 
-void P4HIRConverter::postorder(const P4::IR::Shr *op) {
-    ConversionTracer trace("Converting ", op);
-    setValue(op, emitShrOp(op));
-}
+CONVERT_SHL_SHR_OP(Shl, ShlOp);
+CONVERT_SHL_SHR_OP(Shr, ShrOp);
+
+#undef CONVERT_SHL_SHR_OP
 
 #define CONVERT_CMP(Node, Kind)                                \
     void P4HIRConverter::postorder(const P4::IR::Node *node) { \
