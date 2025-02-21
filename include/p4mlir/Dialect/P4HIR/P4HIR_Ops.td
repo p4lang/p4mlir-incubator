@@ -331,7 +331,11 @@ def ConcatOp : P4HIR_Op<"concat", [Pure]> {
   }];
 }
 
-def ShlOp : P4HIR_Op<"shl",  [Pure]> {
+def ShlOp : P4HIR_Op<"shl",
+    [Pure,
+     TypesMatchWith<
+       "the resulting type of an arithmetic shift operation must equal the type of the left-hand side operand",
+       "lhs", "result", "$_self">]> {
   let summary = "Arithmetic shift left operation";
   let description = [{
     `p4hir.shl` performs arithmetic shift left.
@@ -350,13 +354,6 @@ def ShlOp : P4HIR_Op<"shl",  [Pure]> {
   let results = (outs AnyIntP4Type:$result);
   let arguments = (ins AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
 
-  // Custom builder to infer the result type with the proper width
-  let builders = [
-    OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
-      build($_builder, $_state, lhs.getType(), lhs, rhs);
-    }]>
-  ];
-
   let hasVerifier = 1;
 
   let assemblyFormat = [{
@@ -364,7 +361,11 @@ def ShlOp : P4HIR_Op<"shl",  [Pure]> {
   }];
 }
 
-def ShrOp : P4HIR_Op<"shr", [Pure]> {
+def ShrOp : P4HIR_Op<"shr",
+    [Pure,
+     TypesMatchWith<
+       "the resulting type of an arithmetic shift operation must equal the type of the left-hand side operand",
+       "lhs", "result", "$_self">]> {
   let summary = "Arithmetic shift right operation";
   let description = [{
     `p4hir.shr` performs arithmetic shift right.
@@ -382,13 +383,6 @@ def ShrOp : P4HIR_Op<"shr", [Pure]> {
 
   let results = (outs AnyIntP4Type:$result);
   let arguments = (ins AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
-
-  // Custom builder to infer the result type with the proper width
-  let builders = [
-    OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
-      build($_builder, $_state, lhs.getType(), lhs, rhs);
-    }]>
-  ];
 
   let hasVerifier = 1;
 
