@@ -161,4 +161,82 @@ def UniversalSetOp : P4HIR_Op<"universal_set",
   ];
 }
 
+def RangeOp : P4HIR_Op<"range", [Pure,
+  TypesMatchWith<
+       "the resulting type of a range operation must be the set of left-hand side operand types",
+       "result", "lhs", "cast<P4HIR::SetType>($_self).getElementType()">,
+  TypesMatchWith<
+       "the resulting type of a range operation must be the set of right-hand side operand types",
+       "result", "rhs", "cast<P4HIR::SetType>($_self).getElementType()">,
+  ParentOneOf<["ParserSelectCaseOp"]>, // TBD: ForInOp
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+
+  let summary = "Range operation";
+  let description = [{
+    p4hir.range represents a set formed by all values numerically between the first and the second, inclusively.
+
+    It requires two input operands and has one result, with input operands
+    being of any integer type.
+
+    ```mlir
+    %3 = p4hir.range(%1, %2) : !p4hir.set<!p4hir.bit<42>>
+    ```
+  }];
+
+  let results = (outs SetType:$result);
+  let arguments = (ins AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
+
+  let assemblyFormat = [{
+    `(` $lhs `,` $rhs `)` `:` type($result) attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
+      auto resultType = SetType::get($_builder.getContext(), lhs.getType());
+      build($_builder, $_state, resultType, lhs, rhs);
+    }]>
+  ];
+}
+
+def MaskOp : P4HIR_Op<"mask", [Pure,
+  TypesMatchWith<
+       "the resulting type of a mask operation must be the set of left-hand side operand types",
+       "result", "lhs", "cast<P4HIR::SetType>($_self).getElementType()">,
+  TypesMatchWith<
+       "the resulting type of a mask operation must be the set of right-hand side operand types",
+       "result", "rhs", "cast<P4HIR::SetType>($_self).getElementType()">,
+  ParentOneOf<["ParserSelectCaseOp"]>,       
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+
+  let summary = "Mask operation";
+  let description = [{
+    p4hir.mask represents a set formed by all values defined by the mask.
+    More formally, the set denoted by a &&& b is defined as follows:
+    ```
+    a &&& b = { c where a & b = c & b }
+    ```
+
+    It requires two input operands and has one result, with input operands
+    being of any integer type.
+
+    ```mlir
+    %3 = p4hir.mask(%1, %2) : !p4hir.set<!p4hir.bit<42>>
+    ```
+  }];
+
+  let results = (outs SetType:$result);
+  let arguments = (ins AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
+
+  let assemblyFormat = [{
+    `(` $lhs `,` $rhs `)` `:` type($result) attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
+      auto resultType = SetType::get($_builder.getContext(), lhs.getType());
+      build($_builder, $_state, resultType, lhs, rhs);
+    }]>
+  ];
+}
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_PARSEROPS_TD
