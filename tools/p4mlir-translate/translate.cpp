@@ -120,6 +120,7 @@ class P4TypeConverter : public P4::Inspector {
 
     bool preorder(const P4::IR::Type_Bits *type) override;
     bool preorder(const P4::IR::Type_InfInt *type) override;
+    bool preorder(const P4::IR::Type_Varbits *type) override;
     bool preorder(const P4::IR::Type_Boolean *type) override;
     bool preorder(const P4::IR::Type_Unknown *type) override;
     bool preorder(const P4::IR::Type_Typedef *type) override {
@@ -408,6 +409,14 @@ bool P4TypeConverter::preorder(const P4::IR::Type_InfInt *type) {
 
     ConversionTracer trace("TypeConverting ", type);
     auto mlirType = P4HIR::InfIntType::get(converter.context());
+    return setType(type, mlirType);
+}
+
+bool P4TypeConverter::preorder(const P4::IR::Type_Varbits *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    auto mlirType = P4HIR::VarBitsType::get(converter.context(), type->size);
     return setType(type, mlirType);
 }
 

@@ -27,6 +27,8 @@
 #valid = #p4hir<validity.bit valid>
 #invalid = #p4hir<validity.bit invalid>
 
+!HeaderWithVarbit = !p4hir.header<"HeaderWithVarbit", varbitdata: !p4hir.varbit<32>>
+
 // No need to check stuff. If it parses, it's fine.
 // CHECK: module
 module {

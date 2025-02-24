@@ -89,6 +89,22 @@ def InfIntType : P4HIR_Type<"InfInt", "infint"> {
 }
 
 //===----------------------------------------------------------------------===//
+// VarBitsType: Bit-strings of dynamically-computed width
+// with a fixed maximum width
+//===----------------------------------------------------------------------===//
+
+def VarBitsType : P4HIR_Type<"VarBits", "varbit"> {
+  let summary = "bit-strings of dynamically-computed width with a fixed maximum width";
+  let description = [{
+    A variable-width bit-string type with a fixed maximum width.
+    The actual width is determined at runtime but cannot exceed the maximum.
+  }];
+
+  let parameters = (ins "unsigned":$maxWidth);
+  let assemblyFormat = "`<` $maxWidth `>`";
+}
+
+//===----------------------------------------------------------------------===//
 // BooleanType: An alternative here is to represent bool as mlir::i1, but
 // let's be more generic, it could be lowered later on
 //===----------------------------------------------------------------------===//
@@ -487,7 +503,7 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", []> {
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
-def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
+def AnyP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType,
                            StructType, HeaderType,
                            EnumType, SerEnumType,
                            ValidBitType,
