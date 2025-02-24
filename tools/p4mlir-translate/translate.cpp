@@ -384,6 +384,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(Declaration_Variable)
     HANDLE_IN_POSTORDER(ReturnStatement)
     HANDLE_IN_POSTORDER(ArrayIndex)
+    HANDLE_IN_POSTORDER(Range)
+    HANDLE_IN_POSTORDER(Mask)
 
 #undef HANDLE_IN_POSTORDER
 
@@ -1413,6 +1415,22 @@ void P4HIRConverter::postorder(const P4::IR::ArrayIndex *arr) {
     }
 
     BUG("cannot handle this array yet: %1%", arr);
+}
+
+void P4HIRConverter::postorder(const P4::IR::Range *range) {
+    auto lhs = getValue(range->left);
+    auto rhs = getValue(range->right);
+
+    auto loc = getLoc(builder, range);
+    setValue(range, builder.create<P4HIR::RangeOp>(loc, lhs, rhs).getResult());
+}
+
+void P4HIRConverter::postorder(const P4::IR::Mask *range) {
+    auto lhs = getValue(range->left);
+    auto rhs = getValue(range->right);
+
+    auto loc = getLoc(builder, range);
+    setValue(range, builder.create<P4HIR::MaskOp>(loc, lhs, rhs).getResult());
 }
 
 bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {

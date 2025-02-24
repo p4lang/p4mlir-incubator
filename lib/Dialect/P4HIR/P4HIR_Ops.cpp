@@ -997,6 +997,10 @@ void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, 
     build(builder, odsState, tupleType.getType(fieldIndex), input, fieldIndex);
 }
 
+//===----------------------------------------------------------------------===//
+// ParserOp
+//===----------------------------------------------------------------------===//
+
 void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
     auto funcName = getSymNameAttr().getValue();
 
@@ -1174,12 +1178,32 @@ void P4HIR::SetProductOp::build(mlir::OpBuilder &builder, mlir::OperationState &
     result.addOperands(values);
 }
 
+//===----------------------------------------------------------------------===//
+// UniversalSetOp
+//===----------------------------------------------------------------------===//
+
 void P4HIR::UniversalSetOp::build(mlir::OpBuilder &builder, mlir::OperationState &result) {
     result.addTypes(P4HIR::SetType::get(P4HIR::DontcareType::get(builder.getContext())));
 }
 
 void P4HIR::UniversalSetOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
     setNameFn(getResult(), "everything");
+}
+
+//===----------------------------------------------------------------------===//
+// RangeOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::RangeOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "range");
+}
+
+//===----------------------------------------------------------------------===//
+// MaskOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::MaskOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "mask");
 }
 
 namespace {
