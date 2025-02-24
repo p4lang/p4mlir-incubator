@@ -276,11 +276,11 @@ def EnumType : P4HIR_Type<"Enum", "enum", []> {
   }];
 }
 
-def SerEnumType : P4HIR_Type<"SerEnum", "ser.enum", []> {
+def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", []> {
   let summary = "serializable enum type";
   let description = [{
     Represents an enumeration of values backed by some integer value
-    !p4hir.ser.enum<"name", !p4hir.bit<32>, Case1 : 42, Case2 : 0>
+    !p4hir.ser_enum<"name", !p4hir.bit<32>, Case1 : 42, Case2 : 0>
   }];
 
   let hasCustomAssemblyFormat = 1;

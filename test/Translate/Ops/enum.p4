@@ -1,9 +1,9 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
 // CHECK: !Suits = !p4hir.enum<"Suits", Clubs, Diamonds, Hearths, Spades>
-// CHECK: #Suits_Diamonds = #p4hir.enum.field<Diamonds, !Suits> : !Suits
-// CHECK: #Suits_Hearths = #p4hir.enum.field<Hearths, !Suits> : !Suits
-// CHECK: #Suits_Spades = #p4hir.enum.field<Spades, !Suits> : !Suits
+// CHECK: #Suits_Diamonds = #p4hir.enum_field<Diamonds, !Suits> : !Suits
+// CHECK: #Suits_Hearths = #p4hir.enum_field<Hearths, !Suits> : !Suits
+// CHECK: #Suits_Spades = #p4hir.enum_field<Spades, !Suits> : !Suits
 
 enum Suits { Clubs, Diamonds, Hearths, Spades }
 

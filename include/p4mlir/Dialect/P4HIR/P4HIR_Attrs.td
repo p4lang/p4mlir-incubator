@@ -91,14 +91,14 @@ def P4HIR_AggAttr : P4HIR_Attr<"Agg", "aggregate", [TypedAttrInterface]> {
 // EnumFieldAttr
 //===----------------------------------------------------------------------===//
 // An attribute to indicate an enumeration value.
-def P4HIR_EnumFieldAttr : P4HIR_Attr<"EnumField", "enum.field", [TypedAttrInterface]> {
+def P4HIR_EnumFieldAttr : P4HIR_Attr<"EnumField", "enum_field", [TypedAttrInterface]> {
  let summary = "Enumeration field attribute";
   let description = [{
     This attribute represents a field of an enumeration.
 
     Examples:
     ```mlir
-      #p4hir.enum.field<A, !p4hir.enum<"name", A, B, C>> : !p4hir.enum<"name", A, B, C>
+      #p4hir.enum_field<A, !p4hir.enum<"name", A, B, C>> : !p4hir.enum<"name", A, B, C>
     ```
   }];
   let parameters = (ins AttributeSelfTypeParameter<"">:$type, "::mlir::StringAttr":$field);
