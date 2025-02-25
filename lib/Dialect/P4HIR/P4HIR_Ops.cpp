@@ -1001,7 +1001,17 @@ void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, 
 // ParserOp
 //===----------------------------------------------------------------------===//
 
+void P4HIR::ParserOp::createEntryBlock() {
+    assert(empty() && "can only create entry block for empty parser");
+    Block &first = getFunctionBody().emplaceBlock();
+    auto loc = getFunctionBody().getLoc();
+    for (auto argType : getFunctionType().getInputs()) first.addArgument(argType, loc);
+}
+
 void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
+    // This is essentially function_interface_impl::printFunctionOp, but we
+    // always print body and we do not have result / argument attributes (for now)
+
     auto funcName = getSymNameAttr().getValue();
 
     printer << ' ';
@@ -1009,21 +1019,64 @@ void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
 
     function_interface_impl::printFunctionSignature(printer, *this, getApplyType().getInputs(),
                                                     false, {});
-    function_interface_impl::printFunctionSignature(printer, *this,
-                                                    getConstructorType().getInputs(), false, {});
 
     function_interface_impl::printFunctionAttributes(
         printer, *this,
         // These are all omitted since they are custom printed already.
-        {getApplyTypeAttrName(), getConstructorTypeAttrName()});
+        {getApplyTypeAttrName()});
 
     printer << ' ';
     printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
 }
 
 mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
-    // TODO
-    return mlir::failure();
+    // This is essentially function_interface_impl::parseFunctionOp, but we do not have
+    // result / argument attributes (for now)
+    llvm::SMLoc loc = parser.getCurrentLocation();
+    auto &builder = parser.getBuilder();
+
+    // Parse the name as a symbol.
+    StringAttr nameAttr;
+    if (parser.parseSymbolName(nameAttr, ::SymbolTable::getSymbolAttrName(), result.attributes))
+        return mlir::failure();
+
+    // We default to private visibility
+    result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("private"));
+
+    llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
+    llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
+    llvm::SmallVector<Type, 8> argTypes;
+    llvm::SmallVector<Type, 0> resultTypes;
+    bool isVariadic = false;
+    if (function_interface_impl::parseFunctionSignature(parser, /*allowVariadic=*/false, arguments,
+                                                        isVariadic, resultTypes, resultAttrs))
+        return mlir::failure();
+
+    // Parsers have no results
+    if (!resultTypes.empty())
+        return parser.emitError(loc, "parsers should not produce any results");
+
+    // Build the function type.
+    for (auto &arg : arguments) argTypes.push_back(arg.type);
+
+    if (auto fnType = P4HIR::FuncType::get(builder.getContext(), argTypes)) {
+        result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(fnType));
+    } else
+        return mlir::failure();
+
+    // If additional attributes are present, parse them.
+    if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return failure();
+
+    // TODO: Support argument attributes
+
+    // Parse the parser body.
+    auto *body = result.addRegion();
+    if (parser.parseRegion(*body, arguments, /*enableNameShadowing=*/false)) return mlir::failure();
+
+    // Make sure its not empty.
+    if (body->empty()) return parser.emitError(loc, "expected non-empty parser body");
+
+    return mlir::success();
 }
 
 static mlir::ModuleOp getParentModule(Operation *from) {
