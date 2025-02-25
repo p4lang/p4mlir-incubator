@@ -5,8 +5,7 @@ def ParserOp : P4HIR_Op<"parser",
     [Symbol, SymbolTable, IsolatedFromAbove,
      FunctionOpInterface, AutomaticAllocationScope]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
-                       TypeAttrOf<FuncType>:$applyType,
-                       TypeAttrOf<FuncType>:$constructorType);
+                       TypeAttrOf<FuncType>:$applyType);
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;
 
@@ -26,6 +25,8 @@ def ParserOp : P4HIR_Op<"parser",
     llvm::ArrayRef<mlir::Type> getResultTypes() {
       return {};
     }
+
+    void createEntryBlock();
   }];
 }
 
@@ -187,7 +188,7 @@ def RangeOp : P4HIR_Op<"range", [Pure,
   let arguments = (ins AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
 
   let assemblyFormat = [{
-    `(` $lhs `,` $rhs `)` `:` type($result) attr-dict
+    `(` $lhs `,` $rhs `)` `:` qualified(type($result)) attr-dict
   }];
 
   let builders = [
@@ -228,7 +229,7 @@ def MaskOp : P4HIR_Op<"mask", [Pure,
   let arguments = (ins AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
 
   let assemblyFormat = [{
-    `(` $lhs `,` $rhs `)` `:` type($result) attr-dict
+    `(` $lhs `,` $rhs `)` `:` qualified(type($result)) attr-dict
   }];
 
   let builders = [
