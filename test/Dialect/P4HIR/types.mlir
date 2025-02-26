@@ -27,6 +27,8 @@
 #valid = #p4hir<validity.bit valid>
 #invalid = #p4hir<validity.bit invalid>
 
+!tuple = tuple<!bit42, !void, !SuitsSerializable>
+
 // No need to check stuff. If it parses, it's fine.
 // CHECK: module
 module {

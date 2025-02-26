@@ -80,7 +80,6 @@ def P4HIR_AggAttr : P4HIR_Attr<"Agg", "aggregate", [TypedAttrInterface]> {
     }]>
   ];
   // let genVerifyDecl = 1;
-  //let hasCustomAssemblyFormat = 1;
   let assemblyFormat = [{
     `<` $fields `>`
   }];
