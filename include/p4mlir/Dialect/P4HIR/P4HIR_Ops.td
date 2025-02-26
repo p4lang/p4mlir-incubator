@@ -429,6 +429,7 @@ def ScopeOp : P4HIR_Op<"scope", [
 
 def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
     ParentOneOf<["ScopeOp", "TernaryOp", "IfOp",
+                 "ParserSelectCaseOp",
                  // "SwitchOp", "CaseOp",
                  // "ForInOp", "ForOp",
                  ]>]> {
@@ -908,7 +909,7 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
 
 def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
     [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]> {
   let summary = "Project from a struct reference to a reference to a named struct field";
   let description = [{
@@ -950,7 +951,7 @@ def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
 def TupleOp : P4HIR_Op<"tuple",
   [Pure,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
-  let summary = "Create a tuplet from constituent parts.";
+  let summary = "Create a tuple from constituent parts.";
   // FIXME: Better constraint type
   let arguments = (ins Variadic<AnyP4Type>:$input);
   let results = (outs Builtin_Tuple:$result);
@@ -994,5 +995,7 @@ def TupleExtractOp : P4HIR_Op<"tuple_extract",
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
+
+include "p4mlir/Dialect/P4HIR/P4HIR_ParserOps.td"
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD

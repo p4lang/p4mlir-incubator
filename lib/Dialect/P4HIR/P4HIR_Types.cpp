@@ -15,11 +15,12 @@ using namespace mlir;
 using namespace P4::P4MLIR::P4HIR;
 using namespace P4::P4MLIR::P4HIR::detail;
 
-static mlir::ParseResult parseFuncType(mlir::AsmParser &p, mlir::Type &optionalResultType,
-                                       llvm::SmallVector<mlir::Type> &params);
+static mlir::ParseResult parseFuncType(mlir::AsmParser &p, llvm::SmallVector<mlir::Type> &params,
+                                       mlir::Type &optionalResultType);
+static mlir::ParseResult parseFuncType(mlir::AsmParser &p, llvm::SmallVector<mlir::Type> &params);
 
-static void printFuncType(mlir::AsmPrinter &p, mlir::Type optionalResultType,
-                          mlir::ArrayRef<mlir::Type> params);
+static void printFuncType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params,
+                          mlir::Type optionalResultType = {});
 
 #define GET_TYPEDEF_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.cpp.inc"
@@ -80,8 +81,13 @@ FuncType FuncType::clone(TypeRange inputs, TypeRange results) const {
     return get(llvm::to_vector(inputs), results[0]);
 }
 
-static mlir::ParseResult parseFuncType(mlir::AsmParser &p, mlir::Type &optionalReturnType,
-                                       llvm::SmallVector<mlir::Type> &params) {
+static mlir::ParseResult parseFuncType(mlir::AsmParser &p, llvm::SmallVector<mlir::Type> &params) {
+    mlir::Type placeholder;
+    return parseFuncType(p, params, placeholder);
+}
+
+static mlir::ParseResult parseFuncType(mlir::AsmParser &p, llvm::SmallVector<mlir::Type> &params,
+                                       mlir::Type &optionalReturnType) {
     // Parse return type, if any
     if (succeeded(p.parseOptionalLParen())) {
         // If we have already a '(', the function has no return type
@@ -112,8 +118,8 @@ static mlir::ParseResult parseFuncType(mlir::AsmParser &p, mlir::Type &optionalR
     return p.parseRParen();
 }
 
-static void printFuncType(mlir::AsmPrinter &p, mlir::Type optionalReturnType,
-                          mlir::ArrayRef<mlir::Type> params) {
+static void printFuncType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params,
+                          mlir::Type optionalReturnType) {
     if (optionalReturnType) p << optionalReturnType << ' ';
     p << '(';
     llvm::interleaveComma(params, p, [&p](mlir::Type type) { p.printType(type); });

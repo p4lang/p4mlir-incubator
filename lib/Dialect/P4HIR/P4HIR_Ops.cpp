@@ -4,11 +4,17 @@
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
@@ -889,7 +895,7 @@ void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsSta
 }
 
 //===----------------------------------------------------------------------===//
-// StructOp
+// TupleOp
 //===----------------------------------------------------------------------===//
 
 ParseResult P4HIR::TupleOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -989,6 +995,268 @@ void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, 
                                   unsigned fieldIndex) {
     auto tupleType = mlir::cast<mlir::TupleType>(input.getType());
     build(builder, odsState, tupleType.getType(fieldIndex), input, fieldIndex);
+}
+
+//===----------------------------------------------------------------------===//
+// ParserOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::ParserOp::createEntryBlock() {
+    assert(empty() && "can only create entry block for empty parser");
+    Block &first = getFunctionBody().emplaceBlock();
+    auto loc = getFunctionBody().getLoc();
+    for (auto argType : getFunctionType().getInputs()) first.addArgument(argType, loc);
+}
+
+void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
+    // This is essentially function_interface_impl::printFunctionOp, but we
+    // always print body and we do not have result / argument attributes (for now)
+
+    auto funcName = getSymNameAttr().getValue();
+
+    printer << ' ';
+    printer.printSymbolName(funcName);
+
+    function_interface_impl::printFunctionSignature(printer, *this, getApplyType().getInputs(),
+                                                    false, {});
+
+    function_interface_impl::printFunctionAttributes(
+        printer, *this,
+        // These are all omitted since they are custom printed already.
+        {getApplyTypeAttrName()});
+
+    printer << ' ';
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
+}
+
+mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+    // This is essentially function_interface_impl::parseFunctionOp, but we do not have
+    // result / argument attributes (for now)
+    llvm::SMLoc loc = parser.getCurrentLocation();
+    auto &builder = parser.getBuilder();
+
+    // Parse the name as a symbol.
+    StringAttr nameAttr;
+    if (parser.parseSymbolName(nameAttr, ::SymbolTable::getSymbolAttrName(), result.attributes))
+        return mlir::failure();
+
+    // We default to private visibility
+    result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("private"));
+
+    llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
+    llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
+    llvm::SmallVector<Type, 8> argTypes;
+    llvm::SmallVector<Type, 0> resultTypes;
+    bool isVariadic = false;
+    if (function_interface_impl::parseFunctionSignature(parser, /*allowVariadic=*/false, arguments,
+                                                        isVariadic, resultTypes, resultAttrs))
+        return mlir::failure();
+
+    // Parsers have no results
+    if (!resultTypes.empty())
+        return parser.emitError(loc, "parsers should not produce any results");
+
+    // Build the function type.
+    for (auto &arg : arguments) argTypes.push_back(arg.type);
+
+    if (auto fnType = P4HIR::FuncType::get(builder.getContext(), argTypes)) {
+        result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(fnType));
+    } else
+        return mlir::failure();
+
+    // If additional attributes are present, parse them.
+    if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return failure();
+
+    // TODO: Support argument attributes
+
+    // Parse the parser body.
+    auto *body = result.addRegion();
+    if (parser.parseRegion(*body, arguments, /*enableNameShadowing=*/false)) return mlir::failure();
+
+    // Make sure its not empty.
+    if (body->empty()) return parser.emitError(loc, "expected non-empty parser body");
+
+    return mlir::success();
+}
+
+static mlir::ModuleOp getParentModule(Operation *from) {
+    if (auto moduleOp = from->getParentOfType<mlir::ModuleOp>()) return moduleOp;
+
+    from->emitOpError("could not find parent module op");
+    return nullptr;
+}
+
+static mlir::LogicalResult verifyStateTarget(mlir::Operation *op, mlir::SymbolRefAttr stateName,
+                                             mlir::SymbolTableCollection &symbolTable) {
+    // We are using fully-qualified names to reference to parser states, this
+    // allows not to rename states during inlining, so we need to lookup wrt top-level ModuleOp
+    if (!symbolTable.lookupNearestSymbolFrom<P4HIR::ParserStateOp>(getParentModule(op), stateName))
+        return op->emitOpError() << "'" << stateName << "' does not reference a valid state";
+
+    return mlir::success();
+}
+
+mlir::LogicalResult P4HIR::ParserTransitionOp::verifySymbolUses(
+    mlir::SymbolTableCollection &symbolTable) {
+    return verifyStateTarget(*this, getStateAttr(), symbolTable);
+}
+
+void P4HIR::ParserSelectCaseOp::build(
+    mlir::OpBuilder &builder, mlir::OperationState &result,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> keyBuilder,
+    mlir::SymbolRefAttr nextState) {
+    OpBuilder::InsertionGuard guard(builder);
+    Region *keyRegion = result.addRegion();
+    builder.createBlock(keyRegion);
+    keyBuilder(builder, result.location);
+
+    result.addAttribute("state", nextState);
+}
+
+mlir::LogicalResult P4HIR::ParserSelectCaseOp::verifySymbolUses(
+    mlir::SymbolTableCollection &symbolTable) {
+    return verifyStateTarget(*this, getStateAttr(), symbolTable);
+}
+
+//===----------------------------------------------------------------------===//
+// SetOp
+//===----------------------------------------------------------------------===//
+
+ParseResult P4HIR::SetOp::parse(OpAsmParser &parser, OperationState &result) {
+    llvm::SMLoc inputOperandsLoc = parser.getCurrentLocation();
+    llvm::SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
+    Type declType;
+
+    if (parser.parseLParen() || parser.parseOperandList(operands) || parser.parseRParen() ||
+        parser.parseOptionalAttrDict(result.attributes) || parser.parseColonType(declType))
+        return failure();
+
+    auto setType = mlir::dyn_cast<P4HIR::SetType>(declType);
+    if (!setType) return parser.emitError(parser.getNameLoc(), "expected !p4hir.set type");
+
+    result.addTypes(setType);
+    if (parser.resolveOperands(operands, setType.getElementType(), inputOperandsLoc,
+                               result.operands))
+        return failure();
+    return success();
+}
+
+void P4HIR::SetOp::print(OpAsmPrinter &printer) {
+    printer << " (";
+    printer.printOperands(getInput());
+    printer << ")";
+    printer.printOptionalAttrDict((*this)->getAttrs());
+    printer << " : " << getType();
+}
+
+LogicalResult P4HIR::SetOp::verify() {
+    auto elementType = getType().getElementType();
+
+    for (auto value : getInput())
+        if (value.getType() != elementType) return emitOpError("set element types do not match");
+
+    return success();
+}
+
+void P4HIR::SetOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    setNameFn(getResult(), "set");
+}
+
+void P4HIR::SetOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
+                         mlir::ValueRange values) {
+    result.addTypes(P4HIR::SetType::get(values.front().getType()));
+    result.addOperands(values);
+}
+
+//===----------------------------------------------------------------------===//
+// SetProductOp
+//===----------------------------------------------------------------------===//
+
+ParseResult P4HIR::SetProductOp::parse(OpAsmParser &parser, OperationState &result) {
+    llvm::SMLoc inputOperandsLoc = parser.getCurrentLocation();
+    llvm::SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
+    Type declType;
+
+    if (parser.parseLParen() || parser.parseOperandList(operands) || parser.parseRParen() ||
+        parser.parseOptionalAttrDict(result.attributes) || parser.parseColonType(declType))
+        return failure();
+
+    auto setType = mlir::dyn_cast<P4HIR::SetType>(declType);
+    if (!setType) return parser.emitError(parser.getNameLoc(), "expected !p4hir.set type");
+    auto tupleType = mlir::dyn_cast<mlir::TupleType>(setType.getElementType());
+    if (!tupleType) return parser.emitError(parser.getNameLoc(), "expected set of tuples");
+
+    result.addTypes(setType);
+    llvm::SmallVector<mlir::Type, 4> elements;
+    for (auto elTy : tupleType.getTypes()) elements.push_back(P4HIR::SetType::get(elTy));
+
+    if (parser.resolveOperands(operands, elements, inputOperandsLoc, result.operands))
+        return failure();
+    return success();
+}
+
+void P4HIR::SetProductOp::print(OpAsmPrinter &printer) {
+    printer << " (";
+    printer.printOperands(getInput());
+    printer << ")";
+    printer.printOptionalAttrDict((*this)->getAttrs());
+    printer << " : " << getType();
+}
+
+LogicalResult P4HIR::SetProductOp::verify() {
+    auto elementType = mlir::dyn_cast<mlir::TupleType>(getType().getElementType());
+    if (!elementType) return emitError("expected set of tuple type result");
+
+    if (elementType.size() != getInput().size())
+        return emitError("type mismatch: result and operands have different lengths");
+
+    for (const auto &[field, value] : llvm::zip(elementType.getTypes(), getInput()))
+        if (field != mlir::cast<P4HIR::SetType>(value.getType()).getElementType())
+            return emitOpError("set product operands do not match result type");
+
+    return success();
+}
+
+void P4HIR::SetProductOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    setNameFn(getResult(), "setproduct");
+}
+
+void P4HIR::SetProductOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
+                                mlir::ValueRange values) {
+    llvm::SmallVector<mlir::Type, 4> elements;
+    for (auto elTy : values.getTypes())
+        elements.push_back(mlir::cast<SetType>(elTy).getElementType());
+
+    result.addTypes(P4HIR::SetType::get(builder.getTupleType(elements)));
+    result.addOperands(values);
+}
+
+//===----------------------------------------------------------------------===//
+// UniversalSetOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::UniversalSetOp::build(mlir::OpBuilder &builder, mlir::OperationState &result) {
+    result.addTypes(P4HIR::SetType::get(P4HIR::DontcareType::get(builder.getContext())));
+}
+
+void P4HIR::UniversalSetOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    setNameFn(getResult(), "everything");
+}
+
+//===----------------------------------------------------------------------===//
+// RangeOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::RangeOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "range");
+}
+
+//===----------------------------------------------------------------------===//
+// MaskOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::MaskOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "mask");
 }
 
 namespace {
