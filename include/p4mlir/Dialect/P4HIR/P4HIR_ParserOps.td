@@ -5,7 +5,8 @@ def ParserOp : P4HIR_Op<"parser",
     [Symbol, SymbolTable, IsolatedFromAbove,
      FunctionOpInterface, AutomaticAllocationScope]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
-                       TypeAttrOf<FuncType>:$applyType);
+                       TypeAttrOf<FuncType>:$applyType,
+                       TypeAttrOf<CtorType>:$ctorType);
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;
 

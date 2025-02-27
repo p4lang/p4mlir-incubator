@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <climits>
 
+#include "ir/ir-generated.h"
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -199,9 +201,33 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     mlir::Type findType(const P4::IR::Type *type) const { return p4Types.lookup(type); }
 
-    void setType(const P4::IR::Type *type, mlir::Type mlirType) {
+    mlir::Type setType(const P4::IR::Type *type, mlir::Type mlirType) {
         auto [it, inserted] = p4Types.try_emplace(type, mlirType);
         BUG_CHECK(inserted, "duplicate conversion for %1%", type);
+
+        return it->second;
+    }
+
+    mlir::Type getOrCreateConstructorType(const P4::IR::Type_Method *type) {
+        // These things are a bit special: we keep names to simplify further
+        // specialization during instantiation
+        if (auto convertedType = findType(type)) return convertedType;
+
+        ConversionTracer trace("Converting ctor type", type);
+        llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>, 4> argTypes;
+
+        CHECK_NULL(type->parameters);
+
+        mlir::Type resultType = getOrCreateType(type->returnType);
+
+        for (const auto *p : type->parameters->parameters) {
+            mlir::Type type = getOrCreateType(p->type);
+            BUG_CHECK(p->direction == P4::IR::Direction::None, "expected directionless parameter");
+            argTypes.emplace_back(builder.getStringAttr(p->name.string_view()), type);
+        }
+
+        auto mlirType = P4HIR::CtorType::get(argTypes, resultType);
+        return setType(type, mlirType);
     }
 
     mlir::Type getOrCreateType(const P4::IR::Type *type) {
@@ -505,7 +531,7 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Parser *type) {
 
     llvm::SmallVector<mlir::Type, 4> argTypes;
     for (const auto *p : type->getApplyParameters()->parameters)
-        argTypes.push_back(convert(p->type));
+        argTypes.emplace_back(convert(p->type));
 
     auto mlirType = P4HIR::ParserType::get(converter.context(), type->name.string_view(), argTypes);
     return setType(type, mlirType);
@@ -1453,13 +1479,13 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
 
     auto applyType = mlir::cast<P4HIR::FuncType>(getOrCreateType(parser->getApplyMethodType()));
     auto ctorType =
-        mlir::cast<P4HIR::FuncType>(getOrCreateType(parser->getConstructorMethodType()));
-
-    BUG_CHECK(ctorType.getNumInputs() == 0, "does not yet support constructors with parameters");
+        mlir::cast<P4HIR::CtorType>(getOrCreateConstructorType(parser->getConstructorMethodType()));
 
     auto loc = getLoc(builder, parser);
-    auto parserOp = builder.create<P4HIR::ParserOp>(loc, parser->name.string_view(), applyType);
+    auto parserOp =
+        builder.create<P4HIR::ParserOp>(loc, parser->name.string_view(), applyType, ctorType);
     parserOp.createEntryBlock();
+    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
 
     mlir::OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&parserOp.getBody().front());
@@ -1471,6 +1497,17 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     assert(body.getNumArguments() == params.size() && "invalid parameter conversion");
     for (auto [param, bodyArg] : llvm::zip(params, body.getArguments())) setValue(param, bodyArg);
 
+    // Constructor arguments are special: they are compile-time constants,
+    // create placeholders for them
+    for (const auto *param : parser->getConstructorParameters()->parameters) {
+        llvm::StringRef paramName = param->name.string_view();
+        auto paramType = getOrCreateType(param->type);
+        auto placeholder = P4HIR::CtorParamAttr::get(
+            paramType, mlir::SymbolRefAttr::get(parserSymbol), builder.getStringAttr(paramName));
+        auto val = builder.create<P4HIR::ConstOp>(getLoc(builder, param), placeholder, paramName);
+        setValue(param, val);
+    }
+
     // Materialize locals
     visit(parser->parserLocals);
 
@@ -1478,7 +1515,6 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     visit(parser->states);
 
     // Create default transition (to start state)
-    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
     auto startStateSymbol =
         mlir::SymbolRefAttr::get(builder.getContext(), P4::IR::ParserState::start.string_view());
 

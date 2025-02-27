@@ -75,6 +75,11 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
         return success();
     }
 
+    if (mlir::isa<P4HIR::CtorParamAttr>(attrType)) {
+        // We should be fine here
+        return success();
+    }
+
     assert(isa<TypedAttr>(attrType) && "expected typed attribute");
     return op->emitOpError("constant with type ")
            << cast<TypedAttr>(attrType).getType() << " not supported";
@@ -1019,11 +1024,18 @@ void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
 
     function_interface_impl::printFunctionSignature(printer, *this, getApplyType().getInputs(),
                                                     false, {});
+    printer << "(";
+    llvm::interleaveComma(getCtorType().getInputs(), printer,
+                          [&](std::pair<mlir::StringAttr, mlir::Type> namedType) {
+                              printer << namedType.first.getValue() << ": ";
+                              printer.printType(namedType.second);
+                          });
+    printer << ")";
 
     function_interface_impl::printFunctionAttributes(
         printer, *this,
         // These are all omitted since they are custom printed already.
-        {getApplyTypeAttrName()});
+        {getApplyTypeAttrName(), getCtorTypeAttrName()});
 
     printer << ' ';
     printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
@@ -1063,6 +1075,31 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
         result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(fnType));
     } else
         return mlir::failure();
+
+    // Resonstruct the ctor type
+    {
+        llvm::SmallVector<std::pair<StringAttr, Type>> namedTypes;
+        if (parser.parseLParen()) return mlir::failure();
+
+        // `(` `)`
+        if (failed(parser.parseOptionalRParen())) {
+            if (parser.parseCommaSeparatedList([&]() -> ParseResult {
+                    std::string name;
+                    mlir::Type type;
+                    if (parser.parseKeywordOrString(&name) || parser.parseColon() ||
+                        parser.parseType(type))
+                        return mlir::failure();
+                    namedTypes.emplace_back(mlir::StringAttr::get(parser.getContext(), name), type);
+                    return mlir::success();
+                }))
+                return mlir::failure();
+            if (parser.parseRParen()) return mlir::failure();
+        }
+
+        auto ctorResultType = P4HIR::ParserType::get(parser.getContext(), nameAttr, argTypes);
+        result.addAttribute(getCtorTypeAttrName(result.name),
+                            TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
+    }
 
     // If additional attributes are present, parse them.
     if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return failure();
@@ -1350,6 +1387,12 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
                 os << mlir::cast<P4HIR::SerEnumType>(enumFieldAttr.getType()).getName() << "_"
                    << enumFieldAttr.getField().getValue();
 
+            return AliasResult::FinalAlias;
+        }
+
+        if (auto ctorParamAttr = mlir::dyn_cast<P4HIR::CtorParamAttr>(attr)) {
+            os << ctorParamAttr.getParent().getRootReference().getValue() << "_"
+               << ctorParamAttr.getName().getValue();
             return AliasResult::FinalAlias;
         }
 
