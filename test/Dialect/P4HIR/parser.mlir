@@ -1,15 +1,22 @@
 // RUN: p4mlir-opt %s | FileCheck %s
 
 !b10i = !p4hir.bit<10>
+!i10i = !p4hir.int<10>
 #false = #p4hir.bool<false> : !p4hir.bool
 #true = #p4hir.bool<true> : !p4hir.bool
 #int0_b10i = #p4hir.int<0> : !b10i
+#int0_i10i = #p4hir.int<0> : !i10i
 #int10_b10i = #p4hir.int<10> : !b10i
 #int1_b10i = #p4hir.int<1> : !b10i
+#int1_i10i = #p4hir.int<1> : !i10i
+#int2_i10i = #p4hir.int<2> : !i10i
 #int20_b10i = #p4hir.int<20> : !b10i
+
+#p3_ctorval = #p4hir.ctor_param<@p3, "ctorval"> : !p4hir.bool
+
 // CHECK: module
 module {
-  p4hir.parser @p2(%arg0: !b10i, %arg1: !p4hir.ref<!p4hir.bool>) {
+  p4hir.parser @p2(%arg0: !b10i, %arg1: !p4hir.ref<!p4hir.bool>)() {
     p4hir.state @start {
       %true = p4hir.const #true
       %tuple = p4hir.tuple (%arg0, %true) : tuple<!b10i, !p4hir.bool>
@@ -67,4 +74,39 @@ module {
     }
     p4hir.transition to @p2::@start
   }
+
+  p4hir.parser @p3(%arg0: !i10i)(ctorval: !p4hir.bool) {
+    %ctorval = p4hir.const ["ctorval"] #p3_ctorval
+    %0 = p4hir.ternary(%ctorval, true {
+      %c0_i10i = p4hir.const #int0_i10i
+      p4hir.yield %c0_i10i : !i10i
+    }, false {
+      p4hir.yield %arg0 : !i10i
+    }) : (!p4hir.bool) -> !i10i
+    %s = p4hir.variable ["s", init] : <!i10i>
+    p4hir.assign %0, %s : <!i10i>
+    p4hir.state @start {
+      %c1_i10i = p4hir.const #int1_i10i
+      %cast = p4hir.cast(%c1_i10i : !i10i) : !i10i
+      p4hir.assign %cast, %s : <!i10i>
+      p4hir.transition to @p3::@next
+    }
+    p4hir.state @next {
+      %c2_i10i = p4hir.const #int2_i10i
+      %cast = p4hir.cast(%c2_i10i : !i10i) : !i10i
+      p4hir.assign %cast, %s : <!i10i>
+      p4hir.transition to @p3::@accept
+    }
+    p4hir.state @drop {
+      p4hir.transition to @p3::@reject
+    }
+    p4hir.state @accept {
+      p4hir.parser_accept
+    }
+    p4hir.state @reject {
+      p4hir.parser_reject
+    }
+    p4hir.transition to @p3::@start
+  }
+
 }

@@ -75,7 +75,7 @@ parser p2(in bit<10> foo, out bool matches) {
 }
 
 // Check more complex set product operations
-// CHECK-LABEL: p4hir.parser @p2(%arg0: !b10i, %arg1: !p4hir.ref<!p4hir.bool>) {
+// CHECK-LABEL: p4hir.parser @p2(%arg0: !b10i, %arg1: !p4hir.ref<!p4hir.bool>)() {
 // CHECK-LABEL:    p4hir.state @start {
 // CHECK:      p4hir.transition_select %{{.*}} : tuple<!b10i, !p4hir.bool> {
 // CHECK:        p4hir.select_case {

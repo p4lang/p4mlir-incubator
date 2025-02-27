@@ -186,4 +186,34 @@ def ParamDirection : I32EnumAttr<
 
 def ParamDirAttr : EnumAttr<P4HIR_Dialect, ParamDirection, "dir">;
 
+//===----------------------------------------------------------------------===//
+// CtorParamAttr
+//===----------------------------------------------------------------------===//
+
+def P4HIR_CtorParamAttr : P4HIR_Attr<"CtorParam", "ctor_param", [TypedAttrInterface]> {
+  let summary = "An Attribute containing an constructor parameter value";
+  let description = [{
+    An attribute to represent constructor argument value for parsers and controls.
+    These values are compile-time constants but are not known until instantiation.
+    The attribute serves as a placeholder that could be resolved during instantiation.
+  }];
+  let parameters = (ins AttributeSelfTypeParameter<"">:$type,
+                        "mlir::SymbolRefAttr":$parent,
+                        "mlir::StringAttr":$name);
+
+  let builders = [
+    AttrBuilderWithInferredContext<(ins "mlir::Type":$type,
+                                        "mlir::SymbolRefAttr":$parent,
+                                        "mlir::StringAttr":$name), [{
+      return $_get(type.getContext(), type, parent, name);
+    }]>
+  ];
+  // let genVerifyDecl = 1;
+  let assemblyFormat = [{
+    `<` $parent `,` $name `>`
+  }];
+
+}
+
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_ATTRS_TD
