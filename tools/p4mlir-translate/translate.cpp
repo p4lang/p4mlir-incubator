@@ -28,6 +28,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseMapInfoVariant.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"
@@ -162,7 +163,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     //                                const P4::IR::Expression *>;
     // llvm::DenseMap<CTVOrExpr, mlir::TypedAttr> p4Constants;
     llvm::DenseMap<const P4::IR::Expression *, mlir::TypedAttr> p4Constants;
-    llvm::DenseMap<const P4::IR::Node *, mlir::Value> p4Values;
+
+    llvm::ScopedHashTable<const P4::IR::Node *, mlir::Value> p4Values;
+    using ValueScope = llvm::ScopedHashTableScope<const P4::IR::Node *, mlir::Value>;
+
     using P4Symbol = std::variant<const P4::IR::P4Action *, const P4::IR::Function *,
                                   const P4::IR::Method *, const P4::IR::P4Parser *>;
     // TODO: Implement better scoped symbol table
@@ -313,9 +317,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             LOG4("Converted " << dbp(node) << " -> \"" << s << "\"");
         }
 
-        auto [it, inserted] = p4Values.try_emplace(node, value);
-        BUG_CHECK(inserted, "duplicate conversion of %1%", node);
-        return it->second;
+        BUG_CHECK(!p4Values.count(node), "duplicate conversion of %1%");
+
+        p4Values.insert(node, value);
+        return value;
     }
 
     mlir::MLIRContext *context() const { return builder.getContext(); }
@@ -332,7 +337,14 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return false;
     }
 
-    bool preorder(const P4::IR::P4Program *) override { return true; }
+    bool preorder(const P4::IR::P4Program *p) override {
+        ValueScope scope(p4Values);
+
+        // Explicitly visit child nodes to create top-level value scope
+        visit(p->objects);
+
+        return false;
+    }
     bool preorder(const P4::IR::P4Action *a) override;
     bool preorder(const P4::IR::Function *f) override;
 
@@ -342,6 +354,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::Method *m) override;
     bool preorder(const P4::IR::BlockStatement *block) override {
+        ValueScope scope(p4Values);
+
         // If this is a top-level block where scope is implied (e.g. function,
         // action, certain statements) do not create explicit scope.
         if (getParent<P4::IR::BlockStatement>()) {
@@ -1079,6 +1093,7 @@ static llvm::SmallVector<mlir::DictionaryAttr, 4> convertParamDirections(
 
 bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     ConversionTracer trace("Converting ", f);
+    ValueScope scope(p4Values);
 
     auto funcType = mlir::cast<P4HIR::FuncType>(getOrCreateType(f->type));
     const auto &params = f->getParameters()->parameters;
@@ -1121,6 +1136,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
 // We treat method as an external function (w/o body)
 bool P4HIRConverter::preorder(const P4::IR::Method *m) {
     ConversionTracer trace("Converting ", m);
+    ValueScope scope(p4Values);
 
     auto funcType = mlir::cast<P4HIR::FuncType>(getOrCreateType(m->type));
 
@@ -1138,6 +1154,7 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
 
 bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
     ConversionTracer trace("Converting ", act);
+    ValueScope scope(p4Values);
 
     // TODO: Actions might reference some control locals, we need to make
     // them visible somehow (e.g. via additional arguments)
@@ -1476,6 +1493,7 @@ void P4HIRConverter::postorder(const P4::IR::Mask *range) {
 
 bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     ConversionTracer trace("Converting ", parser);
+    ValueScope scope(p4Values);
 
     auto applyType = mlir::cast<P4HIR::FuncType>(getOrCreateType(parser->getApplyMethodType()));
     auto ctorType =
@@ -1529,6 +1547,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
 
 bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
     ConversionTracer trace("Converting ", state);
+    ValueScope scope(p4Values);
 
     auto stateOp =
         builder.create<P4HIR::ParserStateOp>(getLoc(builder, state), state->name.string_view());
