@@ -26,6 +26,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseMapInfoVariant.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"
@@ -160,7 +161,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     //                                const P4::IR::Expression *>;
     // llvm::DenseMap<CTVOrExpr, mlir::TypedAttr> p4Constants;
     llvm::DenseMap<const P4::IR::Expression *, mlir::TypedAttr> p4Constants;
-    llvm::DenseMap<const P4::IR::Node *, mlir::Value> p4Values;
+
+    llvm::ScopedHashTable<const P4::IR::Node *, mlir::Value> p4Values;
+    using ValueScope = llvm::ScopedHashTableScope<const P4::IR::Node *, mlir::Value>;
+
     using P4Symbol = std::variant<const P4::IR::P4Action *, const P4::IR::Function *,
                                   const P4::IR::Method *, const P4::IR::P4Parser *>;
     // TODO: Implement better scoped symbol table
@@ -199,9 +203,33 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     mlir::Type findType(const P4::IR::Type *type) const { return p4Types.lookup(type); }
 
-    void setType(const P4::IR::Type *type, mlir::Type mlirType) {
+    mlir::Type setType(const P4::IR::Type *type, mlir::Type mlirType) {
         auto [it, inserted] = p4Types.try_emplace(type, mlirType);
         BUG_CHECK(inserted, "duplicate conversion for %1%", type);
+
+        return it->second;
+    }
+
+    mlir::Type getOrCreateConstructorType(const P4::IR::Type_Method *type) {
+        // These things are a bit special: we keep names to simplify further
+        // specialization during instantiation
+        if (auto convertedType = findType(type)) return convertedType;
+
+        ConversionTracer trace("Converting ctor type", type);
+        llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>, 4> argTypes;
+
+        CHECK_NULL(type->parameters);
+
+        mlir::Type resultType = getOrCreateType(type->returnType);
+
+        for (const auto *p : type->parameters->parameters) {
+            mlir::Type type = getOrCreateType(p->type);
+            BUG_CHECK(p->direction == P4::IR::Direction::None, "expected directionless parameter");
+            argTypes.emplace_back(builder.getStringAttr(p->name.string_view()), type);
+        }
+
+        auto mlirType = P4HIR::CtorType::get(argTypes, resultType);
+        return setType(type, mlirType);
     }
 
     mlir::Type getOrCreateType(const P4::IR::Type *type) {
@@ -287,9 +315,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             LOG4("Converted " << dbp(node) << " -> \"" << s << "\"");
         }
 
-        auto [it, inserted] = p4Values.try_emplace(node, value);
-        BUG_CHECK(inserted, "duplicate conversion of %1%", node);
-        return it->second;
+        BUG_CHECK(!p4Values.count(node), "duplicate conversion of %1%");
+
+        p4Values.insert(node, value);
+        return value;
     }
 
     mlir::MLIRContext *context() const { return builder.getContext(); }
@@ -306,7 +335,14 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return false;
     }
 
-    bool preorder(const P4::IR::P4Program *) override { return true; }
+    bool preorder(const P4::IR::P4Program *p) override {
+        ValueScope scope(p4Values);
+
+        // Explicitly visit child nodes to create top-level value scope
+        visit(p->objects);
+
+        return false;
+    }
     bool preorder(const P4::IR::P4Action *a) override;
     bool preorder(const P4::IR::Function *f) override;
 
@@ -316,6 +352,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::Method *m) override;
     bool preorder(const P4::IR::BlockStatement *block) override {
+        ValueScope scope(p4Values);
+
         // If this is a top-level block where scope is implied (e.g. function,
         // action, certain statements) do not create explicit scope.
         if (getParent<P4::IR::BlockStatement>()) {
@@ -393,6 +431,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     void postorder(const P4::IR::Member *m) override;
 
     bool preorder(const P4::IR::Declaration_Constant *decl) override;
+    bool preorder(const P4::IR::Declaration_Instance *decl) override;
     bool preorder(const P4::IR::AssignmentStatement *assign) override;
     bool preorder(const P4::IR::Mux *mux) override;
     bool preorder(const P4::IR::LOr *lor) override;
@@ -456,6 +495,8 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Name *name) {
     ConversionTracer trace("Resolving type by name ", name);
     const auto *type = converter.resolveType(name);
     CHECK_NULL(type);
+    LOG4("Resolved to: " << dbp(type));
+
     mlir::Type mlirType = convert(type);
     return setType(name, mlirType);
 }
@@ -504,8 +545,10 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Parser *type) {
     ConversionTracer trace("TypeConverting ", type);
 
     llvm::SmallVector<mlir::Type, 4> argTypes;
-    for (const auto *p : type->getApplyParameters()->parameters)
-        argTypes.push_back(convert(p->type));
+    for (const auto *p : type->getApplyParameters()->parameters) {
+        mlir::Type type = convert(p->type);
+        argTypes.push_back(p->hasOut() ? P4HIR::ReferenceType::get(type) : type);
+    }
 
     auto mlirType = P4HIR::ParserType::get(converter.context(), type->name.string_view(), argTypes);
     return setType(type, mlirType);
@@ -1053,6 +1096,7 @@ static llvm::SmallVector<mlir::DictionaryAttr, 4> convertParamDirections(
 
 bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     ConversionTracer trace("Converting ", f);
+    ValueScope scope(p4Values);
 
     auto funcType = mlir::cast<P4HIR::FuncType>(getOrCreateType(f->type));
     const auto &params = f->getParameters()->parameters;
@@ -1095,6 +1139,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
 // We treat method as an external function (w/o body)
 bool P4HIRConverter::preorder(const P4::IR::Method *m) {
     ConversionTracer trace("Converting ", m);
+    ValueScope scope(p4Values);
 
     auto funcType = mlir::cast<P4HIR::FuncType>(getOrCreateType(m->type));
 
@@ -1112,6 +1157,7 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
 
 bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
     ConversionTracer trace("Converting ", act);
+    ValueScope scope(p4Values);
 
     // TODO: Actions might reference some control locals, we need to make
     // them visible somehow (e.g. via additional arguments)
@@ -1296,6 +1342,14 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             BUG_CHECK(fSym, "expected reference function to be converted: %1%", fCall->method);
 
             callResult = b.create<P4HIR::CallOp>(loc, fSym, callResultType, operands).getResult();
+        } else if (const auto *aCall = instance->to<P4::ApplyMethod>()) {
+            LOG4("resolved as apply");
+            // Apply of something instantiated
+            if (auto *decl = aCall->object->to<P4::IR::Declaration_Instance>()) {
+                auto val = getValue(decl);
+                b.create<P4HIR::ApplyOp>(loc, val, operands);
+            } else
+                BUG("Unsuported apply: %1%", aCall->object);
         } else {
             BUG("unsupported call type: %1%", mce);
         }
@@ -1450,16 +1504,17 @@ void P4HIRConverter::postorder(const P4::IR::Mask *range) {
 
 bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     ConversionTracer trace("Converting ", parser);
+    ValueScope scope(p4Values);
 
     auto applyType = mlir::cast<P4HIR::FuncType>(getOrCreateType(parser->getApplyMethodType()));
     auto ctorType =
-        mlir::cast<P4HIR::FuncType>(getOrCreateType(parser->getConstructorMethodType()));
-
-    BUG_CHECK(ctorType.getNumInputs() == 0, "does not yet support constructors with parameters");
+        mlir::cast<P4HIR::CtorType>(getOrCreateConstructorType(parser->getConstructorMethodType()));
 
     auto loc = getLoc(builder, parser);
-    auto parserOp = builder.create<P4HIR::ParserOp>(loc, parser->name.string_view(), applyType);
+    auto parserOp =
+        builder.create<P4HIR::ParserOp>(loc, parser->name.string_view(), applyType, ctorType);
     parserOp.createEntryBlock();
+    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
 
     mlir::OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&parserOp.getBody().front());
@@ -1471,6 +1526,17 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     assert(body.getNumArguments() == params.size() && "invalid parameter conversion");
     for (auto [param, bodyArg] : llvm::zip(params, body.getArguments())) setValue(param, bodyArg);
 
+    // Constructor arguments are special: they are compile-time constants,
+    // create placeholders for them
+    for (const auto *param : parser->getConstructorParameters()->parameters) {
+        llvm::StringRef paramName = param->name.string_view();
+        auto paramType = getOrCreateType(param->type);
+        auto placeholder = P4HIR::CtorParamAttr::get(
+            paramType, mlir::SymbolRefAttr::get(parserSymbol), builder.getStringAttr(paramName));
+        auto val = builder.create<P4HIR::ConstOp>(getLoc(builder, param), placeholder, paramName);
+        setValue(param, val);
+    }
+
     // Materialize locals
     visit(parser->parserLocals);
 
@@ -1478,7 +1544,6 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     visit(parser->states);
 
     // Create default transition (to start state)
-    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
     auto startStateSymbol =
         mlir::SymbolRefAttr::get(builder.getContext(), P4::IR::ParserState::start.string_view());
 
@@ -1493,6 +1558,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
 
 bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
     ConversionTracer trace("Converting ", state);
+    ValueScope scope(p4Values);
 
     auto stateOp =
         builder.create<P4HIR::ParserStateOp>(getLoc(builder, state), state->name.string_view());
@@ -1616,6 +1682,39 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                                          builder.create<P4HIR::UniversalSetOp>(endLoc).getResult());
             },
             mlir::SymbolRefAttr::get(parserSymbol, {rejectStateSymbol}));
+    }
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
+    ConversionTracer trace("Converting ", decl);
+
+    // P4::Instantiation goes via typeMap and it returns some weird clone
+    // instead of converted type
+    const auto *type = resolveType(decl->type)->to<P4::IR::Type_Declaration>();
+    CHECK_NULL(type);
+    LOG4("Resolved to: " << dbp(type));
+
+    llvm::SmallVector<mlir::Value, 4> operands;
+    for (const auto *arg : *decl->arguments) {
+        ConversionTracer trace("Converting ", arg);
+        operands.push_back(materializeConstantExpr(arg->expression));
+    }
+
+    if (const auto *parser = type->to<P4::IR::P4Parser>()) {
+        LOG4("resolved as parser instantiation");
+        auto resultType = getOrCreateType(parser->getConstructorMethodType()->returnType);
+
+        auto parserSym = p4Symbols.lookup(parser);
+        BUG_CHECK(parserSym, "expected reference parser to be converted: %1%", dbp(parser));
+
+        auto instance = builder.create<P4HIR::InstantiateOp>(
+            getLoc(builder, decl), resultType, parserSym.getRootReference(), operands,
+            builder.getStringAttr(decl->name.string_view()));
+        setValue(decl, instance.getResult());
+    } else {
+        BUG("unsupported instance type: %1%", decl);
     }
 
     return false;

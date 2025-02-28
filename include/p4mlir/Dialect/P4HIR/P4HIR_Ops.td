@@ -996,6 +996,113 @@ def TupleExtractOp : P4HIR_Op<"tuple_extract",
   let hasVerifier = 1;
 }
 
+def InstantiateOp : P4HIR_Op<"instantiate",
+  [NoRegionArguments, CallOpInterface,
+   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "constructor call operation";
+  let description = [{
+    Instantiate P4 object: extern, parser, control or package.
+
+    Example:
+
+    ```mlir
+    // Instantiate a subparser
+    %sp = p4hir.instantiate @subparser() as "sp" : () -> !p4hir.parser<"subparser", (!empty)>
+    // Instantiate a subparser with ctor parameters
+    %false = p4hir.const #false
+    %sp2 = p4hir.instantiate @subparser2(%false) as "sp2" : (!p4hir.bool) -> !p4hir.parser<"subparser2", (!empty)>
+    ...
+    ```
+  }];
+
+  // TODO: Refine result types, refine parameter type (must be constants!)
+  let results = (outs P4ObjectType:$result);
+  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands,
+                       OptionalAttr<StrAttr>:$name);
+
+  // TODO: Add verifier
+  let hasVerifier = 0;
+
+  let extraClassDeclaration = [{
+    /// Get the argument operands to the called function.
+    mlir::OperandRange getArgOperands() {
+      return {arg_operand_begin(), arg_operand_end()};
+    }
+
+    mlir::MutableOperandRange getArgOperandsMutable() {
+      return getOperandsMutable();
+    }
+
+    operand_iterator arg_operand_begin() { return operand_begin(); }
+    operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+    }
+
+    /// Set the callee for this operation.
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+    }
+
+    void setArg(unsigned index, mlir::Value value) {
+      setOperand(index, value);
+    }
+  }];
+
+  let assemblyFormat = [{
+    $callee `(` $operands `)` `as` $name attr-dict `:` functional-type($operands, results)
+  }];
+}
+
+def ApplyOp : P4HIR_Op<"apply",
+  [NoRegionArguments, CallOpInterface,
+   //DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+    TypesMatchWith<
+       "the apply type of the object matches the types of operands",
+       "callee", "arg_operands", "cast<P4HIR::ParserType>($_self).getInputs()">,
+   ]> {
+  let summary = "apply operation";
+  let description = [{
+    Applies P4 parser, table or control
+
+    Example:
+
+    ```mlir
+    // Application of a subparser
+    %sp = p4hir.instantiate @subparser() as "sp" : () -> !p4hir.parser<"subparser", ()>
+    p4hir.apply %sp() : !p4hir.parser<"subparser", ()>
+    ...
+    ```
+  }];
+
+  // TODO: Refine result types, refine parameter type (must be constants!)
+  let results = (outs);
+  let arguments = (ins P4ObjectType:$callee, Variadic<AnyType>:$arg_operands);
+
+  // TODO: Add verifier
+  let hasVerifier = 0;
+
+  let extraClassDeclaration = [{
+    /// Return the callee of this operation.
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return getCallee();
+    }
+
+    /// Set the callee for this operation.
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      getCalleeMutable().assign(callee.get<mlir::Value>());
+    }
+  }];
+
+  let assemblyFormat = [{
+    $callee `(` $arg_operands `)` attr-dict `:` type($callee)
+  }];
+}
+
+
 include "p4mlir/Dialect/P4HIR/P4HIR_ParserOps.td"
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD
