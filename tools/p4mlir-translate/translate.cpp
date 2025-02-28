@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <climits>
 
-#include "ir/ir-generated.h"
-
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -433,6 +431,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     void postorder(const P4::IR::Member *m) override;
 
     bool preorder(const P4::IR::Declaration_Constant *decl) override;
+    bool preorder(const P4::IR::Declaration_Instance *decl) override;
     bool preorder(const P4::IR::AssignmentStatement *assign) override;
     bool preorder(const P4::IR::Mux *mux) override;
     bool preorder(const P4::IR::LOr *lor) override;
@@ -496,6 +495,8 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Name *name) {
     ConversionTracer trace("Resolving type by name ", name);
     const auto *type = converter.resolveType(name);
     CHECK_NULL(type);
+    LOG4("Resolved to: " << dbp(type));
+
     mlir::Type mlirType = convert(type);
     return setType(name, mlirType);
 }
@@ -1671,6 +1672,38 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                                          builder.create<P4HIR::UniversalSetOp>(endLoc).getResult());
             },
             mlir::SymbolRefAttr::get(parserSymbol, {rejectStateSymbol}));
+    }
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
+    ConversionTracer trace("Converting ", decl);
+
+    // P4::Instantiation goes via typeMap and it returns some weird clone
+    // instead of converted type
+    const auto *type = resolveType(decl->type)->to<P4::IR::Type_Declaration>();
+    CHECK_NULL(type);
+    LOG4("Resolved to: " << dbp(type));
+
+    llvm::SmallVector<mlir::Value, 4> operands;
+    for (const auto *arg : *decl->arguments) {
+        ConversionTracer trace("Converting ", arg);
+        operands.push_back(materializeConstantExpr(arg->expression));
+    }
+
+    if (const auto *parser = type->to<P4::IR::P4Parser>()) {
+        LOG4("resolved as parser instantiation");
+        auto resultType = getOrCreateType(parser->getConstructorMethodType()->returnType);
+
+        auto parserSym = p4Symbols.lookup(parser);
+        BUG_CHECK(parserSym, "expected reference parser to be converted: %1%", dbp(parser));
+
+        builder.create<P4HIR::InstantiateOp>(getLoc(builder, decl), resultType,
+                                             parserSym.getRootReference(), operands,
+                                             builder.getStringAttr(decl->name.string_view()));
+    } else {
+        BUG("unsupported instance type: %1%", decl);
     }
 
     return false;
