@@ -1002,13 +1002,16 @@ def InstantiateOp : P4HIR_Op<"instantiate",
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "constructor call operation";
   let description = [{
-    Instantiate P4 object: extern, parser, control or package/
+    Instantiate P4 object: extern, parser, control or package.
 
     Example:
 
     ```mlir
-    // Direct call of function
-    %2 = p4hir.call @my_add(%0, %1) : (!p4hir.bit<8>, !p4hir.bit<8>) -> !p4hir.bit<8>
+    // Instantiate a subparser
+    %sp = p4hir.instantiate @subparser() as "sp" : () -> !p4hir.parser<"subparser", (!empty)>
+    // Instantiate a subparser with ctor parameters
+    %false = p4hir.const #false
+    %sp2 = p4hir.instantiate @subparser2(%false) as "sp2" : (!p4hir.bool) -> !p4hir.parser<"subparser2", (!empty)>
     ...
     ```
   }];
@@ -1051,6 +1054,51 @@ def InstantiateOp : P4HIR_Op<"instantiate",
 
   let assemblyFormat = [{
     $callee `(` $operands `)` `as` $name attr-dict `:` functional-type($operands, results)
+  }];
+}
+
+def ApplyOp : P4HIR_Op<"apply",
+  [NoRegionArguments, CallOpInterface,
+   //DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+    TypesMatchWith<
+       "the apply type of the object matches the types of operands",
+       "callee", "arg_operands", "cast<P4HIR::ParserType>($_self).getInputs()">,
+   ]> {
+  let summary = "apply operation";
+  let description = [{
+    Applies P4 parser, table or control
+
+    Example:
+
+    ```mlir
+    // Application of a subparser
+    %sp = p4hir.instantiate @subparser() as "sp" : () -> !p4hir.parser<"subparser", ()>
+    p4hir.apply %sp() : !p4hir.parser<"subparser", ()>
+    ...
+    ```
+  }];
+
+  // TODO: Refine result types, refine parameter type (must be constants!)
+  let results = (outs);
+  let arguments = (ins P4ObjectType:$callee, Variadic<AnyType>:$arg_operands);
+
+  // TODO: Add verifier
+  let hasVerifier = 0;
+
+  let extraClassDeclaration = [{
+    /// Return the callee of this operation.
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return getCallee();
+    }
+
+    /// Set the callee for this operation.
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      getCalleeMutable().assign(callee.get<mlir::Value>());
+    }
+  }];
+
+  let assemblyFormat = [{
+    $callee `(` $arg_operands `)` attr-dict `:` type($callee)
   }];
 }
 

@@ -545,8 +545,10 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Parser *type) {
     ConversionTracer trace("TypeConverting ", type);
 
     llvm::SmallVector<mlir::Type, 4> argTypes;
-    for (const auto *p : type->getApplyParameters()->parameters)
-        argTypes.emplace_back(convert(p->type));
+    for (const auto *p : type->getApplyParameters()->parameters) {
+        mlir::Type type = convert(p->type);
+        argTypes.push_back(p->hasOut() ? P4HIR::ReferenceType::get(type) : type);
+    }
 
     auto mlirType = P4HIR::ParserType::get(converter.context(), type->name.string_view(), argTypes);
     return setType(type, mlirType);
@@ -1340,6 +1342,14 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             BUG_CHECK(fSym, "expected reference function to be converted: %1%", fCall->method);
 
             callResult = b.create<P4HIR::CallOp>(loc, fSym, callResultType, operands).getResult();
+        } else if (const auto *aCall = instance->to<P4::ApplyMethod>()) {
+            LOG4("resolved as apply");
+            // Apply of something instantiated
+            if (auto *decl = aCall->object->to<P4::IR::Declaration_Instance>()) {
+                auto val = getValue(decl);
+                b.create<P4HIR::ApplyOp>(loc, val, operands);
+            } else
+                BUG("Unsuported apply: %1%", aCall->object);
         } else {
             BUG("unsupported call type: %1%", mce);
         }
@@ -1699,9 +1709,10 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         auto parserSym = p4Symbols.lookup(parser);
         BUG_CHECK(parserSym, "expected reference parser to be converted: %1%", dbp(parser));
 
-        builder.create<P4HIR::InstantiateOp>(getLoc(builder, decl), resultType,
-                                             parserSym.getRootReference(), operands,
-                                             builder.getStringAttr(decl->name.string_view()));
+        auto instance = builder.create<P4HIR::InstantiateOp>(
+            getLoc(builder, decl), resultType, parserSym.getRootReference(), operands,
+            builder.getStringAttr(decl->name.string_view()));
+        setValue(decl, instance.getResult());
     } else {
         BUG("unsupported instance type: %1%", decl);
     }
