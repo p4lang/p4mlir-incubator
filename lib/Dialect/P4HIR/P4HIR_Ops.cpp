@@ -1296,6 +1296,43 @@ void P4HIR::MaskOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "mask");
 }
 
+//===----------------------------------------------------------------------===//
+// InstantiateOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::InstantiateOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    if (getName() && !getName()->empty()) setNameFn(getResult(), *getName());
+}
+
+LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+    // Check that the callee attribute was specified.
+    auto ctorAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
+    if (!ctorAttr) return emitOpError("requires a 'callee' symbol reference attribute");
+
+    ParserOp parser =
+        symbolTable.lookupNearestSymbolFrom<ParserOp>(getParentModule(*this), ctorAttr);
+    if (!parser)
+        return emitOpError() << "'" << ctorAttr.getValue() << "' does not reference a valid parser";
+
+    // Verify that the operand and result types match the callee.
+    auto ctorType = parser.getCtorType();
+    if (ctorType.getNumInputs() != getNumOperands())
+        return emitOpError("incorrect number of operands for callee");
+
+    for (unsigned i = 0, e = ctorType.getNumInputs(); i != e; ++i)
+        if (getOperand(i).getType() != ctorType.getInput(i))
+            return emitOpError("operand type mismatch: expected operand type ")
+                   << ctorType.getInput(i) << ", but provided " << getOperand(i).getType()
+                   << " for operand number " << i;
+
+    // Parser itself and return value types must match.
+    if (getResult().getType() != ctorType.getReturnType())
+        return emitOpError("result type mismatch: expected ")
+               << ctorType.getReturnType() << ", but provided " << getResult().getType();
+
+    return success();
+}
+
 namespace {
 struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
     using OpAsmDialectInterface::OpAsmDialectInterface;
