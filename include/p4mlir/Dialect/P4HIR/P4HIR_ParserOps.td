@@ -10,6 +10,12 @@ def ParserOp : P4HIR_Op<"parser",
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;
 
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    OpBuilder<(ins "llvm::StringRef":$sym_name, "P4HIR::FuncType":$applyType, "P4HIR::CtorType":$ctorType)>
+  ];
+
   let extraClassDeclaration = [{
     mlir::Region *getCallableRegion() { return &getBody(); }
 

@@ -501,15 +501,16 @@ LogicalResult P4HIR::FuncOp::verify() {
 }
 
 void P4HIR::FuncOp::build(OpBuilder &builder, OperationState &result, llvm::StringRef name,
-                          P4HIR::FuncType type, ArrayRef<NamedAttribute> attrs,
+                          P4HIR::FuncType type, bool isExternal, ArrayRef<NamedAttribute> attrs,
                           ArrayRef<DictionaryAttr> argAttrs) {
     result.addRegion();
 
     result.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
     result.addAttribute(getFunctionTypeAttrName(result.name), TypeAttr::get(type));
     result.attributes.append(attrs.begin(), attrs.end());
-    // We default to private visibility
-    result.addAttribute(SymbolTable::getVisibilityAttrName(), builder.getStringAttr("private"));
+    // External functions are private, everything else is public
+    result.addAttribute(SymbolTable::getVisibilityAttrName(),
+                        builder.getStringAttr(isExternal ? "private" : "public"));
 
     function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
                                                   /*resultAttrs=*/std::nullopt,
@@ -571,8 +572,8 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
     if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(), state.attributes))
         return failure();
 
-    // We default to private visibility
-    state.addAttribute(SymbolTable::getVisibilityAttrName(), builder.getStringAttr("private"));
+    // All functions are public
+    state.addAttribute(SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
 
     llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
     llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
@@ -1006,6 +1007,25 @@ void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, 
 // ParserOp
 //===----------------------------------------------------------------------===//
 
+void P4HIR::ParserOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
+                            llvm::StringRef sym_name, P4HIR::FuncType applyType,
+                            P4HIR::CtorType ctorType) {
+    result.addRegion();
+
+    result.addAttribute(::SymbolTable::getSymbolAttrName(), builder.getStringAttr(sym_name));
+    result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(applyType));
+    result.addAttribute(getCtorTypeAttrName(result.name), TypeAttr::get(ctorType));
+
+    // Parsers are top-level objects with public visibility
+    result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
+
+    // TBD:
+    // function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+    //                                              /*resultAttrs=*/std::nullopt,
+    //                                              getArgAttrsAttrName(result.name),
+    //                                              getResAttrsAttrName(result.name));
+}
+
 void P4HIR::ParserOp::createEntryBlock() {
     assert(empty() && "can only create entry block for empty parser");
     Block &first = getFunctionBody().emplaceBlock();
@@ -1035,7 +1055,7 @@ void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
     function_interface_impl::printFunctionAttributes(
         printer, *this,
         // These are all omitted since they are custom printed already.
-        {getApplyTypeAttrName(), getCtorTypeAttrName()});
+        {getApplyTypeAttrName(), getCtorTypeAttrName(), ::SymbolTable::getVisibilityAttrName()});
 
     printer << ' ';
     printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
@@ -1052,8 +1072,8 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
     if (parser.parseSymbolName(nameAttr, ::SymbolTable::getSymbolAttrName(), result.attributes))
         return mlir::failure();
 
-    // We default to private visibility
-    result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("private"));
+    // Parsers are visible from top-level
+    result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
 
     llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
     llvm::SmallVector<DictionaryAttr, 1> resultAttrs;

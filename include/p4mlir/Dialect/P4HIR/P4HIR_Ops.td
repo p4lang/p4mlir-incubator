@@ -687,6 +687,7 @@ def FuncOp : P4HIR_Op<"func", [
 
   let builders = [
     OpBuilder<(ins "llvm::StringRef":$name, "FuncType":$type,
+               CArg<"bool", "false">:$isExternal,
                CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs,
                CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs)>
   ];
@@ -699,7 +700,7 @@ def FuncOp : P4HIR_Op<"func", [
                               P4HIR::FuncType type,
                               llvm::ArrayRef<mlir::NamedAttribute> attrs = {},
                               llvm::ArrayRef<mlir::DictionaryAttr> argAttrs = {}) {
-      auto op = builder.create<FuncOp>(loc, name, type, attrs, argAttrs);
+      auto op = builder.create<FuncOp>(loc, name, type, false, attrs, argAttrs);
       op.createEntryBlock();
       op.setAction(true);
       return op;

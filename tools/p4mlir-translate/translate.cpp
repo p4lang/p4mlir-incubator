@@ -1105,6 +1105,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     assert(funcType.getNumInputs() == argAttrs.size() && "invalid parameter conversion");
 
     auto func = builder.create<P4HIR::FuncOp>(getLoc(builder, f), f->name.string_view(), funcType,
+                                              /* isExternal */ false,
                                               llvm::ArrayRef<mlir::NamedAttribute>(), argAttrs);
     func.createEntryBlock();
 
@@ -1147,6 +1148,7 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
     assert(funcType.getNumInputs() == argAttrs.size() && "invalid parameter conversion");
 
     auto func = builder.create<P4HIR::FuncOp>(getLoc(builder, m), m->name.string_view(), funcType,
+                                              /* isExternal */ true,
                                               llvm::ArrayRef<mlir::NamedAttribute>(), argAttrs);
 
     auto [it, inserted] = p4Symbols.try_emplace(m, mlir::SymbolRefAttr::get(func));
