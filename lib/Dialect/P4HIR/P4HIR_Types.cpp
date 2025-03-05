@@ -263,6 +263,13 @@ Type HeaderType::parse(AsmParser &p) {
     return Base::get(p.getContext(), name, parameters);
 }
 
+Type HeaderUnionType::parse(AsmParser &p) {
+    llvm::SmallVector<FieldInfo, 4> parameters;
+    std::string name;
+    if (parseFields(p, name, parameters)) return {};
+    return get(p.getContext(), name, parameters);
+}
+
 LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
                                  ArrayRef<FieldInfo> elements) {
     llvm::SmallDenseSet<StringAttr> fieldNameSet;
@@ -300,8 +307,37 @@ LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, S
     return result;
 }
 
+LogicalResult HeaderUnionType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
+                                      ArrayRef<FieldInfo> elements) {
+    llvm::SmallDenseSet<StringAttr> fieldNameSet;
+    LogicalResult result = success();
+    fieldNameSet.reserve(elements.size());
+    for (const auto &elt : elements) {
+        if (!fieldNameSet.insert(elt.name).second) {
+            result = failure();
+            emitError() << "duplicate field name '" << elt.name.getValue()
+                        << "' in p4hir.header_union type";
+        }
+
+        // Check that all elements are header types
+        if (!mlir::isa<HeaderType>(elt.type)) {
+            result = failure();
+            emitError() << "header_union field '" << elt.name.getValue()
+                        << "' must be a header type";
+        }
+    }
+
+    if (elements.empty()) {
+        emitError() << "empty p4hir.header_union type";
+        return failure();
+    }
+
+    return result;
+}
+
 void StructType::print(AsmPrinter &p) const { printFields(p, getName(), getElements()); }
 void HeaderType::print(AsmPrinter &p) const { printFields(p, getName(), getElements()); }
+void HeaderUnionType::print(AsmPrinter &p) const { printFields(p, getName(), getElements()); }
 
 HeaderType HeaderType::get(mlir::MLIRContext *context, llvm::StringRef name,
                            llvm::ArrayRef<FieldInfo> fields) {
@@ -309,6 +345,12 @@ HeaderType HeaderType::get(mlir::MLIRContext *context, llvm::StringRef name,
     realFields.push_back(
         {mlir::StringAttr::get(context, validityBit), P4HIR::ValidBitType::get(context)});
 
+    return Base::get(context, name, realFields);
+}
+
+HeaderUnionType HeaderUnionType::get(mlir::MLIRContext *context, llvm::StringRef name,
+                                     llvm::ArrayRef<FieldInfo> fields) {
+    llvm::SmallVector<FieldInfo, 4> realFields(fields);
     return Base::get(context, name, realFields);
 }
 

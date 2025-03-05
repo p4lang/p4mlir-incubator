@@ -470,6 +470,27 @@ def HeaderType : StructLikeType<"Header", "header"> {
 }
 
 //===----------------------------------------------------------------------===//
+// HeaderUnionType
+//===----------------------------------------------------------------------===//
+
+// A header union. Declares the P4HIR::HeaderUnionType in C++.
+def HeaderUnionType : StructLikeType<"HeaderUnion", "header_union"> {
+  let summary = "header union type";
+  let description = [{
+    A header union represents an alternative containing at most one of several different headers.
+    !p4hir.header_union<"name", field1: HeaderType1, field2: HeaderType2>
+  }];
+
+  // We skip default builders entirely to consistently add validity bit field on fly
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    TypeBuilder<(ins "llvm::StringRef":$name,
+                      "llvm::ArrayRef<P4HIR::FieldInfo>":$fields)>
+  ];
+}
+
+//===----------------------------------------------------------------------===//
 // EnumType, ErrorType  & SerEnumType
 //===----------------------------------------------------------------------===//
 def EnumType : P4HIR_Type<"Enum", "enum", []> {
@@ -620,7 +641,7 @@ def ExternType : P4HIR_Type<"Extern", "extern", []> {
 //===----------------------------------------------------------------------===//
 
 def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StringType,
-                           StructType, HeaderType, Builtin_Tuple,
+                           StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
                            EnumType, SerEnumType,
                            ValidBitType,
                            DontcareType, ErrorType, UnknownType,
@@ -632,7 +653,7 @@ def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                                 EnumType, SerEnumType, ErrorType,
                                 ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
-def StructLikeType : AnyTypeOf<[StructType, HeaderType]>;
+def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType]>;
 def P4ObjectType : AnyTypeOf<[ParserType, ExternType]>;
 
 /// A ref type with the specified constraints on the nested type.
