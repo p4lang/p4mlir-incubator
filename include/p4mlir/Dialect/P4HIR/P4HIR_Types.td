@@ -402,6 +402,27 @@ def HeaderType : StructLikeType<"Header", "header"> {
 }
 
 //===----------------------------------------------------------------------===//
+// HeaderUnionType
+//===----------------------------------------------------------------------===//
+
+// A header union. Declares the P4HIR::HeaderUnionType in C++.
+def HeaderUnionType : StructLikeType<"HeaderUnion", "header_union"> {
+  let summary = "header union type";
+  let description = [{
+    A header union represents an alternative containing at most one of several different headers.
+    !p4hir.header_union<"name", field1: HeaderType1, field2: HeaderType2>
+  }];
+
+  // We skip default builders entirely to consistently add validity bit field on fly
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    TypeBuilder<(ins "llvm::StringRef":$name,
+                      "llvm::ArrayRef<P4HIR::FieldInfo>":$fields)>
+  ];
+}
+
+//===----------------------------------------------------------------------===//
 // EnumType, ErrorType  & SerEnumType
 //===----------------------------------------------------------------------===//
 def EnumType : P4HIR_Type<"Enum", "enum", []> {
@@ -488,7 +509,7 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", []> {
 //===----------------------------------------------------------------------===//
 
 def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
-                           StructType, HeaderType,
+                           StructType, HeaderType, HeaderUnionType,
                            EnumType, SerEnumType,
                            ValidBitType,
                            DontcareType, ErrorType, UnknownType]> {}
@@ -499,7 +520,7 @@ def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                                 EnumType, SerEnumType, ErrorType,
                                 ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
-def StructLikeType : AnyTypeOf<[StructType, HeaderType]>;
+def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType]>;
 
 /// A ref type with the specified constraints on the nested type.
 class SpecificRefType<Type type> : ConfinedType<ReferenceType,
