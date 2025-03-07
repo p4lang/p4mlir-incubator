@@ -1,2 +1,7 @@
 build/
 install/
+.cache/
+.vscode/
+.cursor/
+.idea/
+compile_commands.json
