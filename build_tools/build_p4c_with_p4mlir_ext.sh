@@ -20,14 +20,8 @@ P4C_EXT_DIR=$P4C_REPO_DIR/extensions
 
 P4C_P4MLIR_EXT_DIR=$P4C_EXT_DIR/p4mlir
 
-# if [[ "$(uname)" == "Darwin" ]]; then
-#     # macOS version
 P4C_P4MLIR_EXT_SYMLINK=$(realpath --relative-to="$(dirname "$P4C_P4MLIR_EXT_DIR")" "$P4MLIR_REPO_DIR" 2>/dev/null || \
 python3 -c 'import os, sys; print(os.path.relpath(sys.argv[2], start=sys.argv[1]))' "$(dirname "$P4C_P4MLIR_EXT_DIR")" "$P4MLIR_REPO_DIR")
-# else
-#     # Linux or other OS
-#     P4C_P4MLIR_EXT_SYMLINK=$(realpath -s --relative-to="$(dirname "$P4C_P4MLIR_EXT_DIR")" "$P4MLIR_REPO_DIR")
-# fi
 
 # Link P4MLIR as P4C extension
 mkdir -p "$P4C_EXT_DIR"
