@@ -259,7 +259,8 @@ Type HeaderType::parse(AsmParser &p) {
     llvm::SmallVector<FieldInfo, 4> parameters;
     std::string name;
     if (parseFields(p, name, parameters)) return {};
-    return get(p.getContext(), name, parameters);
+    // Do not use our own get() here as it adds __validity bit. And we do have it already.
+    return Base::get(p.getContext(), name, parameters);
 }
 
 LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,

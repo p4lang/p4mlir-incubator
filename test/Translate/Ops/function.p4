@@ -15,7 +15,7 @@ bit<16> max(in bit<16> left, in bit<16> right) {
 }
 
 // CHECK-LABEL: p4hir.func action @bar(%arg0: !b16i {p4hir.dir = #in}, %arg1: !b16i {p4hir.dir = #in}, %arg2: !p4hir.ref<!b16i> {p4hir.dir = #p4hir<dir out>}) {
-// CHECK:    %[[CALL:.*]] = p4hir.call @max(%arg0, %arg1) : (!b16i, !b16i) -> !b16i
+// CHECK:    %[[CALL:.*]] = p4hir.call @max (%arg0, %arg1) : (!b16i, !b16i) -> !b16i
 // CHECK:    p4hir.assign %[[CALL]], %arg2 : <!b16i>
 // CHECK:    p4hir.return
 
@@ -51,12 +51,12 @@ action test_param() {
 // CHECK:        %[[Z_INOUT:.*]] = p4hir.variable ["z_inout_arg", init] : <!b1i>
 // CHECK:        %[[A_VAL2:.*]] = p4hir.read %[[A]] : <!b1i>
 // CHECK:        p4hir.assign %[[A_VAL2]], %[[Z_INOUT]] : <!b1i>
-// CHECK:        %[[G_RES:.*]] = p4hir.call @g(%[[Z_INOUT]]) : (!p4hir.ref<!b1i>) -> !b1i
+// CHECK:        %[[G_RES:.*]] = p4hir.call @g (%[[Z_INOUT]]) : (!p4hir.ref<!b1i>) -> !b1i
 // CHECK:        %[[A_OUT_VAL:.*]] = p4hir.read %[[Z_INOUT]] : <!b1i>
 // CHECK:        p4hir.assign %[[A_OUT_VAL]], %[[A]] : <!b1i>
 // CHECK:        p4hir.yield %[[G_RES]] : !b1i
 // CHECK:      } : !b1i
-// CHECK:      p4hir.call @f(%[[X_INOUT]], %[[G_VAL]]) : (!p4hir.ref<!b1i>, !b1i) -> ()
+// CHECK:      p4hir.call @f (%[[X_INOUT]], %[[G_VAL]]) : (!p4hir.ref<!b1i>, !b1i) -> ()
 // CHECK:      %[[A_OUT_VAL2:.*]] = p4hir.read %[[X_INOUT]] : <!b1i>
 // CHECK:      p4hir.assign %[[A_OUT_VAL2]], %[[A]] : <!b1i>
 // CHECK:    }

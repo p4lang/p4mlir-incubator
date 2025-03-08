@@ -16,6 +16,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
+#include "mlir/Support/LLVM.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
@@ -532,6 +533,13 @@ void P4HIR::FuncOp::print(OpAsmPrinter &p) {
     p << ' ';
     p.printSymbolName(getSymName());
     auto fnType = getFunctionType();
+    auto typeArguments = fnType.getTypeArguments();
+    if (!typeArguments.empty()) {
+        p << '<';
+        llvm::interleaveComma(typeArguments, p, [&p](mlir::Type type) { p.printType(type); });
+        p << '>';
+    }
+
     function_interface_impl::printFunctionSignature(p, *this, fnType.getInputs(), false,
                                                     fnType.getReturnTypes());
 
@@ -572,8 +580,18 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
     if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(), state.attributes))
         return failure();
 
-    // All functions are public
-    state.addAttribute(SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
+    // Try to parse type arguments if any
+    llvm::SmallVector<mlir::Type, 1> typeArguments;
+    if (succeeded(parser.parseOptionalLess())) {
+        if (parser.parseCommaSeparatedList([&]() -> ParseResult {
+                mlir::Type type;
+                if (parser.parseType(type)) return mlir::failure();
+                typeArguments.push_back(type);
+                return mlir::success();
+            }) ||
+            parser.parseGreater())
+            return failure();
+    }
 
     llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
     llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
@@ -597,7 +615,7 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
     mlir::Type returnType =
         (resultTypes.empty() ? P4HIR::VoidType::get(builder.getContext()) : resultTypes.front());
 
-    if (auto fnType = P4HIR::FuncType::get(argTypes, returnType)) {
+    if (auto fnType = P4HIR::FuncType::get(argTypes, returnType, typeArguments)) {
         state.addAttribute(getFunctionTypeAttrName(state.name), TypeAttr::get(fnType));
     } else
         return failure();
@@ -628,6 +646,10 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
         parser.emitError(loc, "action shall have a body");
     }
 
+    // All functions are public except declarations
+    state.addAttribute(SymbolTable::getVisibilityAttrName(),
+                       builder.getStringAttr(body->empty() ? "private" : "public"));
+
     return success();
 }
 
@@ -635,11 +657,19 @@ void P4HIR::CallOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     if (getResult()) setNameFn(getResult(), "call");
 }
 
+static mlir::ModuleOp getParentModule(Operation *from) {
+    if (auto moduleOp = from->getParentOfType<mlir::ModuleOp>()) return moduleOp;
+
+    from->emitOpError("could not find parent module op");
+    return nullptr;
+}
+
 LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
     auto fnAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
     if (!fnAttr) return emitOpError("requires a 'callee' symbol reference attribute");
-    FuncOp fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(*this, fnAttr);
+    // Functions are defined at top-level scope
+    FuncOp fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentModule(*this), fnAttr);
     if (!fn)
         return emitOpError() << "'" << fnAttr.getValue() << "' does not reference a valid function";
 
@@ -648,11 +678,34 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
     if (fnType.getNumInputs() != getNumOperands())
         return emitOpError("incorrect number of operands for callee");
 
-    for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i)
-        if (getOperand(i).getType() != fnType.getInput(i))
+    auto calleeTypeArgs = fnType.getTypeArguments();
+    auto typeOperands = getTypeOperands();
+    if (!calleeTypeArgs.empty()) {
+        if (!typeOperands)
+            return emitOpError("expected type operands to be specifid for generic callee type");
+        if (calleeTypeArgs.size() != getTypeOperands()->size())
+            return emitOpError("incorrect number of type operands for callee");
+    }
+
+    auto substituteType = [&](mlir::Type type) {
+        if (auto typeVar = llvm::dyn_cast<P4HIR::TypeVarType>(type)) {
+            size_t pos = llvm::find(calleeTypeArgs, typeVar) - calleeTypeArgs.begin();
+            if (pos == calleeTypeArgs.size()) return mlir::Type();
+            return llvm::cast<mlir::TypeAttr>(typeOperands->getValue()[pos]).getValue();
+        }
+        return type;
+    };
+
+    for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i) {
+        mlir::Type expectedType = substituteType(fnType.getInput(i));
+        if (!expectedType)
+            return emitOpError("cannot resolve type operand for operand number ") << i;
+        mlir::Type providedType = getOperand(i).getType();
+        if (providedType != expectedType)
             return emitOpError("operand type mismatch: expected operand type ")
-                   << fnType.getInput(i) << ", but provided " << getOperand(i).getType()
-                   << " for operand number " << i;
+                   << expectedType << ", but provided " << providedType << " for operand number "
+                   << i;
+    }
 
     // Actions must not return any results
     if (fn.getAction() && getNumResults() != 0)
@@ -667,7 +720,7 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
         return emitOpError("incorrect number of results for callee");
 
     // Parent function and return value types must match.
-    if (!fnType.isVoid() && getResultTypes().front() != fnType.getReturnType())
+    if (!fnType.isVoid() && getResultTypes().front() != substituteType(fnType.getReturnType()))
         return emitOpError("result type mismatch: expected ")
                << fnType.getReturnType() << ", but provided " << getResult().getType();
 
@@ -687,7 +740,7 @@ ParseResult P4HIR::StructOp::parse(OpAsmParser &parser, OperationState &result) 
         parser.parseOptionalAttrDict(result.attributes) || parser.parseColonType(declType))
         return failure();
 
-    auto structType = mlir::dyn_cast<StructType>(declType);
+    auto structType = mlir::dyn_cast<StructLikeTypeInterface>(declType);
     if (!structType) return parser.emitError(parser.getNameLoc(), "expected !p4hir.struct type");
 
     llvm::SmallVector<Type, 4> structInnerTypes;
@@ -761,18 +814,23 @@ LogicalResult P4HIR::StructExtractOp::verify() {
         *this, mlir::cast<StructLikeTypeInterface>(getInput().getType()), getType());
 }
 
-template <typename AggregateType>
 static ParseResult parseExtractOp(OpAsmParser &parser, OperationState &result) {
     OpAsmParser::UnresolvedOperand operand;
     StringAttr fieldName;
-    AggregateType declType;
+    mlir::Type declType;
 
     if (parser.parseOperand(operand) || parser.parseLSquare() || parser.parseAttribute(fieldName) ||
         parser.parseRSquare() || parser.parseOptionalAttrDict(result.attributes) ||
-        parser.parseColon() || parser.parseCustomTypeWithFallback<AggregateType>(declType))
+        parser.parseColon() || parser.parseCustomTypeWithFallback(declType))
         return failure();
 
-    auto fieldIndex = declType.getFieldIndex(fieldName);
+    auto aggType = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(declType);
+    if (!aggType) {
+        parser.emitError(parser.getNameLoc(), "expected reference to aggregate type");
+        return failure();
+    }
+
+    auto fieldIndex = aggType.getFieldIndex(fieldName);
     if (!fieldIndex) {
         parser.emitError(parser.getNameLoc(),
                          "field name '" + fieldName.getValue() + "' not found in aggregate type");
@@ -781,14 +839,13 @@ static ParseResult parseExtractOp(OpAsmParser &parser, OperationState &result) {
 
     auto indexAttr = IntegerAttr::get(IntegerType::get(parser.getContext(), 32), *fieldIndex);
     result.addAttribute("fieldIndex", indexAttr);
-    Type resultType = declType.getElements()[*fieldIndex].type;
+    Type resultType = aggType.getFields()[*fieldIndex].type;
     result.addTypes(resultType);
 
     if (parser.resolveOperand(operand, declType, result.operands)) return failure();
     return success();
 }
 
-template <typename AggregateType>
 static ParseResult parseExtractRefOp(OpAsmParser &parser, OperationState &result) {
     OpAsmParser::UnresolvedOperand operand;
     StringAttr fieldName;
@@ -799,7 +856,7 @@ static ParseResult parseExtractRefOp(OpAsmParser &parser, OperationState &result
         parser.parseColon() || parser.parseCustomTypeWithFallback<P4HIR::ReferenceType>(declType))
         return failure();
 
-    auto aggType = mlir::dyn_cast<AggregateType>(declType.getObjectType());
+    auto aggType = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(declType.getObjectType());
     if (!aggType) {
         parser.emitError(parser.getNameLoc(), "expected reference to aggregate type");
         return failure();
@@ -813,7 +870,7 @@ static ParseResult parseExtractRefOp(OpAsmParser &parser, OperationState &result
 
     auto indexAttr = IntegerAttr::get(IntegerType::get(parser.getContext(), 32), *fieldIndex);
     result.addAttribute("fieldIndex", indexAttr);
-    Type resultType = P4HIR::ReferenceType::get(aggType.getElements()[*fieldIndex].type);
+    Type resultType = P4HIR::ReferenceType::get(aggType.getFields()[*fieldIndex].type);
     result.addTypes(resultType);
 
     if (parser.resolveOperand(operand, declType, result.operands)) return failure();
@@ -829,6 +886,7 @@ static void printExtractOp(OpAsmPrinter &printer, AggType op) {
     printer << "[\"" << op.getFieldName() << "\"]";
     printer.printOptionalAttrDict(op->getAttrs(), {"fieldIndex"});
     printer << " : ";
+
     auto type = op.getInput().getType();
     if (auto validType = mlir::dyn_cast<P4HIR::ReferenceType>(type))
         printer.printStrippedAttrOrType(validType);
@@ -837,7 +895,7 @@ static void printExtractOp(OpAsmPrinter &printer, AggType op) {
 }
 
 ParseResult P4HIR::StructExtractOp::parse(OpAsmParser &parser, OperationState &result) {
-    return parseExtractOp<StructType>(parser, result);
+    return parseExtractOp(parser, result);
 }
 
 void P4HIR::StructExtractOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
@@ -870,7 +928,7 @@ void P4HIR::StructExtractRefOp::getAsmResultNames(function_ref<void(Value, Strin
 }
 
 ParseResult P4HIR::StructExtractRefOp::parse(OpAsmParser &parser, OperationState &result) {
-    return parseExtractRefOp<StructType>(parser, result);
+    return parseExtractRefOp(parser, result);
 }
 
 void P4HIR::StructExtractRefOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
@@ -1044,6 +1102,7 @@ void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
 
     function_interface_impl::printFunctionSignature(printer, *this, getApplyType().getInputs(),
                                                     false, {});
+
     printer << "(";
     llvm::interleaveComma(getCtorType().getInputs(), printer,
                           [&](std::pair<mlir::StringAttr, mlir::Type> namedType) {
@@ -1134,13 +1193,6 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
     if (body->empty()) return parser.emitError(loc, "expected non-empty parser body");
 
     return mlir::success();
-}
-
-static mlir::ModuleOp getParentModule(Operation *from) {
-    if (auto moduleOp = from->getParentOfType<mlir::ModuleOp>()) return moduleOp;
-
-    from->emitOpError("could not find parent module op");
-    return nullptr;
 }
 
 static mlir::LogicalResult verifyStateTarget(mlir::Operation *op, mlir::SymbolRefAttr stateName,
@@ -1329,28 +1381,59 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
     auto ctorAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
     if (!ctorAttr) return emitOpError("requires a 'callee' symbol reference attribute");
 
-    ParserOp parser =
-        symbolTable.lookupNearestSymbolFrom<ParserOp>(getParentModule(*this), ctorAttr);
-    if (!parser)
-        return emitOpError() << "'" << ctorAttr.getValue() << "' does not reference a valid parser";
+    if (ParserOp parser =
+            symbolTable.lookupNearestSymbolFrom<ParserOp>(getParentModule(*this), ctorAttr)) {
+        // Verify that the operand and result types match the callee.
+        auto ctorType = parser.getCtorType();
+        if (ctorType.getNumInputs() != getNumOperands())
+            return emitOpError("incorrect number of operands for callee");
 
-    // Verify that the operand and result types match the callee.
-    auto ctorType = parser.getCtorType();
-    if (ctorType.getNumInputs() != getNumOperands())
-        return emitOpError("incorrect number of operands for callee");
+        for (unsigned i = 0, e = ctorType.getNumInputs(); i != e; ++i)
+            if (getOperand(i).getType() != ctorType.getInput(i))
+                return emitOpError("operand type mismatch: expected operand type ")
+                       << ctorType.getInput(i) << ", but provided " << getOperand(i).getType()
+                       << " for operand number " << i;
 
-    for (unsigned i = 0, e = ctorType.getNumInputs(); i != e; ++i)
-        if (getOperand(i).getType() != ctorType.getInput(i))
-            return emitOpError("operand type mismatch: expected operand type ")
-                   << ctorType.getInput(i) << ", but provided " << getOperand(i).getType()
-                   << " for operand number " << i;
+        // Parser itself and return value types must match.
+        if (getResult().getType() != ctorType.getReturnType())
+            return emitOpError("result type mismatch: expected ")
+                   << ctorType.getReturnType() << ", but provided " << getResult().getType();
 
-    // Parser itself and return value types must match.
-    if (getResult().getType() != ctorType.getReturnType())
-        return emitOpError("result type mismatch: expected ")
-               << ctorType.getReturnType() << ", but provided " << getResult().getType();
+        return mlir::success();
+    } else if (ExternOp ext = symbolTable.lookupNearestSymbolFrom<ExternOp>(getParentModule(*this),
+                                                                            ctorAttr)) {
+        // TBD
+        return mlir::success();
+    }
 
+    return emitOpError()
+           << "'" << ctorAttr.getValue()
+           << "' does not reference a valid P4 object (parser, extern, control or package)";
+}
+
+//===----------------------------------------------------------------------===//
+// ExternOp
+//===----------------------------------------------------------------------===//
+
+mlir::Block &P4HIR::ExternOp::createEntryBlock() {
+    assert(getBody().empty() && "can only create entry block for empty exern");
+    return getBody().emplaceBlock();
+}
+
+//===----------------------------------------------------------------------===//
+// CallMethodOp
+//===----------------------------------------------------------------------===//
+LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     return success();
+}
+
+//===----------------------------------------------------------------------===//
+// OverloadSetOp
+//===----------------------------------------------------------------------===//
+
+mlir::Block &P4HIR::OverloadSetOp::createEntryBlock() {
+    assert(getBody().empty() && "can only create entry block for empty overload block");
+    return getBody().emplaceBlock();
 }
 
 namespace {

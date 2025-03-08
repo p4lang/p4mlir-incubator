@@ -171,27 +171,38 @@ def FuncType : P4HIR_Type<"Func", "func"> {
   }];
 
   let parameters = (ins ArrayRefParameter<"mlir::Type">:$inputs,
-                        "mlir::Type":$optionalReturnType);
+                        "mlir::Type":$optionalReturnType,
+                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments);
 
   let builders = [
     // Construct with an actual return type or explicit !p4hir.void
     TypeBuilderWithInferredContext<(ins
       "llvm::ArrayRef<mlir::Type>":$inputs, "mlir::Type":$returnType), [{
       return $_get(returnType.getContext(), inputs,
-                       mlir::isa<P4HIR::VoidType>(returnType) ? nullptr
-                                                            : returnType);
+                   mlir::isa<P4HIR::VoidType>(returnType) ? nullptr
+                                                          : returnType,
+                   llvm::ArrayRef<mlir::Type>());
+    }]>,
+
+    // Construct with an actual return type or explicit !p4hir.void
+    TypeBuilderWithInferredContext<(ins
+      "llvm::ArrayRef<mlir::Type>":$inputs, "mlir::Type":$returnType, "llvm::ArrayRef<mlir::Type>":$typeArgs), [{
+      return $_get(returnType.getContext(), inputs,
+                   mlir::isa<P4HIR::VoidType>(returnType) ? nullptr
+                                                          : returnType,
+                   typeArgs);
     }]>,
 
     // Construct without return type
     TypeBuilder<(ins "llvm::ArrayRef<mlir::Type>":$inputs), [{
-      return $_get($_ctxt, inputs, nullptr);
+      return $_get($_ctxt, inputs, nullptr, llvm::ArrayRef<mlir::Type>());
     }]>
 
   ];
 
   // Use a custom parser to handle the argument types in better way.
   let assemblyFormat = [{
-    `<` custom<FuncType>($inputs, $optionalReturnType) `>`
+    `<` (`<` $type_arguments^ `>`)? custom<FuncType>($inputs, $optionalReturnType) `>`
   }];
 
   let extraClassDeclaration = [{
@@ -434,7 +445,7 @@ def HeaderType : StructLikeType<"Header", "header"> {
 
   let builders = [
     TypeBuilder<(ins "llvm::StringRef":$name,
-                      "llvm::ArrayRef<P4HIR::FieldInfo>":$fields)>
+                     "llvm::ArrayRef<P4HIR::FieldInfo>":$fields)>
   ];
 
   // This adds more C++ stuff into parent extraClassDeclaration
@@ -555,6 +566,41 @@ def SetType : P4HIR_Type<"Set", "set", []> {
 }
 
 //===----------------------------------------------------------------------===//
+// TypeVarType
+//===----------------------------------------------------------------------===//
+def TypeVarType : P4HIR_Type<"TypeVar", "type_var", []> {
+  let summary = "type variable type";
+  let description = [{
+    Represents a type variable type:
+    !p4hir.type_var<"T">
+  }];
+
+  let parameters = (ins StringRefParameter<"type variable name">:$name);
+
+  // TODO: Check that it is only used in declarations
+  let assemblyFormat = [{
+    `<` $name `>`
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// ExternType
+//===----------------------------------------------------------------------===//
+def ExternType : P4HIR_Type<"Extern", "extern", []> {
+  let summary = "extern type";
+  let description = [{
+    Represents a P4 extern:
+    !p4hir.extern<"X"<!i32i>>
+  }];
+
+  let parameters = (ins StringRefParameter<"extern name">:$name,
+                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments);
+  let assemblyFormat = [{
+    `<` $name (`<` $type_arguments^ `>`)? `>`
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
@@ -572,7 +618,7 @@ def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                                 ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def StructLikeType : AnyTypeOf<[StructType, HeaderType]>;
-def P4ObjectType : AnyTypeOf<[ParserType]>;
+def P4ObjectType : AnyTypeOf<[ParserType, ExternType]>;
 
 /// A ref type with the specified constraints on the nested type.
 class SpecificRefType<Type type> : ConfinedType<ReferenceType,

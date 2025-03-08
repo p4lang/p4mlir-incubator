@@ -18,11 +18,17 @@ limitations under the License.
 #include "frontends/common/constantFolding.h"
 #include "frontends/common/parseInput.h"
 #include "frontends/common/parser_options.h"
+#include "frontends/p4/checkCoreMethods.h"
 #include "frontends/p4/checkNamedArgs.h"
 #include "frontends/p4/createBuiltins.h"
+#include "frontends/p4/defaultArguments.h"
 #include "frontends/p4/defaultValues.h"
 #include "frontends/p4/frontend.h"
+#include "frontends/p4/specialize.h"
+#include "frontends/p4/specializeGenericFunctions.h"
+#include "frontends/p4/specializeGenericTypes.h"
 #include "frontends/p4/toP4/toP4.h"
+#include "frontends/p4/typeChecking/bindVariables.h"
 #include "frontends/p4/validateParsedProgram.h"
 #include "frontends/p4/validateStringAnnotations.h"
 #include "gc/gc.h"
@@ -118,6 +124,17 @@ int main(int argc, char *const argv[]) {
                 new P4::TypeInference(&typeMap, false, false),  // insert casts, don't check arrays
                 new SetStrictStruct(&typeMap, false),
                 new P4::DefaultValues(&typeMap),
+                new P4::BindTypeVariables(&typeMap),
+                new P4::PassRepeated({
+                    new P4::SpecializeGenericTypes(&typeMap),
+                    new P4::DefaultArguments(
+                        &typeMap),  // add default argument values to parameters
+                    new SetStrictStruct(&typeMap, true),  // Next pass uses strict struct checking
+                    new P4::TypeInference(&typeMap, false),  // more casts may be needed
+                    new SetStrictStruct(&typeMap, false),
+                    new P4::SpecializeGenericFunctions(&typeMap),
+                }),
+                new P4::CheckCoreMethods(&typeMap),
                 new P4::TypeChecking(nullptr, &typeMap, true),
             });
             passes.setName("TypeInference");
@@ -129,12 +146,20 @@ int main(int argc, char *const argv[]) {
             P4::FrontEnd fe;
             fe.addDebugHook(hook);
             program = fe.run(options, program);
+
+            P4::PassManager post({
+                new P4::TypeChecking(nullptr, &typeMap, true),
+            });
+            post.setName("TypeInference");
+            post.setStopOnError(true);
+            post.addDebugHook(hook, true);
+            program = program->apply(post);
         }
     }
 
     if (P4::errorCount() > 0) return EXIT_FAILURE;
 
-    BUG_CHECK(options.typeinferenceOnly, "TODO: fill TypeMap");
+    // BUG_CHECK(options.typeinferenceOnly, "TODO: fill TypeMap");
 
     log_dump(program, "After frontend");
 
