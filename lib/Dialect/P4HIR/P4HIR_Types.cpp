@@ -348,12 +348,6 @@ HeaderType HeaderType::get(mlir::MLIRContext *context, llvm::StringRef name,
     return Base::get(context, name, realFields);
 }
 
-HeaderUnionType HeaderUnionType::get(mlir::MLIRContext *context, llvm::StringRef name,
-                                     llvm::ArrayRef<FieldInfo> fields) {
-    llvm::SmallVector<FieldInfo, 4> realFields(fields);
-    return Base::get(context, name, realFields);
-}
-
 Type EnumType::parse(AsmParser &p) {
     std::string name;
     llvm::SmallVector<Attribute> fields;

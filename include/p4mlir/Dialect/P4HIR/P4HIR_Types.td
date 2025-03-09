@@ -317,8 +317,15 @@ class StructLikeType<string name, string typeMnemonic>
        return {};
     }
 
-    llvm::ArrayRef<P4HIR::FieldInfo> getFields() {
+    llvm::ArrayRef<P4HIR::FieldInfo> getFields() const {
       return getElements();
+    }
+
+    template <typename Func>
+    void forEachField(Func &&func) const {
+      for (const auto &field : getFields()) {
+        func(field);
+      }
     }
 
     void getInnerTypes(mlir::SmallVectorImpl<mlir::Type> &types) {
@@ -480,14 +487,6 @@ def HeaderUnionType : StructLikeType<"HeaderUnion", "header_union"> {
     A header union represents an alternative containing at most one of several different headers.
     !p4hir.header_union<"name", field1: HeaderType1, field2: HeaderType2>
   }];
-
-  // We skip default builders entirely to consistently add validity bit field on fly
-  let skipDefaultBuilders = 1;
-
-  let builders = [
-    TypeBuilder<(ins "llvm::StringRef":$name,
-                      "llvm::ArrayRef<P4HIR::FieldInfo>":$fields)>
-  ];
 }
 
 //===----------------------------------------------------------------------===//
@@ -649,7 +648,7 @@ def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StringType,
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
-                                StructType, HeaderType, Builtin_Tuple,
+                                StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
                                 EnumType, SerEnumType, ErrorType,
                                 ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;

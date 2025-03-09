@@ -49,7 +49,7 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
     if (mlir::isa<P4HIR::IntAttr, P4HIR::BoolAttr>(attrType)) return success();
 
     if (mlir::isa<P4HIR::AggAttr>(attrType)) {
-        if (!mlir::isa<P4HIR::StructType, P4HIR::HeaderType, mlir::TupleType>(opType))
+        if (!mlir::isa<P4HIR::StructType, P4HIR::HeaderType, P4HIR::HeaderUnionType, mlir::TupleType>(opType))
             return op->emitOpError("result type (") << opType << ") is not an aggregate type";
 
         return success();
@@ -823,6 +823,9 @@ void P4HIR::StructOp::getAsmResultNames(function_ref<void(Value, StringRef)> set
     } else if (auto headerType = mlir::dyn_cast<HeaderType>(getType())) {
         name += "hdr_";
         name += headerType.getName();
+    } else if (auto headerUnionType = mlir::dyn_cast<HeaderUnionType>(getType())) {
+        name += "hdru_";
+        name += headerUnionType.getName();
     }
 
     setNameFn(getResult(), name);
@@ -1511,6 +1514,11 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
 
         if (auto headerType = mlir::dyn_cast<P4HIR::HeaderType>(type)) {
             os << headerType.getName();
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto headerUnionType = mlir::dyn_cast<P4HIR::HeaderUnionType>(type)) {
+            os << headerUnionType.getName();
             return AliasResult::OverridableAlias;
         }
 
