@@ -518,6 +518,7 @@ def ScopeOp : P4HIR_Op<"scope", [
 def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
     ParentOneOf<["ScopeOp", "TernaryOp", "IfOp",
                  "ParserSelectCaseOp",
+                 "TableEntryOp",
                  // "SwitchOp", "CaseOp",
                  // "ForInOp", "ForOp",
                  ]>]> {
@@ -568,7 +569,8 @@ def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
     ```
   }];
 
-  let arguments = (ins Variadic<AnyP4Type>:$args);
+  // TODO: Need to allow externs plus any normal P4 type
+  let arguments = (ins Variadic<AnyType>:$args);
   let assemblyFormat = "($args^ `:` type($args))? attr-dict";
   let builders = [
     OpBuilder<(ins), [{ /* nothing to do */ }]>,
@@ -720,7 +722,7 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
 
 def FuncOp : P4HIR_Op<"func", [
   AutomaticAllocationScope, CallableOpInterface, FunctionOpInterface,
-  IsolatedFromAbove
+  // IsolatedFromAbove
 ]> {
   let summary = "Define a function-like object (action, function)";
   let description = [{
@@ -1178,11 +1180,13 @@ def ApplyOp : P4HIR_Op<"apply",
    //DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
     TypesMatchWith<
        "the apply type of the object matches the types of operands",
-       "callee", "arg_operands", "cast<P4HIR::ParserType>($_self).getInputs()">,
+       "callee", "arg_operands",
+       "(isa<P4HIR::ParserType>($_self) ? cast<P4HIR::ParserType>($_self).getInputs() :"
+                                         "cast<P4HIR::ControlType>($_self).getInputs())">,
    ]> {
   let summary = "apply operation";
   let description = [{
-    Applies P4 parser, table or control
+    Applies P4 parser or control
 
     Example:
 
@@ -1344,5 +1348,6 @@ def OverloadSetOp : P4HIR_Op<"overload_set",
 
 
 include "p4mlir/Dialect/P4HIR/P4HIR_ParserOps.td"
+include "p4mlir/Dialect/P4HIR/P4HIR_ControlOps.td"
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD
