@@ -499,6 +499,11 @@ LogicalResult P4HIR::FuncOp::verifyType() {
             "The return type for a function returning void should "
             "be empty instead of an explicit !p4hir.void");
 
+    if (type.getReturnType().isa<P4HIR::TypeVarType>()) {
+        return emitOpError("type variables can only be used in declarations, "
+                            "but found in return type");
+    }
+
     return success();
 }
 
@@ -1425,6 +1430,17 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
 mlir::Block &P4HIR::ExternOp::createEntryBlock() {
     assert(getBody().empty() && "can only create entry block for empty exern");
     return getBody().emplaceBlock();
+}
+
+LogicalResult P4HIR::ExternOp::verify() {
+    // TODO: 
+    // FunctionType type = getFunctionType();
+    // if (type.getReturnTypes().isa<P4HIR::TypeVarType>()) {
+    //     return emitOpError("type variables can only be used in declarations, "
+    //                        "but found in return type");
+    // }
+    // if (!getBody().empty()) return emitOpError("extern methods must not have a body");
+    return success();
 }
 
 //===----------------------------------------------------------------------===//

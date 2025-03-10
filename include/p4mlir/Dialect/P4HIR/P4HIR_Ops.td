@@ -1125,7 +1125,7 @@ def ExternOp : P4HIR_Op<"extern",
   let assemblyFormat = [{
     $sym_name (`<` $type_parameters^ `>`)? $body attr-dict
   }];
-
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     mlir::Block &createEntryBlock();
   }];
