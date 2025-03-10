@@ -270,6 +270,24 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
                                             getBoolConstant(loc, true));
     }
 
+    void emitAllHeadersInvalidForParentHeaderUnion(mlir::Location loc, const P4::IR::Expression *header) {
+        if (const auto *member = header->to<P4::IR::Member>()) {
+            if (member->expr != nullptr && member->expr->type != nullptr) {
+                if (const auto *p4cHeaderUnionType =
+                        member->expr->type->to<P4::IR::Type_HeaderUnion>()) {
+                    auto headerUnionType =
+                        mlir::cast<P4HIR::HeaderUnionType>(getOrCreateType(p4cHeaderUnionType));
+                    auto headerUnion = resolveReference(member->expr);
+                    headerUnionType.forEachField([&](P4HIR::FieldInfo fieldInfo) {
+                        auto header =
+                            builder.create<P4HIR::StructExtractRefOp>(loc, headerUnion, fieldInfo.name);
+                        emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
+                    });
+                }
+            }
+        }
+    }
+
  public:
     P4HIRConverter(mlir::OpBuilder &builder, P4::TypeMap *typeMap)
         : builder(builder), typeMap(typeMap) {
@@ -1183,6 +1201,9 @@ bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
     auto ref = resolveReference(assign->left);
     auto loc = getLoc(builder, assign);
 
+    // Check if we're assigning to a header within a header union
+    emitAllHeadersInvalidForParentHeaderUnion(loc, assign->left);
+
     if (assign->right->is<P4::IR::InvalidHeader>()) {
         // Assignment of InvalidHeader is special: we do not materialize the whole
         // header, we need to assign validty bit only
@@ -1485,6 +1506,11 @@ mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
     auto header = resolveReference(builtInMethod->appliedTo);
     if (builtInMethod->name == P4::IR::Type_Header::setValid ||
         builtInMethod->name == P4::IR::Type_Header::setInvalid) {
+        // Check if we're assigning to a header within a header union
+        if (builtInMethod->name == P4::IR::Type_Header::setInvalid) {
+            emitAllHeadersInvalidForParentHeaderUnion(loc, builtInMethod->appliedTo);
+        }
+
         auto validityBitValue = builtInMethod->name == P4::IR::Type_Header::setInvalid
                                     ? P4HIR::ValidityBit::Invalid
                                     : P4HIR::ValidityBit::Valid;
