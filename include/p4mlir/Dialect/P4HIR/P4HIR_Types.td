@@ -302,8 +302,15 @@ class StructLikeType<string name, string typeMnemonic>
        return {};
     }
 
-    llvm::ArrayRef<P4HIR::FieldInfo> getFields() {
+    llvm::ArrayRef<P4HIR::FieldInfo> getFields() const {
       return getElements();
+    }
+
+    template <typename Func>
+    void forEachField(Func &&func) const {
+      for (const auto &field : getFields()) {
+        func(field);
+      }
     }
 
     void getInnerTypes(mlir::SmallVectorImpl<mlir::Type> &types) {
@@ -451,6 +458,19 @@ def HeaderType : StructLikeType<"Header", "header"> {
   // This adds more C++ stuff into parent extraClassDeclaration
   let extra2ClassDeclaration = [{
     static constexpr llvm::StringRef validityBit = "__valid";
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// HeaderUnionType
+//===----------------------------------------------------------------------===//
+
+// A header union. Declares the P4HIR::HeaderUnionType in C++.
+def HeaderUnionType : StructLikeType<"HeaderUnion", "header_union"> {
+  let summary = "header union type";
+  let description = [{
+    A header union represents an alternative containing at most one of several different headers.
+    !p4hir.header_union<"name", field1: HeaderType1, field2: HeaderType2>
   }];
 }
 
@@ -605,7 +625,7 @@ def ExternType : P4HIR_Type<"Extern", "extern", []> {
 //===----------------------------------------------------------------------===//
 
 def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
-                           StructType, HeaderType, Builtin_Tuple,
+                           StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
                            EnumType, SerEnumType,
                            ValidBitType,
                            DontcareType, ErrorType, UnknownType,
@@ -613,11 +633,11 @@ def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
-                                StructType, HeaderType, Builtin_Tuple,
+                                StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
                                 EnumType, SerEnumType, ErrorType,
                                 ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
-def StructLikeType : AnyTypeOf<[StructType, HeaderType]>;
+def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType]>;
 def P4ObjectType : AnyTypeOf<[ParserType, ExternType]>;
 
 /// A ref type with the specified constraints on the nested type.
