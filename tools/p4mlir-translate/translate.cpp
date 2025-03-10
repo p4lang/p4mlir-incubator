@@ -133,11 +133,14 @@ class P4TypeConverter : public P4::Inspector, P4::ResolutionContext {
     bool preorder(const P4::IR::Type_Enum *e) override;
     bool preorder(const P4::IR::Type_Error *e) override;
     bool preorder(const P4::IR::Type_SerEnum *se) override;
+    bool preorder(const P4::IR::Type_ActionEnum *e) override;
     bool preorder(const P4::IR::Type_Header *h) override;
     bool preorder(const P4::IR::Type_HeaderUnion *hu) override;
     bool preorder(const P4::IR::Type_BaseList *l) override;  // covers both Type_Tuple and Type_List
     bool preorder(const P4::IR::Type_Parser *p) override;
     bool preorder(const P4::IR::P4Parser *a) override;
+    bool preorder(const P4::IR::Type_Control *c) override;
+    bool preorder(const P4::IR::P4Control *c) override;
     bool preorder(const P4::IR::Type_Extern *e) override;
     bool preorder(const P4::IR::Type_Var *tv) override;
     bool preorder(const P4::IR::Type_Method *m) override;
@@ -164,10 +167,12 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     llvm::DenseMap<const P4::IR::Expression *, mlir::TypedAttr> p4Constants;
 
     llvm::ScopedHashTable<const P4::IR::Node *, mlir::Value> p4Values;
+    llvm::ScopedHashTable<const P4::IR::Node *, mlir::Value> controlPlaneValues;
     using ValueScope = llvm::ScopedHashTableScope<const P4::IR::Node *, mlir::Value>;
 
-    using P4Symbol = std::variant<const P4::IR::P4Action *, const P4::IR::Function *,
-                                  const P4::IR::Method *, const P4::IR::P4Parser *>;
+    using P4Symbol =
+        std::variant<const P4::IR::P4Action *, const P4::IR::Function *, const P4::IR::Method *,
+                     const P4::IR::P4Parser *, const P4::IR::P4Control *, const P4::IR::P4Table *>;
     // TODO: Implement better scoped symbol table
     llvm::DenseMap<P4Symbol, mlir::SymbolRefAttr> p4Symbols;
 
@@ -439,6 +444,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::Type_Extern *e) override;
 
+    bool preorder(const P4::IR::P4Control *c) override;
+    bool preorder(const P4::IR::P4Table *t) override;
+    bool preorder(const P4::IR::Property *p) override;
+
     bool preorder(const P4::IR::Method *m) override;
     bool preorder(const P4::IR::BlockStatement *block) override {
         ValueScope scope(p4Values);
@@ -480,6 +489,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return false;
     }
     bool preorder(const P4::IR::InvalidHeaderUnion *hu) override {
+        // Should be resolved eslewhere
+        return false;
+    }
+    bool preorder(const P4::IR::Declaration_MatchKind *mk) override {
         // Should be resolved eslewhere
         return false;
     }
@@ -545,6 +558,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
     bool preorder(const P4::IR::MethodCallExpression *mce) override;
+    bool preorder(const P4::IR::ConstructorCallExpression *cce) override;
     bool preorder(const P4::IR::StructExpression *str) override;
     bool preorder(const P4::IR::ListExpression *lst) override;
     bool preorder(const P4::IR::Member *m) override;
@@ -708,6 +722,30 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Parser *type) {
     return setType(type, mlirType);
 }
 
+bool P4TypeConverter::preorder(const P4::IR::P4Control *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+
+    return setType(type, convert(type->type));
+}
+
+bool P4TypeConverter::preorder(const P4::IR::Type_Control *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+
+    llvm::SmallVector<mlir::Type, 4> argTypes;
+    for (const auto *p : type->getApplyParameters()->parameters) {
+        mlir::Type type = convert(p->type);
+        argTypes.push_back(p->hasOut() ? P4HIR::ReferenceType::get(type) : type);
+    }
+
+    auto mlirType =
+        P4HIR::ControlType::get(converter.context(), type->name.string_view(), argTypes);
+    return setType(type, mlirType);
+}
+
 bool P4TypeConverter::preorder(const P4::IR::Type_Extern *type) {
     if ((this->type = converter.findType(type))) return false;
 
@@ -794,6 +832,20 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Enum *type) {
         cases.push_back(mlir::StringAttr::get(converter.context(), field->name.string_view()));
     }
     auto mlirType = P4HIR::EnumType::get(converter.context(), type->name.string_view(),
+                                         mlir::ArrayAttr::get(converter.context(), cases));
+    return setType(type, mlirType);
+}
+
+bool P4TypeConverter::preorder(const P4::IR::Type_ActionEnum *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    llvm::SmallVector<mlir::Attribute, 4> cases;
+    for (const auto *action : type->actionList->actionList) {
+        cases.push_back(
+            mlir::StringAttr::get(converter.context(), action->getName().string_view()));
+    }
+    auto mlirType = P4HIR::EnumType::get(converter.context(), "action_enum",
                                          mlir::ArrayAttr::get(converter.context(), cases));
     return setType(type, mlirType);
 }
@@ -1581,8 +1633,6 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
         P4::MethodInstance::resolve(mce, this, typeMap, false, getChildContext());
     const auto &params = instance->originalMethodType->parameters->parameters;
 
-    // TODO: Actions might have some parameters coming from control plane
-
     // Prepare call arguments. Note that this involves creating temporaries to
     // model copy-in/out semantics. To limit the lifetime of those temporaries, do
     // everything in the dedicated block scope. If there are no out parameters,
@@ -1676,8 +1726,20 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             LOG4("resolved as action call");
             auto actSym = p4Symbols.lookup(actCall->action);
             BUG_CHECK(actSym, "expected reference action to be converted: %1%", actCall->action);
+            BUG_CHECK(params.size() >= operands.size(),
+                      "invalid number of arguments for action call");
 
             BUG_CHECK(mce->typeArguments->empty(), "expected action to be specialized");
+
+            for (size_t idx = operands.size(); idx < params.size(); ++idx) {
+                const auto &param = params[idx];
+                BUG_CHECK(param->direction == P4::IR::Direction::None,
+                          "control plane values should be directionless");
+
+                auto placeholder = controlPlaneValues.lookup(param);
+                BUG_CHECK(placeholder, "control plane value must be populate");
+                operands.push_back(placeholder);
+            }
 
             b.create<P4HIR::CallOp>(loc, actSym, operands);
         } else if (const auto *fCall = instance->to<P4::FunctionCall>()) {
@@ -1711,8 +1773,12 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             if (auto *decl = aCall->object->to<P4::IR::Declaration_Instance>()) {
                 auto val = getValue(decl);
                 b.create<P4HIR::ApplyOp>(loc, val, operands);
+            } else if (auto *table = aCall->object->to<P4::IR::P4Table>()) {
+                auto tSym = p4Symbols.lookup(table);
+                auto applyResultType = getOrCreateType(instance->actualMethodType->returnType);
+                callResult = b.create<P4HIR::TableApplyOp>(loc, applyResultType, tSym).getResult();
             } else
-                BUG("Unsuported apply: %1%", aCall->object);
+                BUG("Unsuported apply: %1% (aka %2%)", aCall->object, dbp(aCall->object));
         } else if (const auto *fCall = instance->to<P4::ExternMethod>()) {
             LOG4("resolved as extern method call ");
 
@@ -1768,6 +1834,59 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
     } else {
         mlir::Type resultType;
         convertCall(builder, resultType, getLoc(builder, mce));
+    }
+
+    return false;
+}
+
+// We do not need `MoveConstructors` as we resolve values directly
+bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
+    ConversionTracer trace("Converting ", cce);
+
+    // P4::Instantiation goes via typeMap and it returns some weird clone
+    // instead of converted type
+    const auto *type = resolveType(cce->constructedType);
+    CHECK_NULL(type);
+    LOG4("Resolved to: " << dbp(type));
+
+    llvm::SmallVector<mlir::Value, 4> operands;
+    for (const auto *arg : *cce->arguments) {
+        ConversionTracer trace("Converting ", arg);
+        operands.push_back(materializeConstantExpr(arg->expression));
+    }
+
+    auto resultType = getOrCreateType(type);
+
+    // Resolve to base type
+    if (const auto *tdef = type->to<P4::IR::Type_Typedef>()) {
+        type = resolveType(tdef->type);
+        CHECK_NULL(type);
+        LOG4("Resolved to typedef type: " << dbp(type));
+    }
+    if (const auto *spec = type->to<P4::IR::Type_Specialized>()) {
+        type = resolveType(spec->baseType);
+        CHECK_NULL(type);
+        LOG4("Resolved to base type: " << dbp(type));
+    }
+
+    if (const auto *parser = type->to<P4::IR::P4Parser>()) {
+        LOG4("resolved as parser instantiation");
+        auto parserSym = p4Symbols.lookup(parser);
+        BUG_CHECK(parserSym, "expected reference parser to be converted: %1%", dbp(parser));
+
+        auto instance = builder.create<P4HIR::InstantiateOp>(getLoc(builder, cce), resultType,
+                                                             parserSym.getRootReference(), operands,
+                                                             parserSym.getRootReference());
+        setValue(cce, instance.getResult());
+    } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
+        LOG4("resolved as extern instantiation");
+
+        auto externName = builder.getStringAttr(ext->name.string_view());
+        auto instance = builder.create<P4HIR::InstantiateOp>(getLoc(builder, cce), resultType,
+                                                             externName, operands, externName);
+        setValue(cce, instance.getResult());
+    } else {
+        BUG("unsupported constructor call: %1% (of type %2%)", cce, dbp(type));
     }
 
     return false;
@@ -2102,6 +2221,7 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         LOG4("Resolved to base type: " << dbp(type));
     }
 
+    // TODO: Reduce code duplication below
     if (const auto *parser = type->to<P4::IR::P4Parser>()) {
         LOG4("resolved as parser instantiation");
         auto parserSym = p4Symbols.lookup(parser);
@@ -2117,6 +2237,15 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         auto externName = builder.getStringAttr(ext->name.string_view());
         auto instance = builder.create<P4HIR::InstantiateOp>(
             getLoc(builder, decl), resultType, externName, operands,
+            builder.getStringAttr(decl->name.string_view()));
+        setValue(decl, instance.getResult());
+    } else if (const auto *control = type->to<P4::IR::P4Control>()) {
+        LOG4("resolved as control instantiation");
+        auto controlSym = p4Symbols.lookup(control);
+        BUG_CHECK(controlSym, "expected reference control to be converted: %1%", dbp(control));
+
+        auto instance = builder.create<P4HIR::InstantiateOp>(
+            getLoc(builder, decl), resultType, controlSym.getRootReference(), operands,
             builder.getStringAttr(decl->name.string_view()));
         setValue(decl, instance.getResult());
     } else {
@@ -2145,6 +2274,161 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Extern *ext) {
 
     // Materialize method declarations
     visit(ext->methods);
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
+    ConversionTracer trace("Converting ", control);
+    ValueScope scope(p4Values);
+
+    auto applyType = mlir::cast<P4HIR::FuncType>(getOrCreateType(control->getApplyMethodType()));
+    auto ctorType = mlir::cast<P4HIR::CtorType>(
+        getOrCreateConstructorType(control->getConstructorMethodType()));
+
+    auto loc = getLoc(builder, control);
+    auto controlOp =
+        builder.create<P4HIR::ControlOp>(loc, control->name.string_view(), applyType, ctorType);
+    controlOp.createEntryBlock();
+    auto controlSymbol = mlir::StringAttr::get(builder.getContext(), control->name.string_view());
+
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&controlOp.getBody().front());
+
+    // Iterate over parameters again binding parameter values to arguments of first BB
+    auto &body = controlOp.getBody();
+    const auto &params = control->getApplyParameters()->parameters;
+
+    assert(body.getNumArguments() == params.size() && "invalid parameter conversion");
+    for (auto [param, bodyArg] : llvm::zip(params, body.getArguments())) setValue(param, bodyArg);
+
+    // Constructor arguments are special: they are compile-time constants,
+    // create placeholders for them
+    for (const auto *param : control->getConstructorParameters()->parameters) {
+        llvm::StringRef paramName = param->name.string_view();
+        auto paramType = getOrCreateType(param->type);
+        auto placeholder = P4HIR::CtorParamAttr::get(
+            paramType, mlir::SymbolRefAttr::get(controlSymbol), builder.getStringAttr(paramName));
+        auto val = builder.create<P4HIR::ConstOp>(getLoc(builder, param), placeholder, paramName);
+        setValue(param, val);
+    }
+
+    // Materialize locals
+    visit(control->controlLocals);
+
+    {
+        ValueScope scope(p4Values);
+
+        auto applyOp = builder.create<P4HIR::ControlApplyOp>(getLoc(builder, control->body));
+        mlir::Block &first = applyOp.getBody().emplaceBlock();
+
+        mlir::OpBuilder::InsertionGuard guard(builder);
+        builder.setInsertionPointToStart(&first);
+
+        // Materialize body
+        visit(control->body);
+    }
+
+    auto [it, inserted] = p4Symbols.try_emplace(control, mlir::SymbolRefAttr::get(controlOp));
+    BUG_CHECK(inserted, "duplicate translation of %1%", control);
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::P4Table *table) {
+    ConversionTracer trace("Converting ", table);
+
+    auto loc = getLoc(builder, table);
+    auto tableOp = builder.create<P4HIR::TableOp>(loc, table->name.string_view());
+    mlir::Block &block = tableOp.getBody().emplaceBlock();
+
+    // Materialize all properties
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&block);
+    for (const auto *prop : table->properties->properties) visit(prop);
+
+    auto [it, inserted] = p4Symbols.try_emplace(table, mlir::SymbolRefAttr::get(tableOp));
+    BUG_CHECK(inserted, "duplicate translation of %1%", table);
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
+    ConversionTracer trace("Converting ", prop);
+
+    auto loc = getLoc(builder, prop);
+    if (0) {
+    } else if (prop->name == P4::IR::TableProperties::actionsPropertyName) {
+        builder.create<P4HIR::TableActionsOp>(loc, [&](mlir::OpBuilder &b, mlir::Location) {
+            const auto *alist = prop->value->checkedTo<P4::IR::ActionList>();
+            for (const auto *act : alist->actionList) {
+                ValueScope scope(controlPlaneValues);
+
+                // We expect that everything was normalized to action calls.
+                const auto *expr = act->expression->checkedTo<P4::IR::MethodCallExpression>();
+                // Prepare control plane values. These will be filled in visit() call
+                const auto *actType = expr->method->type->checkedTo<P4::IR::Type_Action>();
+
+                llvm::SmallVector<mlir::Type> controlPlaneTypes;
+                size_t argCount = expr->arguments->size();
+                const auto &params = actType->parameters->parameters;
+                for (size_t idx = argCount; idx < params.size(); ++idx) {
+                    const auto *param = params[idx];
+                    controlPlaneTypes.push_back(getOrCreateType(param->type));
+                }
+                auto funcType = P4HIR::FuncType::get(context(), controlPlaneTypes);
+                const auto *action =
+                    resolvePath(expr->method->checkedTo<P4::IR::PathExpression>()->path, false)
+                        ->checkedTo<P4::IR::P4Action>();
+                auto actSym = p4Symbols.lookup(action);
+                BUG_CHECK(actSym, "expected reference action to be converted: %1%", action);
+
+                b.create<P4HIR::TableActionOp>(
+                    getLoc(builder, expr), actSym, funcType,
+                    [&](mlir::OpBuilder &, mlir::Block::BlockArgListType args, mlir::Location) {
+                        for (const auto arg : args) {
+                            const auto *param = params[argCount + arg.getArgNumber()];
+                            controlPlaneValues.insert(param, arg);
+                        }
+
+                        visit(expr);
+                    });
+            }
+        });
+    } else if (prop->name == P4::IR::TableProperties::keyPropertyName) {
+        builder.create<P4HIR::TableKeyOp>(loc, [&](mlir::OpBuilder &b, mlir::Location) {
+            const auto *key = prop->value->checkedTo<P4::IR::Key>();
+            for (const auto *kel : key->keyElements) {
+                visit(kel->expression);
+                const auto *match_kind =
+                    resolvePath(kel->matchType->path, false)->checkedTo<P4::IR::Declaration_ID>();
+                b.create<P4HIR::TableKeyEntryOp>(getLoc(b, kel),
+                                                 b.getStringAttr(match_kind->name.string_view()),
+                                                 getValue(kel->expression));
+            }
+        });
+    } else if (prop->name == P4::IR::TableProperties::defaultActionPropertyName) {
+        builder.create<P4HIR::TableDefaultActionOp>(loc, [&](mlir::OpBuilder &b, mlir::Location) {
+            const auto *expr = prop->value->checkedTo<P4::IR::ExpressionValue>()->expression;
+            visit(expr);
+        });
+    } else if (prop->name == P4::IR::TableProperties::entriesPropertyName) {
+        BUG("cannot handle entries yet");
+    } else if (prop->name == P4::IR::TableProperties::sizePropertyName) {
+        const auto *expr = prop->value->checkedTo<P4::IR::ExpressionValue>()->expression;
+        auto size = getOrCreateConstantExpr(expr);
+        builder.create<P4HIR::TableSizeOp>(loc, size);
+    } else {
+        builder.create<P4HIR::TableEntryOp>(
+            loc, builder.getStringAttr(prop->getName().string_view()), prop->isConstant,
+            [&](mlir::OpBuilder &b, mlir::Type &resultType, mlir::Location) {
+                const auto *expr = prop->value->checkedTo<P4::IR::ExpressionValue>()->expression;
+                visit(expr);
+                auto val = getValue(expr);
+                resultType = val.getType();
+                b.create<P4HIR::YieldOp>(getEndLoc(b, prop), val);
+            });
+    }
 
     return false;
 }

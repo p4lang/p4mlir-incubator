@@ -709,12 +709,27 @@ static mlir::ModuleOp getParentModule(Operation *from) {
     return nullptr;
 }
 
+static P4HIR::ControlOp getParentControl(Operation *from) {
+    if (auto controlOp = from->getParentOfType<P4HIR::ControlOp>()) return controlOp;
+
+    from->emitOpError("could not find parent control op");
+    return nullptr;
+}
+
 LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
     auto fnAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
     if (!fnAttr) return emitOpError("requires a 'callee' symbol reference attribute");
     // Functions are defined at top-level scope
     FuncOp fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentModule(*this), fnAttr);
+    if (!fn) {
+        // Actions might be defined both at top level and control scope
+        fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentControl(*this), fnAttr);
+        if (!fn.getAction())
+            return emitOpError() << "'" << fnAttr.getValue()
+                                 << "' does not reference a valid action";
+    }
+
     if (!fn)
         return emitOpError() << "'" << fnAttr.getValue() << "' does not reference a valid function";
 
@@ -1501,10 +1516,23 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
     auto ctorAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
     if (!ctorAttr) return emitOpError("requires a 'callee' symbol reference attribute");
 
-    if (ParserOp parser =
-            symbolTable.lookupNearestSymbolFrom<ParserOp>(getParentModule(*this), ctorAttr)) {
-        // Verify that the operand and result types match the callee.
-        auto ctorType = parser.getCtorType();
+    auto getCtorType = [&](mlir::FlatSymbolRefAttr ctorAttr) -> CtorType {
+        if (ParserOp parser =
+                symbolTable.lookupNearestSymbolFrom<ParserOp>(getParentModule(*this), ctorAttr)) {
+            return parser.getCtorType();
+        } else if (ExternOp ext = symbolTable.lookupNearestSymbolFrom<ExternOp>(
+                       getParentModule(*this), ctorAttr)) {
+            // TBD
+            return {};
+        } else if (ControlOp control = symbolTable.lookupNearestSymbolFrom<ControlOp>(
+                       getParentModule(*this), ctorAttr)) {
+            return control.getCtorType();
+        }
+        return {};
+    };
+
+    // Verify that the operand and result types match the callee.
+    if (auto ctorType = getCtorType(ctorAttr)) {
         if (ctorType.getNumInputs() != getNumOperands())
             return emitOpError("incorrect number of operands for callee");
 
@@ -1520,15 +1548,14 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
                    << ctorType.getReturnType() << ", but provided " << getResult().getType();
 
         return mlir::success();
-    } else if (ExternOp ext = symbolTable.lookupNearestSymbolFrom<ExternOp>(getParentModule(*this),
-                                                                            ctorAttr)) {
-        // TBD
-        return mlir::success();
     }
 
-    return emitOpError()
+    return mlir::success();
+
+    // TBD: Handle extern ctors and turn empty ctors into error
+    /* return emitOpError()
            << "'" << ctorAttr.getValue()
-           << "' does not reference a valid P4 object (parser, extern, control or package)";
+           << "' does not reference a valid P4 object (parser, extern, control or package)"; */
 }
 
 //===----------------------------------------------------------------------===//
@@ -1544,6 +1571,7 @@ mlir::Block &P4HIR::ExternOp::createEntryBlock() {
 // CallMethodOp
 //===----------------------------------------------------------------------===//
 LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+    // TBD
     return success();
 }
 
@@ -1554,6 +1582,334 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
 mlir::Block &P4HIR::OverloadSetOp::createEntryBlock() {
     assert(getBody().empty() && "can only create entry block for empty overload block");
     return getBody().emplaceBlock();
+}
+
+//===----------------------------------------------------------------------===//
+// ControlOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::ControlOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
+                             llvm::StringRef sym_name, P4HIR::FuncType applyType,
+                             P4HIR::CtorType ctorType) {
+    result.addRegion();
+
+    result.addAttribute(::SymbolTable::getSymbolAttrName(), builder.getStringAttr(sym_name));
+    result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(applyType));
+    result.addAttribute(getCtorTypeAttrName(result.name), TypeAttr::get(ctorType));
+
+    // Controls are top-level objects with public visibility
+    result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
+
+    // TBD:
+    // function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+    //                                              /*resultAttrs=*/std::nullopt,
+    //                                              getArgAttrsAttrName(result.name),
+    //                                              getResAttrsAttrName(result.name));
+}
+
+void P4HIR::ControlOp::createEntryBlock() {
+    assert(empty() && "can only create entry block for empty control");
+    Block &first = getFunctionBody().emplaceBlock();
+    auto loc = getFunctionBody().getLoc();
+    for (auto argType : getFunctionType().getInputs()) first.addArgument(argType, loc);
+}
+
+void P4HIR::ControlOp::print(mlir::OpAsmPrinter &printer) {
+    // This is essentially function_interface_impl::printFunctionOp, but we
+    // always print body and we do not have result / argument attributes (for now)
+
+    auto funcName = getSymNameAttr().getValue();
+
+    printer << ' ';
+    printer.printSymbolName(funcName);
+
+    function_interface_impl::printFunctionSignature(printer, *this, getApplyType().getInputs(),
+                                                    false, {});
+
+    printer << "(";
+    llvm::interleaveComma(getCtorType().getInputs(), printer,
+                          [&](std::pair<mlir::StringAttr, mlir::Type> namedType) {
+                              printer << namedType.first.getValue() << ": ";
+                              printer.printType(namedType.second);
+                          });
+    printer << ")";
+
+    function_interface_impl::printFunctionAttributes(
+        printer, *this,
+        // These are all omitted since they are custom printed already.
+        {getApplyTypeAttrName(), getCtorTypeAttrName(), ::SymbolTable::getVisibilityAttrName()});
+
+    printer << ' ';
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
+}
+
+mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+    // This is essentially function_interface_impl::parseFunctionOp, but we do not have
+    // result / argument attributes (for now)
+    llvm::SMLoc loc = parser.getCurrentLocation();
+    auto &builder = parser.getBuilder();
+
+    // Parse the name as a symbol.
+    StringAttr nameAttr;
+    if (parser.parseSymbolName(nameAttr, ::SymbolTable::getSymbolAttrName(), result.attributes))
+        return mlir::failure();
+
+    // Parsers are visible from top-level
+    result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
+
+    llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
+    llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
+    llvm::SmallVector<Type, 8> argTypes;
+    llvm::SmallVector<Type, 0> resultTypes;
+    bool isVariadic = false;
+    if (function_interface_impl::parseFunctionSignature(parser, /*allowVariadic=*/false, arguments,
+                                                        isVariadic, resultTypes, resultAttrs))
+        return mlir::failure();
+
+    // Controls have no results
+    if (!resultTypes.empty())
+        return parser.emitError(loc, "controls should not produce any results");
+
+    // Build the function type.
+    for (auto &arg : arguments) argTypes.push_back(arg.type);
+
+    if (auto fnType = P4HIR::FuncType::get(builder.getContext(), argTypes)) {
+        result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(fnType));
+    } else
+        return mlir::failure();
+
+    // Resonstruct the ctor type
+    {
+        llvm::SmallVector<std::pair<StringAttr, Type>> namedTypes;
+        if (parser.parseLParen()) return mlir::failure();
+
+        // `(` `)`
+        if (failed(parser.parseOptionalRParen())) {
+            if (parser.parseCommaSeparatedList([&]() -> ParseResult {
+                    std::string name;
+                    mlir::Type type;
+                    if (parser.parseKeywordOrString(&name) || parser.parseColon() ||
+                        parser.parseType(type))
+                        return mlir::failure();
+                    namedTypes.emplace_back(mlir::StringAttr::get(parser.getContext(), name), type);
+                    return mlir::success();
+                }))
+                return mlir::failure();
+            if (parser.parseRParen()) return mlir::failure();
+        }
+
+        auto ctorResultType = P4HIR::ParserType::get(parser.getContext(), nameAttr, argTypes);
+        result.addAttribute(getCtorTypeAttrName(result.name),
+                            TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
+    }
+
+    // If additional attributes are present, parse them.
+    if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return failure();
+
+    // TODO: Support argument attributes
+
+    // Parse the control body.
+    auto *body = result.addRegion();
+    if (parser.parseRegion(*body, arguments, /*enableNameShadowing=*/false)) return mlir::failure();
+
+    // Make sure its not empty.
+    if (body->empty()) return parser.emitError(loc, "expected non-empty control body");
+
+    return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// TableApplyOp
+//===----------------------------------------------------------------------===//
+LogicalResult P4HIR::TableApplyOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+    // TBD
+    return success();
+}
+
+void P4HIR::TableApplyOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    llvm::SmallString<32> result(getCallee().getRootReference().getValue());
+    result += "_apply_result";
+    setNameFn(getResult(), result);
+}
+
+//===----------------------------------------------------------------------===//
+// TableEntryOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::TableEntryOp::build(
+    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::StringAttr name, bool isConst,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Type &, mlir::Location)> entryBuilder) {
+    OpBuilder::InsertionGuard guard(builder);
+
+    Region *entryRegion = result.addRegion();
+    builder.createBlock(entryRegion);
+    mlir::Type yieldTy;
+    entryBuilder(builder, yieldTy, result.location);
+
+    if (isConst) result.addAttribute(getIsConstAttrName(result.name), builder.getUnitAttr());
+    result.addAttribute(getNameAttrName(result.name), name);
+
+    if (yieldTy) result.addTypes(TypeRange{yieldTy});
+}
+
+void P4HIR::TableEntryOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), getName());
+}
+
+//===----------------------------------------------------------------------===//
+// TableActionsOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::TableActionsOp::build(
+    mlir::OpBuilder &builder, mlir::OperationState &result,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> entryBuilder) {
+    OpBuilder::InsertionGuard guard(builder);
+
+    Region *entryRegion = result.addRegion();
+    builder.createBlock(entryRegion);
+    entryBuilder(builder, result.location);
+}
+
+//===----------------------------------------------------------------------===//
+// TableDefaultActionOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::TableDefaultActionOp::build(
+    mlir::OpBuilder &builder, mlir::OperationState &result,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> entryBuilder) {
+    OpBuilder::InsertionGuard guard(builder);
+
+    Region *entryRegion = result.addRegion();
+    builder.createBlock(entryRegion);
+    entryBuilder(builder, result.location);
+}
+
+//===----------------------------------------------------------------------===//
+// TableSizeOp
+//===----------------------------------------------------------------------===//
+void P4HIR::TableSizeOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "size");
+}
+
+//===----------------------------------------------------------------------===//
+// TableKeyOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::TableKeyOp::build(
+    mlir::OpBuilder &builder, mlir::OperationState &result,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> keyBuilder) {
+    OpBuilder::InsertionGuard guard(builder);
+
+    Region *entryRegion = result.addRegion();
+    builder.createBlock(entryRegion);
+    keyBuilder(builder, result.location);
+}
+
+//===----------------------------------------------------------------------===//
+// TableActionOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::TableActionOp::build(
+    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::SymbolRefAttr action,
+    P4HIR::FuncType cplaneType,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Block::BlockArgListType, mlir::Location)>
+        entryBuilder) {
+    result.addAttribute(getCplaneTypeAttrName(result.name), TypeAttr::get(cplaneType));
+    result.addAttribute(getActionAttrName(result.name), action);
+
+    // TBD:
+    // function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+    //                                              /*resultAttrs=*/std::nullopt,
+    //                                              getArgAttrsAttrName(result.name),
+    //                                              getResAttrsAttrName(result.name));
+
+    OpBuilder::InsertionGuard guard(builder);
+    auto *body = result.addRegion();
+
+    Block &first = body->emplaceBlock();
+    for (auto argType : cplaneType.getInputs()) first.addArgument(argType, result.location);
+    builder.setInsertionPointToStart(&first);
+    entryBuilder(builder, first.getArguments(), result.location);
+}
+
+void P4HIR::TableActionOp::print(mlir::OpAsmPrinter &printer) {
+    // This is essentially function_interface_impl::printFunctionOp, but we
+    // always print body and we do not have argument attributes (for now)
+
+    auto actName = getActionAttr();
+
+    printer << " ";
+    printer << actName;
+
+    printer << '(';
+    const auto argTypes = getCplaneType().getInputs();
+    mlir::ArrayAttr argAttrs;  // TBD
+
+    for (unsigned i = 0, e = argTypes.size(); i < e; ++i) {
+        if (i > 0) printer << ", ";
+
+        ArrayRef<NamedAttribute> attrs;
+        if (argAttrs) attrs = llvm::cast<DictionaryAttr>(argAttrs[i]).getValue();
+        printer.printRegionArgument(getBody().front().getArgument(i), attrs);
+    }
+    printer << ')';
+
+    function_interface_impl::printFunctionAttributes(
+        printer, *this,
+        // These are all omitted since they are custom printed already.
+        {getActionAttrName(), getCplaneTypeAttrName()});
+
+    printer << ' ';
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
+}
+
+mlir::ParseResult P4HIR::TableActionOp::parse(mlir::OpAsmParser &parser,
+                                              mlir::OperationState &result) {
+    // This is essentially function_interface_impl::parseFunctionOp, but we do not have
+    // result / argument attributes (for now)
+    llvm::SMLoc loc = parser.getCurrentLocation();
+    auto &builder = parser.getBuilder();
+
+    // Parse the name as a symbol.
+    SymbolRefAttr actionAttr;
+    if (parser.parseCustomAttributeWithFallback(actionAttr, builder.getType<::mlir::NoneType>(),
+                                                getActionAttrName(result.name), result.attributes))
+        return mlir::failure();
+
+    llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
+    llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
+    llvm::SmallVector<Type, 8> argTypes;
+    llvm::SmallVector<Type, 0> resultTypes;
+    bool isVariadic = false;
+    if (function_interface_impl::parseFunctionSignature(parser, /*allowVariadic=*/false, arguments,
+                                                        isVariadic, resultTypes, resultAttrs))
+        return mlir::failure();
+
+    // Table actions have no results
+    if (!resultTypes.empty())
+        return parser.emitError(loc, "table actions should not produce any results");
+
+    // Build the function type.
+    for (auto &arg : arguments) argTypes.push_back(arg.type);
+
+    if (auto fnType = P4HIR::FuncType::get(builder.getContext(), argTypes)) {
+        result.addAttribute(getCplaneTypeAttrName(result.name), TypeAttr::get(fnType));
+    } else
+        return mlir::failure();
+
+    // If additional attributes are present, parse them.
+    if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return failure();
+
+    // TODO: Support argument attributes
+
+    // Parse the body.
+    auto *body = result.addRegion();
+    if (parser.parseRegion(*body, arguments, /*enableNameShadowing=*/false)) return mlir::failure();
+
+    // Make sure its not empty.
+    if (body->empty()) return parser.emitError(loc, "expected non-empty table action body");
+
+    return mlir::success();
 }
 
 namespace {
@@ -1663,6 +2019,11 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
         if (auto ctorParamAttr = mlir::dyn_cast<P4HIR::CtorParamAttr>(attr)) {
             os << ctorParamAttr.getParent().getRootReference().getValue() << "_"
                << ctorParamAttr.getName().getValue();
+            return AliasResult::FinalAlias;
+        }
+
+        if (auto matchKindAttr = mlir::dyn_cast<P4HIR::MatchKindAttr>(attr)) {
+            os << matchKindAttr.getValue().getValue();
             return AliasResult::FinalAlias;
         }
 

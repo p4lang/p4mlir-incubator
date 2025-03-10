@@ -220,5 +220,33 @@ def P4HIR_CtorParamAttr : P4HIR_Attr<"CtorParam", "ctor_param", [TypedAttrInterf
 
 }
 
+//===----------------------------------------------------------------------===//
+// MatchKindAttr
+//===----------------------------------------------------------------------===//
+def P4HIR_MatchKindAttr : P4HIR_Attr<"MatchKind", "match_kind",
+  [
+   // TODO: Do we need this to be typed?
+   // TypedAttrInterface
+   ]> {
+  let summary = "Represent match kind";
+  let description = [{
+    The MatchKindAttr represents a match kind value
+  }];
+
+  let parameters = (ins "mlir::StringAttr":$value);
+
+  let assemblyFormat = [{
+    `<` $value `>`
+  }];
+
+  let builders = [
+    AttrBuilder<(ins "mlir::StringRef":$value), [{
+      return $_get($_ctxt, mlir::StringAttr::get($_ctxt, value));
+    }]>
+  ];
+
+}
+
+
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_ATTRS_TD

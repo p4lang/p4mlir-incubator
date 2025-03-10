@@ -256,6 +256,18 @@ def ParserType : P4HIR_Type<"Parser", "parser"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ControlType
+//===----------------------------------------------------------------------===//
+def ControlType : P4HIR_Type<"Control", "control"> {
+  let parameters = (ins StringRefParameter<"control type name">:$name,
+                        ArrayRefParameter<"mlir::Type">:$inputs);
+  let assemblyFormat = [{
+    `<` $name `,` custom<FuncType>($inputs) `>`
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // CtorType
 //===----------------------------------------------------------------------===//
 // We keep parameter names to simplify matching for ctor arguments during
@@ -646,7 +658,7 @@ def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                                 ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType]>;
-def P4ObjectType : AnyTypeOf<[ParserType, ExternType]>;
+def P4ObjectType : AnyTypeOf<[ParserType, ControlType, ExternType]>;
 
 /// A ref type with the specified constraints on the nested type.
 class SpecificRefType<Type type> : ConfinedType<ReferenceType,
