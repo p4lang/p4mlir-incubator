@@ -11,6 +11,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
@@ -1508,6 +1509,83 @@ void P4HIR::MaskOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 }
 
 //===----------------------------------------------------------------------===//
+// PackageOp
+//===----------------------------------------------------------------------===//
+ParseResult P4HIR::PackageOp::parse(OpAsmParser &parser, OperationState &result) {
+    auto &builder = parser.getBuilder();
+
+    // Parse the name as a symbol.
+    StringAttr nameAttr;
+    if (parser.parseSymbolName(nameAttr, getSymNameAttrName(result.name), result.attributes))
+        return mlir::failure();
+
+    llvm::SmallVector<Type, 0> typeArguments;
+    if (succeeded(parser.parseOptionalLess())) {
+        if (parser.parseCommaSeparatedList(
+                OpAsmParser::Delimiter::Square,
+                [&]() -> ParseResult {
+                    P4HIR::TypeVarType type;
+
+                    if (parser.parseCustomTypeWithFallback<P4HIR::TypeVarType>(type))
+                        return mlir::failure();
+
+                    typeArguments.push_back(type);
+                    return mlir::success();
+                }) ||
+            parser.parseGreater())
+            return mlir::failure();
+        result.addAttribute(getTypeParametersAttrName(result.name),
+                            builder.getTypeArrayAttr(typeArguments));
+    }
+
+    // Resonstruct the ctor type
+    {
+        llvm::SmallVector<std::pair<StringAttr, Type>> namedTypes;
+        if (parser.parseLParen()) return mlir::failure();
+
+        // `(` `)`
+        if (failed(parser.parseOptionalRParen())) {
+            if (parser.parseCommaSeparatedList([&]() -> ParseResult {
+                    std::string name;
+                    mlir::Type type;
+                    if (parser.parseKeywordOrString(&name) || parser.parseColon() ||
+                        parser.parseType(type))
+                        return mlir::failure();
+                    namedTypes.emplace_back(mlir::StringAttr::get(parser.getContext(), name), type);
+                    return mlir::success();
+                }) ||
+                parser.parseRParen())
+                return mlir::failure();
+        }
+
+        auto ctorResultType = P4HIR::PackageType::get(parser.getContext(), nameAttr, {});
+        result.addAttribute(getCtorTypeAttrName(result.name),
+                            TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
+    }
+
+    // If additional attributes are present, parse them.
+    if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return mlir::failure();
+    return success();
+}
+
+void P4HIR::PackageOp::print(OpAsmPrinter &printer) {
+    printer << ' ';
+    printer.printSymbolName(getName());
+    if (auto typeParams = getTypeParameters()) {
+        printer << '<';
+        printer << *typeParams;
+        printer << '>';
+    }
+    printer << '(';
+    llvm::interleaveComma(getCtorType().getInputs(), printer,
+                          [&printer](std::pair<mlir::StringAttr, mlir::Type> namedType) {
+                              printer << namedType.first << " : ";
+                              printer.printType(namedType.second);
+                          });
+    printer << ')';
+}
+
+//===----------------------------------------------------------------------===//
 // InstantiateOp
 //===----------------------------------------------------------------------===//
 
@@ -1520,34 +1598,51 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
     auto ctorAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
     if (!ctorAttr) return emitOpError("requires a 'callee' symbol reference attribute");
 
-    auto getCtorType = [&](mlir::FlatSymbolRefAttr ctorAttr) -> CtorType {
+    auto getCtorType =
+        [&](mlir::FlatSymbolRefAttr ctorAttr) -> std::pair<CtorType, mlir::Operation *> {
         if (ParserOp parser =
                 symbolTable.lookupNearestSymbolFrom<ParserOp>(getParentModule(*this), ctorAttr)) {
-            return parser.getCtorType();
+            return {parser.getCtorType(), parser.getOperation()};
+        } else if (ControlOp control = symbolTable.lookupNearestSymbolFrom<ControlOp>(
+                       getParentModule(*this), ctorAttr)) {
+            return {control.getCtorType(), control.getOperation()};
         } else if (ExternOp ext = symbolTable.lookupNearestSymbolFrom<ExternOp>(
                        getParentModule(*this), ctorAttr)) {
             // TBD
             return {};
-        } else if (ControlOp control = symbolTable.lookupNearestSymbolFrom<ControlOp>(
+        } else if (PackageOp pkg = symbolTable.lookupNearestSymbolFrom<PackageOp>(
                        getParentModule(*this), ctorAttr)) {
-            return control.getCtorType();
+            return {pkg.getCtorType(), pkg.getOperation()};
         }
+
         return {};
     };
 
     // Verify that the operand and result types match the callee.
-    if (auto ctorType = getCtorType(ctorAttr)) {
+    auto [ctorType, definingOp] = getCtorType(ctorAttr);
+    if (ctorType) {
         if (ctorType.getNumInputs() != getNumOperands())
             return emitOpError("incorrect number of operands for callee");
 
-        for (unsigned i = 0, e = ctorType.getNumInputs(); i != e; ++i)
-            if (getOperand(i).getType() != ctorType.getInput(i))
+        for (unsigned i = 0, e = ctorType.getNumInputs(); i != e; ++i) {
+            // Packages are a bit special and nasty: they could have mismatched
+            // declaration and instantiation types as name of object is a part of type, e.g.:
+            // control e();
+            // package top(e _e);
+            // top(c())
+            // So we need to be a bit more relaxed here
+            if (auto pkg = mlir::dyn_cast<PackageOp>(definingOp)) {
+                // TBD: Check
+            } else if (getOperand(i).getType() != ctorType.getInput(i))
                 return emitOpError("operand type mismatch: expected operand type ")
                        << ctorType.getInput(i) << ", but provided " << getOperand(i).getType()
                        << " for operand number " << i;
+        }
 
-        // Parser itself and return value types must match.
-        if (getResult().getType() != ctorType.getReturnType())
+        // Object itself and return value types must match.
+        if (auto pkg = mlir::dyn_cast<PackageOp>(definingOp)) {
+            // TBD: Check
+        } else if (getResult().getType() != ctorType.getReturnType())
             return emitOpError("result type mismatch: expected ")
                    << ctorType.getReturnType() << ", but provided " << getResult().getType();
 
@@ -1697,9 +1792,9 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
                         return mlir::failure();
                     namedTypes.emplace_back(mlir::StringAttr::get(parser.getContext(), name), type);
                     return mlir::success();
-                }))
+                }) ||
+                parser.parseRParen())
                 return mlir::failure();
-            if (parser.parseRParen()) return mlir::failure();
         }
 
         auto ctorResultType = P4HIR::ControlType::get(parser.getContext(), nameAttr, argTypes, {});
@@ -2006,6 +2101,15 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
                 getAlias(typeArg, os);
             }
             return AliasResult::OverridableAlias;
+        }
+
+        if (auto packageType = mlir::dyn_cast<P4HIR::PackageType>(type)) {
+             os << packageType.getName();
+             for (auto typeArg : packageType.getTypeArguments()) {
+                 os << "_";
+                 getAlias(typeArg, os);
+             }
+             return AliasResult::OverridableAlias;
         }
 
         if (auto ctorType = mlir::dyn_cast<P4HIR::CtorType>(type)) {

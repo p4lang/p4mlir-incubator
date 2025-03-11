@@ -1346,6 +1346,24 @@ def OverloadSetOp : P4HIR_Op<"overload_set",
   }];
 }
 
+def PackageOp : P4HIR_Op<"package",
+  [Symbol]> {
+  let summary = "P4 package declaration";
+  let description = [{
+    Declares P4 package
+
+    Example:
+
+    ```mlir
+      ...
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttrOf<CtorType>:$ctorType, OptionalAttr<ArrayAttr>:$type_parameters);
+
+  let hasCustomAssemblyFormat = 1;
+}
+
 
 include "p4mlir/Dialect/P4HIR/P4HIR_ParserOps.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_ControlOps.td"

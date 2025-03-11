@@ -644,6 +644,24 @@ def ExternType : P4HIR_Type<"Extern", "extern", []> {
 }
 
 //===----------------------------------------------------------------------===//
+// PackageType
+//===----------------------------------------------------------------------===//
+def PackageType : P4HIR_Type<"Package", "package", []> {
+  let summary = "package type";
+  let description = [{
+    Represents a P4 package:
+    !p4hir.package<"X"<!i32i>>
+  }];
+
+  let parameters = (ins StringRefParameter<"package name">:$name,
+                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments);
+
+  let assemblyFormat = [{
+    `<` $name (`<` $type_arguments^ `>`)? `>`
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
@@ -661,7 +679,7 @@ def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                                 ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType]>;
-def P4ObjectType : AnyTypeOf<[ParserType, ControlType, ExternType]>;
+def P4ObjectType : AnyTypeOf<[ParserType, ControlType, ExternType, PackageType]>;
 
 /// A ref type with the specified constraints on the nested type.
 class SpecificRefType<Type type> : ConfinedType<ReferenceType,
