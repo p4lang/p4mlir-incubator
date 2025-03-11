@@ -9,12 +9,14 @@ extern packet_in {
     bit<32> length();
 }
 
+// CHECK:  ![[packet_in:.*]] = !p4hir.extern<"packet_in">
+// CHECK:  ![[type_T:.*]] = !p4hir.type_var<"T">
 // CHECK:  p4hir.extern @packet_in {
 // CHECK:    p4hir.overload_set @extract {
-// CHECK:      p4hir.func @extract_0<!p4hir.type_var<"T">>(!p4hir.ref<!p4hir.type_var<"T">> {p4hir.dir = #out})
-// CHECK:      p4hir.func @extract_1<!p4hir.type_var<"T">>(!p4hir.ref<!p4hir.type_var<"T">> {p4hir.dir = #out}, !b32i {p4hir.dir = #in})
+// CHECK:      p4hir.func @extract_0<![[type_T]]>(!p4hir.ref<![[type_T]]> {p4hir.dir = #out})
+// CHECK:      p4hir.func @extract_1<![[type_T]]>(!p4hir.ref<![[type_T]]> {p4hir.dir = #out}, !b32i {p4hir.dir = #in})
 // CHECK:    }
-// CHECK:    p4hir.func @lookahead<!p4hir.type_var<"T">>() -> !p4hir.type_var<"T">
+// CHECK:    p4hir.func @lookahead<![[type_T]]>() -> ![[type_T]]
 // CHECK:    p4hir.func @advance(!b32i {p4hir.dir = #in})
 // CHECK:    p4hir.func @length() -> !b32i
 // CHECK:  }
@@ -53,7 +55,7 @@ struct Parsed_packet {
 parser parserI(packet_in pkt,
                out Parsed_packet hdr) {
     state start {
-// CHECK: p4hir.call_method @packet_in::@extract<[!Ethernet_h]> (%{{.*}}, %{{.*}}) : !p4hir.extern<"packet_in">, (!p4hir.ref<!Ethernet_h>) -> ()
+// CHECK: p4hir.call_method @packet_in::@extract<[!Ethernet_h]> (%{{.*}}, %{{.*}}) : ![[packet_in]], (!p4hir.ref<!Ethernet_h>) -> ()
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
           16w0x0800: parse_ipv4;
@@ -61,7 +63,7 @@ parser parserI(packet_in pkt,
         }
     }
     state parse_ipv4 {
-// CHECK: p4hir.call_method @packet_in::@extract<[!ipv4_t]> (%{{.*}}, %{{.*}}) : !p4hir.extern<"packet_in">, (!p4hir.ref<!ipv4_t>) -> ()    
+// CHECK: p4hir.call_method @packet_in::@extract<[!ipv4_t]> (%{{.*}}, %{{.*}}) : ![[packet_in]], (!p4hir.ref<!ipv4_t>) -> ()    
         pkt.extract(hdr.ipv4);
         transition select(hdr.ipv4.version, hdr.ipv4.protocol) {
           (4w0x4, 8w0x06): accept;

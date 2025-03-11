@@ -41,7 +41,7 @@ def ControlApplyOp : P4HIR_Op<"control_apply",
    [AutomaticAllocationScope, NoRegionArguments,
     Terminator, NoTerminator,
     ParentOneOf<["ControlOp"]>,]> {
- let regions = (region MinSizedRegion<1>:$body);
+ let regions = (region MaxSizedRegion<1>:$body);
  let assemblyFormat = [{
    $body attr-dict
  }];
