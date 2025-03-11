@@ -333,6 +333,7 @@ def ConcatOp : P4HIR_Op<"concat", [Pure]> {
 
 def ShlOp : P4HIR_Op<"shl",
     [Pure,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
      TypesMatchWith<
        "the resulting type of an arithmetic shift operation must equal the type of the left-hand side operand",
        "result", "lhs", "$_self">]> {
@@ -369,6 +370,7 @@ def ShlOp : P4HIR_Op<"shl",
 
 def ShrOp : P4HIR_Op<"shr",
     [Pure,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
      TypesMatchWith<
        "the resulting type of an arithmetic shift operation must equal the type of the left-hand side operand",
        "result", "lhs", "$_self">]> {
