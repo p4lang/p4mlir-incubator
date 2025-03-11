@@ -21,14 +21,15 @@ limitations under the License.
 #include "frontends/p4/checkCoreMethods.h"
 #include "frontends/p4/checkNamedArgs.h"
 #include "frontends/p4/createBuiltins.h"
-#include "frontends/p4/directCalls.h"
 #include "frontends/p4/defaultArguments.h"
 #include "frontends/p4/defaultValues.h"
-#include "frontends/p4/getV1ModelVersion.h"
+#include "frontends/p4/directCalls.h"
 #include "frontends/p4/frontend.h"
+#include "frontends/p4/getV1ModelVersion.h"
 #include "frontends/p4/specialize.h"
 #include "frontends/p4/specializeGenericFunctions.h"
 #include "frontends/p4/specializeGenericTypes.h"
+#include "frontends/p4/structInitializers.h"
 #include "frontends/p4/toP4/toP4.h"
 #include "frontends/p4/typeChecking/bindVariables.h"
 #include "frontends/p4/validateParsedProgram.h"
@@ -139,6 +140,8 @@ int main(int argc, char *const argv[]) {
                     new P4::SpecializeGenericFunctions(&typeMap),
                 }),
                 new P4::CheckCoreMethods(&typeMap),
+                new P4::StructInitializers(&typeMap),  // TODO: Decide if we can do the same at MLIR
+                                                       // level to reduce GC traffic
                 new P4::TypeChecking(nullptr, &typeMap, true),
             });
             passes.setName("TypeInference");
@@ -178,8 +181,7 @@ int main(int argc, char *const argv[]) {
     if (!mod) return EXIT_FAILURE;
 
     mlir::OpPrintingFlags flags;
-    if (!options.noDump)
-      mod->print(llvm::outs(), flags.enableDebugInfo(options.printLoc));
+    if (!options.noDump) mod->print(llvm::outs(), flags.enableDebugInfo(options.printLoc));
 
     if (P4::Log::verbose()) std::cerr << "Done." << std::endl;
     return P4::errorCount() > 0 ? EXIT_FAILURE : EXIT_SUCCESS;
