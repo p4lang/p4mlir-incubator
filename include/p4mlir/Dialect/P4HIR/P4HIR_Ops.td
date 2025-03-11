@@ -335,7 +335,7 @@ def ShlOp : P4HIR_Op<"shl",
     [Pure,
      TypesMatchWith<
        "the resulting type of an arithmetic shift operation must equal the type of the left-hand side operand",
-       "lhs", "result", "$_self">]> {
+       "result", "lhs", "$_self">]> {
   let summary = "Arithmetic shift left operation";
   let description = [{
     `p4hir.shl` performs arithmetic shift left.
@@ -346,18 +346,24 @@ def ShlOp : P4HIR_Op<"shl",
     %0 = p4hir.const #p4hir.int<1> : !p4hir.bit<32>
     %1 = p4hir.const #p4hir.int<2> : !p4hir.bit<8>
     %2 = p4hir.const #p4hir.int<3> : !p4hir.infint
-    %3 = p4hir.shl(%0 : !p4hir.bit<32>, %1 : !p4hir.bit<8>) : !p4hir.bit<32>
-    %4 = p4hir.shl(%0 : !p4hir.bit<32>, %2 : !p4hir.infint) : !p4hir.bit<32>
+    %3 = p4hir.shl(%0, %1 : !p4hir.bit<8>) : !p4hir.bit<32>
+    %4 = p4hir.shl(%0, %2 : !p4hir.infint) : !p4hir.bit<32>
     ```
   }];
 
   let results = (outs AnyIntP4Type:$result);
   let arguments = (ins AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
 
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
+      build($_builder, $_state, lhs.getType(), lhs, rhs);
+    }]>
+  ];
+
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
+    `(` $lhs `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
   }];
 }
 
@@ -365,7 +371,7 @@ def ShrOp : P4HIR_Op<"shr",
     [Pure,
      TypesMatchWith<
        "the resulting type of an arithmetic shift operation must equal the type of the left-hand side operand",
-       "lhs", "result", "$_self">]> {
+       "result", "lhs", "$_self">]> {
   let summary = "Arithmetic shift right operation";
   let description = [{
     `p4hir.shr` performs arithmetic shift right.
@@ -376,18 +382,24 @@ def ShrOp : P4HIR_Op<"shr",
     %0 = p4hir.const #p4hir.int<1> : !p4hir.bit<32>
     %1 = p4hir.const #p4hir.int<2> : !p4hir.bit<8>
     %2 = p4hir.const #p4hir.int<3> : !p4hir.infint
-    %3 = p4hir.shr(%0 : !p4hir.bit<32>, %1 : !p4hir.bit<8>) : !p4hir.bit<32>
-    %4 = p4hir.shr(%0 : !p4hir.bit<32>, %2 : !p4hir.infint) : !p4hir.bit<32>
+    %3 = p4hir.shr(%0, %1 : !p4hir.bit<8>) : !p4hir.bit<32>
+    %4 = p4hir.shr(%0, %2 : !p4hir.infint) : !p4hir.bit<32>
     ```
   }];
 
   let results = (outs AnyIntP4Type:$result);
   let arguments = (ins AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
 
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
+      build($_builder, $_state, lhs.getType(), lhs, rhs);
+    }]>
+  ];
+
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
+    `(` $lhs `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
   }];
 }
 
