@@ -26,24 +26,24 @@ parser p(in empty e, in int<10> sinit) {
     subparser() sp;
     subparser2(false) sp2;
     subparser3() sp3;
-// CHECK: %[[sp:.*]] = p4hir.instantiate @subparser() as "sp" : () -> !p4hir.parser<"subparser", (!empty)>
+// CHECK: %[[sp:.*]] = p4hir.instantiate @subparser() as "sp" : () -> !subparser
 // CHECK: %[[false:.*]] = p4hir.const #false
-// CHECK: %[[sp2:.*]] = p4hir.instantiate @subparser2(%[[false]]) as "sp2" : (!p4hir.bool) -> !p4hir.parser<"subparser2", (!empty)>
-// CHECK: %[[sp3:.*]] = p4hir.instantiate @subparser3() as "sp3" : () -> !p4hir.parser<"subparser3", (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>)>
+// CHECK: %[[sp2:.*]] = p4hir.instantiate @subparser2(%[[false]]) as "sp2" : (!p4hir.bool) -> !subparser2
+// CHECK: %[[sp3:.*]] = p4hir.instantiate @subparser3() as "sp3" : () -> !subparser3
 
     state start {
         s = 1;
         sp.apply(e);
-// CHECK: p4hir.apply %[[sp]](%arg0) : !p4hir.parser<"subparser", (!empty)>
+// CHECK: p4hir.apply %[[sp]](%arg0) : !subparser
         transition next;
     }
 
     state next {
         s = 2;
         sp2.apply(e);
-// CHECK: p4hir.apply %[[sp2]](%arg0) : !p4hir.parser<"subparser2", (!empty)>
+// CHECK: p4hir.apply %[[sp2]](%arg0) : !subparser2
 // CHECK: p4hir.scope
-// CHECK: p4hir.apply %[[sp3]](%s_inout_arg, %matched_out_arg) : !p4hir.parser<"subparser3", (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>)>
+// CHECK: p4hir.apply %[[sp3]](%s_inout_arg, %matched_out_arg) : !subparser3
         bool matched = false;
         sp3.apply(s, matched);
 

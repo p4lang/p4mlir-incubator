@@ -670,7 +670,7 @@ def IfOp : P4HIR_Op<"if",
 }
 
 def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
-                                                "FuncOp",
+                                                "FuncOp", "ControlApplyOp",
                                              // "SwitchOp", "CaseOp",
                                              // "ForInOp", "ForOp",
                                              ]>,
@@ -1282,7 +1282,7 @@ def CallMethodOp : P4HIR_Op<"call_method",
   // let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-      $callee  (`<` $type_operands^ `>`)? `(`$base `,` $arg_operands `)` `:` qualified(type($base)) `,` functional-type($arg_operands, results) attr-dict
+      $callee  (`<` $type_operands^ `>`)? `(`$base (`,` $arg_operands^)? `)` `:` qualified(type($base)) `,` functional-type($arg_operands, results) attr-dict
   }];
 
   let skipDefaultBuilders = 1;

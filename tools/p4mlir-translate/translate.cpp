@@ -307,7 +307,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         // specialization during instantiation
         if (auto convertedType = findType(type)) return convertedType;
 
-        ConversionTracer trace("Converting ctor type", type);
+        ConversionTracer trace("Converting ctor type ", type);
         llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>, 4> argTypes;
 
         CHECK_NULL(type->parameters);
@@ -718,7 +718,8 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Parser *type) {
         argTypes.push_back(p->hasOut() ? P4HIR::ReferenceType::get(type) : type);
     }
 
-    auto mlirType = P4HIR::ParserType::get(converter.context(), type->name.string_view(), argTypes);
+    auto mlirType =
+        P4HIR::ParserType::get(converter.context(), type->name.string_view(), argTypes, {});
     return setType(type, mlirType);
 }
 
@@ -742,7 +743,7 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Control *type) {
     }
 
     auto mlirType =
-        P4HIR::ControlType::get(converter.context(), type->name.string_view(), argTypes);
+        P4HIR::ControlType::get(converter.context(), type->name.string_view(), argTypes, {});
     return setType(type, mlirType);
 }
 
@@ -894,8 +895,9 @@ bool P4TypeConverter::preorder(const P4::IR::Type_BaseList *type) {
 }
 
 bool P4TypeConverter::setType(const P4::IR::Type *type, mlir::Type mlirType) {
+    BUG_CHECK(mlirType, "empty type conversion for %1% (aka %2%)", type, dbp(type));
     this->type = mlirType;
-    LOG4("Set for: " << dbp(type));
+    LOG4("type set for: " << dbp(type));
     converter.setType(type, mlirType);
     return false;
 }
@@ -1852,7 +1854,13 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
     llvm::SmallVector<mlir::Value, 4> operands;
     for (const auto *arg : *cce->arguments) {
         ConversionTracer trace("Converting ", arg);
-        operands.push_back(materializeConstantExpr(arg->expression));
+        mlir::Value argVal;
+        if (const auto *cce = arg->expression->to<P4::IR::ConstructorCallExpression>()) {
+            visit(cce);
+            argVal = getValue(cce);
+        } else
+            argVal = materializeConstantExpr(arg->expression);
+        operands.push_back(argVal);
     }
 
     auto resultType = getOrCreateType(type);
@@ -1877,6 +1885,15 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
         auto instance = builder.create<P4HIR::InstantiateOp>(getLoc(builder, cce), resultType,
                                                              parserSym.getRootReference(), operands,
                                                              parserSym.getRootReference());
+        setValue(cce, instance.getResult());
+    } else if (const auto *control = type->to<P4::IR::P4Control>()) {
+        LOG4("resolved as control instantiation");
+        auto controlSym = p4Symbols.lookup(control);
+        BUG_CHECK(controlSym, "expected reference control to be converted: %1%", dbp(control));
+
+        auto instance = builder.create<P4HIR::InstantiateOp>(
+            getLoc(builder, cce), resultType, controlSym.getRootReference(), operands,
+            controlSym.getRootReference());
         setValue(cce, instance.getResult());
     } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
         LOG4("resolved as extern instantiation");
@@ -2204,7 +2221,13 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
     llvm::SmallVector<mlir::Value, 4> operands;
     for (const auto *arg : *decl->arguments) {
         ConversionTracer trace("Converting ", arg);
-        operands.push_back(materializeConstantExpr(arg->expression));
+        mlir::Value argVal;
+        if (const auto *cce = arg->expression->to<P4::IR::ConstructorCallExpression>()) {
+            visit(cce);
+            argVal = getValue(cce);
+        } else
+            argVal = materializeConstantExpr(arg->expression);
+        operands.push_back(argVal);
     }
 
     auto resultType = getOrCreateType(type);

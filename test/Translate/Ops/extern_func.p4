@@ -1,6 +1,9 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
-// CHECK:   p4hir.func @externFunc<!p4hir.type_var<"T">, !p4hir.type_var<"U">>(!p4hir.type_var<"U"> {p4hir.dir = #in}, !p4hir.type_var<"T"> {p4hir.dir = #in}) -> !p4hir.type_var<"T">
+// CHECK:  ![[type_T:.*]] = !p4hir.type_var<"T">
+// CHECK:  ![[type_U:.*]] = !p4hir.type_var<"U">
+
+// CHECK:   p4hir.func @externFunc<![[type_T]], ![[type_U]]>(![[type_U]] {p4hir.dir = #in}, ![[type_T]] {p4hir.dir = #in}) -> ![[type_T]]
 extern T externFunc<T, U>(in U a, in T b);
 
 parser p1() {

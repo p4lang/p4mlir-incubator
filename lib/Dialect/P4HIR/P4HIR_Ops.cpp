@@ -17,6 +17,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
@@ -501,16 +502,19 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
 }
 
 mlir::LogicalResult P4HIR::ReturnOp::verify() {
-    // Returns can be present in multiple different scopes, get the
-    // wrapping function and start from there.
-    auto *fnOp = getOperation()->getParentOp();
-    while (!isa<P4HIR::FuncOp>(fnOp)) fnOp = fnOp->getParentOp();
+    // Returns can be present in multiple different scopes, get the wrapping
+    // function and start from there.
+    auto fnOp = getOperation()->getParentOfType<FunctionOpInterface>();
+    if (!fnOp || !mlir::isa<P4HIR::FuncOp, P4HIR::ControlOp>(fnOp)) {
+        return emitOpError() << "returns are only possible from function-like objects: functions, "
+                                "actions and control apply blocks";
+    }
 
     // ReturnOps currently only have a single optional operand.
     if (getNumOperands() > 1) return emitOpError() << "expects at most 1 return operand";
 
     // Ensure returned type matches the function signature.
-    auto expectedTy = cast<P4HIR::FuncOp>(fnOp).getFunctionType().getReturnType();
+    auto expectedTy = mlir::cast<P4HIR::FuncType>(fnOp.getFunctionType()).getReturnType();
     auto actualTy =
         (getNumOperands() == 0 ? P4HIR::VoidType::get(getContext()) : getOperand(0).getType());
     if (actualTy != expectedTy)
@@ -1310,7 +1314,7 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
             if (parser.parseRParen()) return mlir::failure();
         }
 
-        auto ctorResultType = P4HIR::ParserType::get(parser.getContext(), nameAttr, argTypes);
+        auto ctorResultType = P4HIR::ParserType::get(parser.getContext(), nameAttr, argTypes, {});
         result.addAttribute(getCtorTypeAttrName(result.name),
                             TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
     }
@@ -1698,7 +1702,7 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
             if (parser.parseRParen()) return mlir::failure();
         }
 
-        auto ctorResultType = P4HIR::ParserType::get(parser.getContext(), nameAttr, argTypes);
+        auto ctorResultType = P4HIR::ControlType::get(parser.getContext(), nameAttr, argTypes, {});
         result.addAttribute(getCtorTypeAttrName(result.name),
                             TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
     }
@@ -1969,6 +1973,44 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
 
         if (auto stringType = mlir::dyn_cast<P4HIR::StringType>(type)) {
             os << stringType.getAlias();
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto typevarType = mlir::dyn_cast<P4HIR::TypeVarType>(type)) {
+            os << "type_" << typevarType.getName();
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto parserType = mlir::dyn_cast<P4HIR::ParserType>(type)) {
+            os << parserType.getName();
+            for (auto typeArg : parserType.getTypeArguments()) {
+                os << "_";
+                getAlias(typeArg, os);
+            }
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto controlType = mlir::dyn_cast<P4HIR::ControlType>(type)) {
+            os << controlType.getName();
+            for (auto typeArg : controlType.getTypeArguments()) {
+                os << "_";
+                getAlias(typeArg, os);
+            }
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto externType = mlir::dyn_cast<P4HIR::ExternType>(type)) {
+            os << externType.getName();
+            for (auto typeArg : externType.getTypeArguments()) {
+                os << "_";
+                getAlias(typeArg, os);
+            }
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto ctorType = mlir::dyn_cast<P4HIR::CtorType>(type)) {
+            os << "ctor_";
+            getAlias(ctorType.getReturnType(), os);
             return AliasResult::OverridableAlias;
         }
 
