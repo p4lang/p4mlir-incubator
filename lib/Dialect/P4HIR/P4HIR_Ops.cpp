@@ -721,6 +721,25 @@ static P4HIR::ControlOp getParentControl(Operation *from) {
     return nullptr;
 }
 
+static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs,
+                                 std::optional<mlir::ArrayAttr> typeOperands) {
+    if (auto typeVar = llvm::dyn_cast<P4HIR::TypeVarType>(type)) {
+        size_t pos = llvm::find(calleeTypeArgs, typeVar) - calleeTypeArgs.begin();
+        if (pos == calleeTypeArgs.size()) return {};
+        return llvm::cast<mlir::TypeAttr>(typeOperands->getValue()[pos]).getValue();
+    } else if (auto refType = llvm::dyn_cast<P4HIR::ReferenceType>(type)) {
+        return P4HIR::ReferenceType::get(
+            substituteType(refType.getObjectType(), calleeTypeArgs, typeOperands));
+    } else if (auto tupleType = llvm::dyn_cast<mlir::TupleType>(type)) {
+        llvm::SmallVector<mlir::Type> substituted;
+        for (auto elTy : tupleType.getTypes())
+            substituted.push_back(substituteType(elTy, calleeTypeArgs, typeOperands));
+        return mlir::TupleType::get(type.getContext(), substituted);
+    }
+
+    return type;
+};
+
 LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
     auto fnAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
@@ -753,17 +772,8 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
             return emitOpError("incorrect number of type operands for callee");
     }
 
-    auto substituteType = [&](mlir::Type type) {
-        if (auto typeVar = llvm::dyn_cast<P4HIR::TypeVarType>(type)) {
-            size_t pos = llvm::find(calleeTypeArgs, typeVar) - calleeTypeArgs.begin();
-            if (pos == calleeTypeArgs.size()) return mlir::Type();
-            return llvm::cast<mlir::TypeAttr>(typeOperands->getValue()[pos]).getValue();
-        }
-        return type;
-    };
-
     for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i) {
-        mlir::Type expectedType = substituteType(fnType.getInput(i));
+        mlir::Type expectedType = substituteType(fnType.getInput(i), calleeTypeArgs, typeOperands);
         if (!expectedType)
             return emitOpError("cannot resolve type operand for operand number ") << i;
         mlir::Type providedType = getOperand(i).getType();
@@ -786,7 +796,9 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
         return emitOpError("incorrect number of results for callee");
 
     // Parent function and return value types must match.
-    if (!fnType.isVoid() && getResultTypes().front() != substituteType(fnType.getReturnType()))
+    if (!fnType.isVoid() &&
+        getResultTypes().front() !=
+            substituteType(fnType.getReturnType(), calleeTypeArgs, typeOperands))
         return emitOpError("result type mismatch: expected ")
                << fnType.getReturnType() << ", but provided " << getResult().getType();
 

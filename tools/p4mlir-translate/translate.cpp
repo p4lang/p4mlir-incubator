@@ -1128,7 +1128,11 @@ void P4HIRConverter::postorder(const P4::IR::Declaration_Variable *decl) {
         } else if (init->is<P4::IR::InvalidHeaderUnion>()) {
             emitSetInvalidForAllHeaders(loc, var);
         } else {
-            builder.create<P4HIR::AssignOp>(loc, getValue(decl->initializer), var);
+            auto init = getValue(decl->initializer);
+            // Handle implicit casts that type checker forgot to insert (e.g. for serenums)
+            auto objType = llvm::cast<P4HIR::ReferenceType>(type).getObjectType();
+            if (init.getType() != objType) init = builder.create<P4HIR::CastOp>(loc, objType, init);
+            builder.create<P4HIR::AssignOp>(loc, init, var);
         }
     }
 
@@ -1950,17 +1954,19 @@ bool P4HIRConverter::preorder(const P4::IR::Member *m) {
     // This is just enum constant
     if (const auto *typeNameExpr = m->expr->to<P4::IR::TypeNameExpression>()) {
         auto type = getOrCreateType(typeNameExpr->typeName);
-        BUG_CHECK((mlir::isa<P4HIR::EnumType, P4HIR::SerEnumType, P4HIR::ErrorType>(type)),
-                  "unexpected type for expression %1%", typeNameExpr);
+        auto loc = getLoc(builder, m);
 
         if (mlir::isa<P4HIR::ErrorType>(type))
             setValue(m, builder.create<P4HIR::ConstOp>(
-                            getLoc(builder, m),
-                            P4HIR::ErrorCodeAttr::get(type, m->member.name.string_view())));
-        else
+                            loc, P4HIR::ErrorCodeAttr::get(type, m->member.name.string_view())));
+        else if (mlir::isa<P4HIR::EnumType>(type))
             setValue(m, builder.create<P4HIR::ConstOp>(
-                            getLoc(builder, m),
-                            P4HIR::EnumFieldAttr::get(type, m->member.name.string_view())));
+                            loc, P4HIR::EnumFieldAttr::get(type, m->member.name.string_view())));
+        else if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(type)) {
+            setValue(m, builder.create<P4HIR::ConstOp>(
+                            loc, P4HIR::EnumFieldAttr::get(type, m->member.name.string_view())));
+        } else
+            BUG("unexpected type for expression %1%", typeNameExpr);
 
         return false;
     }
