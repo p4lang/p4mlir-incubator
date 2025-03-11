@@ -325,6 +325,35 @@ LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, S
         emitError() << "last field of p4hir.header type should be validity bit, but got "
                     << elements.back().name << " of type " << last.type;
 
+    for (const auto &elt : elements)
+        if (!fieldNameSet.insert(elt.name).second) {
+            result = failure();
+            emitError() << "duplicate field name '" << elt.name.getValue()
+                        << "' in p4hir.header type";
+        }
+
+    // If a varbit field is present, it must be immediately before that validity field.
+    long varbitFieldIndex = -1;
+    for (long i = 0, elt = elements.size(); i < elt; ++i) {
+        if (mlir::isa<P4HIR::VarBitsType>(elements[i].type)) {
+            if (varbitFieldIndex != -1) {
+                result = failure();
+                emitError() << "more than one varbit field is not allowed in a header";
+                break;
+            }
+            varbitFieldIndex = i;
+        }
+    }
+
+    // If a varbit field is found, ensure it is the last “data” field:
+    if (varbitFieldIndex >= 0) {
+        long expectedIndex = elements.size() - 2;
+        if (varbitFieldIndex != expectedIndex) {
+            result = failure();
+            emitError() << "varbit field must be be immediately before that validity field";
+        }
+    }
+
     // TODO: Check field types & nesting
 
     return result;
