@@ -53,10 +53,10 @@ mlir::Location getLoc(mlir::OpBuilder &builder, const P4::IR::Node *node) {
     if (!sourceInfo.isValid()) return mlir::UnknownLoc::get(builder.getContext());
 
     const auto &start = sourceInfo.getStart();
+    const auto &pos = sourceInfo.toPosition();
 
-    return mlir::FileLineColLoc::get(
-        builder.getStringAttr(sourceInfo.getSourceFile().string_view()), start.getLineNumber(),
-        start.getColumnNumber());
+    return mlir::FileLineColLoc::get(builder.getStringAttr(pos.fileName.string_view()),
+                                     pos.sourceLine, start.getColumnNumber());
 }
 
 mlir::Location getEndLoc(mlir::OpBuilder &builder, const P4::IR::Node *node) {
