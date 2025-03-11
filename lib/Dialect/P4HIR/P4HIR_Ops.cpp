@@ -726,15 +726,16 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
     auto fnAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
     if (!fnAttr) return emitOpError("requires a 'callee' symbol reference attribute");
     // Functions are defined at top-level scope
+
+    // TBD: overload set
     FuncOp fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentModule(*this), fnAttr);
     if (!fn) {
         // Actions might be defined both at top level and control scope
         fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentControl(*this), fnAttr);
-        if (!fn.getAction())
+        if (!fn || !fn.getAction())
             return emitOpError() << "'" << fnAttr.getValue()
                                  << "' does not reference a valid action";
     }
-
     if (!fn)
         return emitOpError() << "'" << fnAttr.getValue() << "' does not reference a valid function";
 

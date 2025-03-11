@@ -25,6 +25,7 @@ class TranslateOptions : public CompilerOptions {
     bool parseOnly = false;
     bool typeinferenceOnly = false;
     bool printLoc = false;
+    bool noDump = false;
 
     virtual ~TranslateOptions() = default;
 

@@ -539,6 +539,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(Cast)
     HANDLE_IN_POSTORDER(Declaration_Variable)
     HANDLE_IN_POSTORDER(ReturnStatement)
+    HANDLE_IN_POSTORDER(ExitStatement)
     HANDLE_IN_POSTORDER(ArrayIndex)
     HANDLE_IN_POSTORDER(Range)
     HANDLE_IN_POSTORDER(Mask)
@@ -1619,6 +1620,11 @@ void P4HIRConverter::postorder(const P4::IR::ReturnStatement *ret) {
     } else {
         builder.create<P4HIR::ReturnOp>(getLoc(builder, ret));
     }
+}
+void P4HIRConverter::postorder(const P4::IR::ExitStatement *ex) {
+    ConversionTracer trace("Converting ", ex);
+
+    builder.create<P4HIR::ExitOp>(getLoc(builder, ex));
 }
 
 mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
