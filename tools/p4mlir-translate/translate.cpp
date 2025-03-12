@@ -1032,16 +1032,7 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
 
         // Fold some conversions
         if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
-            // Sign conversions
-            if (auto srcBitsType = mlir::dyn_cast<P4HIR::BitsType>(srcType)) {
-                assert(destBitsType.getWidth() == srcBitsType.getWidth() &&
-                       "expected signess conversion only");
-                auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(cast->expr));
-                return setConstantExpr(
-                    expr, P4HIR::IntAttr::get(context(), destBitsType, castee.getValue()));
-            }
-            // Add bitwidth
-            if (auto srcIntType = mlir::dyn_cast<P4HIR::InfIntType>(srcType)) {
+            if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(srcType)) {
                 auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(cast->expr));
                 return setConstantExpr(
                     expr,
