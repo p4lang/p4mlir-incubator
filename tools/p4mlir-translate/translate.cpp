@@ -1775,18 +1775,41 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 case P4::IR::Direction::Out:
                 case P4::IR::Direction::InOut: {
                     // Create temporary to hold the output value, initialize in case of inout
-                    auto ref = resolveReference(arg->expression);
-                    auto copyIn = b.create<P4HIR::VariableOp>(
-                        loc, ref.getType(),
-                        b.getStringAttr(
-                            llvm::Twine(params[idx]->name.string_view()) +
-                            (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
 
-                    if (dir == P4::IR::Direction::InOut) {
-                        copyIn.setInit(true);
-                        b.create<P4HIR::AssignOp>(loc, b.create<P4HIR::ReadOp>(loc, ref), copyIn);
+                    if (const auto *slice = arg->expression->to<P4::IR::Slice>()) {
+                        auto sliceType = getOrCreateType(slice->type);
+                        auto ref = resolveReference(slice->e0);
+                        auto copyIn = b.create<P4HIR::VariableOp>(
+                            loc, P4HIR::ReferenceType::get(sliceType),
+                            b.getStringAttr(
+                                llvm::Twine(params[idx]->name.string_view()) +
+                                (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
+
+                        if (dir == P4::IR::Direction::InOut) {
+                            copyIn.setInit(true);
+                            b.create<P4HIR::AssignOp>(
+                                loc,
+                                b.create<P4HIR::SliceRefOp>(loc, sliceType, ref, slice->getH(),
+                                                            slice->getL()),
+                                copyIn);
+                        }
+                        argVal = copyIn;
+                    } else {
+                        auto ref = resolveReference(arg->expression);
+                        auto copyIn = b.create<P4HIR::VariableOp>(
+                            loc, ref.getType(),
+                            b.getStringAttr(
+                                llvm::Twine(params[idx]->name.string_view()) +
+                                (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
+
+                        if (dir == P4::IR::Direction::InOut) {
+                            copyIn.setInit(true);
+                            b.create<P4HIR::AssignOp>(loc, b.create<P4HIR::ReadOp>(loc, ref),
+                                                      copyIn);
+                        }
+                        argVal = copyIn;
                     }
-                    argVal = copyIn;
+
                     break;
                 }
             }
@@ -1882,10 +1905,18 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             if (!params[idx]->hasOut()) continue;
 
             mlir::Value copyOut = operands[idx];
-            mlir::Value dest = resolveReference(arg->expression);
-            b.create<P4HIR::AssignOp>(
-                getEndLoc(builder, mce),
-                builder.create<P4HIR::ReadOp>(getEndLoc(builder, mce), copyOut), dest);
+            if (const auto *slice = arg->expression->to<P4::IR::Slice>()) {
+                mlir::Value dest = resolveReference(slice->e0);
+                b.create<P4HIR::AssignSliceOp>(
+                    getEndLoc(builder, mce),
+                    builder.create<P4HIR::ReadOp>(getEndLoc(builder, mce), copyOut), dest,
+                    slice->getH(), slice->getL());
+            } else {
+                mlir::Value dest = resolveReference(arg->expression);
+                b.create<P4HIR::AssignOp>(
+                    getEndLoc(builder, mce),
+                    builder.create<P4HIR::ReadOp>(getEndLoc(builder, mce), copyOut), dest);
+            }
         }
 
         // If we are inside the scope, then build the yield of the call result
