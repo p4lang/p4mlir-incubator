@@ -742,24 +742,38 @@ static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs
 
 LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
-    auto fnAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
-    if (!fnAttr) return emitOpError("requires a 'callee' symbol reference attribute");
-    // Functions are defined at top-level scope
+    auto sym = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
+    if (!sym) return emitOpError("requires a 'callee' symbol reference attribute");
 
-    // TBD: overload set
-    FuncOp fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentModule(*this), fnAttr);
-    if (!fn) {
-        // Actions might be defined both at top level and control scope
-        fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentControl(*this), fnAttr);
-        if (!fn || !fn.getAction())
-            return emitOpError() << "'" << fnAttr.getValue()
-                                 << "' does not reference a valid action";
+    // Callee might be:
+    //  - Overload set, then we need to look for a particular overload
+    //  - Normal functions. They are defined at top-level only. Top-level actions are also here.
+    //  - Actions defined at control level
+    P4HIR::FuncOp fn;
+    if (auto *decl = symbolTable.lookupNearestSymbolFrom(getParentModule(*this), sym)) {
+        if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
+            // We good here
+        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
+            // Find the FuncOp with the correct # of operands
+            for (Operation &nestedOp : ovl.getBody().front()) {
+                auto f = llvm::cast<FuncOp>(nestedOp);
+                if (f.getNumArguments() == getNumOperands()) {
+                    fn = f;
+                    break;
+                }
+            }
+            if (!fn) return emitOpError() << "'" << sym << "' failed to resolve overload set";
+        } else
+            return emitOpError() << "'" << sym << "' does not reference a valid function";
+    } else if ((fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentControl(*this), sym))) {
+        if (!fn.getAction())
+            return emitOpError() << "'" << sym << "' does not reference a valid action";
     }
-    if (!fn)
-        return emitOpError() << "'" << fnAttr.getValue() << "' does not reference a valid function";
 
-    // Verify that the operand and result types match the callee.
+    if (!fn) return emitOpError() << "'" << sym << "' does not reference a valid function";
+
     auto fnType = fn.getFunctionType();
+    // Verify that the operand and result types match the callee.
     if (fnType.getNumInputs() != getNumOperands())
         return emitOpError("incorrect number of operands for callee");
 
