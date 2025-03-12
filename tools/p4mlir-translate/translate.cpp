@@ -1039,6 +1039,16 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
                     P4HIR::IntAttr::get(context(), destBitsType,
                                         castee.getValue().zextOrTrunc(destBitsType.getWidth())));
             }
+            if (mlir::isa<P4HIR::SerEnumType>(srcType)) {
+                auto castee = mlir::cast<P4HIR::EnumFieldAttr>(getOrCreateConstantExpr(cast->expr));
+                auto enumType = mlir::cast<P4HIR::SerEnumType>(castee.getType());
+                auto casteeVal =
+                    mlir::cast<P4HIR::IntAttr>(enumType.valueOf(castee.getField().getValue()));
+                return setConstantExpr(
+                    expr,
+                    P4HIR::IntAttr::get(context(), destBitsType,
+                                        casteeVal.getValue().zextOrTrunc(destBitsType.getWidth())));
+            }
         }
 
         // Handle casts to aliased types
@@ -1085,9 +1095,11 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
                     expr, P4HIR::ErrorCodeAttr::get(errorType, m->member.string_view()));
             }
 
-            auto enumType = mlir::cast<P4HIR::EnumType>(baseType);
-            return setConstantExpr(expr,
-                                   P4HIR::EnumFieldAttr::get(enumType, m->member.string_view()));
+            if (mlir::isa<P4HIR::EnumType, P4HIR::SerEnumType>(baseType))
+                return setConstantExpr(
+                    expr, P4HIR::EnumFieldAttr::get(baseType, m->member.string_view()));
+            else
+                BUG("invalid member reference %1%", m);
         }
 
         auto base = mlir::cast<P4HIR::AggAttr>(getOrCreateConstantExpr(m->expr));
@@ -1112,6 +1124,37 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
         auto lhs = getOrCreateConstantExpr(eq->left);
         auto rhs = getOrCreateConstantExpr(eq->right);
         return setConstantExpr(expr, P4HIR::BoolAttr::get(context(), lhs != rhs));
+    }
+
+    if (const auto *eq = expr->to<P4::IR::Shl>()) {
+        auto lhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->left));
+        auto rhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->right));
+        return setConstantExpr(
+            expr, P4HIR::IntAttr::get(context(), lhs.getType(), lhs.getValue() << rhs.getValue()));
+    }
+
+    if (const auto *eq = expr->to<P4::IR::Shr>()) {
+        auto lhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->left));
+        auto rhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->right));
+        auto lhsType = mlir::cast<P4HIR::BitsType>(lhs.getType());
+        return setConstantExpr(
+            expr, P4HIR::IntAttr::get(context(), lhs.getType(),
+                                      lhsType.isSigned() ? lhs.getValue().ashr(rhs.getValue())
+                                                         : lhs.getValue().lshr(rhs.getValue())));
+    }
+
+    if (const auto *eq = expr->to<P4::IR::BAnd>()) {
+        auto lhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->left));
+        auto rhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->right));
+        return setConstantExpr(
+            expr, P4HIR::IntAttr::get(context(), lhs.getType(), lhs.getValue() & rhs.getValue()));
+    }
+
+    if (const auto *eq = expr->to<P4::IR::BOr>()) {
+        auto lhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->left));
+        auto rhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->right));
+        return setConstantExpr(
+            expr, P4HIR::IntAttr::get(context(), lhs.getType(), lhs.getValue() | rhs.getValue()));
     }
 
     BUG("cannot resolve this constant expression yet %1% (aka %2%)", expr, dbp(expr));
