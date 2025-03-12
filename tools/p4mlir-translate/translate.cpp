@@ -498,6 +498,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         // Should be resolved eslewhere
         return false;
     }
+    bool preorder(const P4::IR::EmptyStatement *e) override {
+        // Well, it's empty
+        return false;
+    }
 
 #define HANDLE_IN_POSTORDER(NodeTy)                                 \
     bool preorder(const P4::IR::NodeTy *) override { return true; } \
