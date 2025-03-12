@@ -1528,8 +1528,9 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
     // Check if there is a declaration with the same name in the current symbol table.
     // If yes, create / add to an overload set
     auto *parentOp = builder.getBlock()->getParentOp();
-    auto symName = builder.getStringAttr(m->name.string_view());
-    if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, symName)) {
+    auto origSymName = builder.getStringAttr(m->name.string_view());
+    auto symName = origSymName;
+    if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
         P4HIR::OverloadSetOp ovl;
 
         auto getUniqueName = [&](mlir::StringAttr toRename) {
@@ -1543,25 +1544,28 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
         };
 
         if (auto otherFunc = llvm::dyn_cast<P4HIR::FuncOp>(otherOp)) {
-            ovl = builder.create<P4HIR::OverloadSetOp>(loc, symName);
+            ovl = builder.create<P4HIR::OverloadSetOp>(loc, origSymName);
             builder.setInsertionPointToStart(&ovl.createEntryBlock());
             otherFunc->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
 
-            // Unique the symbol name to avoid clashes in the symbol table.
-            otherFunc.setSymName(getUniqueName(symName));
+            // Unique the symbol name to avoid clashes in the symbol table.  The
+            // overload set takes over the symbol name. Still, all the symbols
+            // in `p4Symbol` are created wrt the original name, so we do not use
+            // SymbolTable::rename() here.
+            otherFunc.setSymName(getUniqueName(origSymName));
         } else {
             ovl = llvm::cast<P4HIR::OverloadSetOp>(otherOp);
-            builder.setInsertionPointToStart(&ovl.getBody().front());
+            builder.setInsertionPointToEnd(&ovl.getBody().front());
         }
 
         symName = builder.getStringAttr(getUniqueName(symName));
     }
 
-    auto func = builder.create<P4HIR::FuncOp>(loc, symName, funcType,
-                                              /* isExternal */ true,
-                                              llvm::ArrayRef<mlir::NamedAttribute>(), argAttrs);
+    builder.create<P4HIR::FuncOp>(loc, symName, funcType,
+                                  /* isExternal */ true, llvm::ArrayRef<mlir::NamedAttribute>(),
+                                  argAttrs);
 
-    auto [it, inserted] = p4Symbols.try_emplace(m, mlir::SymbolRefAttr::get(func));
+    auto [it, inserted] = p4Symbols.try_emplace(m, mlir::SymbolRefAttr::get(origSymName));
     BUG_CHECK(inserted, "duplicate translation of %1%", m);
 
     return false;
