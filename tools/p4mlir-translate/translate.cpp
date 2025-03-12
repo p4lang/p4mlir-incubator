@@ -1955,13 +1955,8 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
     llvm::SmallVector<mlir::Value, 4> operands;
     for (const auto *arg : *cce->arguments) {
         ConversionTracer trace("Converting ", arg);
-        mlir::Value argVal;
-        if (const auto *cce = arg->expression->to<P4::IR::ConstructorCallExpression>()) {
-            visit(cce);
-            argVal = getValue(cce);
-        } else
-            argVal = materializeConstantExpr(arg->expression);
-        operands.push_back(argVal);
+        visit(arg->expression);
+        operands.push_back(getValue(arg->expression));
     }
 
     auto resultType = getOrCreateType(type);
@@ -2324,13 +2319,8 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
     llvm::SmallVector<mlir::Value, 4> operands;
     for (const auto *arg : *decl->arguments) {
         ConversionTracer trace("Converting ", arg);
-        mlir::Value argVal;
-        if (const auto *cce = arg->expression->to<P4::IR::ConstructorCallExpression>()) {
-            visit(cce);
-            argVal = getValue(cce);
-        } else
-            argVal = materializeConstantExpr(arg->expression);
-        operands.push_back(argVal);
+        visit(arg->expression);
+        operands.push_back(getValue(arg->expression));
     }
 
     auto resultType = getOrCreateType(type);
