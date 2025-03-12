@@ -446,6 +446,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::Declaration_Instance *decl) override;
     bool preorder(const P4::IR::AssignmentStatement *assign) override;
     bool preorder(const P4::IR::Mux *mux) override;
+    bool preorder(const P4::IR::Slice *slice) override;
     bool preorder(const P4::IR::LOr *lor) override;
     bool preorder(const P4::IR::LAnd *land) override;
     bool preorder(const P4::IR::IfStatement *ifs) override;
@@ -944,6 +945,25 @@ void P4HIRConverter::postorder(const P4::IR::Cast *cast) {
     setValue(cast, builder.create<P4HIR::CastOp>(getLoc(builder, cast), destType, src));
 }
 
+bool P4HIRConverter::preorder(const P4::IR::Slice *slice) {
+    ConversionTracer trace("Converting ", slice);
+
+    auto maybeRef = resolveReference(slice->e0, /* unchecked */ true);
+    auto destType = getOrCreateType(slice->type);
+
+    mlir::Value sliceVal;
+    if (llvm::isa<P4HIR::ReferenceType>(maybeRef.getType())) {
+        sliceVal = builder.create<P4HIR::SliceRefOp>(getLoc(builder, slice), destType, maybeRef,
+                                                     slice->getH(), slice->getL());
+    } else {
+        sliceVal = builder.create<P4HIR::SliceOp>(
+            getLoc(builder, slice), destType, getValue(slice->e0), slice->getH(), slice->getL());
+    }
+
+    setValue(slice, sliceVal);
+    return false;
+}
+
 mlir::Value P4HIRConverter::emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind) {
     return builder.create<P4HIR::UnaryOp>(getLoc(builder, unop), kind, getValue(unop->expr));
 }
@@ -1002,15 +1022,13 @@ void P4HIRConverter::postorder(const P4::IR::Concat *concat) {
     setValue(concat, emitConcatOp(concat));
 }
 
-#define CONVERT_SHL_SHR_OP(P4C_Shift, PHIR_Shift)             \
-void P4HIRConverter::postorder(const P4::IR::P4C_Shift *op) { \
-    ConversionTracer trace("Converting ", op);                \
-    auto result = builder.create<P4HIR::PHIR_Shift>(          \
-        getLoc(builder, op),                                  \
-        getValue(op->left),                                   \
-        getValue(op->right));                                 \
-    setValue(op, result);                                     \
-}
+#define CONVERT_SHL_SHR_OP(P4C_Shift, PHIR_Shift)                                                \
+    void P4HIRConverter::postorder(const P4::IR::P4C_Shift *op) {                                \
+        ConversionTracer trace("Converting ", op);                                               \
+        auto result = builder.create<P4HIR::PHIR_Shift>(getLoc(builder, op), getValue(op->left), \
+                                                        getValue(op->right));                    \
+        setValue(op, result);                                                                    \
+    }
 
 CONVERT_SHL_SHR_OP(Shl, ShlOp);
 CONVERT_SHL_SHR_OP(Shr, ShrOp);
@@ -1071,20 +1089,36 @@ bool P4HIRConverter::preorder(const P4::IR::Neq *ne) {
 bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
     ConversionTracer trace("Converting ", assign);
 
-    // TODO: Handle slice on LHS here
-    auto ref = resolveReference(assign->left);
     auto loc = getLoc(builder, assign);
 
-    // Assignment of InvalidHeader is special: we do not materialize the whole
-    // header, we need to assign validty bit only
-    if (assign->right->is<P4::IR::InvalidHeader>()) {
-        auto invalid = getValidHeaderConstant(loc, P4HIR::ValidityBit::Invalid);
-        auto validityBitRef =
-            builder.create<P4HIR::StructExtractRefOp>(loc, ref, P4HIR::HeaderType::validityBit);
-        builder.create<P4HIR::AssignOp>(loc, invalid, validityBitRef);
-    } else {
+    if (const auto *slice = assign->left->to<P4::IR::Slice>()) {
+        // Fold slice of slice of slice ...
+        auto expr = slice->e0;
+        unsigned h = slice->getH(), l = slice->getL();
+        while ((slice = expr->to<P4::IR::Slice>())) {
+            int delta = slice->getL();
+            expr = slice->e0;
+            h += delta;
+            l += delta;
+        }
+
+        auto ref = resolveReference(expr);
         visit(assign->right);
-        builder.create<P4HIR::AssignOp>(loc, getValue(assign->right), ref);
+        builder.create<P4HIR::AssignSliceOp>(loc, getValue(assign->right), ref, h, l);
+    } else {
+        auto ref = resolveReference(assign->left);
+
+        // Assignment of InvalidHeader is special: we do not materialize the whole
+        // header, we need to assign validty bit only
+        if (assign->right->is<P4::IR::InvalidHeader>()) {
+            auto invalid = getValidHeaderConstant(loc, P4HIR::ValidityBit::Invalid);
+            auto validityBitRef =
+                builder.create<P4HIR::StructExtractRefOp>(loc, ref, P4HIR::HeaderType::validityBit);
+            builder.create<P4HIR::AssignOp>(loc, invalid, validityBitRef);
+        } else {
+            visit(assign->right);
+            builder.create<P4HIR::AssignOp>(loc, getValue(assign->right), ref);
+        }
     }
 
     return false;
