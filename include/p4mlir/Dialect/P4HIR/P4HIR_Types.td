@@ -662,6 +662,23 @@ def PackageType : P4HIR_Type<"Package", "package", []> {
 }
 
 //===----------------------------------------------------------------------===//
+// AliasType
+//===----------------------------------------------------------------------===//
+def AliasType : P4HIR_Type<"Alias", "alias", []> {
+  let summary = "alias type";
+  let description = [{
+    Represents a P4 "new type" that is an alias to the existing one:
+    !p4hir.alias<!i32i>
+  }];
+
+  let parameters = (ins StringRefParameter<"type name">:$name, "mlir::Type":$aliased_type);
+
+  let assemblyFormat = [{
+    `<` $name `,` $aliased_type `>`
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
@@ -669,16 +686,16 @@ def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StringType,
                            StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
                            EnumType, SerEnumType,
                            ValidBitType,
-                           DontcareType, ErrorType, UnknownType,
+                           DontcareType, ErrorType, UnknownType, AliasType,
                            SetType]> {}
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType,
                                   StructType, HeaderType, Builtin_Tuple,
-                                  EnumType, SerEnumType]> {}
+                                  EnumType, SerEnumType, AliasType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                                 StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
                                 EnumType, SerEnumType, ErrorType,
-                                ValidBitType]> {}
+                                ValidBitType, AliasType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType]>;
 def P4ObjectType : AnyTypeOf<[ParserType, ControlType, ExternType, PackageType]>;

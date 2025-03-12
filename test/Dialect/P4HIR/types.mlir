@@ -16,6 +16,8 @@
 
 !Suits = !p4hir.enum<"Suits", Clubs, Diamonds, Hearths, Spades>
 
+!PortId_t = !p4hir.alias<"PortId_t", !bit42>
+
 #b1 = #p4hir.int<1> : !bit42
 #b2 = #p4hir.int<2> : !bit42
 #b3 = #p4hir.int<3> : !bit42
@@ -26,8 +28,14 @@
 !validity = !p4hir.validity.bit
 !header = !p4hir.header<"struct_name", boolfield : !p4hir.bool, bitfield : !bit42, __validity : !validity>
 
+!b9i = !p4hir.bit<9>
+!M = !p4hir.struct<"M", e: !PortId_t, es: !b9i>
+
 #valid = #p4hir<validity.bit valid>
 #invalid = #p4hir<validity.bit invalid>
+
+!Narrow = !p4hir.alias<"Narrow", !b9i>
+#int192_Narrow = #p4hir.int<192> : !Narrow
 
 !tuple = tuple<!bit42, !void, !SuitsSerializable>
 

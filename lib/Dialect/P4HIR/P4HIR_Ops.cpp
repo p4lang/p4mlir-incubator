@@ -36,6 +36,8 @@ using namespace P4::P4MLIR;
 static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
                                         mlir::Attribute attrType) {
     if (mlir::isa<P4HIR::BoolAttr>(attrType)) {
+        if (auto aliasedType = mlir::dyn_cast<P4HIR::AliasType>(opType))
+            opType = aliasedType.getAliasedType();
         if (!mlir::isa<P4HIR::BoolType>(opType))
             return op->emitOpError("result type (")
                    << opType << ") must be '!p4hir.bool' for '" << attrType << "'";
@@ -43,6 +45,8 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
     }
 
     if (mlir::isa<P4HIR::IntAttr>(attrType)) {
+        if (auto aliasedType = mlir::dyn_cast<P4HIR::AliasType>(opType))
+            opType = aliasedType.getAliasedType();
         if (!mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(opType))
             return op->emitOpError("result type (")
                    << opType << ") does not match value type (" << attrType << ")";
@@ -2103,6 +2107,11 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
             return AliasResult::OverridableAlias;
         }
 
+        if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(type)) {
+            os << aliasType.getName();
+            return AliasResult::OverridableAlias;
+        }
+
         if (auto parserType = mlir::dyn_cast<P4HIR::ParserType>(type)) {
             os << parserType.getName();
             for (auto typeArg : parserType.getTypeArguments()) {
@@ -2131,12 +2140,12 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
         }
 
         if (auto packageType = mlir::dyn_cast<P4HIR::PackageType>(type)) {
-             os << packageType.getName();
-             for (auto typeArg : packageType.getTypeArguments()) {
-                 os << "_";
-                 getAlias(typeArg, os);
-             }
-             return AliasResult::OverridableAlias;
+            os << packageType.getName();
+            for (auto typeArg : packageType.getTypeArguments()) {
+                os << "_";
+                getAlias(typeArg, os);
+            }
+            return AliasResult::OverridableAlias;
         }
 
         if (auto ctorType = mlir::dyn_cast<P4HIR::CtorType>(type)) {
@@ -2151,6 +2160,9 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
     AliasResult getAlias(Attribute attr, raw_ostream &os) const final {
         if (auto boolAttr = mlir::dyn_cast<P4HIR::BoolAttr>(attr)) {
             os << (boolAttr.getValue() ? "true" : "false");
+            if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(boolAttr.getType()))
+                os << "_" << aliasType.getName();
+
             return AliasResult::FinalAlias;
         }
 
@@ -2160,6 +2172,8 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
                 os << "_" << bitsType.getAlias();
             else if (auto infintType = mlir::dyn_cast<P4HIR::InfIntType>(intAttr.getType()))
                 os << "_" << infintType.getAlias();
+            else if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(intAttr.getType()))
+                os << "_" << aliasType.getName();
 
             return AliasResult::FinalAlias;
         }

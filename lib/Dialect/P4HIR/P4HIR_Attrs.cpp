@@ -14,8 +14,14 @@ using namespace P4::P4MLIR::P4HIR;
 
 Attribute IntAttr::parse(AsmParser &parser, Type odsType) {
     mlir::APInt APValue;
+    mlir::Type valType;
 
-    if (!mlir::isa<BitsType, InfIntType>(odsType)) {
+    if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(odsType))
+        valType = aliasType.getAliasedType();
+    else
+        valType = odsType;
+
+    if (!mlir::isa<BitsType, InfIntType>(valType)) {
         parser.emitError(parser.getCurrentLocation(), "expected integer type");
         return {};
     }
@@ -23,7 +29,7 @@ Attribute IntAttr::parse(AsmParser &parser, Type odsType) {
     // Consume the '<' symbol.
     if (parser.parseLess()) return {};
 
-    if (auto type = mlir::dyn_cast<BitsType>(odsType)) {
+    if (auto type = mlir::dyn_cast<BitsType>(valType)) {
         // Fetch arbitrary precision integer value.
         if (type.isSigned()) {
             mlir::APInt value;
@@ -63,8 +69,11 @@ Attribute IntAttr::parse(AsmParser &parser, Type odsType) {
 
 void IntAttr::print(AsmPrinter &printer) const {
     printer << '<';
-    if (auto type = mlir::dyn_cast<BitsType>(getType())) {
-        if (type.isSigned())
+    auto type = getType();
+    if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(type)) type = aliasType.getAliasedType();
+
+    if (auto bitsType = mlir::dyn_cast<BitsType>(type)) {
+        if (bitsType.isSigned())
             printer << getSInt();
         else
             printer << getUInt();
@@ -76,8 +85,10 @@ void IntAttr::print(AsmPrinter &printer) const {
 
 LogicalResult IntAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type type,
                               APInt value) {
+    if (auto aliasType = mlir::dyn_cast<AliasType>(type)) type = aliasType.getAliasedType();
+
     if (!mlir::isa<BitsType, InfIntType>(type)) {
-        emitError() << "expected 'simple.int' type";
+        emitError() << "expected integer type";
         return failure();
     }
 
