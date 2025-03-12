@@ -127,6 +127,7 @@ class P4TypeConverter : public P4::Inspector, P4::ResolutionContext {
     bool preorder(const P4::IR::Type_Unknown *type) override;
     bool preorder(const P4::IR::Type_Typedef *type) override;
     bool preorder(const P4::IR::Type_Name *name) override;
+    bool preorder(const P4::IR::Type_Newtype *nt) override;
     bool preorder(const P4::IR::Type_Action *act) override;
     bool preorder(const P4::IR::Type_Void *v) override;
     bool preorder(const P4::IR::Type_Struct *s) override;
@@ -661,6 +662,17 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Name *name) {
     return setType(name, mlirType);
 }
 
+bool P4TypeConverter::preorder(const P4::IR::Type_Newtype *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    mlir::Type aliasee = convert(type->type);
+
+    auto mlirType = P4HIR::AliasType::get(converter.context(), type->name.string_view(), aliasee);
+
+    return setType(type, mlirType);
+}
+
 bool P4TypeConverter::preorder(const P4::IR::Type_Action *type) {
     if ((this->type = converter.findType(type))) return false;
 
@@ -1035,6 +1047,21 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
                     expr,
                     P4HIR::IntAttr::get(context(), destBitsType,
                                         castee.getValue().zextOrTrunc(destBitsType.getWidth())));
+            }
+        }
+
+        // Handle casts to aliased types
+        if (auto destAliasType = mlir::dyn_cast<P4HIR::AliasType>(destType)) {
+            assert(destAliasType.getAliasedType() == srcType && "expected aliased types match");
+            if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(srcType)) {
+                auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(cast->expr));
+                return setConstantExpr(
+                    expr, P4HIR::IntAttr::get(context(), destAliasType, castee.getValue()));
+            }
+            if (auto srcBoolType = mlir::dyn_cast<P4HIR::BoolType>(srcType)) {
+                auto castee = mlir::cast<P4HIR::BoolAttr>(getOrCreateConstantExpr(cast->expr));
+                return setConstantExpr(
+                    expr, P4HIR::BoolAttr::get(context(), destAliasType, castee.getValue()));
             }
         }
     }
