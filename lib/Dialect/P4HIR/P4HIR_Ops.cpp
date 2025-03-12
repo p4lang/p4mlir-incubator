@@ -718,13 +718,6 @@ static mlir::ModuleOp getParentModule(Operation *from) {
     return nullptr;
 }
 
-static P4HIR::ControlOp getParentControl(Operation *from) {
-    if (auto controlOp = from->getParentOfType<P4HIR::ControlOp>()) return controlOp;
-
-    from->emitOpError("could not find parent control op");
-    return nullptr;
-}
-
 static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs,
                                  std::optional<mlir::ArrayAttr> typeOperands) {
     if (auto typeVar = llvm::dyn_cast<P4HIR::TypeVarType>(type)) {
@@ -752,26 +745,31 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
     // Callee might be:
     //  - Overload set, then we need to look for a particular overload
     //  - Normal functions. They are defined at top-level only. Top-level actions are also here.
-    //  - Actions defined at control level
+    //  - Actions defined at control level. Check for them first.
     P4HIR::FuncOp fn;
-    if (auto *decl = symbolTable.lookupNearestSymbolFrom(getParentModule(*this), sym)) {
-        if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
-            // We good here
-        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
-            // Find the FuncOp with the correct # of operands
-            for (Operation &nestedOp : ovl.getBody().front()) {
-                auto f = llvm::cast<FuncOp>(nestedOp);
-                if (f.getNumArguments() == getNumOperands()) {
-                    fn = f;
-                    break;
-                }
-            }
-            if (!fn) return emitOpError() << "'" << sym << "' failed to resolve overload set";
-        } else
-            return emitOpError() << "'" << sym << "' does not reference a valid function";
-    } else if ((fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentControl(*this), sym))) {
-        if (!fn.getAction())
+    if (auto controlOp = (*this)->getParentOfType<P4HIR::ControlOp>()) {
+        fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(controlOp, sym);
+        if (fn && !fn.getAction())
             return emitOpError() << "'" << sym << "' does not reference a valid action";
+    }
+
+    if (!fn) {
+        if (auto *decl = symbolTable.lookupNearestSymbolFrom(getParentModule(*this), sym)) {
+            if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
+                // We good here
+            } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
+                // Find the FuncOp with the correct # of operands
+                for (Operation &nestedOp : ovl.getBody().front()) {
+                    auto f = llvm::cast<FuncOp>(nestedOp);
+                    if (f.getNumArguments() == getNumOperands()) {
+                        fn = f;
+                        break;
+                    }
+                }
+                if (!fn) return emitOpError() << "'" << sym << "' failed to resolve overload set";
+            } else
+                return emitOpError() << "'" << sym << "' does not reference a valid function";
+        }
     }
 
     if (!fn) return emitOpError() << "'" << sym << "' does not reference a valid function";
