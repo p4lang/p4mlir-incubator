@@ -58,6 +58,7 @@ const T t2 = s1.s1;
 
 struct PortId_t { bit<9> _v; }
 
+// CHECK: %[[PSA_CPU_PORT:.*]] = p4hir.const ["PSA_CPU_PORT"] #p4hir.aggregate<[#int192_b9i]> : !PortId_t
 const PortId_t PSA_CPU_PORT = { _v = 9w192 };
 
 struct metadata_t {
@@ -103,7 +104,6 @@ action test(inout metadata_t meta) {
                 
    // CHECK: %[[METADATA_VAL:.*]] = p4hir.read %arg0 : <!metadata_t>
    // CHECK: %[[FOO:.*]] = p4hir.struct_extract %[[METADATA_VAL]]["foo"] : !metadata_t
-   // CHECK: %[[PSA_CPU_PORT:.*]] = p4hir.const ["PSA_CPU_PORT"] #p4hir.aggregate<[#int192_b9i]> : !PortId_t
    // CHECK: %eq = p4hir.cmp(eq, %[[FOO]], %[[PSA_CPU_PORT]]) : !PortId_t, !p4hir.bool
    if (meta.foo == PSA_CPU_PORT) {
        meta.foo._v = meta.foo._v + 1;

@@ -2,7 +2,7 @@
 #define P4MLIR_DIALECT_P4HIR_P4HIR_PARSEROPS_TD
 
 def ParserOp : P4HIR_Op<"parser",
-    [Symbol, SymbolTable, IsolatedFromAbove,
+    [Symbol, SymbolTable,
      FunctionOpInterface, AutomaticAllocationScope]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FuncType>:$applyType,
