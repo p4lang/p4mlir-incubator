@@ -98,7 +98,6 @@ action header_setInvalid() {
 // CHECK-LABEL:   p4hir.func action @assign_header
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
 // CHECK:           %[[VAL_1:.*]] = p4hir.variable ["h"] : <!H1_>
-// CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_4:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_5:.*]] = p4hir.struct_extract_ref %[[VAL_3]]["__valid"] : <!H1_>
@@ -107,6 +106,7 @@ action header_setInvalid() {
 // CHECK:           %[[VAL_7:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_8:.*]] = p4hir.struct_extract_ref %[[VAL_6]]["__valid"] : <!H2_>
 // CHECK:           p4hir.assign %[[VAL_7]], %[[VAL_8]] : <!validity_bit>
+// CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_9:.*]] = p4hir.read %[[VAL_1]] : <!H1_>
 // CHECK:           p4hir.assign %[[VAL_9]], %[[VAL_2]] : <!H1_>
 // CHECK:           p4hir.return
@@ -120,7 +120,6 @@ action assign_header() {
 
 // CHECK-LABEL:   p4hir.func action @assign_tuple
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
-// CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H1_>
@@ -129,6 +128,7 @@ action assign_header() {
 // CHECK:           %[[VAL_6:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_7:.*]] = p4hir.struct_extract_ref %[[VAL_5]]["__valid"] : <!H2_>
 // CHECK:           p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!validity_bit>
+// CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_8:.*]] = p4hir.const #[[$ATTR_CONST42]]
 // CHECK:           %[[VAL_9:.*]] = p4hir.const #[[$ATTR_VALID]]
 // CHECK:           %[[VAL_10:.*]] = p4hir.struct (%[[VAL_8]], %[[VAL_9]]) : !H1_
@@ -143,7 +143,6 @@ action assign_tuple() {
 
 // CHECK-LABEL:   p4hir.func action @assign_invalid_header
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
-// CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H1_>

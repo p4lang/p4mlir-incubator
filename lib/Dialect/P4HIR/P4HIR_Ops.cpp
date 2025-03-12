@@ -5,6 +5,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -1108,6 +1109,78 @@ void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, 
     build(builder, odsState, tupleType.getType(fieldIndex), input, fieldIndex);
 }
 
+//===----------------------------------------------------------------------===//
+// SliceOp, SliceRefOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::SliceOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    llvm::SmallString<16> name;
+    llvm::raw_svector_ostream specialName(name);
+    specialName << 's' << getHighBit() << "_" << getLowBit();
+
+    setNameFn(getResult(), name);
+}
+
+void P4HIR::SliceRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    llvm::SmallString<16> name;
+    llvm::raw_svector_ostream specialName(name);
+    specialName << 's' << getHighBit() << "_" << getLowBit();
+
+    setNameFn(getResult(), name);
+}
+
+LogicalResult P4HIR::SliceOp::verify() {
+    auto resultType = getResult().getType();
+    auto sourceType = getInput().getType();
+    if (resultType.isSigned()) return emitOpError() << "slice result type is always unsigned";
+
+    if (getHighBit() < getLowBit()) return emitOpError() << "invalid slice indices";
+
+    if (resultType.getWidth() != getHighBit() - getLowBit() + 1)
+        return emitOpError() << "slice result type does not match extraction width";
+
+    if (auto bitsType = llvm::dyn_cast<P4HIR::BitsType>(sourceType)) {
+        if (bitsType.getWidth() <= getHighBit())
+            return emitOpError() << "extraction indices out of bound";
+    }
+
+    return success();
+}
+
+LogicalResult P4HIR::SliceRefOp::verify() {
+    auto resultType = getResult().getType();
+    auto sourceType = llvm::cast<P4HIR::ReferenceType>(getInput().getType()).getObjectType();
+    if (resultType.isSigned()) return emitOpError() << "slice result type is always unsigned";
+
+    if (getHighBit() < getLowBit()) return emitOpError() << "invalid slice indices";
+
+    if (resultType.getWidth() != getHighBit() - getLowBit() + 1)
+        return emitOpError() << "slice result type does not match extraction width";
+
+    if (auto bitsType = llvm::dyn_cast<P4HIR::BitsType>(sourceType)) {
+        if (bitsType.getWidth() <= getHighBit())
+            return emitOpError() << "extraction indices out of bound";
+    }
+
+    return success();
+}
+
+LogicalResult P4HIR::AssignSliceOp::verify() {
+    auto sourceType = getValue().getType();
+    auto resultType = llvm::cast<P4HIR::BitsType>(
+        llvm::cast<P4HIR::ReferenceType>(getRef().getType()).getObjectType());
+    if (sourceType.isSigned()) return emitOpError() << "slice result type is always unsigned";
+
+    if (getHighBit() < getLowBit()) return emitOpError() << "invalid slice indices";
+
+    if (sourceType.getWidth() != getHighBit() - getLowBit() + 1)
+        return emitOpError() << "slice result type does not match slice width";
+
+    if (resultType.getWidth() <= getHighBit())
+        return emitOpError() << "slice insertion indices out of bound";
+
+    return success();
+}
 //===----------------------------------------------------------------------===//
 // ParserOp
 //===----------------------------------------------------------------------===//

@@ -174,6 +174,20 @@ def AssignOp : P4HIR_Op<"assign", [
   // FIXME: add verifier.
 }
 
+def AssignSliceOp : P4HIR_Op<"assign_slice", []> {
+  let summary = "Assign a slice of values to variable";
+  let description = [{
+    ..
+  }];
+  let arguments = (ins BitsType:$value, BitsRefType:$ref, I32Attr:$highBit, I32Attr:$lowBit);
+  let assemblyFormat = [{
+    $value  `,` $ref`[`$highBit `:` $lowBit`]` attr-dict `:` type($value) `->` type($ref)
+  }];
+
+  let hasVerifier = 1;
+}
+
+
 // TODO: Decide if we'd want to be more precise and split cast into
 // bitcast, trunc and extensions
 // TODO: Add CastOpInterface
@@ -1075,6 +1089,38 @@ def TupleExtractOp : P4HIR_Op<"tuple_extract",
   //   $input `[` $fieldIndex `]` attr-dict `:` type($result)
   // }];
   let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+def SliceOp : P4HIR_Op<"slice",
+    [Pure,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "Extract a range or single bits from a value";
+  let description = [{
+    It's used to select from a value with a constant low bit.
+
+  }];
+  let arguments = (ins AnyIntP4Type:$input, I32Attr:$highBit, I32Attr:$lowBit);
+  let results = (outs BitsType:$result);
+  let assemblyFormat = [{
+    $input`[`$highBit `:` $lowBit`]` attr-dict `:` type($input) `->` type($result)
+  }];
+  let hasVerifier = 1;
+}
+
+def SliceRefOp : P4HIR_Op<"slice_ref",
+    [Pure,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "Extract a range or single bits from a referenced value";
+  let description = [{
+    It's used to select from a value with a constant low bit.
+
+  }];
+  let arguments = (ins BitsRefType:$input, I32Attr:$highBit, I32Attr:$lowBit);
+  let results = (outs BitsType:$result);
+  let assemblyFormat = [{
+    $input`[`$highBit `:` $lowBit`]` attr-dict `:` type($input) `->` type($result)
+  }];
   let hasVerifier = 1;
 }
 

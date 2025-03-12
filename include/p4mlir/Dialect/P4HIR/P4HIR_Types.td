@@ -659,5 +659,6 @@ class SpecificRefType<Type type> : ConfinedType<ReferenceType,
 
 def StructRefType : SpecificRefType<StructType>;
 def StructLikeRefType : SpecificRefType<StructLikeType>;
+def BitsRefType : SpecificRefType<BitsType>;
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD
