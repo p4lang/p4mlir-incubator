@@ -7,6 +7,7 @@
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
 #include "frontends/p4/methodInstance.h"
+#include "frontends/p4/parameterSubstitution.h"
 #include "frontends/p4/typeMap.h"
 #include "ir/ir.h"
 #include "ir/visitor.h"
@@ -1787,7 +1788,8 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 isInContext<P4::IR::ParserState>()) {
                 LOG4("Resolving verify() call");
 
-                // Lower condition
+                // Lower condition. TBD: This is incorrect if arguments are
+                // passed by name.
                 const auto *condExpr = mce->arguments->at(0)->expression;
                 visit(condExpr);
 
@@ -1812,10 +1814,17 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
         }
 
         llvm::SmallVector<mlir::Value, 4> operands;
-        for (auto [idx, arg] : llvm::enumerate(*mce->arguments)) {
+        llvm::DenseMap<const P4::IR::Argument *, mlir::Value> argValues;
+        mlir::Value callResult;
+
+        // Evaluate arguments in the call order
+        for (const auto *arg : *mce->arguments) {
             ConversionTracer trace("Converting ", arg);
             mlir::Value argVal;
-            switch (auto dir = params[idx]->direction) {
+            // TODO: This is pretty inefficient, expose argument => parameter
+            // map from ParameterSubstitution
+            const auto *param = instance->substitution.findParameter(arg);
+            switch (auto dir = param->direction) {
                 case P4::IR::Direction::None:
                 case P4::IR::Direction::In:
                     // Nothing to do special, just pass things direct
@@ -1825,14 +1834,13 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 case P4::IR::Direction::Out:
                 case P4::IR::Direction::InOut: {
                     // Create temporary to hold the output value, initialize in case of inout
-
                     if (const auto *slice = arg->expression->to<P4::IR::Slice>()) {
                         auto sliceType = getOrCreateType(slice->type);
                         auto ref = resolveReference(slice->e0);
                         auto copyIn = b.create<P4HIR::VariableOp>(
                             loc, P4HIR::ReferenceType::get(sliceType),
                             b.getStringAttr(
-                                llvm::Twine(params[idx]->name.string_view()) +
+                                llvm::Twine(param->name.string_view()) +
                                 (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
 
                         if (dir == P4::IR::Direction::InOut) {
@@ -1849,7 +1857,7 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                         auto copyIn = b.create<P4HIR::VariableOp>(
                             loc, ref.getType(),
                             b.getStringAttr(
-                                llvm::Twine(params[idx]->name.string_view()) +
+                                llvm::Twine(param->name.string_view()) +
                                 (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
 
                         if (dir == P4::IR::Direction::InOut) {
@@ -1863,21 +1871,21 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                     break;
                 }
             }
-            operands.push_back(argVal);
+            auto [it, inserted] = argValues.try_emplace(arg, argVal);
+            BUG_CHECK(inserted, "duplicate conversion? %1%", it->first);
         }
 
-        mlir::Value callResult;
-        if (const auto *actCall = instance->to<P4::ActionCall>()) {
-            LOG4("resolved as action call");
-            auto actSym = p4Symbols.lookup(actCall->action);
-            BUG_CHECK(actSym, "expected reference action to be converted: %1%", actCall->action);
-            BUG_CHECK(params.size() >= operands.size(),
-                      "invalid number of arguments for action call");
-
-            BUG_CHECK(mce->typeArguments->empty(), "expected action to be specialized");
-
-            for (size_t idx = operands.size(); idx < params.size(); ++idx) {
-                const auto &param = params[idx];
+        // Collect arguments in operand order
+        for (const auto &param : params) {
+            if (auto argument = instance->substitution.lookup(param)) {
+                auto argVal = argValues.lookup(argument);
+                BUG_CHECK(argVal, "unconverted argument?");
+                operands.push_back(argVal);
+            } else {
+                // Parameter is not bound. This is possible only for actions
+                // where argument might come from control plane. Grab
+                // placeholder for it.
+                // TBD: Handle @optional
                 BUG_CHECK(param->direction == P4::IR::Direction::None,
                           "control plane values should be directionless");
 
@@ -1885,6 +1893,14 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 BUG_CHECK(placeholder, "control plane value must be populate");
                 operands.push_back(placeholder);
             }
+        }
+
+        if (const auto *actCall = instance->to<P4::ActionCall>()) {
+            LOG4("resolved as action call");
+            auto actSym = p4Symbols.lookup(actCall->action);
+            BUG_CHECK(actSym, "expected reference action to be converted: %1%", actCall->action);
+
+            BUG_CHECK(mce->typeArguments->empty(), "expected action to be specialized");
 
             b.create<P4HIR::CallOp>(loc, actSym, operands);
         } else if (const auto *fCall = instance->to<P4::FunctionCall>()) {
@@ -1950,11 +1966,15 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             BUG("unsupported call type: %1%", mce);
         }
 
-        for (auto [idx, arg] : llvm::enumerate(*mce->arguments)) {
+        for (const auto *arg : *mce->arguments) {
             // Determine the direction of the parameter
-            if (!params[idx]->hasOut()) continue;
+            // TODO: This is pretty inefficient, expose argument => parameter
+            // map from ParameterSubstitution
+            const auto *param = instance->substitution.findParameter(arg);
+            if (!param->hasOut()) continue;
 
-            mlir::Value copyOut = operands[idx];
+            auto copyOut = argValues.lookup(arg);
+            BUG_CHECK(copyOut, "unconverted argument?");
             if (const auto *slice = arg->expression->to<P4::IR::Slice>()) {
                 mlir::Value dest = resolveReference(slice->e0);
                 b.create<P4HIR::AssignSliceOp>(
@@ -2003,10 +2023,11 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
     LOG4("Resolved to: " << dbp(type));
 
     llvm::SmallVector<mlir::Value, 4> operands;
+    llvm::DenseMap<const P4::IR::Argument *, mlir::Value> argValues;
     for (const auto *arg : *cce->arguments) {
         ConversionTracer trace("Converting ", arg);
         visit(arg->expression);
-        operands.push_back(getValue(arg->expression));
+        argValues.try_emplace(arg, getValue(arg->expression));
     }
 
     auto resultType = getOrCreateType(type);
@@ -2021,6 +2042,27 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
         type = resolveType(spec->baseType);
         CHECK_NULL(type);
         LOG4("Resolved to base type: " << dbp(type));
+    }
+
+    // Shuffle arguments into proper order
+    auto populateOperands = [&](const P4::IR::ParameterList *params) {
+        P4::ParameterSubstitution subst;
+        subst.populate(params, cce->arguments);
+        for (const auto &param : params->parameters) {
+            auto argument = subst.lookup(param);
+            auto argVal = argValues.lookup(argument);
+            // TODO: Handle @optional
+            BUG_CHECK(argVal, "unconverted argument for parameter %1%", param);
+            operands.push_back(argVal);
+        }
+    };
+
+    if (const auto *cont = type->to<P4::IR::IContainer>()) {
+        populateOperands(cont->getConstructorParameters());
+    } else {
+        const auto *ext = type->checkedTo<P4::IR::Type_Extern>();
+        const auto *ctor = ext->lookupConstructor(cce->arguments);
+        populateOperands(ctor->getParameters());
     }
 
     if (const auto *parser = type->to<P4::IR::P4Parser>()) {
@@ -2367,10 +2409,11 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
     LOG4("Resolved to: " << dbp(type));
 
     llvm::SmallVector<mlir::Value, 4> operands;
+    llvm::DenseMap<const P4::IR::Argument *, mlir::Value> argValues;
     for (const auto *arg : *decl->arguments) {
         ConversionTracer trace("Converting ", arg);
         visit(arg->expression);
-        operands.push_back(getValue(arg->expression));
+        argValues.try_emplace(arg, getValue(arg->expression));
     }
 
     auto resultType = getOrCreateType(type);
@@ -2387,7 +2430,28 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         LOG4("Resolved to base type: " << dbp(type));
     }
 
-    // TODO: Reduce code duplication below
+    // Shuffle arguments into proper order
+    auto populateOperands = [&](const P4::IR::ParameterList *params) {
+        P4::ParameterSubstitution subst;
+        subst.populate(params, decl->arguments);
+        for (const auto &param : params->parameters) {
+            auto argument = subst.lookup(param);
+            auto argVal = argValues.lookup(argument);
+            // TODO: Handle @optional
+            BUG_CHECK(argVal, "unconverted argument for parameter %1%", param);
+            operands.push_back(argVal);
+        }
+    };
+
+    if (const auto *cont = type->to<P4::IR::IContainer>()) {
+        populateOperands(cont->getConstructorParameters());
+    } else {
+        const auto *ext = type->checkedTo<P4::IR::Type_Extern>();
+        const auto *ctor = ext->lookupConstructor(decl->arguments);
+        populateOperands(ctor->getParameters());
+    }
+
+    // TODO: Reduce code duplication below. Unify with ConstructCallExpression
     if (const auto *parser = type->to<P4::IR::P4Parser>()) {
         LOG4("resolved as parser instantiation");
         auto parserSym = p4Symbols.lookup(parser);
