@@ -374,25 +374,16 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     mlir::TypedAttr getOrCreateConstantExpr(const P4::IR::Expression *expr);
 
-    mlir::Value getValue(const P4::IR::Node *node) {
+    mlir::Value getValue(const P4::IR::Node *node, bool unchecked = false) {
         // If this is a PathExpression, resolve it
         if (const auto *pe = node->to<P4::IR::PathExpression>()) {
             node = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
         }
 
         auto val = p4Values.lookup(node);
-        BUG_CHECK(val, "expected %1% (aka %2%) to be converted", node, dbp(node));
+        BUG_CHECK(val || unchecked, "expected %1% (aka %2%) to be converted", node, dbp(node));
 
-        // See, if node is a top-level constant. If yes, then clone the value
-        // into the present scope as other top-level things are
-        // IsolatedFromAbove.
-        // TODO: Save new constant value into scoped value tables when we will have one
-        if (auto constOp = val.getDefiningOp<P4HIR::ConstOp>();
-            constOp && mlir::isa_and_nonnull<mlir::ModuleOp>(constOp->getParentOp())) {
-            val = builder.clone(*constOp)->getResult(0);
-        }
-
-        if (mlir::isa<P4HIR::ReferenceType>(val.getType()))
+        if (val && mlir::isa<P4HIR::ReferenceType>(val.getType()))
             // Getting value out of variable involves a load.
             return builder.create<P4HIR::ReadOp>(getLoc(builder, node), val);
 
@@ -2605,7 +2596,14 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
         BUG("cannot handle entries yet");
     } else if (prop->name == P4::IR::TableProperties::sizePropertyName) {
         const auto *expr = prop->value->checkedTo<P4::IR::ExpressionValue>()->expression;
-        auto size = getOrCreateConstantExpr(expr);
+        // Here property value might be a constructor argument. So we need to
+        // see, if we have a placeholder for it
+        mlir::TypedAttr size;
+        if (auto val = getValue(expr, true))
+            size = mlir::cast<P4HIR::ConstOp>(val.getDefiningOp()).getValue();
+        else
+            size = getOrCreateConstantExpr(expr);
+
         builder.create<P4HIR::TableSizeOp>(loc, size);
     } else {
         builder.create<P4HIR::TableEntryOp>(
