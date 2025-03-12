@@ -22,7 +22,7 @@ module {
     %t1 = p4hir.tuple_extract %val_4[1] : tuple<!b32i, !b16i>
     p4hir.assign %t1, %arg0 : <!b16i>
 
-    p4hir.return
+    p4hir.implicit_return
   }
 
   p4hir.func action @test2() {
@@ -34,6 +34,6 @@ module {
     %y = p4hir.variable ["y"] : <tuple<!b32i, !p4hir.bool>>
     %val = p4hir.read %x_0 : <tuple<!b32i, !p4hir.bool>>
     p4hir.assign %val, %y : <tuple<!b32i, !p4hir.bool>>
-    p4hir.return
+    p4hir.implicit_return
   }
 }

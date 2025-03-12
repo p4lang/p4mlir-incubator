@@ -1499,7 +1499,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
         mlir::Block &b = body.back();
         if (!b.mightHaveTerminator()) {
             builder.setInsertionPointToEnd(&b);
-            builder.create<P4HIR::ReturnOp>(getEndLoc(builder, f));
+            builder.create<P4HIR::ImplicitReturnOp>(getEndLoc(builder, f));
         }
     }
 
@@ -1607,7 +1607,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
         mlir::Block &b = body.back();
         if (!b.mightHaveTerminator()) {
             builder.setInsertionPointToEnd(&b);
-            builder.create<P4HIR::ReturnOp>(getEndLoc(builder, act));
+            builder.create<P4HIR::ImplicitReturnOp>(getEndLoc(builder, act));
         }
     }
 

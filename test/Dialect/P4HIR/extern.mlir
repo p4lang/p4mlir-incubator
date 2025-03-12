@@ -59,7 +59,7 @@ module {
     %val = p4hir.read %arg0 : <!b32i>
     %call = p4hir.call @externFunc<[!b32i, !i7i]> (%arg1, %val) : (!i7i, !b32i) -> !b32i
     p4hir.assign %call, %arg0 : <!b32i>
-    p4hir.return
+    p4hir.implicit_return
   }
 
   p4hir.parser @p()() {

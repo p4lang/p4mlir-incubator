@@ -19,7 +19,7 @@ module {
       %c4_i16i = p4hir.const #int4_i16i
       %cast = p4hir.cast(%c4_i16i : !i16i) : !i16i
       p4hir.assign %cast, %x1 : <!i16i>
-      p4hir.return
+      p4hir.implicit_return
     }
     p4hir.func action @bar() {
       %c2_b10i = p4hir.const #int2_b10i
@@ -31,7 +31,7 @@ module {
       p4hir.assign %sub, %x1 : <!b10i>
       %val_0 = p4hir.read %x1 : <!b10i>
       p4hir.assign %val_0, %arg2 : <!b10i>
-      p4hir.return
+      p4hir.implicit_return
     }
     p4hir.control_apply {
       %x1 = p4hir.variable ["x1", init] : <!b10i>

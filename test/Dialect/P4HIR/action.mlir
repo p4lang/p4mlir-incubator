@@ -15,5 +15,5 @@ p4hir.func action @foo(%arg0 : !p4hir.ref<!bit32> {p4hir.dir = #p4hir<dir inout>
   p4hir.assign %arg1, %0 : <!bit32>
   p4hir.assign %1, %arg2 : <!bit32>
 
-  p4hir.return
+  p4hir.implicit_return
 }

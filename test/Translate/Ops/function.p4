@@ -6,6 +6,7 @@
 // CHECK:      p4hir.return %arg0 : !b16i
 // CHECK:    }
 // CHECK:    p4hir.return %arg1 : !b16i
+// CHECK:    p4hir.implicit_return
 // CHECK:  }
 
 bit<16> max(in bit<16> left, in bit<16> right) {
@@ -17,7 +18,7 @@ bit<16> max(in bit<16> left, in bit<16> right) {
 // CHECK-LABEL: p4hir.func action @bar(%arg0: !b16i {p4hir.dir = #in}, %arg1: !b16i {p4hir.dir = #in}, %arg2: !p4hir.ref<!b16i> {p4hir.dir = #p4hir<dir out>}) {
 // CHECK:    %[[CALL:.*]] = p4hir.call @max (%arg0, %arg1) : (!b16i, !b16i) -> !b16i
 // CHECK:    p4hir.assign %[[CALL]], %arg2 : <!b16i>
-// CHECK:    p4hir.return
+// CHECK:    p4hir.implicit_return
 
 action bar(in bit<16> arg1, in bit<16> arg2, out bit<16> res) {
   res = max(arg1, arg2);
@@ -60,5 +61,5 @@ action test_param() {
 // CHECK:      %[[A_OUT_VAL2:.*]] = p4hir.read %[[X_INOUT]] : <!b1i>
 // CHECK:      p4hir.assign %[[A_OUT_VAL2]], %[[A]] : <!b1i>
 // CHECK:    }
-// CHECK:    p4hir.return
+// CHECK:    p4hir.implicit_return
 // CHECK:  }

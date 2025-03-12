@@ -39,6 +39,6 @@ module {
       %cast = p4hir.cast(%c36_b32i : !b32i) : !b32i
       p4hir.assign %cast, %y_field_ref : <!b32i>
     }
-    p4hir.return    
+    p4hir.implicit_return    
   }
 }
