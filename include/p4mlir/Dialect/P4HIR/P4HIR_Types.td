@@ -249,11 +249,26 @@ def FuncType : P4HIR_Type<"Func", "func"> {
 //===----------------------------------------------------------------------===//
 def ParserType : P4HIR_Type<"Parser", "parser"> {
   let parameters = (ins StringRefParameter<"parser type name">:$name,
-                        ArrayRefParameter<"mlir::Type">:$inputs);
+                        ArrayRefParameter<"mlir::Type">:$inputs,
+                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments);
+
   let assemblyFormat = [{
-    `<` $name `,` custom<FuncType>($inputs) `>`
+    `<` $name (`<` $type_arguments^ `>`)?`,` custom<FuncType>($inputs) `>`
   }];
 }
+
+//===----------------------------------------------------------------------===//
+// ControlType
+//===----------------------------------------------------------------------===//
+def ControlType : P4HIR_Type<"Control", "control"> {
+  let parameters = (ins StringRefParameter<"control type name">:$name,
+                        ArrayRefParameter<"mlir::Type">:$inputs,
+                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments);
+  let assemblyFormat = [{
+    `<` $name (`<` $type_arguments^ `>`)?`,` custom<FuncType>($inputs) `>`
+  }];
+}
+
 
 //===----------------------------------------------------------------------===//
 // CtorType
@@ -324,14 +339,14 @@ class StructLikeType<string name, string typeMnemonic>
     void getInnerTypes(mlir::SmallVectorImpl<mlir::Type> &types) {
       for (const auto &field : getElements()) types.push_back(field.type);
     }
-    
+
     std::optional<unsigned> getFieldIndex(mlir::StringRef fieldName) {
       llvm::ArrayRef<P4HIR::FieldInfo> elems = getElements();
       for (size_t idx = 0, numElems = elems.size(); idx < numElems; ++idx)
         if (elems[idx].name == fieldName) return idx;
       return {};
     }
-    
+
     std::optional<unsigned> getFieldIndex(mlir::StringAttr fieldName) {
       llvm::ArrayRef<P4HIR::FieldInfo> elems = getElements();
       for (size_t idx = 0, numElems = elems.size(); idx < numElems; ++idx)
@@ -633,7 +648,7 @@ def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                                 ValidBitType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def StructLikeType : AnyTypeOf<[StructType, HeaderType]>;
-def P4ObjectType : AnyTypeOf<[ParserType, ExternType]>;
+def P4ObjectType : AnyTypeOf<[ParserType, ControlType, ExternType]>;
 
 /// A ref type with the specified constraints on the nested type.
 class SpecificRefType<Type type> : ConfinedType<ReferenceType,
