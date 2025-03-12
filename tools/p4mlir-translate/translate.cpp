@@ -465,14 +465,21 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::Constant *c) override {
         materializeConstantExpr(c);
+        // FIXME: Serialized enum lowering might create references to the same
+        // Constant (serenum member) from multiple scope. Allow multiple
+        // materializations of the same constant until type inference will be
+        // fixed.
+        visitAgain();
         return false;
     }
     bool preorder(const P4::IR::BoolLiteral *b) override {
         materializeConstantExpr(b);
+        visitAgain();
         return false;
     }
     bool preorder(const P4::IR::StringLiteral *s) override {
         materializeConstantExpr(s);
+        visitAgain();
         return false;
     }
     bool preorder(const P4::IR::PathExpression *e) override {
@@ -1153,6 +1160,8 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
 
 mlir::Value P4HIRConverter::materializeConstantExpr(const P4::IR::Expression *expr) {
     ConversionTracer trace("Materializing constant expression ", expr);
+
+    if (auto val = getValue(expr, true)) return val;
 
     auto init = getOrCreateConstantExpr(expr);
     auto loc = getLoc(builder, expr);
