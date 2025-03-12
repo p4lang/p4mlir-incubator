@@ -1554,7 +1554,49 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     auto argAttrs = convertParamDirections(f->getParameters(), builder);
     assert(funcType.getNumInputs() == argAttrs.size() && "invalid parameter conversion");
 
-    auto func = builder.create<P4HIR::FuncOp>(getLoc(builder, f), f->name.string_view(), funcType,
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    auto loc = getLoc(builder, f);
+
+    auto *parentOp = builder.getBlock()->getParentOp();
+    auto origSymName = builder.getStringAttr(f->name.string_view());
+    auto symName = origSymName;
+    if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
+        LOG4("Function is overloaded");
+
+        P4HIR::OverloadSetOp ovl;
+        auto getUniqueName = [&](mlir::StringAttr toRename) {
+            unsigned counter = 0;
+            return mlir::SymbolTable::generateSymbolName<256>(
+                toRename,
+                [&](llvm::StringRef candidate) {
+                    return ovl.lookupSymbol(builder.getStringAttr(candidate)) != nullptr;
+                },
+                counter);
+        };
+
+        if (auto otherFunc = llvm::dyn_cast<P4HIR::FuncOp>(otherOp)) {
+            LOG4("Creating overload set");
+
+            ovl = builder.create<P4HIR::OverloadSetOp>(loc, origSymName);
+            builder.setInsertionPointToStart(&ovl.createEntryBlock());
+            otherFunc->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
+
+            // Unique the symbol name to avoid clashes in the symbol table.  The
+            // overload set takes over the symbol name. Still, all the symbols
+            // in `p4Symbol` are created wrt the original name, so we do not use
+            // SymbolTable::rename() here.
+            otherFunc.setSymName(getUniqueName(origSymName));
+        } else {
+            LOG4("Adding to overload set");
+
+            ovl = llvm::cast<P4HIR::OverloadSetOp>(otherOp);
+            builder.setInsertionPointToEnd(&ovl.getBody().front());
+        }
+
+        symName = builder.getStringAttr(getUniqueName(symName));
+    }
+
+    auto func = builder.create<P4HIR::FuncOp>(loc, symName, funcType,
                                               /* isExternal */ false,
                                               llvm::ArrayRef<mlir::NamedAttribute>(), argAttrs);
     func.createEntryBlock();
@@ -1581,7 +1623,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
         }
     }
 
-    auto [it, inserted] = p4Symbols.try_emplace(f, mlir::SymbolRefAttr::get(func));
+    auto [it, inserted] = p4Symbols.try_emplace(f, mlir::SymbolRefAttr::get(origSymName));
     BUG_CHECK(inserted, "duplicate translation of %1%", f);
 
     return false;
