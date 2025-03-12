@@ -73,10 +73,8 @@ void IntAttr::print(AsmPrinter &printer) const {
     if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(type)) type = aliasType.getAliasedType();
 
     if (auto bitsType = mlir::dyn_cast<BitsType>(type)) {
-        if (bitsType.isSigned())
-            printer << getSInt();
-        else
-            printer << getUInt();
+        APInt val = getValue();
+        val.print(printer.getStream(), bitsType.isSigned());
     } else
         printer << getValue();
 
