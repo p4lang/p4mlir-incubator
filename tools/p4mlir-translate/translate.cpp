@@ -1102,6 +1102,18 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
             BUG("invalid member reference %1%", m);
     }
 
+    if (const auto *eq = expr->to<P4::IR::Equ>()) {
+        auto lhs = getOrCreateConstantExpr(eq->left);
+        auto rhs = getOrCreateConstantExpr(eq->right);
+        return setConstantExpr(expr, P4HIR::BoolAttr::get(context(), lhs == rhs));
+    }
+
+    if (const auto *eq = expr->to<P4::IR::Neq>()) {
+        auto lhs = getOrCreateConstantExpr(eq->left);
+        auto rhs = getOrCreateConstantExpr(eq->right);
+        return setConstantExpr(expr, P4HIR::BoolAttr::get(context(), lhs != rhs));
+    }
+
     BUG("cannot resolve this constant expression yet %1% (aka %2%)", expr, dbp(expr));
 }
 
