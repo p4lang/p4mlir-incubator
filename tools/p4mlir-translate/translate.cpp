@@ -1609,8 +1609,9 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
     auto origSymName = builder.getStringAttr(m->name.string_view());
     auto symName = origSymName;
     if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
-        P4HIR::OverloadSetOp ovl;
+        LOG4("Method is overloaded");
 
+        P4HIR::OverloadSetOp ovl;
         auto getUniqueName = [&](mlir::StringAttr toRename) {
             unsigned counter = 0;
             return mlir::SymbolTable::generateSymbolName<256>(
@@ -1622,6 +1623,8 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
         };
 
         if (auto otherFunc = llvm::dyn_cast<P4HIR::FuncOp>(otherOp)) {
+            LOG4("Creating overload set");
+
             ovl = builder.create<P4HIR::OverloadSetOp>(loc, origSymName);
             builder.setInsertionPointToStart(&ovl.createEntryBlock());
             otherFunc->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
@@ -1632,6 +1635,8 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
             // SymbolTable::rename() here.
             otherFunc.setSymName(getUniqueName(origSymName));
         } else {
+            LOG4("Adding to overload set");
+
             ovl = llvm::cast<P4HIR::OverloadSetOp>(otherOp);
             builder.setInsertionPointToEnd(&ovl.getBody().front());
         }
@@ -2528,8 +2533,53 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Package *pkg) {
     auto ctorType =
         mlir::cast<P4HIR::CtorType>(getOrCreateConstructorType(pkg->getConstructorMethodType()));
 
+    mlir::OpBuilder::InsertionGuard guard(builder);
+
+    // Check if there is a declaration with the same name in the current symbol table.
+    // If yes, create / add to an overload set
+    auto *parentOp = builder.getBlock()->getParentOp();
+    auto origSymName = builder.getStringAttr(pkg->name.string_view());
+    auto symName = origSymName;
+    if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
+        LOG4("Package constructor is overloaded");
+
+        P4HIR::OverloadSetOp ovl;
+        auto getUniqueName = [&](mlir::StringAttr toRename) {
+            unsigned counter = 0;
+            return mlir::SymbolTable::generateSymbolName<256>(
+                toRename,
+                [&](llvm::StringRef candidate) {
+                    return ovl.lookupSymbol(builder.getStringAttr(candidate)) != nullptr;
+                },
+                counter);
+        };
+
+        if (auto otherPkg = llvm::dyn_cast<P4HIR::PackageOp>(otherOp)) {
+            LOG4("Creating overload set");
+
+            ovl = builder.create<P4HIR::OverloadSetOp>(loc, origSymName);
+            builder.setInsertionPointToStart(&ovl.createEntryBlock());
+            otherPkg->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
+
+            // Unique the symbol name to avoid clashes in the symbol table.  The
+            // overload set takes over the symbol name. Still, all the symbols
+            // in `p4Symbol` are created wrt the original name, so we do not use
+            // SymbolTable::rename() here.
+            otherPkg.setSymName(getUniqueName(origSymName));
+        } else {
+            LOG4("Adding to overload set");
+
+            ovl = llvm::cast<P4HIR::OverloadSetOp>(otherOp);
+            builder.setInsertionPointToEnd(&ovl.getBody().front());
+        }
+
+        symName = builder.getStringAttr(getUniqueName(symName));
+
+        LOG4("Translated: " << origSymName.getValue().str() << " -> " << symName.getValue().str());
+    }
+
     builder.create<P4HIR::PackageOp>(
-        loc, pkg->name.string_view(), ctorType,
+        loc, symName, ctorType,
         typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters));
 
     return false;
