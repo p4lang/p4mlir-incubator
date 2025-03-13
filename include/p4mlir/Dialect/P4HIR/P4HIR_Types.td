@@ -321,13 +321,6 @@ class StructLikeType<string name, string typeMnemonic>
       return getElements();
     }
 
-    template <typename Func>
-    void forEachField(Func &&func) const {
-      for (const auto &field : getFields()) {
-        func(field);
-      }
-    }
-
     void getInnerTypes(mlir::SmallVectorImpl<mlir::Type> &types) {
       for (const auto &field : getElements()) types.push_back(field.type);
     }
