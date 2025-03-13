@@ -317,7 +317,7 @@ class StructLikeType<string name, string typeMnemonic>
        return {};
     }
 
-    llvm::ArrayRef<P4HIR::FieldInfo> getFields() const {
+    llvm::ArrayRef<P4HIR::FieldInfo> getFields() {
       return getElements();
     }
 
