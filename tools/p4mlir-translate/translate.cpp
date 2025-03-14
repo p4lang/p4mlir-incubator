@@ -272,12 +272,15 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             getBoolConstant(loc, compareWith == P4HIR::ValidityBit::Valid ? true : false));
     }
 
-    void emitSetInvalidForAllHeaders(mlir::Location loc, mlir::Value headerUnion) {
+    void emitSetInvalidForAllHeaders(mlir::Location loc, mlir::Value headerUnion,
+                                     const std::string headerNameToSkip = "") {
         auto headerUnionType = getType<P4HIR::HeaderUnionType>(headerUnion);
         llvm::for_each(headerUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
-            auto header =
-                builder.create<P4HIR::StructExtractRefOp>(loc, headerUnion, fieldInfo.name);
-            emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
+            if (headerNameToSkip.size() == 0 || fieldInfo.name != headerNameToSkip) {
+                auto header =
+                    builder.create<P4HIR::StructExtractRefOp>(loc, headerUnion, fieldInfo.name);
+                emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
+            }
         });
     }
 
@@ -1511,7 +1514,10 @@ mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
         // Check if the header is a member of a header union
         if (const auto *member = builtInMethod->appliedTo->to<P4::IR::Member>()) {
             if (member->expr->type->is<P4::IR::Type_HeaderUnion>()) {
-                emitSetInvalidForAllHeaders(loc, resolveReference(member->expr));
+                const auto headerNameToSkip = builtInMethod->name == P4::IR::Type_Header::setValid
+                                                  ? std::string(member->member.name)
+                                                  : "";
+                emitSetInvalidForAllHeaders(loc, resolveReference(member->expr), headerNameToSkip);
             }
         }
 
