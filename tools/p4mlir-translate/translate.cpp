@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <climits>
 
+#include "ir/ir-generated.h"
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -207,7 +209,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
     P4HIR::CmpOp emitHeaderIsValidCmpOp(mlir::Location loc, mlir::Value header,
-                                        P4HIR::ValidityBit validityConstValue) {
+                                        P4HIR::ValidityBit compareWith) {
         mlir::Value validityBitValue;
         if (mlir::isa<P4HIR::ReferenceType>(header.getType())) {
             auto validityBitRef = builder.create<P4HIR::StructExtractRefOp>(
@@ -217,17 +219,17 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             validityBitValue =
                 builder.create<P4HIR::StructExtractOp>(loc, header, P4HIR::HeaderType::validityBit);
         }
-        auto validityConstant = emitValidityConstant(loc, validityConstValue);
+        auto validityConstant = emitValidityConstant(loc, compareWith);
         return builder.create<P4HIR::CmpOp>(loc, P4HIR::CmpOpKind::Eq, validityBitValue,
                                             validityConstant);
     }
 
     P4HIR::CmpOp emitHeaderUnionIsValidCmpOp(mlir::Location loc, mlir::Value headerUnion,
-                                             P4HIR::HeaderUnionType headerUnionType,
-                                             P4HIR::ValidityBit validityBitValue) {
+                                             P4HIR::ValidityBit compareWith) {
         // Helper function to build the nested ternary operations recursively
         std::function<mlir::Value(size_t)> buildNestedTernaryOp =
             [&](size_t fieldIndex) -> mlir::Value {
+            auto headerUnionType = getType<P4HIR::HeaderUnionType>(headerUnion);
             // If all the fields were checked, return false
             if (fieldIndex >= headerUnionType.getFields().size()) {
                 return getBoolConstant(loc, false);
@@ -265,24 +267,18 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         auto isValid = buildNestedTernaryOp(0);
 
         // Return a comparison operation for consistency with other validity checks
-        return builder.create<P4HIR::CmpOp>(loc, P4HIR::CmpOpKind::Eq, isValid,
-                                            getBoolConstant(loc, true));
+        return builder.create<P4HIR::CmpOp>(
+            loc, P4HIR::CmpOpKind::Eq, isValid,
+            getBoolConstant(loc, compareWith == P4HIR::ValidityBit::Valid ? true : false));
     }
 
-    void emitAllHeadersInvalidForParentHeaderUnion(mlir::Location loc,
-                                                   const P4::IR::Expression *header) {
-        if (const auto *member = header->to<P4::IR::Member>()) {
-            if (const auto *p4cHeaderUnionType =
-                    member->expr->type->to<P4::IR::Type_HeaderUnion>()) {
-                auto headerUnion = resolveReference(member->expr);
-                auto headerUnionType = getType<P4HIR::HeaderUnionType>(headerUnion);
-                llvm::for_each(headerUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
-                    auto header =
-                        builder.create<P4HIR::StructExtractRefOp>(loc, headerUnion, fieldInfo.name);
-                    emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
-                });
-            }
-        }
+    void emitSetInvalidForAllHeaders(mlir::Location loc, mlir::Value headerUnion) {
+        auto headerUnionType = getType<P4HIR::HeaderUnionType>(headerUnion);
+        llvm::for_each(headerUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
+            auto header =
+                builder.create<P4HIR::StructExtractRefOp>(loc, headerUnion, fieldInfo.name);
+            emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
+        });
     }
 
  public:
@@ -1046,14 +1042,7 @@ void P4HIRConverter::postorder(const P4::IR::Declaration_Variable *decl) {
             // initialize validity bit only, not the whole header
             emitHeaderValidityBitAssignOp(loc, var, P4HIR::ValidityBit::Invalid);
         } else if (init->is<P4::IR::InvalidHeaderUnion>()) {
-            // Invalidate all headers in the header union
-            auto dialectHeaderUnionType =
-                mlir::cast<P4HIR::HeaderUnionType>(getOrCreateType(decl->type));
-            llvm::for_each(dialectHeaderUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
-                auto headerRef =
-                    builder.create<P4HIR::StructExtractRefOp>(loc, var, fieldInfo.name);
-                emitHeaderValidityBitAssignOp(loc, headerRef, P4HIR::ValidityBit::Invalid);
-            });
+            emitSetInvalidForAllHeaders(loc, var);
         } else {
             builder.create<P4HIR::AssignOp>(loc, getValue(decl->initializer), var);
         }
@@ -1129,15 +1118,13 @@ void P4HIRConverter::postorder(const P4::IR::Concat *concat) {
     setValue(concat, emitConcatOp(concat));
 }
 
-#define CONVERT_SHL_SHR_OP(P4C_Shift, PHIR_Shift)             \
-void P4HIRConverter::postorder(const P4::IR::P4C_Shift *op) { \
-    ConversionTracer trace("Converting ", op);                \
-    auto result = builder.create<P4HIR::PHIR_Shift>(          \
-        getLoc(builder, op),                                  \
-        getValue(op->left),                                   \
-        getValue(op->right));                                 \
-    setValue(op, result);                                     \
-}
+#define CONVERT_SHL_SHR_OP(P4C_Shift, PHIR_Shift)                                                \
+    void P4HIRConverter::postorder(const P4::IR::P4C_Shift *op) {                                \
+        ConversionTracer trace("Converting ", op);                                               \
+        auto result = builder.create<P4HIR::PHIR_Shift>(getLoc(builder, op), getValue(op->left), \
+                                                        getValue(op->right));                    \
+        setValue(op, result);                                                                    \
+    }
 
 CONVERT_SHL_SHR_OP(Shl, ShlOp);
 CONVERT_SHL_SHR_OP(Shr, ShrOp);
@@ -1159,24 +1146,32 @@ CONVERT_CMP(Geq, Ge);
 
 #undef CONVERT_CMP
 
-mlir::Value P4HIRConverter::emitInvalidHeaderCmpOp(const P4::IR::Operation_Relation *p4RelationOp) {
-    auto loc = getLoc(builder, p4RelationOp);
-    visit(p4RelationOp->left);
-    auto validityConstValue =
-        p4RelationOp->is<P4::IR::Equ>() ? P4HIR::ValidityBit::Invalid : P4HIR::ValidityBit::Valid;
-    return emitHeaderIsValidCmpOp(loc, getValue(p4RelationOp->left), validityConstValue);
+mlir::Value P4HIRConverter::emitInvalidHeaderCmpOp(const P4::IR::Operation_Relation *relOp) {
+    auto loc = getLoc(builder, relOp);
+    auto header = getValue(relOp->left);
+
+    visit(relOp->left);
+
+    if (relOp->is<P4::IR::Equ>()) {
+        return emitHeaderIsValidCmpOp(loc, header, P4HIR::ValidityBit::Invalid);
+    } else if (relOp->is<P4::IR::Neq>()) {
+        return emitHeaderIsValidCmpOp(loc, header, P4HIR::ValidityBit::Valid);
+    }
+    BUG("unexpected relation operator %1%", relOp->node_type_name());
 }
 
-mlir::Value P4HIRConverter::emitInvalidHeaderUnionCmpOp(
-    const P4::IR::Operation_Relation *p4RelationOp) {
-    auto loc = getLoc(builder, p4RelationOp);
-    visit(p4RelationOp->left);
-    auto validityConstValue =
-        p4RelationOp->is<P4::IR::Equ>() ? P4HIR::ValidityBit::Invalid : P4HIR::ValidityBit::Valid;
-    auto dialectHeaderUnionType =
-        mlir::cast<P4HIR::HeaderUnionType>(getOrCreateType(p4RelationOp->left->type));
-    return emitHeaderUnionIsValidCmpOp(loc, getValue(p4RelationOp->left), dialectHeaderUnionType,
-                                       validityConstValue);
+mlir::Value P4HIRConverter::emitInvalidHeaderUnionCmpOp(const P4::IR::Operation_Relation *relOp) {
+    auto loc = getLoc(builder, relOp);
+    auto headerUnion = getValue(relOp->left);
+
+    visit(relOp->left);
+
+    if (relOp->is<P4::IR::Equ>()) {
+        return emitHeaderUnionIsValidCmpOp(loc, headerUnion, P4HIR::ValidityBit::Invalid);
+    } else if (relOp->is<P4::IR::Neq>()) {
+        return emitHeaderUnionIsValidCmpOp(loc, headerUnion, P4HIR::ValidityBit::Valid);
+    }
+    BUG("unexpected relation operator %1%", relOp->node_type_name());
 }
 
 #define PREORDER_RELATION_OP(RelOp)                          \
@@ -1202,21 +1197,29 @@ bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
     auto ref = resolveReference(assign->left);
     auto loc = getLoc(builder, assign);
 
-    // Check if we're assigning to a header within a header union
-    emitAllHeadersInvalidForParentHeaderUnion(loc, assign->left);
-
     if (assign->right->is<P4::IR::InvalidHeader>()) {
-        // Assignment of InvalidHeader is special: we do not materialize the whole
-        // header, we need to assign validty bit only
-        emitHeaderValidityBitAssignOp(loc, ref, P4HIR::ValidityBit::Invalid);
-    } else if (assign->right->type->is<P4::IR::Type_HeaderUnion>()) {
-        // Assignment of InvalidHeaderUnion is special: all headers in the union will be invalidated
-        auto dialectHeaderUnionType = getType<P4HIR::HeaderUnionType>(ref);
-        llvm::for_each(dialectHeaderUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
-            auto headerRef = builder.create<P4HIR::StructExtractRefOp>(loc, ref, fieldInfo.name);
-            emitHeaderValidityBitAssignOp(loc, headerRef, P4HIR::ValidityBit::Invalid);
-        });
+        // Assignment of InvalidHeader is special.
+        const auto *member = assign->left->to<P4::IR::Member>();
+        if (member != nullptr && member->expr->type->is<P4::IR::Type_HeaderUnion>()) {
+            // Invalidate all headers which are the member of header union
+            emitSetInvalidForAllHeaders(loc, resolveReference(member->expr));
+        } else {
+            // Do not materialize the whole header, assign validty bit only
+            emitHeaderValidityBitAssignOp(loc, ref, P4HIR::ValidityBit::Invalid);
+        }
+    } else if (assign->right->is<P4::IR::InvalidHeaderUnion>()) {
+        // Assignment of InvalidHeaderUnion is special: all headers in the header union will be set
+        // to invalid
+        emitSetInvalidForAllHeaders(loc, ref);
     } else {
+        // Check if the lhs is a header which is a member of a header union
+        if (const auto *member = assign->left->to<P4::IR::Member>()) {
+            if (member->expr->type->is<P4::IR::Type_HeaderUnion>()) {
+                // Invalidate all headers which are the member of header union
+                emitSetInvalidForAllHeaders(loc, resolveReference(member->expr));
+            }
+        }
+
         visit(assign->right);
         builder.create<P4HIR::AssignOp>(loc, getValue(assign->right), ref);
     }
@@ -1505,15 +1508,16 @@ mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
     auto header = resolveReference(builtInMethod->appliedTo);
     if (builtInMethod->name == P4::IR::Type_Header::setValid ||
         builtInMethod->name == P4::IR::Type_Header::setInvalid) {
-        // Check if we're assigning to a header within a header union
-        if (builtInMethod->name == P4::IR::Type_Header::setInvalid) {
-            emitAllHeadersInvalidForParentHeaderUnion(loc, builtInMethod->appliedTo);
+        // Check if the header is a member of a header union
+        if (const auto *member = builtInMethod->appliedTo->to<P4::IR::Member>()) {
+            if (member->expr->type->is<P4::IR::Type_HeaderUnion>()) {
+                emitSetInvalidForAllHeaders(loc, resolveReference(member->expr));
+            }
         }
 
-        auto validityBitValue = builtInMethod->name == P4::IR::Type_Header::setInvalid
-                                    ? P4HIR::ValidityBit::Invalid
-                                    : P4HIR::ValidityBit::Valid;
-        emitHeaderValidityBitAssignOp(loc, header, validityBitValue);
+        if (builtInMethod->name == P4::IR::Type_Header::setValid) {
+            emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Valid);
+        }
     } else if (builtInMethod->name == P4::IR::Type_Header::isValid) {
         return emitHeaderIsValidCmpOp(loc, header, P4HIR::ValidityBit::Valid);
     } else {
@@ -1525,12 +1529,11 @@ mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
 
 mlir::Value P4HIRConverter::emitHeaderUnionBuiltInMethod(mlir::Location loc,
                                                          const P4::BuiltInMethod *builtInMethod) {
-    if (builtInMethod->name != P4::IR::Type_Header::isValid)
-        BUG("Unsupported Header Union builtin method: %1%", builtInMethod->name);
-    auto headerUnion = resolveReference(builtInMethod->appliedTo);
-    auto headerUnionType = getType<P4HIR::HeaderUnionType>(headerUnion);
-    return emitHeaderUnionIsValidCmpOp(loc, headerUnion, headerUnionType,
-                                       P4HIR::ValidityBit::Valid);
+    if (builtInMethod->name == P4::IR::Type_Header::isValid) {
+        auto headerUnion = resolveReference(builtInMethod->appliedTo);
+        return emitHeaderUnionIsValidCmpOp(loc, headerUnion, P4HIR::ValidityBit::Valid);
+    }
+    BUG("Unsupported Header Union builtin method: %1%", builtInMethod->name);
 }
 
 bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
@@ -1548,8 +1551,6 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
     bool emitScope =
         std::any_of(params.begin(), params.end(), [](const auto *p) { return p->hasOut(); });
     auto convertCall = [&](mlir::OpBuilder &b, mlir::Type &resultType, mlir::Location loc) {
-        mlir::Value callResult;
-
         // Special case: lower builtin methods.
         if (const auto *bCall = instance->to<P4::BuiltInMethod>()) {
             assert(!emitScope && "should not be inside scope");
@@ -1560,15 +1561,12 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             // Check if this is a method call on a header or header union
             if (const auto *member = mce->method->to<P4::IR::Member>()) {
                 // Check if it's a reference to a header or header union
-                if (const auto *const p4cHeaderUnionType =
-                        member->expr->type->to<P4::IR::Type_HeaderUnion>()) {
-                    callResult = emitHeaderUnionBuiltInMethod(loc, bCall);
+                if (member->expr->type->is<P4::IR::Type_HeaderUnion>()) {
+                    setValue(mce, emitHeaderUnionBuiltInMethod(loc, bCall));
                 } else if (member->expr->type->to<P4::IR::Type_Header>()) {
-                    callResult = emitHeaderBuiltInMethod(loc, bCall);
+                    setValue(mce, emitHeaderBuiltInMethod(loc, bCall));
                 }
             }
-
-            setValue(mce, callResult);
             return;
         }
         // Another special case: some builtin methods are actually externs
@@ -1634,6 +1632,7 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             operands.push_back(argVal);
         }
 
+        mlir::Value callResult;
         if (const auto *actCall = instance->to<P4::ActionCall>()) {
             LOG4("resolved as action call");
             auto actSym = p4Symbols.lookup(actCall->action);
