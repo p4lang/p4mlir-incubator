@@ -579,6 +579,17 @@ def IfOp : P4HIR_Op<"if",
   ];
 }
 
+def ExitOp : P4HIR_Op<"exit", [NoSideEffect]> {
+  let summary = "P4 exit statement";
+  let description = [{
+    The `p4hir.exit` operation models the `exit;` statement in P4.
+    This operation causes immediate termination of packet processing.
+  }];
+
+  let arguments = (ins);
+  let results = (outs);
+}
+
 def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
                                                 "FuncOp",
                                              // "SwitchOp", "CaseOp",

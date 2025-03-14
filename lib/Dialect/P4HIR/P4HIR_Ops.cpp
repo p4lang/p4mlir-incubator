@@ -454,6 +454,24 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
     elseBuilder(builder, result.location);
 }
 
+//===----------------------------------------------------------------------===//
+// ExitOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ExitOp::verify() {
+    if (!getOperation()->getParentOfType<FuncOp>())
+        return emitOpError("exit statement must be inside a function or action");
+    return success();
+}
+
+void ExitOp::print(OpAsmPrinter &p) {
+    p << getOperationName();
+}
+
+ParseResult ExitOp::parse(OpAsmParser &parser, OperationState &result) {
+    return success();
+}
+
 mlir::LogicalResult P4HIR::ReturnOp::verify() {
     // Returns can be present in multiple different scopes, get the
     // wrapping function and start from there.
