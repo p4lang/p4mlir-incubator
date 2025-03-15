@@ -4,6 +4,7 @@
 // CHECK: !H = !p4hir.header<"H", x: !b32i, y: !b32i, __valid: !validity_bit>
 // CHECK: !Ethernet = !p4hir.header<"Ethernet", src: !b48i, dest: !b48i, type: !EthTypes, __valid: !validity_bit>
 // CHECK: !Headers = !p4hir.struct<"Headers", eth: !Ethernet>
+
 header E {}
 
 enum bit<16> EthTypes {
@@ -89,4 +90,31 @@ action test4(inout H h, inout E e) {
     h.setValid();
     h.x = x;
   }
+}
+
+// CHECK-LABEL:   p4hir.func action @assign_header
+action assign_header() {
+  // CHECK:           %[[e1:.*]] = p4hir.variable ["e1"] : <!Ethernet>
+  // CHECK:           %[[e2:.*]] = p4hir.variable ["e2"] : <!Ethernet>
+  // CHECK:           %[[val_e2:.*]] = p4hir.read %[[e2]] : <!Ethernet>
+  // CHECK:           p4hir.assign %[[val_e2]], %[[e1]] : <!Ethernet>
+  // CHECK:           p4hir.return
+
+  Ethernet e1;
+  Ethernet e2;
+
+  e1 = e2;
+}
+
+// CHECK-LABEL:   p4hir.func action @assign_invalid_header
+action assign_invalid_header() {
+  // CHECK:           %[[e:.*]] = p4hir.variable ["e"] : <!Ethernet>
+  // CHECK:           %[[invalid:.*]] = p4hir.const #invalid
+  // CHECK:           %[[__valid_field_ref:.*]] = p4hir.struct_extract_ref %[[e]]["__valid"] : <!Ethernet>
+  // CHECK:           p4hir.assign %[[invalid]], %[[__valid_field_ref]] : <!validity_bit>
+  // CHECK:           p4hir.return
+
+  Ethernet e;
+
+  e = (Ethernet){#};
 }

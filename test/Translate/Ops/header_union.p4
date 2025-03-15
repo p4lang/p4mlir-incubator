@@ -95,7 +95,7 @@ action header_setInvalid() {
   u.h1.setInvalid();
 }
 
-// CHECK-LABEL:   p4hir.func action @assign_header1
+// CHECK-LABEL:   p4hir.func action @assign_header
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
 // CHECK:           %[[VAL_1:.*]] = p4hir.variable ["h"] : <!H1_>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
@@ -111,25 +111,11 @@ action header_setInvalid() {
 // CHECK:           p4hir.assign %[[VAL_9]], %[[VAL_2]] : <!H1_>
 // CHECK:           p4hir.return
 
-action assign_header1() {
+action assign_header() {
   U u;
   H1 h;
 
   u.h1 = h;
-}
-
-// CHECK-LABEL:   p4hir.func action @assign_header2
-// CHECK:           %[[VAL_0:.*]] = p4hir.variable ["h1"] : <!H1_>
-// CHECK:           %[[VAL_1:.*]] = p4hir.variable ["h2"] : <!H1_>
-// CHECK:           %[[VAL_2:.*]] = p4hir.read %[[VAL_1]] : <!H1_>
-// CHECK:           p4hir.assign %[[VAL_2]], %[[VAL_0]] : <!H1_>
-// CHECK:           p4hir.return
-
-action assign_header2() {
-  H1 h1;
-  H1 h2;
-
-  h1 = h2;
 }
 
 // CHECK-LABEL:   p4hir.func action @assign_tuple
@@ -168,23 +154,10 @@ action assign_tuple() {
 // CHECK:           p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!validity_bit>
 // CHECK:           p4hir.return
 
-action assign_invalid_header1() {
+action assign_invalid_header() {
   U u;
 
   u.h1 = (H1){#}; // u and u.h1 are both invalid
-}
-
-// CHECK-LABEL:   p4hir.func action @assign_invalid_header2
-// CHECK:           %[[VAL_0:.*]] = p4hir.variable ["h"] : <!H1_>
-// CHECK:           %[[VAL_1:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["__valid"] : <!H1_>
-// CHECK:           p4hir.assign %[[VAL_1]], %[[VAL_2]] : <!validity_bit>
-// CHECK:           p4hir.return
-
-action assign_invalid_header2() {
-  H1 h;
-
-  h = (H1){#};
 }
 
 // CHECK-LABEL:   p4hir.func action @assign_header_union
