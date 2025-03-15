@@ -274,7 +274,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
                                      const P4::cstring headerNameToSkip = nullptr) {
         auto headerUnionType = mlir::cast<P4HIR::HeaderUnionType>(getObjectType(headerUnion));
         llvm::for_each(headerUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
-            if (fieldInfo.name.str() != headerNameToSkip) {
+            if (headerNameToSkip != fieldInfo.name.getValue()) {
                 auto header =
                     builder.create<P4HIR::StructExtractRefOp>(loc, headerUnion, fieldInfo.name);
                 emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
