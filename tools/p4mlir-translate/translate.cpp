@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <climits>
 
-#include "ir/ir-generated.h"
-
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -229,7 +227,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         // Helper function to build the nested ternary operations recursively
         std::function<mlir::Value(size_t)> buildNestedTernaryOp =
             [&](size_t fieldIndex) -> mlir::Value {
-            auto headerUnionType = getType<P4HIR::HeaderUnionType>(headerUnion);
+            auto headerUnionType = mlir::cast<P4HIR::HeaderUnionType>(getObjectType(headerUnion));
             // If all the fields were checked, return false
             if (fieldIndex >= headerUnionType.getFields().size()) {
                 return getBoolConstant(loc, false);
@@ -273,10 +271,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
     void emitSetInvalidForAllHeaders(mlir::Location loc, mlir::Value headerUnion,
-                                     const std::string headerNameToSkip = "") {
-        auto headerUnionType = getType<P4HIR::HeaderUnionType>(headerUnion);
+                                     const P4::cstring headerNameToSkip = nullptr) {
+        auto headerUnionType = mlir::cast<P4HIR::HeaderUnionType>(getObjectType(headerUnion));
         llvm::for_each(headerUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
-            if (headerNameToSkip.size() == 0 || fieldInfo.name != headerNameToSkip) {
+            if (fieldInfo.name.str() != headerNameToSkip) {
                 auto header =
                     builder.create<P4HIR::StructExtractRefOp>(loc, headerUnion, fieldInfo.name);
                 emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
@@ -565,12 +563,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     mlir::Value emitHeaderBuiltInMethod(mlir::Location loc, const P4::BuiltInMethod *builtInMethod);
     mlir::Value emitHeaderUnionBuiltInMethod(mlir::Location loc,
                                              const P4::BuiltInMethod *builtInMethod);
-    template <typename DialectType>
-    DialectType getType(mlir::Value &value) {
-        return mlir::isa<P4HIR::ReferenceType>(value.getType())
-                   ? mlir::cast<DialectType>(
-                         mlir::cast<P4HIR::ReferenceType>(value.getType()).getObjectType())
-                   : mlir::cast<DialectType>(value.getType());
+    mlir::Type getObjectType(mlir::Value &value) {
+        if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(value.getType()))
+            return refType.getObjectType();
+        return value.getType();
     }
 };
 
@@ -1160,7 +1156,7 @@ mlir::Value P4HIRConverter::emitInvalidHeaderCmpOp(const P4::IR::Operation_Relat
     } else if (relOp->is<P4::IR::Neq>()) {
         return emitHeaderIsValidCmpOp(loc, header, P4HIR::ValidityBit::Valid);
     }
-    BUG("unexpected relation operator %1%", relOp->node_type_name());
+    BUG("unexpected relation operator %1%", relOp);
 }
 
 mlir::Value P4HIRConverter::emitInvalidHeaderUnionCmpOp(const P4::IR::Operation_Relation *relOp) {
@@ -1174,7 +1170,7 @@ mlir::Value P4HIRConverter::emitInvalidHeaderUnionCmpOp(const P4::IR::Operation_
     } else if (relOp->is<P4::IR::Neq>()) {
         return emitHeaderUnionIsValidCmpOp(loc, headerUnion, P4HIR::ValidityBit::Valid);
     }
-    BUG("unexpected relation operator %1%", relOp->node_type_name());
+    BUG("unexpected relation operator %1%", relOp);
 }
 
 #define PREORDER_RELATION_OP(RelOp)                          \
@@ -1515,8 +1511,8 @@ mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
         if (const auto *member = builtInMethod->appliedTo->to<P4::IR::Member>()) {
             if (member->expr->type->is<P4::IR::Type_HeaderUnion>()) {
                 const auto headerNameToSkip = builtInMethod->name == P4::IR::Type_Header::setValid
-                                                  ? std::string(member->member.name)
-                                                  : "";
+                                                  ? member->member.name
+                                                  : nullptr;
                 emitSetInvalidForAllHeaders(loc, resolveReference(member->expr), headerNameToSkip);
             }
         }
