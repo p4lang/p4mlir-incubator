@@ -1498,8 +1498,9 @@ bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
         builder.create<P4HIR::AssignSliceOp>(loc, getValue(assign->right), ref, h, l);
     } else {
         auto ref = resolveReference(assign->left);
+        auto objectType = mlir::cast<P4HIR::ReferenceType>(ref.getType()).getObjectType();
         visit(assign->right);
-        builder.create<P4HIR::AssignOp>(loc, getValue(assign->right), ref);
+        builder.create<P4HIR::AssignOp>(loc, getValue(assign->right, objectType), ref);
     }
 
     return false;
