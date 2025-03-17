@@ -21,7 +21,7 @@ def P4HIR_BoolAttr : P4HIR_Attr<"Bool", "bool", [TypedAttrInterface]> {
     The BoolAttr represents a 'true' or 'false' value.
   }];
 
-  let parameters = (ins AttributeSelfTypeParameter<"", "BoolType">:$type,
+  let parameters = (ins AttributeSelfTypeParameter<"", "mlir::Type">:$type,
                     "bool":$value);
   let builders = [
     AttrBuilder<(ins "bool":$value), [{
