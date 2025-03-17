@@ -1015,10 +1015,20 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
     ConversionTracer trace("Resolving reference ", node);
     // Check if this is a reference to a member of something we can recognize
     if (const auto *m = node->to<P4::IR::Member>()) {
-        auto base = resolveReference(m->expr);
-        auto field = builder.create<P4HIR::StructExtractRefOp>(getLoc(builder, m), base,
-                                                               m->member.string_view());
-        return setValue(m, field.getResult());
+        auto base = resolveReference(m->expr, unchecked);
+        mlir::Value fieldRef;
+        if (mlir::isa<P4HIR::ReferenceType>(base.getType()))
+            fieldRef = builder
+                           .create<P4HIR::StructExtractRefOp>(getLoc(builder, m), base,
+                                                              m->member.string_view())
+                           .getResult();
+        else
+            fieldRef = builder
+                           .create<P4HIR::StructExtractOp>(getLoc(builder, m), base,
+                                                           m->member.string_view())
+                           .getResult();
+
+        return setValue(m, fieldRef);
     }
 
     // If this is a PathExpression, resolve it to the actual declaration, usualy this
@@ -1827,7 +1837,6 @@ void P4HIRConverter::postorder(const P4::IR::ExitStatement *ex) {
 mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
                                                     const P4::BuiltInMethod *builtInMethod) {
     mlir::Value callResult;
-    auto header = resolveReference(builtInMethod->appliedTo);
     if (builtInMethod->name == P4::IR::Type_Header::setValid ||
         builtInMethod->name == P4::IR::Type_Header::setInvalid) {
         // Check if the header is a member of a header union
@@ -1841,9 +1850,11 @@ mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
         }
 
         if (builtInMethod->name == P4::IR::Type_Header::setValid) {
-            emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Valid);
+            emitHeaderValidityBitAssignOp(loc, resolveReference(builtInMethod->appliedTo),
+                                          P4HIR::ValidityBit::Valid);
         }
     } else if (builtInMethod->name == P4::IR::Type_Header::isValid) {
+        auto header = resolveReference(builtInMethod->appliedTo, /* unchecked */ true);
         return emitHeaderIsValidCmpOp(loc, header, P4HIR::ValidityBit::Valid);
     } else {
         BUG("Unsupported builtin method: %1%", builtInMethod->name);
@@ -1855,7 +1866,7 @@ mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
 mlir::Value P4HIRConverter::emitHeaderUnionBuiltInMethod(mlir::Location loc,
                                                          const P4::BuiltInMethod *builtInMethod) {
     if (builtInMethod->name == P4::IR::Type_Header::isValid) {
-        auto headerUnion = resolveReference(builtInMethod->appliedTo);
+        auto headerUnion = resolveReference(builtInMethod->appliedTo, /* unchecked */ true);
         return emitHeaderUnionIsValidCmpOp(loc, headerUnion, P4HIR::ValidityBit::Valid);
     }
     BUG("Unsupported Header Union builtin method: %1%", builtInMethod->name);
