@@ -346,6 +346,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     // Returns underlying type in case of something of serialized enum cate
     mlir::Type getIntType(const P4::IR::Type *type) {
         auto baseType = getOrCreateType(type);
+        if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(baseType))
+            baseType = aliasType.getAliasedType();
         if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(baseType))
             baseType = serEnumType.getType();
         return baseType;
