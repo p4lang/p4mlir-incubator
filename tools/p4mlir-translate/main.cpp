@@ -23,10 +23,14 @@ limitations under the License.
 #include "frontends/p4/createBuiltins.h"
 #include "frontends/p4/defaultArguments.h"
 #include "frontends/p4/defaultValues.h"
+#include "frontends/p4/directCalls.h"
 #include "frontends/p4/frontend.h"
+#include "frontends/p4/getV1ModelVersion.h"
+#include "frontends/p4/removeOpAssign.h"
 #include "frontends/p4/specialize.h"
 #include "frontends/p4/specializeGenericFunctions.h"
 #include "frontends/p4/specializeGenericTypes.h"
+#include "frontends/p4/structInitializers.h"
 #include "frontends/p4/toP4/toP4.h"
 #include "frontends/p4/typeChecking/bindVariables.h"
 #include "frontends/p4/validateParsedProgram.h"
@@ -106,6 +110,7 @@ int main(int argc, char *const argv[]) {
             if (!parseAnnotations) parseAnnotations = new P4::ParseAnnotations();
 
             P4::PassManager passes({
+                new P4::P4V1::GetV1ModelVersion,
                 // Parse annotations
                 new P4::ParseAnnotationBodies(parseAnnotations, &typeMap),
                 // Simple checks on parsed program
@@ -117,6 +122,7 @@ int main(int argc, char *const argv[]) {
                 new P4::ConstantFolding(policy.getConstantFoldingPolicy()),
                 // Validate @name/@deprecated/@noWarn. Should run after constant folding.
                 new P4::ValidateStringAnnotations(),
+                new P4::InstantiateDirectCalls(),
                 new P4::CheckNamedArgs(),
                 // Type checking and type inference.  Also inserts
                 // explicit casts where implicit casts exist.
@@ -135,6 +141,9 @@ int main(int argc, char *const argv[]) {
                     new P4::SpecializeGenericFunctions(&typeMap),
                 }),
                 new P4::CheckCoreMethods(&typeMap),
+                new P4::StructInitializers(&typeMap),  // TODO: Decide if we can do the same at MLIR
+                                                       // level to reduce GC traffic
+                new P4::RemoveOpAssign(),              // TODO: Lower combined operations in MLIR
                 new P4::TypeChecking(nullptr, &typeMap, true),
             });
             passes.setName("TypeInference");
@@ -174,7 +183,7 @@ int main(int argc, char *const argv[]) {
     if (!mod) return EXIT_FAILURE;
 
     mlir::OpPrintingFlags flags;
-    mod->print(llvm::outs(), flags.enableDebugInfo(options.printLoc));
+    if (!options.noDump) mod->print(llvm::outs(), flags.enableDebugInfo(options.printLoc));
 
     if (P4::Log::verbose()) std::cerr << "Done." << std::endl;
     return P4::errorCount() > 0 ? EXIT_FAILURE : EXIT_SUCCESS;

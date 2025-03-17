@@ -672,7 +672,9 @@ def AnyP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, StringType,
                            DontcareType, ErrorType, UnknownType,
                            SetType]> {}
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
-def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType]> {}
+def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType,
+                                  StructType, HeaderType, Builtin_Tuple,
+                                  EnumType, SerEnumType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                                 StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
                                 EnumType, SerEnumType, ErrorType,

@@ -38,4 +38,11 @@ TranslateOptions::TranslateOptions() {
             return true;
         },
         "print location information in MLIR dump");
+    registerOption(
+        "--no-dump", nullptr,
+        [this](const char *) {
+            noDump = true;
+            return true;
+        },
+        "do not dump module on exit");
 }

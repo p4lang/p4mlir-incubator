@@ -70,7 +70,7 @@ action test1(inout Headers h) {
     // CHECK: %[[eq:.*]] = p4hir.cmp(eq, %[[val]], %[[valid]]) : !validity_bit, !p4hir.bool
     // CHECK: %[[not:.*]] = p4hir.unary(not, %[[eq]]) : !p4hir.bool
     // CHECK: p4hir.if %[[not]] {
-    // CHECK:   p4hir.return
+    // CHECK:   p4hir.implicit_return
     // CHECK: }
     if (!h.eth.isValid())
          return;
@@ -98,7 +98,7 @@ action assign_header() {
   // CHECK:           %[[e2:.*]] = p4hir.variable ["e2"] : <!Ethernet>
   // CHECK:           %[[val_e2:.*]] = p4hir.read %[[e2]] : <!Ethernet>
   // CHECK:           p4hir.assign %[[val_e2]], %[[e1]] : <!Ethernet>
-  // CHECK:           p4hir.return
+  // CHECK:           p4hir.implicit_return
 
   Ethernet e1;
   Ethernet e2;
@@ -112,7 +112,7 @@ action assign_invalid_header() {
   // CHECK:           %[[invalid:.*]] = p4hir.const #invalid
   // CHECK:           %[[__valid_field_ref:.*]] = p4hir.struct_extract_ref %[[e]]["__valid"] : <!Ethernet>
   // CHECK:           p4hir.assign %[[invalid]], %[[__valid_field_ref]] : <!validity_bit>
-  // CHECK:           p4hir.return
+  // CHECK:           p4hir.implicit_return
 
   Ethernet e;
 

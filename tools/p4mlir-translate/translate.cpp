@@ -53,10 +53,10 @@ mlir::Location getLoc(mlir::OpBuilder &builder, const P4::IR::Node *node) {
     if (!sourceInfo.isValid()) return mlir::UnknownLoc::get(builder.getContext());
 
     const auto &start = sourceInfo.getStart();
+    const auto &pos = sourceInfo.toPosition();
 
-    return mlir::FileLineColLoc::get(
-        builder.getStringAttr(sourceInfo.getSourceFile().string_view()), start.getLineNumber(),
-        start.getColumnNumber());
+    return mlir::FileLineColLoc::get(builder.getStringAttr(pos.fileName.string_view()),
+                                     pos.sourceLine, start.getColumnNumber());
 }
 
 mlir::Location getEndLoc(mlir::OpBuilder &builder, const P4::IR::Node *node) {
@@ -539,6 +539,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(Cast)
     HANDLE_IN_POSTORDER(Declaration_Variable)
     HANDLE_IN_POSTORDER(ReturnStatement)
+    HANDLE_IN_POSTORDER(ExitStatement)
     HANDLE_IN_POSTORDER(ArrayIndex)
     HANDLE_IN_POSTORDER(Range)
     HANDLE_IN_POSTORDER(Mask)
@@ -1127,7 +1128,11 @@ void P4HIRConverter::postorder(const P4::IR::Declaration_Variable *decl) {
         } else if (init->is<P4::IR::InvalidHeaderUnion>()) {
             emitSetInvalidForAllHeaders(loc, var);
         } else {
-            builder.create<P4HIR::AssignOp>(loc, getValue(decl->initializer), var);
+            auto init = getValue(decl->initializer);
+            // Handle implicit casts that type checker forgot to insert (e.g. for serenums)
+            auto objType = llvm::cast<P4HIR::ReferenceType>(type).getObjectType();
+            if (init.getType() != objType) init = builder.create<P4HIR::CastOp>(loc, objType, init);
+            builder.create<P4HIR::AssignOp>(loc, init, var);
         }
     }
 
@@ -1494,7 +1499,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
         mlir::Block &b = body.back();
         if (!b.mightHaveTerminator()) {
             builder.setInsertionPointToEnd(&b);
-            builder.create<P4HIR::ReturnOp>(getEndLoc(builder, f));
+            builder.create<P4HIR::ImplicitReturnOp>(getEndLoc(builder, f));
         }
     }
 
@@ -1523,8 +1528,9 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
     // Check if there is a declaration with the same name in the current symbol table.
     // If yes, create / add to an overload set
     auto *parentOp = builder.getBlock()->getParentOp();
-    auto symName = builder.getStringAttr(m->name.string_view());
-    if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, symName)) {
+    auto origSymName = builder.getStringAttr(m->name.string_view());
+    auto symName = origSymName;
+    if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
         P4HIR::OverloadSetOp ovl;
 
         auto getUniqueName = [&](mlir::StringAttr toRename) {
@@ -1538,25 +1544,28 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
         };
 
         if (auto otherFunc = llvm::dyn_cast<P4HIR::FuncOp>(otherOp)) {
-            ovl = builder.create<P4HIR::OverloadSetOp>(loc, symName);
+            ovl = builder.create<P4HIR::OverloadSetOp>(loc, origSymName);
             builder.setInsertionPointToStart(&ovl.createEntryBlock());
             otherFunc->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
 
-            // Unique the symbol name to avoid clashes in the symbol table.
-            otherFunc.setSymName(getUniqueName(symName));
+            // Unique the symbol name to avoid clashes in the symbol table.  The
+            // overload set takes over the symbol name. Still, all the symbols
+            // in `p4Symbol` are created wrt the original name, so we do not use
+            // SymbolTable::rename() here.
+            otherFunc.setSymName(getUniqueName(origSymName));
         } else {
             ovl = llvm::cast<P4HIR::OverloadSetOp>(otherOp);
-            builder.setInsertionPointToStart(&ovl.getBody().front());
+            builder.setInsertionPointToEnd(&ovl.getBody().front());
         }
 
         symName = builder.getStringAttr(getUniqueName(symName));
     }
 
-    auto func = builder.create<P4HIR::FuncOp>(loc, symName, funcType,
-                                              /* isExternal */ true,
-                                              llvm::ArrayRef<mlir::NamedAttribute>(), argAttrs);
+    builder.create<P4HIR::FuncOp>(loc, symName, funcType,
+                                  /* isExternal */ true, llvm::ArrayRef<mlir::NamedAttribute>(),
+                                  argAttrs);
 
-    auto [it, inserted] = p4Symbols.try_emplace(m, mlir::SymbolRefAttr::get(func));
+    auto [it, inserted] = p4Symbols.try_emplace(m, mlir::SymbolRefAttr::get(origSymName));
     BUG_CHECK(inserted, "duplicate translation of %1%", m);
 
     return false;
@@ -1598,7 +1607,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
         mlir::Block &b = body.back();
         if (!b.mightHaveTerminator()) {
             builder.setInsertionPointToEnd(&b);
-            builder.create<P4HIR::ReturnOp>(getEndLoc(builder, act));
+            builder.create<P4HIR::ImplicitReturnOp>(getEndLoc(builder, act));
         }
     }
 
@@ -1619,6 +1628,11 @@ void P4HIRConverter::postorder(const P4::IR::ReturnStatement *ret) {
     } else {
         builder.create<P4HIR::ReturnOp>(getLoc(builder, ret));
     }
+}
+void P4HIRConverter::postorder(const P4::IR::ExitStatement *ex) {
+    ConversionTracer trace("Converting ", ex);
+
+    builder.create<P4HIR::ExitOp>(getLoc(builder, ex));
 }
 
 mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
@@ -1944,17 +1958,19 @@ bool P4HIRConverter::preorder(const P4::IR::Member *m) {
     // This is just enum constant
     if (const auto *typeNameExpr = m->expr->to<P4::IR::TypeNameExpression>()) {
         auto type = getOrCreateType(typeNameExpr->typeName);
-        BUG_CHECK((mlir::isa<P4HIR::EnumType, P4HIR::SerEnumType, P4HIR::ErrorType>(type)),
-                  "unexpected type for expression %1%", typeNameExpr);
+        auto loc = getLoc(builder, m);
 
         if (mlir::isa<P4HIR::ErrorType>(type))
             setValue(m, builder.create<P4HIR::ConstOp>(
-                            getLoc(builder, m),
-                            P4HIR::ErrorCodeAttr::get(type, m->member.name.string_view())));
-        else
+                            loc, P4HIR::ErrorCodeAttr::get(type, m->member.name.string_view())));
+        else if (mlir::isa<P4HIR::EnumType>(type))
             setValue(m, builder.create<P4HIR::ConstOp>(
-                            getLoc(builder, m),
-                            P4HIR::EnumFieldAttr::get(type, m->member.name.string_view())));
+                            loc, P4HIR::EnumFieldAttr::get(type, m->member.name.string_view())));
+        else if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(type)) {
+            setValue(m, builder.create<P4HIR::ConstOp>(
+                            loc, P4HIR::EnumFieldAttr::get(type, m->member.name.string_view())));
+        } else
+            BUG("unexpected type for expression %1%", typeNameExpr);
 
         return false;
     }

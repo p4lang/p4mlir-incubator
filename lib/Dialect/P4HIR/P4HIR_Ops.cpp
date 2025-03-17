@@ -721,25 +721,59 @@ static P4HIR::ControlOp getParentControl(Operation *from) {
     return nullptr;
 }
 
-LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-    // Check that the callee attribute was specified.
-    auto fnAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
-    if (!fnAttr) return emitOpError("requires a 'callee' symbol reference attribute");
-    // Functions are defined at top-level scope
-    FuncOp fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentModule(*this), fnAttr);
-    if (!fn) {
-        // Actions might be defined both at top level and control scope
-        fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentControl(*this), fnAttr);
-        if (!fn.getAction())
-            return emitOpError() << "'" << fnAttr.getValue()
-                                 << "' does not reference a valid action";
+static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs,
+                                 std::optional<mlir::ArrayAttr> typeOperands) {
+    if (auto typeVar = llvm::dyn_cast<P4HIR::TypeVarType>(type)) {
+        size_t pos = llvm::find(calleeTypeArgs, typeVar) - calleeTypeArgs.begin();
+        if (pos == calleeTypeArgs.size()) return {};
+        return llvm::cast<mlir::TypeAttr>(typeOperands->getValue()[pos]).getValue();
+    } else if (auto refType = llvm::dyn_cast<P4HIR::ReferenceType>(type)) {
+        return P4HIR::ReferenceType::get(
+            substituteType(refType.getObjectType(), calleeTypeArgs, typeOperands));
+    } else if (auto tupleType = llvm::dyn_cast<mlir::TupleType>(type)) {
+        llvm::SmallVector<mlir::Type> substituted;
+        for (auto elTy : tupleType.getTypes())
+            substituted.push_back(substituteType(elTy, calleeTypeArgs, typeOperands));
+        return mlir::TupleType::get(type.getContext(), substituted);
     }
 
-    if (!fn)
-        return emitOpError() << "'" << fnAttr.getValue() << "' does not reference a valid function";
+    return type;
+};
 
-    // Verify that the operand and result types match the callee.
+LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+    // Check that the callee attribute was specified.
+    auto sym = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
+    if (!sym) return emitOpError("requires a 'callee' symbol reference attribute");
+
+    // Callee might be:
+    //  - Overload set, then we need to look for a particular overload
+    //  - Normal functions. They are defined at top-level only. Top-level actions are also here.
+    //  - Actions defined at control level
+    P4HIR::FuncOp fn;
+    if (auto *decl = symbolTable.lookupNearestSymbolFrom(getParentModule(*this), sym)) {
+        if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
+            // We good here
+        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
+            // Find the FuncOp with the correct # of operands
+            for (Operation &nestedOp : ovl.getBody().front()) {
+                auto f = llvm::cast<FuncOp>(nestedOp);
+                if (f.getNumArguments() == getNumOperands()) {
+                    fn = f;
+                    break;
+                }
+            }
+            if (!fn) return emitOpError() << "'" << sym << "' failed to resolve overload set";
+        } else
+            return emitOpError() << "'" << sym << "' does not reference a valid function";
+    } else if ((fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(getParentControl(*this), sym))) {
+        if (!fn.getAction())
+            return emitOpError() << "'" << sym << "' does not reference a valid action";
+    }
+
+    if (!fn) return emitOpError() << "'" << sym << "' does not reference a valid function";
+
     auto fnType = fn.getFunctionType();
+    // Verify that the operand and result types match the callee.
     if (fnType.getNumInputs() != getNumOperands())
         return emitOpError("incorrect number of operands for callee");
 
@@ -752,17 +786,8 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
             return emitOpError("incorrect number of type operands for callee");
     }
 
-    auto substituteType = [&](mlir::Type type) {
-        if (auto typeVar = llvm::dyn_cast<P4HIR::TypeVarType>(type)) {
-            size_t pos = llvm::find(calleeTypeArgs, typeVar) - calleeTypeArgs.begin();
-            if (pos == calleeTypeArgs.size()) return mlir::Type();
-            return llvm::cast<mlir::TypeAttr>(typeOperands->getValue()[pos]).getValue();
-        }
-        return type;
-    };
-
     for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i) {
-        mlir::Type expectedType = substituteType(fnType.getInput(i));
+        mlir::Type expectedType = substituteType(fnType.getInput(i), calleeTypeArgs, typeOperands);
         if (!expectedType)
             return emitOpError("cannot resolve type operand for operand number ") << i;
         mlir::Type providedType = getOperand(i).getType();
@@ -785,7 +810,9 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
         return emitOpError("incorrect number of results for callee");
 
     // Parent function and return value types must match.
-    if (!fnType.isVoid() && getResultTypes().front() != substituteType(fnType.getReturnType()))
+    if (!fnType.isVoid() &&
+        getResultTypes().front() !=
+            substituteType(fnType.getReturnType(), calleeTypeArgs, typeOperands))
         return emitOpError("result type mismatch: expected ")
                << fnType.getReturnType() << ", but provided " << getResult().getType();
 

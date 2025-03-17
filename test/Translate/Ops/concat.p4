@@ -71,7 +71,7 @@ action concat_int5_and_bit10() {
 // CHECK:           %[[VAL_8:.*]] = p4hir.concat(%[[VAL_6]] : !b5i, %[[VAL_7]] : !b5i) : !b10i
 // CHECK:           %[[VAL_9:.*]] = p4hir.variable ["r", init] : <!b10i>
 // CHECK:           p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!b10i>
-// CHECK:           p4hir.return
+// CHECK:           p4hir.implicit_return
 // CHECK:         }
 
 // CHECK-LABEL:   p4hir.func action @concat_bit5_and_bit10() {
@@ -88,7 +88,7 @@ action concat_int5_and_bit10() {
 // CHECK:           %[[VAL_8:.*]] = p4hir.concat(%[[VAL_6]] : !b5i, %[[VAL_7]] : !b10i) : !b15i
 // CHECK:           %[[VAL_9:.*]] = p4hir.variable ["result", init] : <!b15i>
 // CHECK:           p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!b15i>
-// CHECK:           p4hir.return
+// CHECK:           p4hir.implicit_return
 // CHECK:         }
 
 // CHECK-LABEL:   p4hir.func action @concat_int5_and_int5() {
@@ -105,7 +105,7 @@ action concat_int5_and_bit10() {
 // CHECK:           %[[VAL_8:.*]] = p4hir.concat(%[[VAL_6]] : !i5i, %[[VAL_7]] : !i5i) : !i10i
 // CHECK:           %[[VAL_9:.*]] = p4hir.variable ["result", init] : <!i10i>
 // CHECK:           p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!i10i>
-// CHECK:           p4hir.return
+// CHECK:           p4hir.implicit_return
 // CHECK:         }
 
 // CHECK-LABEL:   p4hir.func action @concat_int5_and_int10() {
@@ -122,7 +122,7 @@ action concat_int5_and_bit10() {
 // CHECK:           %[[VAL_8:.*]] = p4hir.concat(%[[VAL_6]] : !i5i, %[[VAL_7]] : !i10i) : !i15i
 // CHECK:           %[[VAL_9:.*]] = p4hir.variable ["result", init] : <!i15i>
 // CHECK:           p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!i15i>
-// CHECK:           p4hir.return
+// CHECK:           p4hir.implicit_return
 // CHECK:         }
 
 // CHECK-LABEL:   p4hir.func action @concat_bit5_and_int5() {
@@ -139,7 +139,7 @@ action concat_int5_and_bit10() {
 // CHECK:           %[[VAL_8:.*]] = p4hir.concat(%[[VAL_6]] : !b5i, %[[VAL_7]] : !i5i) : !b10i
 // CHECK:           %[[VAL_9:.*]] = p4hir.variable ["result", init] : <!b10i>
 // CHECK:           p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!b10i>
-// CHECK:           p4hir.return
+// CHECK:           p4hir.implicit_return
 // CHECK:         }
 
 // CHECK-LABEL:   p4hir.func action @concat_bit5_and_int10() {
@@ -156,7 +156,7 @@ action concat_int5_and_bit10() {
 // CHECK:           %[[VAL_8:.*]] = p4hir.concat(%[[VAL_6]] : !b5i, %[[VAL_7]] : !i10i) : !b15i
 // CHECK:           %[[VAL_9:.*]] = p4hir.variable ["result", init] : <!b15i>
 // CHECK:           p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!b15i>
-// CHECK:           p4hir.return
+// CHECK:           p4hir.implicit_return
 // CHECK:         }
 
 // CHECK-LABEL:   p4hir.func action @concat_int5_and_bit5() {
@@ -173,7 +173,7 @@ action concat_int5_and_bit10() {
 // CHECK:           %[[VAL_8:.*]] = p4hir.concat(%[[VAL_6]] : !i5i, %[[VAL_7]] : !b5i) : !i10i
 // CHECK:           %[[VAL_9:.*]] = p4hir.variable ["result", init] : <!i10i>
 // CHECK:           p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!i10i>
-// CHECK:           p4hir.return
+// CHECK:           p4hir.implicit_return
 // CHECK:         }
 
 // CHECK-LABEL:   p4hir.func action @concat_int5_and_bit10() {
@@ -190,5 +190,5 @@ action concat_int5_and_bit10() {
 // CHECK:           %[[VAL_8:.*]] = p4hir.concat(%[[VAL_6]] : !i5i, %[[VAL_7]] : !b10i) : !i15i
 // CHECK:           %[[VAL_9:.*]] = p4hir.variable ["result", init] : <!i15i>
 // CHECK:           p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!i15i>
-// CHECK:           p4hir.return
+// CHECK:           p4hir.implicit_return
 // CHECK:         }

@@ -22,13 +22,13 @@ module {
   }
   p4hir.control @c(%arg0: !b32i)() {
     p4hir.func action @a(%arg1: !b32i {p4hir.dir = #undir}) {
-      p4hir.return
+      p4hir.implicit_return
     }
     p4hir.func action @aa(%arg1: !b32i {p4hir.dir = #p4hir<dir in>}, %arg2: !i8i {p4hir.dir = #undir}) {
-      p4hir.return
+      p4hir.implicit_return
     }
     p4hir.func action @b() {
-      p4hir.return
+      p4hir.implicit_return
     }
     p4hir.table @t1 {
       p4hir.table_actions {

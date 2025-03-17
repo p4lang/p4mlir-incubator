@@ -23,7 +23,7 @@ module {
     %c1_b9i = p4hir.const #int1_b9i
     %add = p4hir.binop(add, %_v_0, %c1_b9i) : !b9i
     p4hir.assign %add, %_v : <!b9i>
-    p4hir.return
+    p4hir.implicit_return
   }
 
   p4hir.func action @test() {
@@ -32,6 +32,6 @@ module {
     %0 = p4hir.struct (%val) : !PortId_t
     %p1 = p4hir.variable ["p1", init] : <!PortId_t>
     p4hir.assign %0, %p1 : <!PortId_t>
-    p4hir.return    
+    p4hir.implicit_return    
   }
 }

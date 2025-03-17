@@ -111,7 +111,7 @@ def TableEntryOp : P4HIR_Op<"table_entry", [
    ]> {
   let summary = "Represents a named P4 table entry";
   let description = [{
-  
+
   }];
 
   // TODO: Refine result type, need to allow externs as well as normal P4 types
@@ -136,7 +136,7 @@ def TableActionsOp : P4HIR_Op<"table_actions", [
        NoRegionArguments, NoTerminator]> {
   let summary = "Represents a list of actions for a P4 table";
   let description = [{
-  
+
   }];
 
   let regions = (region SizedRegion<1>:$body);
@@ -174,7 +174,7 @@ def TableDefaultActionOp : P4HIR_Op<"table_default_action", [
        NoRegionArguments, NoTerminator]> {
   let summary = "Represents a P4 table default action";
   let description = [{
-  
+
   }];
 
   let regions = (region SizedRegion<1>:$body);
@@ -197,7 +197,7 @@ def TableSizeOp : P4HIR_Op<"table_size",
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>] > {
   let summary = "Represents a table size for a P4 table";
   let description = [{
-  
+
   }];
 
   let results = (outs AnyIntP4Type:$result);
@@ -212,7 +212,7 @@ def TableKeyOp : P4HIR_Op<"table_key",
   [NoRegionArguments, NoTerminator]> {
   let summary = "Represents a P4 table key";
   let description = [{
-  
+
   }];
 
   let regions = (region SizedRegion<1>:$body);
@@ -232,7 +232,7 @@ def TableKeyOp : P4HIR_Op<"table_key",
 def TableKeyEntryOp : P4HIR_Op<"match_key", []> {
   let summary = "Represents a P4 table key entry";
   let description = [{
-  
+
   }];
 
   let arguments = (ins P4HIR_MatchKindAttr:$match_kind, AnyP4Type:$value);
@@ -253,5 +253,18 @@ def TableKeyEntryOp : P4HIR_Op<"match_key", []> {
 
 }
 
-#endif // P4MLIR_DIALECT_P4HIR_P4HIR_CONTROLOPS_TD
+def ExitOp : P4HIR_Op<"exit", [ParentOneOf<["ScopeOp", "IfOp",
+                                            "FuncOp", "ControlApplyOp",]>]> {
+  let summary = "Represents an exit from action or control";
+  let description = [{
 
+  }];
+
+  // TODO: Check that it is invoked only inside action
+  let hasVerifier = 0;
+
+  // The return operation only emits the input in the format if it is present.
+  let assemblyFormat = [{ attr-dict }];
+}
+
+#endif // P4MLIR_DIALECT_P4HIR_P4HIR_CONTROLOPS_TD
