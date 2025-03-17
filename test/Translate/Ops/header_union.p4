@@ -60,11 +60,11 @@ action header_union_isValid() {
 
 // CHECK-LABEL:   p4hir.func action @header_setValid
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
-// CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h2"] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H2_>
 // CHECK:           p4hir.assign %[[VAL_3]], %[[VAL_4]] : <!validity_bit>
+// CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_5:.*]] = p4hir.const #[[$ATTR_VALID]]
 // CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1_>
 // CHECK:           p4hir.assign %[[VAL_5]], %[[VAL_6]] : <!validity_bit>
@@ -78,7 +78,6 @@ action header_setValid() {
 
 // CHECK-LABEL:   p4hir.func action @header_setInvalid
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
-// CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H1_>
