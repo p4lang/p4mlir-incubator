@@ -6,14 +6,18 @@ def ControlOp : P4HIR_Op<"control",
      FunctionOpInterface, AutomaticAllocationScope]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FuncType>:$applyType,
-                       TypeAttrOf<CtorType>:$ctorType);
+                       TypeAttrOf<CtorType>:$ctorType,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;
 
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<(ins "llvm::StringRef":$sym_name, "P4HIR::FuncType":$applyType, "P4HIR::CtorType":$ctorType)>
+    OpBuilder<(ins "llvm::StringRef":$sym_name, "P4HIR::FuncType":$applyType, "P4HIR::CtorType":$ctorType,
+               CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "llvm::ArrayRef<mlir::DictionaryAttr>()">:$argAttrs,
+               CArg<"mlir::DictionaryAttr", "mlir::DictionaryAttr()">:$annotations)>
   ];
 
   let extraClassDeclaration = [{
@@ -50,11 +54,17 @@ def ControlApplyOp : P4HIR_Op<"control_apply",
 def TableOp : P4HIR_Op<"table",
    [Symbol, NoTerminator,
     ParentOneOf<["ControlOp"]>]> {
- let arguments = (ins SymbolNameAttr:$sym_name);
- let regions = (region SizedRegion<1>:$body);
- let assemblyFormat = [{
-   $sym_name $body attr-dict
- }];
+  let arguments = (ins SymbolNameAttr:$sym_name, OptionalAttr<DictionaryAttr>:$annotations);
+  let regions = (region SizedRegion<1>:$body);
+
+  let builders = [
+    OpBuilder<(ins "llvm::StringRef":$name, "mlir::DictionaryAttr":$annotations,
+              "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$entryBuilder)>,
+  ];
+
+  let assemblyFormat = [{
+    $sym_name (`annotations` $annotations^)? $body attr-dict
+  }];
 }
 
 def TableApplyOp : P4HIR_Op<"table_apply",
@@ -116,18 +126,18 @@ def TableEntryOp : P4HIR_Op<"table_entry", [
 
   // TODO: Refine result type, need to allow externs as well as normal P4 types
   let results = (outs Optional<AnyType>:$result);
-  let arguments = (ins StrAttr:$name, UnitAttr:$is_const);
+  let arguments = (ins StrAttr:$name, UnitAttr:$is_const, OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
 
   // TODO: Check
   let hasVerifier = 0;
   let skipDefaultBuilders = 1;
   let assemblyFormat = [{
-    $name (`const` $is_const^)? $body (`:` type($result)^)? attr-dict
+    $name (`const` $is_const^)? (`annotations` $annotations^)? $body (`:` type($result)^)? attr-dict
   }];
 
   let builders = [
-    OpBuilder<(ins "mlir::StringAttr":$name, "bool":$is_const,
+    OpBuilder<(ins "mlir::StringAttr":$name, "bool":$is_const, "mlir::DictionaryAttr":$annotations,
               "llvm::function_ref<void(mlir::OpBuilder &, mlir::Type &, mlir::Location)>":$entryBuilder)>,
   ];
 }
@@ -139,17 +149,19 @@ def TableActionsOp : P4HIR_Op<"table_actions", [
 
   }];
 
+  let arguments = (ins OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
 
   // TODO: Check
   let hasVerifier = 0;
   let skipDefaultBuilders = 1;
   let assemblyFormat = [{
-    $body attr-dict
+    (`annotations` $annotations^)? $body attr-dict
   }];
 
   let builders = [
-    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$entryBuilder)>,
+    OpBuilder<(ins "mlir::DictionaryAttr":$annotations,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$entryBuilder)>,
   ];
 }
 
@@ -157,7 +169,9 @@ def TableActionOp : P4HIR_Op<"table_action",
     [AutomaticAllocationScope, NoTerminator,
      // DeclareOpInterfaceMethods<SymbolUserOpInterface>
     ]> {
-  let arguments = (ins TypeAttrOf<FuncType>:$cplaneType, SymbolRefAttr:$action);
+  let arguments = (ins TypeAttrOf<FuncType>:$cplaneType, SymbolRefAttr:$action,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;
 
@@ -165,29 +179,33 @@ def TableActionOp : P4HIR_Op<"table_action",
 
   let builders = [
     OpBuilder<(ins "mlir::SymbolRefAttr":$action, "P4HIR::FuncType":$cplaneType,
-               "llvm::function_ref<void(mlir::OpBuilder &, mlir::Block::BlockArgListType, mlir::Location)>":$entryBuilder)>
+                   "llvm::ArrayRef<mlir::DictionaryAttr>":$argAttrs,
+                   "mlir::DictionaryAttr":$annotations,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Block::BlockArgListType, mlir::Location)>":$entryBuilder)>
   ];
 }
 
 
-def TableDefaultActionOp : P4HIR_Op<"table_default_action", [
-       NoRegionArguments, NoTerminator]> {
+def TableDefaultActionOp : P4HIR_Op<"table_default_action",
+  [NoRegionArguments, NoTerminator]> {
   let summary = "Represents a P4 table default action";
   let description = [{
 
   }];
 
+  let arguments = (ins OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
 
   // TODO: Check
   let hasVerifier = 0;
   let skipDefaultBuilders = 1;
   let assemblyFormat = [{
-    $body attr-dict
+    (`annotations` $annotations^)? $body attr-dict
   }];
 
   let builders = [
-    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$entryBuilder)>,
+    OpBuilder<(ins "mlir::DictionaryAttr":$annotations,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$entryBuilder)>,
   ];
 }
 
@@ -201,10 +219,10 @@ def TableSizeOp : P4HIR_Op<"table_size",
   }];
 
   let results = (outs AnyIntP4Type:$result);
-  let arguments = (ins TypedAttrInterface:$value);
+  let arguments = (ins TypedAttrInterface:$value, OptionalAttr<DictionaryAttr>:$annotations);
 
   let assemblyFormat = [{
-    $value attr-dict
+    $value (`annotations` $annotations^)? attr-dict
   }];
 }
 
@@ -215,17 +233,19 @@ def TableKeyOp : P4HIR_Op<"table_key",
 
   }];
 
+  let arguments = (ins OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
 
   // TODO: Check
   let hasVerifier = 0;
   let skipDefaultBuilders = 1;
   let assemblyFormat = [{
-    $body attr-dict
+    (`annotations` $annotations^)? $body attr-dict
   }];
 
   let builders = [
-    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$keyBuilder)>,
+    OpBuilder<(ins "mlir::DictionaryAttr":$annotations,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$keyBuilder)>,
   ];
 }
 
@@ -235,18 +255,21 @@ def TableKeyEntryOp : P4HIR_Op<"match_key", []> {
 
   }];
 
-  let arguments = (ins P4HIR_MatchKindAttr:$match_kind, AnyP4Type:$value);
+  let arguments = (ins P4HIR_MatchKindAttr:$match_kind, AnyP4Type:$value,
+                       OptionalAttr<DictionaryAttr>:$annotations);
 
   // TODO: Check
   let hasVerifier = 0;
   let assemblyFormat = [{
-    $match_kind $value `:` type($value) attr-dict
+    $match_kind $value `:` type($value) (`annotations` $annotations^)? attr-dict
   }];
 
   let builders = [
-    OpBuilder<(ins "llvm::StringRef":$match_kind, "mlir::Value":$value), [{
+    OpBuilder<(ins "llvm::StringRef":$match_kind, "mlir::Value":$value,
+                   "mlir::DictionaryAttr":$annotations), [{
       build($_builder, $_state,
-            P4HIR::MatchKindAttr::get($_builder.getContext(), match_kind), value);
+            P4HIR::MatchKindAttr::get($_builder.getContext(), match_kind), value,
+            annotations.empty() ? mlir::DictionaryAttr() : annotations);
     }]
     >,
   ];

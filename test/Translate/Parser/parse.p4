@@ -19,7 +19,7 @@ parser p(in empty e, in int<10> sinit) {
     state drop {}
 }
 
-// CHECK-LABEL:  p4hir.parser @p(%arg0: !empty, %arg1: !i10i)() {
+// CHECK-LABEL: p4hir.parser @p(%arg0: !empty {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "e"}, %arg1: !i10i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "sinit"})()
 // CHECK:    p4hir.state @start {
 // CHECK:      p4hir.transition to @p::@next
 // CHECK:    p4hir.state @next {

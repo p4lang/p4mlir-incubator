@@ -20,7 +20,7 @@ parser subparser3(inout int<10> s, out bool matched)() {
     }
 }
 
-// CHECK-LABEL: p4hir.parser @p(%arg0: !empty, %arg1: !i10i)()
+// CHECK-LABEL: p4hir.parser @p(%arg0: !empty {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "e"}, %arg1: !i10i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "sinit"})()
 parser p(in empty e, in int<10> sinit) {
     int<10> s = sinit;
     subparser() sp;

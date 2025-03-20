@@ -1,4 +1,4 @@
-// RUN: p4mlir-opt %s | FileCheck %s
+// RUN: p4mlir-opt --verify-roundtrip  %s | FileCheck %s
 
 !unknown = !p4hir.unknown
 !error = !p4hir.error<ErrorA, ErrorB>

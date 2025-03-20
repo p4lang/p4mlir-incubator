@@ -250,10 +250,25 @@ def FuncType : P4HIR_Type<"Func", "func"> {
 def ParserType : P4HIR_Type<"Parser", "parser"> {
   let parameters = (ins StringRefParameter<"parser type name">:$name,
                         ArrayRefParameter<"mlir::Type">:$inputs,
-                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments);
+                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments,
+                        OptionalParameter<"mlir::DictionaryAttr", "annotations">:$annotations);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    TypeBuilder<(ins "llvm::StringRef":$name, "llvm::ArrayRef<mlir::Type>":$inputs,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+       return get($_ctxt, name, inputs, llvm::ArrayRef<mlir::Type>(), annotations);
+    }]>,
+    TypeBuilder<(ins "llvm::StringRef":$name, "llvm::ArrayRef<mlir::Type>":$inputs,
+                     "llvm::ArrayRef<mlir::Type>":$type_arguments,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, name, inputs, type_arguments,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>
+  ];
 
   let assemblyFormat = [{
-    `<` $name (`<` $type_arguments^ `>`)?`,` custom<FuncType>($inputs) `>`
+    `<` $name (`<` $type_arguments^ `>`)? (`annotations` $annotations^)?  `,` custom<FuncType>($inputs) `>`
   }];
 }
 
@@ -263,9 +278,25 @@ def ParserType : P4HIR_Type<"Parser", "parser"> {
 def ControlType : P4HIR_Type<"Control", "control"> {
   let parameters = (ins StringRefParameter<"control type name">:$name,
                         ArrayRefParameter<"mlir::Type">:$inputs,
-                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments);
+                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments,
+                        OptionalParameter<"mlir::DictionaryAttr", "annotations">:$annotations);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    TypeBuilder<(ins "llvm::StringRef":$name, "llvm::ArrayRef<mlir::Type>":$inputs,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+       return get($_ctxt, name, inputs, llvm::ArrayRef<mlir::Type>(), annotations);
+    }]>,
+    TypeBuilder<(ins "llvm::StringRef":$name, "llvm::ArrayRef<mlir::Type>":$inputs,
+                     "llvm::ArrayRef<mlir::Type>":$type_arguments,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, name, inputs, type_arguments,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>
+  ];
+
   let assemblyFormat = [{
-    `<` $name (`<` $type_arguments^ `>`)?`,` custom<FuncType>($inputs) `>`
+    `<` $name (`<` $type_arguments^ `>`)? (`annotations` $annotations^)? `,` custom<FuncType>($inputs) `>`
   }];
 }
 
@@ -315,8 +346,19 @@ class StructLikeType<string name, string typeMnemonic>
 
   let parameters = (
     ins StringRefParameter<"struct name">:$name,
-        ArrayRefParameter<"P4HIR::FieldInfo", "struct fields">:$elements
+        ArrayRefParameter<"P4HIR::FieldInfo", "struct fields">:$elements,
+        OptionalParameter<"mlir::DictionaryAttr", "annotations">:$annotations
   );
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    TypeBuilder<(ins "llvm::StringRef":$name,
+                     "llvm::ArrayRef<P4HIR::FieldInfo>":$fields,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, name, fields,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>
+  ];
 
   string extra2ClassDeclaration = "";
   let extraClassDeclaration = !strconcat([{
@@ -475,7 +517,8 @@ def HeaderType : StructLikeType<"Header", "header"> {
 
   let builders = [
     TypeBuilder<(ins "llvm::StringRef":$name,
-                     "llvm::ArrayRef<P4HIR::FieldInfo>":$fields)>
+                     "llvm::ArrayRef<P4HIR::FieldInfo>":$fields,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations)>
   ];
 
   // This adds more C++ stuff into parent extraClassDeclaration
@@ -510,7 +553,23 @@ def EnumType : P4HIR_Type<"Enum", "enum", []> {
   let hasCustomAssemblyFormat = 1;
 
   let parameters = (ins StringRefParameter<"enum name">:$name,
-                        "mlir::ArrayAttr":$fields);
+                        "mlir::ArrayAttr":$fields,
+                        OptionalParameter<"mlir::DictionaryAttr", "annotations">:$annotations);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+     TypeBuilder<(ins "llvm::StringRef":$name, "llvm::ArrayRef<mlir::Attribute>":$fields,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, name, mlir::ArrayAttr::get($_ctxt, fields),
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>,
+
+    TypeBuilder<(ins "llvm::StringRef":$name, "mlir::ArrayAttr":$fields,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, name, fields,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>,
+  ];
 
   let extraClassDeclaration = [{
     /// Returns true if the requested field is part of this enum
@@ -555,19 +614,24 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", []> {
   let hasCustomAssemblyFormat = 1;
 
   let parameters = (ins StringRefParameter<"enum name">:$name,
-                        "P4HIR::BitsType":$type, "mlir::DictionaryAttr":$fields);
+                        "P4HIR::BitsType":$type, "mlir::DictionaryAttr":$fields,
+                         OptionalParameter<"mlir::DictionaryAttr", "annotations">:$annotations);
 
+  let skipDefaultBuilders = 1;
   let builders = [
     TypeBuilderWithInferredContext<(ins "llvm::StringRef":$name,
-                        "P4HIR::BitsType":$type, "mlir::DictionaryAttr":$fields), [{
-      return $_get(type.getContext(), name, type, fields);
+                        "P4HIR::BitsType":$type, "mlir::DictionaryAttr":$fields,
+                        CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get(type.getContext(), name, type, fields,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
     }]>,
     TypeBuilderWithInferredContext<(ins "llvm::StringRef":$name,
-                        "P4HIR::BitsType":$type, "llvm::ArrayRef<mlir::NamedAttribute>":$fields), [{
+                        "P4HIR::BitsType":$type, "llvm::ArrayRef<mlir::NamedAttribute>":$fields,
+                        CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
       return $_get(type.getContext(), name, type,
-                   DictionaryAttr::get(type.getContext(), fields));
+                   DictionaryAttr::get(type.getContext(), fields),
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
     }]>
-
   ];
 
   let extraClassDeclaration = [{
@@ -637,9 +701,23 @@ def ExternType : P4HIR_Type<"Extern", "extern", []> {
   }];
 
   let parameters = (ins StringRefParameter<"extern name">:$name,
-                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments);
+                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments,
+                        OptionalParameter<"mlir::DictionaryAttr", "annotations">:$annotations);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    TypeBuilder<(ins "llvm::StringRef":$name, CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+       return get($_ctxt, name, llvm::ArrayRef<mlir::Type>(), annotations);
+    }]>,
+    TypeBuilder<(ins "llvm::StringRef":$name, "llvm::ArrayRef<mlir::Type>":$type_arguments,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, name, type_arguments,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>
+  ];
+
   let assemblyFormat = [{
-    `<` $name (`<` $type_arguments^ `>`)? `>`
+    `<` $name (`<` $type_arguments^ `>`)? (`annotations` $annotations^)? `>`
   }];
 }
 
@@ -654,10 +732,20 @@ def PackageType : P4HIR_Type<"Package", "package", []> {
   }];
 
   let parameters = (ins StringRefParameter<"package name">:$name,
-                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments);
+                        OptionalArrayRefParameter<"mlir::Type">:$type_arguments,
+                        OptionalParameter<"mlir::DictionaryAttr", "annotations">:$annotations);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    TypeBuilder<(ins "llvm::StringRef":$name, "llvm::ArrayRef<mlir::Type>":$type_arguments,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, name, type_arguments,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>
+  ];
 
   let assemblyFormat = [{
-    `<` $name (`<` $type_arguments^ `>`)? `>`
+    `<` $name (`<` $type_arguments^ `>`)? (`annotations` $annotations^)? `>`
   }];
 }
 
@@ -671,10 +759,20 @@ def AliasType : P4HIR_Type<"Alias", "alias", []> {
     !p4hir.alias<!i32i>
   }];
 
-  let parameters = (ins StringRefParameter<"type name">:$name, "mlir::Type":$aliased_type);
+  let parameters = (ins StringRefParameter<"type name">:$name, "mlir::Type":$aliased_type,
+                        OptionalParameter<"mlir::DictionaryAttr", "annotations">:$annotations);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    TypeBuilder<(ins "llvm::StringRef":$name, "mlir::Type":$aliased_type,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, name, aliased_type,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>
+  ];
 
   let assemblyFormat = [{
-    `<` $name `,` $aliased_type `>`
+    `<` $name  (`annotations` $annotations^)? `,` $aliased_type `>`
   }];
 }
 

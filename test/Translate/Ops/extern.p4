@@ -5,9 +5,9 @@ extern Crc16 <T> {
     U id<U>(in U x);
 }
 
-// CHECK:  p4hir.extern @Crc16<[!type_T]> {
-// CHECK:    p4hir.func @hash<!type_U>(!type_U {p4hir.dir = #in})
-// CHECK:    p4hir.func @id<!type_U>(!type_U {p4hir.dir = #in}) -> !type_U
+// CHECK-LABEL  p4hir.extern @Crc16<[!type_T]> {
+// CHECK:    p4hir.func @hash<!type_U>(!type_U {p4hir.dir = #in, p4hir.param_name = "input_data"})
+// CHECK:    p4hir.func @id<!type_U>(!type_U {p4hir.dir = #in, p4hir.param_name = "x"}) -> !type_U
 // CHECK:  }
 
 extern ext<H> {
@@ -15,9 +15,9 @@ extern ext<H> {
     void method<T>(H h, T t);
 }
 
-// CHECK:  p4hir.extern @ext<[!type_H]> {
-// CHECK:    p4hir.func @ext(!type_H {p4hir.dir = #undir})
-// CHECK:    p4hir.func @method<!type_T>(!type_H {p4hir.dir = #undir}, !type_T {p4hir.dir = #undir})
+// CHECK-LABEL:  p4hir.extern @ext<[!type_H]> {
+// CHECK:    p4hir.func @ext(!type_H {p4hir.dir = #undir, p4hir.param_name = "v"})
+// CHECK:    p4hir.func @method<!type_T>(!type_H {p4hir.dir = #undir, p4hir.param_name = "h"}, !type_T {p4hir.dir = #undir, p4hir.param_name = "t"})
 // CHECK:  }
 
 extern ext2<H, V> {
@@ -26,11 +26,11 @@ extern ext2<H, V> {
     H method<T>(in T t);
 }
 
-// CHECK:  p4hir.extern @ext2<[!type_H, !type_V]> {
-// CHECK:    p4hir.func @ext2(!type_H {p4hir.dir = #undir})
+// CHECK-LABEL:  p4hir.extern @ext2<[!type_H, !type_V]> {
+// CHECK:    p4hir.func @ext2(!type_H {p4hir.dir = #undir, p4hir.param_name = "v"})
 // CHECK:    p4hir.overload_set @method {
-// CHECK:      p4hir.func @method_0<!type_T>(!type_H {p4hir.dir = #in}, !type_T {p4hir.dir = #in}) -> !type_V
-// CHECK:      p4hir.func @method_1<!type_T>(!type_T {p4hir.dir = #in}) -> !type_H
+// CHECK:      p4hir.func @method_0<!type_T>(!type_H {p4hir.dir = #in, p4hir.param_name = "h"}, !type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_V
+// CHECK:      p4hir.func @method_1<!type_T>(!type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_H
 // CHECK:    }
 // CHECK:  }
   
@@ -39,9 +39,9 @@ extern X<T> {
   T method(T t);
 }
 
-// CHECK:  p4hir.extern @X<[!type_T]> {
-// CHECK:    p4hir.func @X(!type_T {p4hir.dir = #undir})
-// CHECK:    p4hir.func @method(!type_T {p4hir.dir = #undir}) -> !type_T
+// CHECK-LABEL:  p4hir.extern @X<[!type_T]> {
+// CHECK:    p4hir.func @X(!type_T {p4hir.dir = #undir, p4hir.param_name = "t"})
+// CHECK:    p4hir.func @method(!type_T {p4hir.dir = #undir, p4hir.param_name = "t"}) -> !type_T
 // CHECK:  }
 
 extern Y    {
@@ -49,9 +49,9 @@ extern Y    {
   void method<T>(T t);
 }
 
-// CHECK:  p4hir.extern @Y {
+// CHECK-LABEL:  p4hir.extern @Y {
 // CHECK:    p4hir.func @Y()
-// CHECK:    p4hir.func @method<!type_T>(!type_T {p4hir.dir = #undir})
+// CHECK:    p4hir.func @method<!type_T>(!type_T {p4hir.dir = #undir, p4hir.param_name = "t"})
 // CHECK:  }
   
 extern MyCounter<I> {
@@ -62,9 +62,9 @@ extern MyCounter<I> {
 typedef bit<10> my_counter_index_t;
 typedef MyCounter<my_counter_index_t> my_counter_t;
 
-// CHECK:  p4hir.extern @MyCounter<[!type_I]> {
-// CHECK:    p4hir.func @MyCounter(!b32i {p4hir.dir = #undir})
-// CHECK:    p4hir.func @count(!type_I {p4hir.dir = #in})
+// CHECK-LABEL:  p4hir.extern @MyCounter<[!type_I]> {
+// CHECK:    p4hir.func @MyCounter(!b32i {p4hir.dir = #undir, p4hir.param_name = "size"})
+// CHECK:    p4hir.func @count(!type_I {p4hir.dir = #in, p4hir.param_name = "index"})
 // CHECK:  }
 
 // CHECK-LABEL: p4hir.parser @p
@@ -100,7 +100,7 @@ parser p() {
     }
 }
 
-// CHECK-LABEL: p4hir.parser @Inner(%arg0: !MyCounter_b10i)()
+// CHECK-LABEL: p4hir.parser @Inner
 parser Inner(my_counter_t counter_set) {
     state start {
       // CHECK: p4hir.call_method @MyCounter::@count (%arg0, %{{.*}}) : !MyCounter_b10i, (!b10i) -> ()

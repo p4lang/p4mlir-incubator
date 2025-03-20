@@ -6,14 +6,18 @@ def ParserOp : P4HIR_Op<"parser",
      FunctionOpInterface, AutomaticAllocationScope]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FuncType>:$applyType,
-                       TypeAttrOf<CtorType>:$ctorType);
+                       TypeAttrOf<CtorType>:$ctorType,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;
 
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<(ins "llvm::StringRef":$sym_name, "P4HIR::FuncType":$applyType, "P4HIR::CtorType":$ctorType)>
+    OpBuilder<(ins "llvm::StringRef":$sym_name, "P4HIR::FuncType":$applyType, "P4HIR::CtorType":$ctorType,
+               CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs,
+               CArg<"mlir::DictionaryAttr", "{}">:$annotations)>
   ];
 
   let extraClassDeclaration = [{
@@ -39,10 +43,11 @@ def ParserOp : P4HIR_Op<"parser",
 
 def ParserStateOp : P4HIR_Op<"state",
    [Symbol, AutomaticAllocationScope]> {
- let arguments = (ins SymbolNameAttr:$sym_name);
+ let arguments = (ins SymbolNameAttr:$sym_name, 
+                      OptionalAttr<DictionaryAttr>:$annotations);
  let regions = (region MinSizedRegion<1>:$body);
  let assemblyFormat = [{
-   $sym_name $body attr-dict
+   $sym_name (`annotations` $annotations^)? $body attr-dict
  }];
 }
 

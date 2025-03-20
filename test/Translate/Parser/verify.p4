@@ -21,7 +21,7 @@ parser p2(in bool check, out bool matches) {
     }
 }
 
-// CHECK-LABEL: p4hir.parser @p2(%arg0: !p4hir.bool, %arg1: !p4hir.ref<!p4hir.bool>)
+// CHECK-LABEL: p4hir.parser @p2(
 // CHECK: p4hir.state @start {
 // CHECK:      %[[true:.*]] = p4hir.const #true
 // CHECK:      %[[eq:.*]] = p4hir.cmp(eq, %arg0, %[[true]]) : !p4hir.bool, !p4hir.bool

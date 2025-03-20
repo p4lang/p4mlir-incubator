@@ -1,7 +1,7 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
 // CHECK: #p_ctorval = #p4hir.ctor_param<@p, "ctorval"> : !p4hir.bool
-// CHECK:  p4hir.parser @p(%arg0: !i10i)(ctorval: !p4hir.bool) {
+// CHECK:  p4hir.parser @p(%arg0: !i10i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "sinit"})(ctorval: !p4hir.bool)
 // CHECK   %{{.*}} = p4hir.const ["ctorval"] #p_ctorval
 
 parser p(in int<10> sinit)(bool ctorval) {

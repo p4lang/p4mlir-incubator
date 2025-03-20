@@ -3,7 +3,7 @@
 // CHECK:  ![[type_T:.*]] = !p4hir.type_var<"T">
 // CHECK:  ![[type_U:.*]] = !p4hir.type_var<"U">
 
-// CHECK:   p4hir.func @externFunc<![[type_T]], ![[type_U]]>(![[type_U]] {p4hir.dir = #in}, ![[type_T]] {p4hir.dir = #in}) -> ![[type_T]]
+// CHECK:   p4hir.func @externFunc<![[type_T]], ![[type_U]]>(![[type_U]] {p4hir.dir = #in, p4hir.param_name = "a"}, ![[type_T]] {p4hir.dir = #in, p4hir.param_name = "b"}) -> ![[type_T]]
 extern T externFunc<T, U>(in U a, in T b);
 
 parser p1() {

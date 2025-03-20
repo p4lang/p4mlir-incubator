@@ -40,7 +40,7 @@ package V1Switch<H, M>(Parser<H, M> p,
                        Deparser<H> dep
                        );
 
-// CHECK:   p4hir.package @V1Switch<[!type_H, !type_M]>("p" : !Parser_type_H_type_M, "vr" : !VerifyChecksum_type_H_type_M, "ig" : !Ingress_type_H_type_M, "eg" : !Egress_type_H_type_M, "ck" : !ComputeChecksum_type_H_type_M, "dep" : !Deparser_type_H)
+// CHECK: p4hir.package @V1Switch<[!type_H, !type_M]>("p" : !Parser_type_H_type_M {p4hir.dir = #undir, p4hir.param_name = "p"}, "vr" : !VerifyChecksum_type_H_type_M {p4hir.dir = #undir, p4hir.param_name = "vr"}, "ig" : !Ingress_type_H_type_M {p4hir.dir = #undir, p4hir.param_name = "ig"}, "eg" : !Egress_type_H_type_M {p4hir.dir = #undir, p4hir.param_name = "eg"}, "ck" : !ComputeChecksum_type_H_type_M {p4hir.dir = #undir, p4hir.param_name = "ck"}, "dep" : !Deparser_type_H {p4hir.dir = #undir, p4hir.param_name = "dep"})
 control c() {
     apply {
     }
@@ -50,7 +50,7 @@ control c() {
 control e();
 package top(e _e);
 
-// CHECK:  p4hir.package @top("_e" : !e)
+// CHECK:  p4hir.package @top("_e" : !e {p4hir.dir = #undir, p4hir.param_name = "_e"})
 // CHECK:  %[[c:.*]] = p4hir.instantiate @c() as "c" : () -> !c
 // CHECK:  p4hir.instantiate @top(%[[c]]) as "main" : (!c) -> !top
 top(c()) main;

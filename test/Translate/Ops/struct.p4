@@ -69,14 +69,14 @@ action test2(inout PortId_t port) {
   port._v = port._v + 1; 
 }
 
-// CHECK-LABEL: p4hir.func action @test2(%arg0: !p4hir.ref<!PortId_t> {p4hir.dir = #p4hir<dir inout>}) {
+// CHECK-LABEL: p4hir.func action @test2
 // CHECK: %[[_V_REF:.*]] = p4hir.struct_extract_ref %arg0["_v"] : <!PortId_t>
 // CHECK: %[[VAL:.*]] = p4hir.read %arg0 : <!PortId_t>
 // CHECK: %[[_V_VAL:.*]]  = p4hir.struct_extract %[[VAL]]["_v"] : !PortId_t
 // CHECK: p4hir.assign %{{.*}}, %[[_V_REF]]
 // CHECK: p4hir.implicit_return
 
-// CHECK-LABEL: p4hir.func action @test(%arg0: !p4hir.ref<!metadata_t> {p4hir.dir = #p4hir<dir inout>}) {
+// CHECK-LABEL: p4hir.func action @test
 // Just few important bits here        
 action test(inout metadata_t meta) {
    bit<9> vv;

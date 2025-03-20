@@ -13,11 +13,11 @@ extern packet_in {
 // CHECK:  ![[type_T:.*]] = !p4hir.type_var<"T">
 // CHECK:  p4hir.extern @packet_in {
 // CHECK:    p4hir.overload_set @extract {
-// CHECK:      p4hir.func @extract_0<![[type_T]]>(!p4hir.ref<![[type_T]]> {p4hir.dir = #out})
-// CHECK:      p4hir.func @extract_1<![[type_T]]>(!p4hir.ref<![[type_T]]> {p4hir.dir = #out}, !b32i {p4hir.dir = #in})
+// CHECK:      p4hir.func @extract_0<![[type_T]]>(!p4hir.ref<![[type_T]]> {p4hir.dir = #out, p4hir.param_name = "hdr"})
+// CHECK:      p4hir.func @extract_1<![[type_T]]>(!p4hir.ref<![[type_T]]> {p4hir.dir = #out, p4hir.param_name = "variableSizeHeader"}, !b32i {p4hir.dir = #in, p4hir.param_name = "variableFieldSizeInBits"})
 // CHECK:    }
 // CHECK:    p4hir.func @lookahead<![[type_T]]>() -> ![[type_T]]
-// CHECK:    p4hir.func @advance(!b32i {p4hir.dir = #in})
+// CHECK:    p4hir.func @advance(!b32i {p4hir.dir = #in, p4hir.param_name = "sizeInBits"})
 // CHECK:    p4hir.func @length() -> !b32i
 // CHECK:  }
 
