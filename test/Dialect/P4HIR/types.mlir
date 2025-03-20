@@ -26,7 +26,7 @@
 !SuitsSerializable = !p4hir.ser_enum<"Suits", !bit42, Clubs : #b1, Diamonds : #b2, Hearths : #b3, Spades : #b4>
 
 !validity = !p4hir.validity.bit
-!header = !p4hir.header<"struct_name", boolfield : !p4hir.bool, bitfield : !bit42, __validity : !validity>
+!header = !p4hir.header<"header_name", boolfield : !p4hir.bool, bitfield : !bit42, serenumfield : !SuitsSerializable, structfield : !nested_struct, varbitfield : !p4hir.varbit<32>, __valid : !validity>
 
 !b9i = !p4hir.bit<9>
 !M = !p4hir.struct<"M", e: !PortId_t, es: !b9i>
@@ -38,8 +38,6 @@
 #int192_Narrow = #p4hir.int<192> : !Narrow
 
 !tuple = tuple<!bit42, !void, !SuitsSerializable>
-
-!HeaderWithVarbit = !p4hir.header<"HeaderWithVarbit", varbitdata: !p4hir.varbit<32>>
 
 // No need to check stuff. If it parses, it's fine.
 // CHECK: module
