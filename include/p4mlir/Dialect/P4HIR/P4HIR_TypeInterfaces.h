@@ -10,6 +10,14 @@ namespace P4::P4MLIR::P4HIR {
 struct FieldInfo {
     mlir::StringAttr name;
     mlir::Type type;
+    mlir::DictionaryAttr annotations;
+
+  FieldInfo(mlir::StringAttr name,
+            mlir::Type type,
+            mlir::DictionaryAttr annotations = {})
+    : name(name), type(type),
+      annotations(annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr())
+  { }
 };
 
 namespace FieldIdImpl {

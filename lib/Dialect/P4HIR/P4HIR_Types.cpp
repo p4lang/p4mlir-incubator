@@ -5,8 +5,10 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/Support/LLVM.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
@@ -200,25 +202,31 @@ llvm::hash_code hash_value(const FieldInfo &fi) { return llvm::hash_combine(fi.n
 /// Parse a list of unique field names and types within <> plus name. E.g.:
 /// <name, foo: i7, bar: i8>
 static ParseResult parseFields(AsmParser &p, std::string &name,
-                               SmallVectorImpl<FieldInfo> &parameters) {
+                               SmallVectorImpl<FieldInfo> &parameters,
+                               mlir::DictionaryAttr &annotations) {
     llvm::StringSet<> nameSet;
+    mlir::NamedAttrList annList;
     bool hasDuplicateName = false;
     bool parsedName = false;
     auto parseResult =
         p.parseCommaSeparatedList(mlir::AsmParser::Delimiter::LessGreater, [&]() -> ParseResult {
             // First, try to parse name
             if (!parsedName) {
-                if (p.parseKeywordOrString(&name)) return failure();
+                if (p.parseKeywordOrString(&name) || p.parseOptionalAttrDict(annList))
+                    return failure();
                 parsedName = true;
+                annotations = annList.getDictionary(p.getContext());
                 return success();
             }
 
             // Parse fields
             std::string fieldName;
             Type fieldType;
+            mlir::NamedAttrList fieldAnnotations;
 
             auto fieldLoc = p.getCurrentLocation();
-            if (p.parseKeywordOrString(&fieldName) || p.parseColon() || p.parseType(fieldType))
+            if (p.parseKeywordOrString(&fieldName) || p.parseColon() || p.parseType(fieldType) ||
+                p.parseOptionalAttrDict(fieldAnnotations))
                 return failure();
 
             if (!nameSet.insert(fieldName).second) {
@@ -228,7 +236,8 @@ static ParseResult parseFields(AsmParser &p, std::string &name,
                 hasDuplicateName = true;
             }
 
-            parameters.push_back(FieldInfo{StringAttr::get(p.getContext(), fieldName), fieldType});
+            parameters.emplace_back(StringAttr::get(p.getContext(), fieldName), fieldType,
+                                    fieldAnnotations.getDictionary(p.getContext()));
             return success();
         });
 
@@ -237,13 +246,22 @@ static ParseResult parseFields(AsmParser &p, std::string &name,
 }
 
 /// Print out a list of named fields surrounded by <>.
-static void printFields(AsmPrinter &p, StringRef name, ArrayRef<FieldInfo> fields) {
+static void printFields(AsmPrinter &p, StringRef name, ArrayRef<FieldInfo> fields,
+                        mlir::DictionaryAttr annotations) {
     p << '<';
     p.printString(name);
+    if (annotations && !annotations.empty()) {
+        p << ' ';
+        p.printAttributeWithoutType(annotations);
+    }
     if (!fields.empty()) p << ", ";
     llvm::interleaveComma(fields, p, [&](const FieldInfo &field) {
         p.printKeywordOrString(field.name.getValue());
         p << ": " << field.type;
+        if (field.annotations && !field.annotations.empty()) {
+            p << " ";
+            p.printAttributeWithoutType(field.annotations);
+        }
     });
     p << ">";
 }
@@ -251,27 +269,31 @@ static void printFields(AsmPrinter &p, StringRef name, ArrayRef<FieldInfo> field
 Type StructType::parse(AsmParser &p) {
     llvm::SmallVector<FieldInfo, 4> parameters;
     std::string name;
-    if (parseFields(p, name, parameters)) return {};
-    return get(p.getContext(), name, parameters);
+    mlir::DictionaryAttr annotations;
+    if (parseFields(p, name, parameters, annotations)) return {};
+    return get(p.getContext(), name, parameters, annotations);
 }
 
 Type HeaderType::parse(AsmParser &p) {
     llvm::SmallVector<FieldInfo, 4> parameters;
     std::string name;
-    if (parseFields(p, name, parameters)) return {};
+    mlir::DictionaryAttr annotations;
+    if (parseFields(p, name, parameters, annotations)) return {};
     // Do not use our own get() here as it adds __validity bit. And we do have it already.
-    return Base::get(p.getContext(), name, parameters);
+    return Base::get(p.getContext(), name, parameters,
+                     annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
 }
 
 Type HeaderUnionType::parse(AsmParser &p) {
     llvm::SmallVector<FieldInfo, 4> parameters;
     std::string name;
-    if (parseFields(p, name, parameters)) return {};
-    return get(p.getContext(), name, parameters);
+    mlir::DictionaryAttr annotations;
+    if (parseFields(p, name, parameters, annotations)) return {};
+    return get(p.getContext(), name, parameters, mlir::DictionaryAttr());
 }
 
 LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
-                                 ArrayRef<FieldInfo> elements) {
+                                 ArrayRef<FieldInfo> elements, DictionaryAttr) {
     llvm::SmallDenseSet<StringAttr> fieldNameSet;
     LogicalResult result = success();
     fieldNameSet.reserve(elements.size());
@@ -285,7 +307,7 @@ LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, S
 }
 
 LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
-                                 ArrayRef<FieldInfo> elements) {
+                                 ArrayRef<FieldInfo> elements, DictionaryAttr) {
     llvm::SmallDenseSet<StringAttr> fieldNameSet;
     LogicalResult result = success();
     fieldNameSet.reserve(elements.size());
@@ -298,9 +320,10 @@ LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, S
 
     if (elements.empty()) emitError() << "empty p4hir.header type";
 
-    if (elements.back().name != validityBit ||
-        !mlir::isa<P4HIR::ValidBitType>(elements.back().type))
-        emitError() << "last field of p4hir.header type should be validity bit";
+    const auto &last = elements.back();
+    if (last.name != validityBit || !mlir::isa<P4HIR::ValidBitType>(last.type))
+        emitError() << "last field of p4hir.header type should be validity bit, but got "
+                    << elements.back().name << " of type " << last.type;
 
     // TODO: Check field types & nesting
 
@@ -308,7 +331,7 @@ LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, S
 }
 
 LogicalResult HeaderUnionType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
-                                      ArrayRef<FieldInfo> elements) {
+                                      ArrayRef<FieldInfo> elements, DictionaryAttr) {
     llvm::SmallDenseSet<StringAttr> fieldNameSet;
     LogicalResult result = success();
     fieldNameSet.reserve(elements.size());
@@ -335,27 +358,37 @@ LogicalResult HeaderUnionType::verify(function_ref<InFlightDiagnostic()> emitErr
     return result;
 }
 
-void StructType::print(AsmPrinter &p) const { printFields(p, getName(), getElements()); }
-void HeaderType::print(AsmPrinter &p) const { printFields(p, getName(), getElements()); }
-void HeaderUnionType::print(AsmPrinter &p) const { printFields(p, getName(), getElements()); }
+void StructType::print(AsmPrinter &p) const {
+    printFields(p, getName(), getElements(), getAnnotations());
+}
+void HeaderType::print(AsmPrinter &p) const {
+    printFields(p, getName(), getElements(), getAnnotations());
+}
+void HeaderUnionType::print(AsmPrinter &p) const {
+    printFields(p, getName(), getElements(), getAnnotations());
+}
 
 HeaderType HeaderType::get(mlir::MLIRContext *context, llvm::StringRef name,
-                           llvm::ArrayRef<FieldInfo> fields) {
+                           llvm::ArrayRef<FieldInfo> fields, mlir::DictionaryAttr annotations) {
     llvm::SmallVector<FieldInfo, 4> realFields(fields);
-    realFields.push_back(
-        {mlir::StringAttr::get(context, validityBit), P4HIR::ValidBitType::get(context)});
+    realFields.emplace_back(mlir::StringAttr::get(context, validityBit),
+                            P4HIR::ValidBitType::get(context));
 
-    return Base::get(context, name, realFields);
+    return Base::get(context, name, realFields,
+                     annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
 }
 
 Type EnumType::parse(AsmParser &p) {
     std::string name;
     llvm::SmallVector<Attribute> fields;
     bool parsedName = false;
+    mlir::NamedAttrList annotations;
+
     if (p.parseCommaSeparatedList(AsmParser::Delimiter::LessGreater, [&]() {
             // First, try to parse name
             if (!parsedName) {
-                if (p.parseKeywordOrString(&name)) return failure();
+                if (p.parseKeywordOrString(&name) || p.parseOptionalAttrDict(annotations))
+                    return failure();
                 parsedName = true;
                 return success();
             }
@@ -367,13 +400,18 @@ Type EnumType::parse(AsmParser &p) {
         }))
         return {};
 
-    return get(p.getContext(), name, ArrayAttr::get(p.getContext(), fields));
+    return get(p.getContext(), name, ArrayAttr::get(p.getContext(), fields),
+               annotations.getDictionary(p.getContext()));
 }
 
 void EnumType::print(AsmPrinter &p) const {
     auto fields = getFields();
     p << '<';
     p.printString(getName());
+    if (auto annotations = getAnnotations(); annotations && !annotations.empty()) {
+        p << ' ';
+        p.printAttributeWithoutType(annotations);
+    }
     if (!fields.empty()) p << ", ";
     llvm::interleaveComma(fields, p, [&](Attribute enumerator) {
         p << mlir::cast<StringAttr>(enumerator).getValue();
@@ -419,6 +457,10 @@ void SerEnumType::print(AsmPrinter &p) const {
     auto fields = getFields();
     p << '<';
     p.printString(getName());
+    if (auto annotations = getAnnotations(); annotations && !annotations.empty()) {
+        p << ' ';
+        p.printAttributeWithoutType(annotations);
+    }
     p << ", ";
     p.printType(getType());
     if (!fields.empty()) p << ", ";
@@ -434,16 +476,17 @@ Type SerEnumType::parse(AsmParser &p) {
     std::string name;
     llvm::SmallVector<NamedAttribute> fields;
     P4HIR::BitsType type;
+    mlir::NamedAttrList annotations;
 
     // Parse "<name, type, " part
-    if (p.parseLess() || p.parseKeywordOrString(&name) || p.parseComma() ||
-        p.parseCustomTypeWithFallback<P4HIR::BitsType>(type) || p.parseComma())
+    if (p.parseLess() || p.parseKeywordOrString(&name) || p.parseOptionalAttrDict(annotations) ||
+        p.parseComma() || p.parseCustomTypeWithFallback<P4HIR::BitsType>(type) || p.parseComma())
         return {};
 
+    // Parse comma separated set of fields "name : #value"
     if (p.parseCommaSeparatedList([&]() {
             StringRef caseName;
             P4HIR::IntAttr attr;
-            // Parse fields "name : #value"
             if (p.parseKeyword(&caseName) || p.parseColon() ||
                 p.parseCustomAttributeWithFallback<P4HIR::IntAttr>(attr))
                 return failure();
@@ -456,7 +499,7 @@ Type SerEnumType::parse(AsmParser &p) {
     // Parse closing >
     if (p.parseGreater()) return {};
 
-    return get(name, type, fields);
+    return get(name, type, fields, annotations.getDictionary(p.getContext()));
 }
 
 Type ValidBitType::parse(mlir::AsmParser &parser) { return get(parser.getContext()); }

@@ -2,17 +2,20 @@
 
 #include <string>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -283,8 +286,12 @@ void P4HIR::ScopeOp::getSuccessorRegions(mlir::RegionBranchPoint point,
 }
 
 void P4HIR::ScopeOp::build(OpBuilder &builder, OperationState &result,
+                           mlir::DictionaryAttr annotations,
                            function_ref<void(OpBuilder &, Type &, Location)> scopeBuilder) {
     assert(scopeBuilder && "the builder callback for 'then' must be present");
+
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
 
     OpBuilder::InsertionGuard guard(builder);
     Region *scopeRegion = result.addRegion();
@@ -297,8 +304,13 @@ void P4HIR::ScopeOp::build(OpBuilder &builder, OperationState &result,
 }
 
 void P4HIR::ScopeOp::build(OpBuilder &builder, OperationState &result,
+                           mlir::DictionaryAttr annotations,
                            function_ref<void(OpBuilder &, Location)> scopeBuilder) {
     assert(scopeBuilder && "the builder callback for 'then' must be present");
+
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+
     OpBuilder::InsertionGuard guard(builder);
     Region *scopeRegion = result.addRegion();
     builder.createBlock(scopeRegion);
@@ -421,6 +433,13 @@ ParseResult P4HIR::IfOp::parse(OpAsmParser &parser, OperationState &result) {
     if (parser.parseOperand(cond) || parser.resolveOperand(cond, boolType, result.operands))
         return failure();
 
+    // Parse annotations
+    mlir::DictionaryAttr thenAnnotations;
+    if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+        if (parser.parseAttribute<mlir::DictionaryAttr>(thenAnnotations)) return failure();
+        result.addAttribute(getThenAnnotationsAttrName(result.name), thenAnnotations);
+    }
+
     // Parse the 'then' region.
     auto parseThenLoc = parser.getCurrentLocation();
     if (parser.parseRegion(*thenRegion, /*arguments=*/{},
@@ -431,6 +450,14 @@ ParseResult P4HIR::IfOp::parse(OpAsmParser &parser, OperationState &result) {
     // If we find an 'else' keyword, parse the 'else' region.
     if (!parser.parseOptionalKeyword("else")) {
         auto parseElseLoc = parser.getCurrentLocation();
+
+        // Parse annotations
+        mlir::DictionaryAttr elseAnnotations;
+        if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+            if (parser.parseAttribute<mlir::DictionaryAttr>(elseAnnotations)) return failure();
+            result.addAttribute(getElseAnnotationsAttrName(result.name), elseAnnotations);
+        }
+
         if (parser.parseRegion(*elseRegion, /*arguments=*/{}, /*argTypes=*/{})) return failure();
         if (ensureRegionTerm(parser, *elseRegion, parseElseLoc).failed()) return failure();
     }
@@ -440,7 +467,12 @@ ParseResult P4HIR::IfOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void P4HIR::IfOp::print(OpAsmPrinter &p) {
-    p << " " << getCondition() << " ";
+    p << " " << getCondition();
+    if (auto ann = getThenAnnotations(); ann && !ann->empty()) {
+        p << " annotations ";
+        p.printAttributeWithoutType(*ann);
+    }
+    p << ' ';
     auto &thenRegion = this->getThenRegion();
     p.printRegion(thenRegion,
                   /*printEntryBlockArgs=*/false,
@@ -449,13 +481,19 @@ void P4HIR::IfOp::print(OpAsmPrinter &p) {
     // Print the 'else' regions if it exists and has a block.
     auto &elseRegion = this->getElseRegion();
     if (!elseRegion.empty()) {
-        p << " else ";
+        p << " else";
+        if (auto ann = getElseAnnotations(); ann && !ann->empty()) {
+            p << " annotations ";
+            p.printAttributeWithoutType(*ann);
+        }
+        p << ' ';
         p.printRegion(elseRegion,
                       /*printEntryBlockArgs=*/false,
                       /*printBlockTerminators=*/!omitRegionTerm(elseRegion));
     }
 
-    p.printOptionalAttrDict(getOperation()->getAttrs());
+    p.printOptionalAttrDict(getOperation()->getAttrs(),
+                            {getThenAnnotationsAttrName(), getElseAnnotationsAttrName()});
 }
 
 /// Default callback for IfOp builders.
@@ -489,10 +527,14 @@ void P4HIR::IfOp::getSuccessorRegions(mlir::RegionBranchPoint point,
 
 void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, bool withElseRegion,
                         function_ref<void(OpBuilder &, Location)> thenBuilder,
-                        function_ref<void(OpBuilder &, Location)> elseBuilder) {
+                        mlir::DictionaryAttr thenAnnotations,
+                        function_ref<void(OpBuilder &, Location)> elseBuilder,
+                        mlir::DictionaryAttr elseAnnotations) {
     assert(thenBuilder && "the builder callback for 'then' must be present");
 
     result.addOperands(cond);
+    if (thenAnnotations && !thenAnnotations.empty())
+        result.addAttribute(getThenAnnotationsAttrName(result.name), thenAnnotations);
 
     OpBuilder::InsertionGuard guard(builder);
     Region *thenRegion = result.addRegion();
@@ -501,6 +543,9 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
 
     Region *elseRegion = result.addRegion();
     if (!withElseRegion) return;
+
+    if (elseAnnotations && !elseAnnotations.empty())
+        result.addAttribute(getElseAnnotationsAttrName(result.name), elseAnnotations);
 
     builder.createBlock(elseRegion);
     elseBuilder(builder, result.location);
@@ -556,21 +601,21 @@ LogicalResult P4HIR::FuncOp::verify() {
 }
 
 void P4HIR::FuncOp::build(OpBuilder &builder, OperationState &result, llvm::StringRef name,
-                          P4HIR::FuncType type, bool isExternal, ArrayRef<NamedAttribute> attrs,
-                          ArrayRef<DictionaryAttr> argAttrs) {
+                          P4HIR::FuncType type, bool isExternal, ArrayRef<DictionaryAttr> argAttrs,
+                          mlir::DictionaryAttr annotations) {
     result.addRegion();
 
     result.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
     result.addAttribute(getFunctionTypeAttrName(result.name), TypeAttr::get(type));
-    result.attributes.append(attrs.begin(), attrs.end());
     // External functions are private, everything else is public
     result.addAttribute(SymbolTable::getVisibilityAttrName(),
                         builder.getStringAttr(isExternal ? "private" : "public"));
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
 
     function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
                                                   /*resultAttrs=*/std::nullopt,
-                                                  getArgAttrsAttrName(result.name),
-                                                  getResAttrsAttrName(result.name));
+                                                  getArgAttrsAttrName(result.name), {});
 }
 
 void P4HIR::FuncOp::createEntryBlock() {
@@ -597,16 +642,16 @@ void P4HIR::FuncOp::print(OpAsmPrinter &p) {
     function_interface_impl::printFunctionSignature(p, *this, fnType.getInputs(), false,
                                                     fnType.getReturnTypes());
 
-    if (mlir::ArrayAttr annotations = getAnnotationsAttr()) {
-        p << ' ';
-        p.printAttribute(annotations);
-    }
-
     function_interface_impl::printFunctionAttributes(
         p, *this,
         // These are all omitted since they are custom printed already.
         {getFunctionTypeAttrName(), SymbolTable::getVisibilityAttrName(), getArgAttrsAttrName(),
-         getActionAttrName(), getResAttrsAttrName()});
+         getActionAttrName(), getAnnotationsAttrName()});
+
+    if (auto ann = getAnnotations(); ann && !ann->empty()) {
+        p << " annotations ";
+        p.printAttributeWithoutType(*ann);
+    }
 
     // Print the body if this is not an external function.
     Region &body = getOperation()->getRegion(0);
@@ -674,19 +719,20 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
     } else
         return failure();
 
-    // Parse an OptionalAttr<ArrayAttr>:$annotations
-    mlir::ArrayAttr annotations;
-    if (auto oa = parser.parseOptionalAttribute(annotations); oa.has_value())
-        state.addAttribute(getAnnotationsAttrName(state.name), annotations);
-
     // If additional attributes are present, parse them.
     if (parser.parseOptionalAttrDictWithKeyword(state.attributes)) return failure();
 
     // Add the attributes to the function arguments.
     assert(resultAttrs.size() == resultTypes.size());
     function_interface_impl::addArgAndResultAttrs(builder, state, arguments, resultAttrs,
-                                                  getArgAttrsAttrName(state.name),
-                                                  getResAttrsAttrName(state.name));
+                                                  getArgAttrsAttrName(state.name), {});
+
+    // Parse annotations
+    mlir::DictionaryAttr annotations;
+    if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+        if (parser.parseAttribute<mlir::DictionaryAttr>(annotations)) return failure();
+        state.addAttribute(getAnnotationsAttrName(state.name), annotations);
+    }
 
     // Parse the action body.
     auto *body = state.addRegion();
@@ -1236,7 +1282,8 @@ LogicalResult P4HIR::AssignSliceOp::verify() {
 
 void P4HIR::ParserOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
                             llvm::StringRef sym_name, P4HIR::FuncType applyType,
-                            P4HIR::CtorType ctorType) {
+                            P4HIR::CtorType ctorType, ArrayRef<DictionaryAttr> argAttrs,
+                            mlir::DictionaryAttr annotations) {
     result.addRegion();
 
     result.addAttribute(::SymbolTable::getSymbolAttrName(), builder.getStringAttr(sym_name));
@@ -1246,11 +1293,11 @@ void P4HIR::ParserOp::build(mlir::OpBuilder &builder, mlir::OperationState &resu
     // Parsers are top-level objects with public visibility
     result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
 
-    // TBD:
-    // function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-    //                                              /*resultAttrs=*/std::nullopt,
-    //                                              getArgAttrsAttrName(result.name),
-    //                                              getResAttrsAttrName(result.name));
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+    function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                                  /*resultAttrs=*/std::nullopt,
+                                                  getArgAttrsAttrName(result.name), {});
 }
 
 void P4HIR::ParserOp::createEntryBlock() {
@@ -1283,7 +1330,13 @@ void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
     function_interface_impl::printFunctionAttributes(
         printer, *this,
         // These are all omitted since they are custom printed already.
-        {getApplyTypeAttrName(), getCtorTypeAttrName(), ::SymbolTable::getVisibilityAttrName()});
+        {getApplyTypeAttrName(), getCtorTypeAttrName(), ::SymbolTable::getVisibilityAttrName(),
+         getAnnotationsAttrName(), getArgAttrsAttrName()});
+
+    if (auto ann = getAnnotations(); ann && !ann->empty()) {
+        printer << " annotations ";
+        printer.printAttributeWithoutType(*ann);
+    }
 
     printer << ' ';
     printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
@@ -1344,7 +1397,7 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
             if (parser.parseRParen()) return mlir::failure();
         }
 
-        auto ctorResultType = P4HIR::ParserType::get(parser.getContext(), nameAttr, argTypes, {});
+        auto ctorResultType = P4HIR::ParserType::get(parser.getContext(), nameAttr, argTypes);
         result.addAttribute(getCtorTypeAttrName(result.name),
                             TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
     }
@@ -1352,7 +1405,17 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
     // If additional attributes are present, parse them.
     if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return failure();
 
-    // TODO: Support argument attributes
+    // Parse annotations
+    mlir::DictionaryAttr annotations;
+    if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+        if (parser.parseAttribute<mlir::DictionaryAttr>(annotations)) return failure();
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+    }
+
+    // Add the attributes to the function arguments.
+    assert(resultAttrs.size() == resultTypes.size());
+    function_interface_impl::addArgAndResultAttrs(builder, result, arguments, resultAttrs,
+                                                  getArgAttrsAttrName(result.name), {});
 
     // Parse the parser body.
     auto *body = result.addRegion();
@@ -1568,6 +1631,8 @@ ParseResult P4HIR::PackageOp::parse(OpAsmParser &parser, OperationState &result)
     }
 
     // Resonstruct the ctor type
+    llvm::SmallVector<mlir::Attribute> argAttrs;
+    bool noAttrs = true;
     {
         llvm::SmallVector<std::pair<StringAttr, Type>> namedTypes;
         if (parser.parseLParen()) return mlir::failure();
@@ -1577,10 +1642,13 @@ ParseResult P4HIR::PackageOp::parse(OpAsmParser &parser, OperationState &result)
             if (parser.parseCommaSeparatedList([&]() -> ParseResult {
                     std::string name;
                     mlir::Type type;
+                    mlir::NamedAttrList attrs;
                     if (parser.parseKeywordOrString(&name) || parser.parseColon() ||
-                        parser.parseType(type))
+                        parser.parseType(type) || parser.parseOptionalAttrDict(attrs))
                         return mlir::failure();
                     namedTypes.emplace_back(mlir::StringAttr::get(parser.getContext(), name), type);
+                    if (!attrs.empty()) noAttrs = false;
+                    argAttrs.push_back(attrs.getDictionary(parser.getContext()));
                     return mlir::success();
                 }) ||
                 parser.parseRParen())
@@ -1592,8 +1660,18 @@ ParseResult P4HIR::PackageOp::parse(OpAsmParser &parser, OperationState &result)
                             TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
     }
 
+    if (!noAttrs)
+        result.addAttribute(getArgAttrsAttrName(result.name), builder.getArrayAttr(argAttrs));
+
     // If additional attributes are present, parse them.
     if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return mlir::failure();
+
+    mlir::DictionaryAttr annotations;
+    if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+        if (parser.parseAttribute<mlir::DictionaryAttr>(annotations)) return failure();
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+    }
+
     return success();
 }
 
@@ -1606,12 +1684,39 @@ void P4HIR::PackageOp::print(OpAsmPrinter &printer) {
         printer << '>';
     }
     printer << '(';
-    llvm::interleaveComma(getCtorType().getInputs(), printer,
-                          [&printer](std::pair<mlir::StringAttr, mlir::Type> namedType) {
-                              printer << namedType.first << " : ";
-                              printer.printType(namedType.second);
-                          });
+
+    auto argAttrs = getArgAttrsAttr();
+    for (auto [i, namedType] : llvm::enumerate(getCtorType().getInputs())) {
+        if (i > 0) printer << ", ";
+        printer << namedType.first << " : ";
+        printer.printType(namedType.second);
+        if (argAttrs)
+            printer.printOptionalAttrDict(llvm::cast<DictionaryAttr>(argAttrs[i]).getValue());
+    }
     printer << ')';
+
+    if (auto ann = getAnnotations(); ann && !ann->empty()) {
+        printer << " annotations ";
+        printer.printAttributeWithoutType(*ann);
+    }
+}
+
+void P4HIR::PackageOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
+                             llvm::StringRef name, CtorType type,
+                             llvm::ArrayRef<mlir::Type> type_parameters,
+                             llvm::ArrayRef<mlir::DictionaryAttr> argAttrs,
+                             mlir::DictionaryAttr annotations) {
+    result.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
+    result.addAttribute(getCtorTypeAttrName(result.name), TypeAttr::get(type));
+    if (!type_parameters.empty())
+        result.addAttribute(getTypeParametersAttrName(result.name),
+                            builder.getTypeArrayAttr(type_parameters));
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+
+    function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                                  /*resultAttrs=*/std::nullopt,
+                                                  getArgAttrsAttrName(result.name), {});
 }
 
 //===----------------------------------------------------------------------===//
@@ -1619,7 +1724,7 @@ void P4HIR::PackageOp::print(OpAsmPrinter &printer) {
 //===----------------------------------------------------------------------===//
 
 void P4HIR::InstantiateOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
-    if (getName() && !getName()->empty()) setNameFn(getResult(), *getName());
+    setNameFn(getResult(), getName());
 }
 
 LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
@@ -1718,7 +1823,8 @@ mlir::Block &P4HIR::OverloadSetOp::createEntryBlock() {
 
 void P4HIR::ControlOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
                              llvm::StringRef sym_name, P4HIR::FuncType applyType,
-                             P4HIR::CtorType ctorType) {
+                             P4HIR::CtorType ctorType, ArrayRef<DictionaryAttr> argAttrs,
+                             mlir::DictionaryAttr annotations) {
     result.addRegion();
 
     result.addAttribute(::SymbolTable::getSymbolAttrName(), builder.getStringAttr(sym_name));
@@ -1728,11 +1834,11 @@ void P4HIR::ControlOp::build(mlir::OpBuilder &builder, mlir::OperationState &res
     // Controls are top-level objects with public visibility
     result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
 
-    // TBD:
-    // function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-    //                                              /*resultAttrs=*/std::nullopt,
-    //                                              getArgAttrsAttrName(result.name),
-    //                                              getResAttrsAttrName(result.name));
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+    function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                                  /*resultAttrs=*/std::nullopt,
+                                                  getArgAttrsAttrName(result.name), {});
 }
 
 void P4HIR::ControlOp::createEntryBlock() {
@@ -1743,17 +1849,16 @@ void P4HIR::ControlOp::createEntryBlock() {
 }
 
 void P4HIR::ControlOp::print(mlir::OpAsmPrinter &printer) {
-    // This is essentially function_interface_impl::printFunctionOp, but we
-    // always print body and we do not have result / argument attributes (for now)
-
     auto funcName = getSymNameAttr().getValue();
 
     printer << ' ';
     printer.printSymbolName(funcName);
 
+    // Print function signature
     function_interface_impl::printFunctionSignature(printer, *this, getApplyType().getInputs(),
                                                     false, {});
 
+    // Print ctor parameters
     printer << "(";
     llvm::interleaveComma(getCtorType().getInputs(), printer,
                           [&](std::pair<mlir::StringAttr, mlir::Type> namedType) {
@@ -1765,7 +1870,13 @@ void P4HIR::ControlOp::print(mlir::OpAsmPrinter &printer) {
     function_interface_impl::printFunctionAttributes(
         printer, *this,
         // These are all omitted since they are custom printed already.
-        {getApplyTypeAttrName(), getCtorTypeAttrName(), ::SymbolTable::getVisibilityAttrName()});
+        {getApplyTypeAttrName(), getCtorTypeAttrName(), ::SymbolTable::getVisibilityAttrName(),
+         getAnnotationsAttrName(), getArgAttrsAttrName()});
+
+    if (auto ann = getAnnotations(); ann && !ann->empty()) {
+        printer << " annotations ";
+        printer.printAttributeWithoutType(*ann);
+    }
 
     printer << ' ';
     printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
@@ -1826,7 +1937,7 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
                 return mlir::failure();
         }
 
-        auto ctorResultType = P4HIR::ControlType::get(parser.getContext(), nameAttr, argTypes, {});
+        auto ctorResultType = P4HIR::ControlType::get(parser.getContext(), nameAttr, argTypes);
         result.addAttribute(getCtorTypeAttrName(result.name),
                             TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
     }
@@ -1834,7 +1945,17 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
     // If additional attributes are present, parse them.
     if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return failure();
 
-    // TODO: Support argument attributes
+    // Parse annotations
+    mlir::DictionaryAttr annotations;
+    if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+        if (parser.parseAttribute<mlir::DictionaryAttr>(annotations)) return failure();
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+    }
+
+    // Add the attributes to the control arguments.
+    assert(resultAttrs.size() == resultTypes.size());
+    function_interface_impl::addArgAndResultAttrs(builder, result, arguments, resultAttrs,
+                                                  getArgAttrsAttrName(result.name), {});
 
     // Parse the control body.
     auto *body = result.addRegion();
@@ -1844,6 +1965,26 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
     if (body->empty()) return parser.emitError(loc, "expected non-empty control body");
 
     return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// TableOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::TableOp::build(
+    mlir::OpBuilder &builder, mlir::OperationState &result, llvm::StringRef name,
+    mlir::DictionaryAttr annotations,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> entryBuilder) {
+    result.addAttribute(getSymNameAttrName(result.name), builder.getStringAttr(name));
+
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+
+    OpBuilder::InsertionGuard guard(builder);
+
+    Region *entryRegion = result.addRegion();
+    builder.createBlock(entryRegion);
+    entryBuilder(builder, result.location);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1866,6 +2007,7 @@ void P4HIR::TableApplyOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 
 void P4HIR::TableEntryOp::build(
     mlir::OpBuilder &builder, mlir::OperationState &result, mlir::StringAttr name, bool isConst,
+    mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Type &, mlir::Location)> entryBuilder) {
     OpBuilder::InsertionGuard guard(builder);
 
@@ -1876,6 +2018,9 @@ void P4HIR::TableEntryOp::build(
 
     if (isConst) result.addAttribute(getIsConstAttrName(result.name), builder.getUnitAttr());
     result.addAttribute(getNameAttrName(result.name), name);
+
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
 
     if (yieldTy) result.addTypes(TypeRange{yieldTy});
 }
@@ -1889,8 +2034,11 @@ void P4HIR::TableEntryOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 //===----------------------------------------------------------------------===//
 
 void P4HIR::TableActionsOp::build(
-    mlir::OpBuilder &builder, mlir::OperationState &result,
+    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> entryBuilder) {
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+
     OpBuilder::InsertionGuard guard(builder);
 
     Region *entryRegion = result.addRegion();
@@ -1903,8 +2051,11 @@ void P4HIR::TableActionsOp::build(
 //===----------------------------------------------------------------------===//
 
 void P4HIR::TableDefaultActionOp::build(
-    mlir::OpBuilder &builder, mlir::OperationState &result,
+    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> entryBuilder) {
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+
     OpBuilder::InsertionGuard guard(builder);
 
     Region *entryRegion = result.addRegion();
@@ -1924,8 +2075,11 @@ void P4HIR::TableSizeOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 //===----------------------------------------------------------------------===//
 
 void P4HIR::TableKeyOp::build(
-    mlir::OpBuilder &builder, mlir::OperationState &result,
+    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> keyBuilder) {
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+
     OpBuilder::InsertionGuard guard(builder);
 
     Region *entryRegion = result.addRegion();
@@ -1939,17 +2093,19 @@ void P4HIR::TableKeyOp::build(
 
 void P4HIR::TableActionOp::build(
     mlir::OpBuilder &builder, mlir::OperationState &result, mlir::SymbolRefAttr action,
-    P4HIR::FuncType cplaneType,
+    P4HIR::FuncType cplaneType, ArrayRef<mlir::DictionaryAttr> argAttrs,
+    mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Block::BlockArgListType, mlir::Location)>
         entryBuilder) {
     result.addAttribute(getCplaneTypeAttrName(result.name), TypeAttr::get(cplaneType));
     result.addAttribute(getActionAttrName(result.name), action);
 
-    // TBD:
-    // function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-    //                                              /*resultAttrs=*/std::nullopt,
-    //                                              getArgAttrsAttrName(result.name),
-    //                                              getResAttrsAttrName(result.name));
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+
+    function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                                  /*resultAttrs=*/std::nullopt,
+                                                  getArgAttrsAttrName(result.name), {});
 
     OpBuilder::InsertionGuard guard(builder);
     auto *body = result.addRegion();
@@ -1961,9 +2117,6 @@ void P4HIR::TableActionOp::build(
 }
 
 void P4HIR::TableActionOp::print(mlir::OpAsmPrinter &printer) {
-    // This is essentially function_interface_impl::printFunctionOp, but we
-    // always print body and we do not have argument attributes (for now)
-
     auto actName = getActionAttr();
 
     printer << " ";
@@ -1971,8 +2124,7 @@ void P4HIR::TableActionOp::print(mlir::OpAsmPrinter &printer) {
 
     printer << '(';
     const auto argTypes = getCplaneType().getInputs();
-    mlir::ArrayAttr argAttrs;  // TBD
-
+    mlir::ArrayAttr argAttrs = getArgAttrsAttr();
     for (unsigned i = 0, e = argTypes.size(); i < e; ++i) {
         if (i > 0) printer << ", ";
 
@@ -1985,7 +2137,13 @@ void P4HIR::TableActionOp::print(mlir::OpAsmPrinter &printer) {
     function_interface_impl::printFunctionAttributes(
         printer, *this,
         // These are all omitted since they are custom printed already.
-        {getActionAttrName(), getCplaneTypeAttrName()});
+        {getActionAttrName(), getCplaneTypeAttrName(), getAnnotationsAttrName(),
+         getArgAttrsAttrName()});
+
+    if (auto ann = getAnnotations(); ann && !ann->empty()) {
+        printer << " annotations ";
+        printer.printAttributeWithoutType(*ann);
+    }
 
     printer << ' ';
     printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
@@ -2028,7 +2186,17 @@ mlir::ParseResult P4HIR::TableActionOp::parse(mlir::OpAsmParser &parser,
     // If additional attributes are present, parse them.
     if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return failure();
 
-    // TODO: Support argument attributes
+    // Add the attributes to the function arguments.
+    assert(resultAttrs.size() == resultTypes.size());
+    function_interface_impl::addArgAndResultAttrs(builder, result, arguments, resultAttrs,
+                                                  getArgAttrsAttrName(result.name), {});
+
+    // Parse annotations
+    mlir::DictionaryAttr annotations;
+    if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+        if (parser.parseAttribute<mlir::DictionaryAttr>(annotations)) return failure();
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+    }
 
     // Parse the body.
     auto *body = result.addRegion();

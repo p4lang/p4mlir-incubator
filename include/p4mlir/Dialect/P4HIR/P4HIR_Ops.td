@@ -44,23 +44,32 @@ def ConstOp : P4HIR_Op<"const",
     // The constant operation takes a constant value (via typed attributes) and
     // optional name.
 
-    let arguments = (ins TypedAttrInterface:$value, OptionalAttr<StrAttr>:$name);
+    let arguments = (ins TypedAttrInterface:$value, OptionalAttr<StrAttr>:$name,
+                         OptionalAttr<DictionaryAttr>:$annotations);
 
     // The constant operation returns a single value of AnyP4Type.
     let results = (outs AnyP4Type:$res);
 
     let assemblyFormat = [{
-        (` ` `[` $name^ `]`)? $value attr-dict
+        (` ` `[` $name^ `]`)? $value (`annotations` $annotations^)? attr-dict
     }];
 
     // Allow building a ConstantOp with no name, etc.
     let builders = [
       OpBuilder<(ins "mlir::TypedAttr":$value), [{
-        build($_builder, $_state, value.getType(), value, {});
+        build($_builder, $_state, value.getType(), value, {}, {});
       }]>,
+      OpBuilder<(ins "mlir::TypedAttr":$value, "mlir::DictionaryAttr":$annotations), [{
+        build($_builder, $_state, value.getType(), value, {}, annotations.empty() ? mlir::DictionaryAttr() : annotations);
+      }]>,
+
       OpBuilder<(ins "mlir::TypedAttr":$value, "const llvm::Twine &":$name), [{
         build($_builder, $_state,
-              value.getType(), value, $_builder.getStringAttr(name));
+              value.getType(), value, $_builder.getStringAttr(name), {});
+      }]>,
+      OpBuilder<(ins "mlir::TypedAttr":$value, "const llvm::Twine &":$name, "mlir::DictionaryAttr":$annotations), [{
+        build($_builder, $_state,
+              value.getType(), value, $_builder.getStringAttr(name), annotations.empty() ? mlir::DictionaryAttr() : annotations);
       }]>
 
     ];
@@ -92,10 +101,8 @@ def VariableOp : P4HIR_Op<"variable", [
     ```
   }];
 
-  let arguments = (ins
-    OptionalAttr<StrAttr>:$name,
-    UnitAttr:$init
-  );
+  let arguments = (ins OptionalAttr<StrAttr>:$name, UnitAttr:$init,
+                       OptionalAttr<DictionaryAttr>:$annotations);
 
   let results = (outs Res<ReferenceType, ""/*,
                       [MemAlloc<AutomaticAllocationScopeResource>]*/>:$ref);
@@ -104,8 +111,33 @@ def VariableOp : P4HIR_Op<"variable", [
     ` ` `[` $name
        (`,` `init` $init^)?
     `]`
+    (`annotations` $annotations^)?
      attr-dict `:` type($ref)
   }];
+
+  let builders = [
+    // Allow building a VariableOp with no annotations
+    OpBuilder<(ins "mlir::Type":$resultType, "const llvm::Twine &":$name), [{
+          build($_builder, $_state,
+                resultType, $_builder.getStringAttr(name), false, {});
+        }]>,
+
+    OpBuilder<(ins "mlir::Type":$resultType, "const llvm::Twine &":$name, "mlir::DictionaryAttr":$annotations), [{
+          build($_builder, $_state,
+                resultType, $_builder.getStringAttr(name), false, annotations.empty() ? mlir::DictionaryAttr() : annotations);
+        }]>,
+
+    OpBuilder<(ins "mlir::Type":$resultType, "const llvm::Twine &":$name, "bool":$init), [{
+          build($_builder, $_state,
+                resultType, $_builder.getStringAttr(name), init, {});
+        }]>,
+
+    OpBuilder<(ins "mlir::Type":$resultType, "const llvm::Twine &":$name, "bool":$init, "mlir::DictionaryAttr":$annotations), [{
+          build($_builder, $_state,
+                resultType, $_builder.getStringAttr(name), init, annotations.empty() ? mlir::DictionaryAttr() : annotations);
+        }]>,
+
+  ];
 
   let hasVerifier = 0;
 }
@@ -305,7 +337,6 @@ def BinOp : P4HIR_Op<"binop", [Pure,
 }
 
 def ConcatOp : P4HIR_Op<"concat", [Pure]> {
-
   let summary = "Concatenation of bit-strings and/or fixed-width signed integers";
   let description = [{
     `p4hir.concat` performs concatenation of bit-strings and/or fixed-width signed integers.
@@ -487,13 +518,14 @@ def ScopeOp : P4HIR_Op<"scope", [
     will be inserted implicitly.
   }];
 
+  let arguments = (ins OptionalAttr<DictionaryAttr>:$annotations);
   let results = (outs Optional<AnyP4Type>:$results);
   let regions = (region AnyRegion:$scopeRegion);
 
   let hasVerifier = 1;
   let skipDefaultBuilders = 1;
   let assemblyFormat = [{
-    custom<OmittedTerminatorRegion>($scopeRegion) (`:` type($results)^)? attr-dict
+    (`annotations` $annotations^)? custom<OmittedTerminatorRegion>($scopeRegion) (`:` type($results)^)? attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -508,10 +540,17 @@ def ScopeOp : P4HIR_Op<"scope", [
 
   let builders = [
     // Scopes for yielding values.
-    OpBuilder<(ins
-              "llvm::function_ref<void(mlir::OpBuilder &, mlir::Type &, mlir::Location)>":$scopeBuilder)>,
+    OpBuilder<(ins "mlir::DictionaryAttr":$annotations,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Type &, mlir::Location)>":$scopeBuilder)>,
+    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Type &, mlir::Location)>":$scopeBuilder), [{
+      build($_builder, $_state, mlir::DictionaryAttr(), scopeBuilder);
+     }]>,
     // Scopes without yielding values.
-    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$scopeBuilder)>
+    OpBuilder<(ins "mlir::DictionaryAttr":$annotations,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$scopeBuilder)>,
+    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$scopeBuilder), [{
+      build($_builder, $_state, mlir::DictionaryAttr(), scopeBuilder);
+     }]>,
   ];
 }
 
@@ -654,7 +693,9 @@ def IfOp : P4HIR_Op<"if",
     can be left out, and `p4hir.yield` terminator will be inserted implictly.
     Otherwise, the region must be explicitly terminated.
   }];
-  let arguments = (ins BooleanType:$condition);
+  let arguments = (ins BooleanType:$condition,
+                       OptionalAttr<DictionaryAttr>:$thenAnnotations,
+                       OptionalAttr<DictionaryAttr>:$elseAnnotations);
   let regions = (region AnyRegion:$thenRegion, AnyRegion:$elseRegion);
 
   let hasCustomAssemblyFormat = 1;
@@ -662,10 +703,18 @@ def IfOp : P4HIR_Op<"if",
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$cond, "bool":$withElseRegion,
-      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>",
-           "P4HIR::buildTerminatedBody">:$thenBuilder,
-      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>",
-           "nullptr">:$elseBuilder)>
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$thenBuilder,
+                   "mlir::DictionaryAttr":$thenAnnotations,
+              CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>",
+                   "nullptr">:$elseBuilder,
+              CArg<"mlir::DictionaryAttr", "{}">:$elseAnnotations)>,
+    OpBuilder<(ins "mlir::Value":$cond, "bool":$withElseRegion,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$thenBuilder,
+              CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>",
+                   "nullptr">:$elseBuilder), [{
+      build($_builder, $_state, cond, withElseRegion,
+            thenBuilder, mlir::DictionaryAttr(), elseBuilder, mlir::DictionaryAttr());
+    }]>,
   ];
 }
 
@@ -796,16 +845,15 @@ def FuncOp : P4HIR_Op<"func", [
                        TypeAttrOf<FuncType>:$function_type,
                        UnitAttr:$action,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
-                       OptionalAttr<DictArrayAttr>:$res_attrs,
-                       OptionalAttr<ArrayAttr>:$annotations);
+                       OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region AnyRegion:$body);
   let skipDefaultBuilders = 1;
 
   let builders = [
     OpBuilder<(ins "llvm::StringRef":$name, "FuncType":$type,
                CArg<"bool", "false">:$isExternal,
-               CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs,
-               CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs)>
+               CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs,
+               CArg<"mlir::DictionaryAttr", "{}">:$annotations)>
   ];
 
   let extraClassDeclaration = [{
@@ -814,9 +862,9 @@ def FuncOp : P4HIR_Op<"func", [
                               mlir::Location loc,
                               llvm::StringRef name,
                               P4HIR::FuncType type,
-                              llvm::ArrayRef<mlir::NamedAttribute> attrs = {},
-                              llvm::ArrayRef<mlir::DictionaryAttr> argAttrs = {}) {
-      auto op = builder.create<FuncOp>(loc, name, type, false, attrs, argAttrs);
+                              llvm::ArrayRef<mlir::DictionaryAttr> argAttrs = {},
+                              mlir::DictionaryAttr annotations = {}) {
+      auto op = builder.create<FuncOp>(loc, name, type, false, argAttrs, annotations);
       op.createEntryBlock();
       op.setAction(true);
       return op;
@@ -841,7 +889,7 @@ def FuncOp : P4HIR_Op<"func", [
     /// Returns the result attributes for all callable region results or null if
     /// there are none.
     ::mlir::ArrayAttr getCallableResAttrs() {
-      return getResAttrs().value_or(nullptr);
+      return nullptr;
     }
 
     /// Returns the argument types of this action.
@@ -856,6 +904,12 @@ def FuncOp : P4HIR_Op<"func", [
 
     /// Returns attribute name used to store directions
     static llvm::StringRef getDirectionAttrName() { return "p4hir.dir"; }
+
+    /// Returns attribute name used to store original parameter name
+    static llvm::StringRef getParamNameAttrName() { return "p4hir.param_name"; }
+
+    /// Returns attribute name used to store argument annotations
+    static llvm::StringRef getParamAnnotationAttrName() { return "p4hir.annotations"; }
 
     /// Return the `i`th argument direction.
     ParamDirection getArgumentDirection(unsigned i) {
@@ -1175,7 +1229,7 @@ def InstantiateOp : P4HIR_Op<"instantiate",
   // TODO: Refine result types, refine parameter type (must be constants!)
   let results = (outs P4ObjectType:$result);
   let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
-                       OptionalAttr<StrAttr>:$name);
+                       StrAttr:$name, OptionalAttr<DictionaryAttr>:$annotations);
 
   // TODO: Add verifier
   let hasVerifier = 0;
@@ -1197,7 +1251,7 @@ def InstantiateOp : P4HIR_Op<"instantiate",
   }];
 
   let assemblyFormat = [{
-    $callee `(` $arg_operands `)` `as` $name attr-dict `:` functional-type($arg_operands, results)
+    $callee `(` $arg_operands `)` `as` $name (`annotations` $annotations^)? attr-dict `:` functional-type($arg_operands, results)
   }];
 }
 
@@ -1269,11 +1323,12 @@ def ExternOp : P4HIR_Op<"extern",
     ```
   }];
 
-  let arguments = (ins SymbolNameAttr:$sym_name, OptionalAttr<ArrayAttr>:$type_parameters);
+  let arguments = (ins SymbolNameAttr:$sym_name, OptionalAttr<ArrayAttr>:$type_parameters,
+                       OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
 
   let assemblyFormat = [{
-    $sym_name (`<` $type_parameters^ `>`)? $body attr-dict
+    $sym_name (`<` $type_parameters^ `>`)? (`annotations` $annotations^)? $body attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -1385,7 +1440,18 @@ def PackageOp : P4HIR_Op<"package",
     ```
   }];
 
-  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttrOf<CtorType>:$ctorType, OptionalAttr<ArrayAttr>:$type_parameters);
+  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttrOf<CtorType>:$ctorType,
+                       OptionalAttr<ArrayAttr>:$type_parameters,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictionaryAttr>:$annotations);
+
+  let builders = [
+    OpBuilder<(ins "llvm::StringRef":$name, "CtorType":$type,
+               CArg<"llvm::ArrayRef<mlir::Type>", "{}">:$type_parameters,
+               CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs,
+               CArg<"mlir::DictionaryAttr", "{}">:$annotations)>
+  ];
+
 
   let hasCustomAssemblyFormat = 1;
 }

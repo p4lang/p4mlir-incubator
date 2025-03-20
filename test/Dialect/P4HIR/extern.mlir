@@ -1,4 +1,4 @@
-// RUN: p4mlir-opt %s | FileCheck %s
+// RUN: p4mlir-opt --verify-roundtrip %s | FileCheck %s
 
 !b10i = !p4hir.bit<10>
 !b12i = !p4hir.bit<12>
