@@ -489,6 +489,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             visit(block->components);
         return false;
     }
+    bool preorder(const P4::IR::SwitchStatement *sw) override;
 
     bool preorder(const P4::IR::Constant *c) override {
         materializeConstantExpr(c);
@@ -3095,6 +3096,60 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
                 b.create<P4HIR::YieldOp>(getEndLoc(b, prop), val);
             });
     }
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::SwitchStatement *sw) {
+    ConversionTracer trace("Converting ", sw);
+
+    auto cond = convert(sw->expression);
+
+    builder.create<P4HIR::SwitchOp>(
+        getLoc(builder, sw), cond, [&](mlir::OpBuilder &b, mlir::Location) {
+            llvm::SmallVector<mlir::Attribute> cases;
+
+            for (const auto *swCase : sw->cases) {
+                if (swCase->label->to<P4::IR::DefaultExpression>()) {
+                    if (!cases.empty())
+                        builder.create<P4HIR::CaseOp>(
+                            getLoc(b, swCase), b.getArrayAttr(cases),
+                            cases.size() > 1 ? P4HIR::CaseOpKind::Anyof : P4HIR::CaseOpKind::Equal,
+                            [&](mlir::OpBuilder &b, mlir::Location) {
+                                b.create<P4HIR::YieldOp>(getEndLoc(builder, swCase));
+                            });
+
+                    builder.create<P4HIR::CaseOp>(
+                        getLoc(b, swCase), b.getArrayAttr({}), P4HIR::CaseOpKind::Default,
+                        [&](mlir::OpBuilder &b, mlir::Location) {
+                            visit(swCase->statement);
+                            b.create<P4HIR::YieldOp>(getEndLoc(builder, swCase));
+                        });
+                    cases.clear();
+                } else {
+                    // Handle special case: action run enum
+                    if (sw->expression->type->is<P4::IR::Type_ActionEnum>()) {
+                        const auto *path = swCase->label->checkedTo<P4::IR::PathExpression>();
+                        cases.push_back(P4HIR::EnumFieldAttr::get(cond.getType(),
+                                                                  path->path->name.string_view()));
+                    } else
+                        cases.push_back(getOrCreateConstantExpr(swCase->label));
+
+                    if (swCase->statement) {
+                        builder.create<P4HIR::CaseOp>(
+                            getLoc(b, swCase), b.getArrayAttr(cases),
+                            cases.size() > 1 ? P4HIR::CaseOpKind::Anyof : P4HIR::CaseOpKind::Equal,
+                            [&](mlir::OpBuilder &b, mlir::Location) {
+                                visit(swCase->statement);
+                                b.create<P4HIR::YieldOp>(getEndLoc(builder, swCase));
+                            });
+                        cases.clear();
+                    }
+                }
+            }
+
+            b.create<P4HIR::YieldOp>(getEndLoc(builder, sw));
+        });
 
     return false;
 }

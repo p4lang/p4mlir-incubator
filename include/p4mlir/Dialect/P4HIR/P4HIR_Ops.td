@@ -558,7 +558,7 @@ def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
     ParentOneOf<["ScopeOp", "TernaryOp", "IfOp",
                  "ParserSelectCaseOp",
                  "TableEntryOp",
-                 // "SwitchOp", "CaseOp",
+                 "SwitchOp", "CaseOp",
                  // "ForInOp", "ForOp",
                  ]>]> {
   let summary = "Represents the default branching behaviour of a region";
@@ -720,7 +720,7 @@ def IfOp : P4HIR_Op<"if",
 
 def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
                                                 "FuncOp", "ControlApplyOp",
-                                             // "SwitchOp", "CaseOp",
+                                                "CaseOp",
                                              // "ForInOp", "ForOp",
                                              ]>,
   // Note that ReturnOp is not ReturnLike: currently there is no way to
@@ -1456,6 +1456,75 @@ def PackageOp : P4HIR_Op<"package",
   let hasCustomAssemblyFormat = 1;
 }
 
+def CaseOp : P4HIR_Op<"case", [
+       DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       RecursivelySpeculatable, AutomaticAllocationScope,
+       ParentOneOf<["SwitchOp"]>,
+     ]> {
+  let summary = "Case operation";
+  let description = [{
+    The `p4hir.case` operation represents a case within a P4 switch statement.
+    The `p4hir.case` operation must be in a `p4hir.switch` operation directly.
+
+    The `p4hir.case` have 3 kinds:
+    - `equal, <constant>`: equality of the second case operand against the
+    condition.
+    - `anyof, [constant-list]`: equals to any of the values in a subsequent
+    following list.
+    - `default`: any other value. Here the case list might contain some values
+    that were explicitly specified as default ones.
+
+    Each case region must be explicitly terminated.
+  }];
+
+  let arguments = (ins ArrayAttr:$value, CaseOpKind:$kind);
+  let regions = (region AnyRegion:$caseRegion);
+
+  let assemblyFormat = [{
+    `(` $kind `,` $value `)` $caseRegion attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "mlir::ArrayAttr":$value,
+                   "CaseOpKind":$kind,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$caseBuilder)>
+  ];
+}
+
+def SwitchOp : P4HIR_Op<"switch",
+      [SameVariadicOperandSize,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       RecursivelySpeculatable, AutomaticAllocationScope,
+       SingleBlockImplicitTerminator<"P4HIR::YieldOp">,
+      ]> {
+  let summary = "Switch operation";
+  let description = [{
+    The `p4hir.switch` operation represents P4 switch functionality for
+    conditionally executing multiple regions of code. The operand to an switch
+    is an integral condition value.
+
+    ```
+  }];
+
+  let arguments = (ins SwitchCondType:$condition);
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasVerifier = 1;
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$condition,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$switchBuilder)>
+  ];
+
+  let assemblyFormat = [{
+    custom<SwitchOp>($body, $condition, type($condition)) attr-dict
+  }];
+}
 
 include "p4mlir/Dialect/P4HIR/P4HIR_ParserOps.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_ControlOps.td"
