@@ -1062,7 +1062,22 @@ mlir::Attribute P4HIRConverter::convertAnnotationExpr(const P4::IR::Expression *
     // If this is a PathExpression, resolve it to the actual constant
     // declaration name, usualy this is a "leaf" case (e.g. match kinbd).
     if (const auto *pe = ann->to<P4::IR::PathExpression>()) {
-        auto *decl = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration_ID>();
+        auto *resolved = resolvePath(pe->path, false);
+        // See, if this a reference to a known symbol. FIXME: Simplify
+        if (const auto *m = resolved->to<P4::IR::Method>())
+            if (auto sym = p4Symbols.lookup(m)) return sym;
+        if (const auto *f = resolved->to<P4::IR::Function>())
+            if (auto sym = p4Symbols.lookup(f)) return sym;
+        if (const auto *act = resolved->to<P4::IR::P4Action>())
+            if (auto sym = p4Symbols.lookup(act)) return sym;
+        if (const auto *act = resolved->to<P4::IR::P4Parser>())
+            if (auto sym = p4Symbols.lookup(act)) return sym;
+        if (const auto *act = resolved->to<P4::IR::P4Control>())
+            if (auto sym = p4Symbols.lookup(act)) return sym;
+        if (const auto *act = resolved->to<P4::IR::P4Table>())
+            if (auto sym = p4Symbols.lookup(act)) return sym;
+
+        const auto *decl = resolved->checkedTo<P4::IR::Declaration_ID>();
         if (pe->type->is<P4::IR::Type_MatchKind>())
             return P4HIR::MatchKindAttr::get(context(), decl->name.string_view());
 
