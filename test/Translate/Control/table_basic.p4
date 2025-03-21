@@ -57,8 +57,7 @@ control c(in bit<32> arg) {
         some_entry = 10;
         implementation = ActionProfile(32);
        // CHECK:%implementation = p4hir.table_entry "implementation" {
-       // CHECK: %c32_b32i = p4hir.const #int32_b32i
-       // CHECK: %ActionProfile = p4hir.instantiate @ActionProfile(%c32_b32i) as "ActionProfile" : (!b32i) -> !ActionProfile
+       // CHECK: %ActionProfile = p4hir.instantiate @ActionProfile(%{{.*}}) as "ActionProfile" : (!b32i) -> !ActionProfile
        // CHECK: p4hir.yield %ActionProfile : !ActionProfile
        // CHECK:} : !ActionProfile        
     }

@@ -7,6 +7,7 @@
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
 #include "frontends/p4/methodInstance.h"
+#include "frontends/p4/parameterSubstitution.h"
 #include "frontends/p4/typeMap.h"
 #include "ir/ir.h"
 #include "ir/visitor.h"
@@ -146,6 +147,7 @@ class P4TypeConverter : public P4::Inspector, P4::ResolutionContext {
     bool preorder(const P4::IR::Type_Var *tv) override;
     bool preorder(const P4::IR::Type_Method *m) override;
     bool preorder(const P4::IR::Type_Specialized *t) override;
+    bool preorder(const P4::IR::Type_SpecializedCanonical *t) override;
     bool preorder(const P4::IR::Type_Package *p) override;
 
     mlir::Type getType() const { return type; }
@@ -341,6 +343,16 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return P4HIR::ReferenceType::get(builder.getContext(), declType);
     }
 
+    // Returns underlying type in case of something of serialized enum cate
+    mlir::Type getIntType(const P4::IR::Type *type) {
+        auto baseType = getOrCreateType(type);
+        if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(baseType))
+            baseType = aliasType.getAliasedType();
+        if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(baseType))
+            baseType = serEnumType.getType();
+        return baseType;
+    }
+
     mlir::Value materializeConstantExpr(const P4::IR::Expression *expr);
 
     // TODO: Implement proper CompileTimeValue support
@@ -374,27 +386,21 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     mlir::TypedAttr getOrCreateConstantExpr(const P4::IR::Expression *expr);
 
-    mlir::Value getValue(const P4::IR::Node *node) {
+    mlir::Value getValue(const P4::IR::Node *node, mlir::Type type = {}, bool unchecked = false) {
         // If this is a PathExpression, resolve it
         if (const auto *pe = node->to<P4::IR::PathExpression>()) {
             node = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
         }
 
         auto val = p4Values.lookup(node);
-        BUG_CHECK(val, "expected %1% (aka %2%) to be converted", node, dbp(node));
+        BUG_CHECK(val || unchecked, "expected %1% (aka %2%) to be converted", node, dbp(node));
 
-        // See, if node is a top-level constant. If yes, then clone the value
-        // into the present scope as other top-level things are
-        // IsolatedFromAbove.
-        // TODO: Save new constant value into scoped value tables when we will have one
-        if (auto constOp = val.getDefiningOp<P4HIR::ConstOp>();
-            constOp && mlir::isa_and_nonnull<mlir::ModuleOp>(constOp->getParentOp())) {
-            val = builder.clone(*constOp)->getResult(0);
-        }
-
-        if (mlir::isa<P4HIR::ReferenceType>(val.getType()))
+        if (val && mlir::isa<P4HIR::ReferenceType>(val.getType()))
             // Getting value out of variable involves a load.
-            return builder.create<P4HIR::ReadOp>(getLoc(builder, node), val);
+            val = builder.create<P4HIR::ReadOp>(getLoc(builder, node), val);
+
+        if (type && val && val.getType() != type)
+            val = builder.create<P4HIR::CastOp>(getLoc(builder, node), type, val);
 
         return val;
     }
@@ -474,14 +480,21 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::Constant *c) override {
         materializeConstantExpr(c);
+        // FIXME: Serialized enum lowering might create references to the same
+        // Constant (serenum member) from multiple scope. Allow multiple
+        // materializations of the same constant until type inference will be
+        // fixed.
+        visitAgain();
         return false;
     }
     bool preorder(const P4::IR::BoolLiteral *b) override {
         materializeConstantExpr(b);
+        visitAgain();
         return false;
     }
     bool preorder(const P4::IR::StringLiteral *s) override {
         materializeConstantExpr(s);
+        visitAgain();
         return false;
     }
     bool preorder(const P4::IR::PathExpression *e) override {
@@ -498,6 +511,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
     bool preorder(const P4::IR::Declaration_MatchKind *mk) override {
         // Should be resolved eslewhere
+        return false;
+    }
+    bool preorder(const P4::IR::EmptyStatement *e) override {
+        // Well, it's empty
         return false;
     }
 
@@ -768,7 +785,12 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Package *type) {
 
     ConversionTracer trace("TypeConverting ", type);
 
-    auto mlirType = P4HIR::PackageType::get(converter.context(), type->name.string_view(), {});
+    llvm::SmallVector<mlir::Type, 1> typeParameters;
+    for (const auto *typeParam : type->typeParameters->parameters)
+        typeParameters.push_back(convert(typeParam));
+
+    auto mlirType =
+        P4HIR::PackageType::get(converter.context(), type->name.string_view(), typeParameters);
     return setType(type, mlirType);
 }
 
@@ -777,11 +799,47 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Extern *type) {
 
     ConversionTracer trace("TypeConverting ", type);
 
+    BUG_CHECK(type->typeParameters->empty(), "expected no type parameters for ext");
+
     auto mlirType = P4HIR::ExternType::get(converter.context(), type->name.string_view(), {});
     return setType(type, mlirType);
 }
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Specialized *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+
+    llvm::SmallVector<mlir::Type, 1> typeArguments;
+    for (const auto *typeArg : *type->arguments) typeArguments.push_back(convert(typeArg));
+
+    mlir::Type mlirType;
+    const auto *baseType = resolveType(type->baseType);
+    if (const auto *extType = baseType->to<P4::IR::Type_Extern>())
+        mlirType =
+            P4HIR::ExternType::get(converter.context(), extType->name.string_view(), typeArguments);
+    else if (const auto *pkgType = baseType->to<P4::IR::Type_Package>())
+        mlirType = P4HIR::PackageType::get(converter.context(), pkgType->name.string_view(),
+                                           typeArguments);
+    else if (baseType->is<P4::IR::Type_Parser>() || baseType->is<P4::IR::Type_Control>()) {
+        // Parser and control type might be generic in package block and ctor arguments
+        mlir::Type baseMlirType = convert(baseType);
+        if (auto parserType = llvm::dyn_cast<P4HIR::ParserType>(baseMlirType)) {
+            mlirType = P4HIR::ParserType::get(converter.context(), parserType.getName(),
+                                              parserType.getInputs(), typeArguments);
+        } else {
+            auto controlType = llvm::dyn_cast<P4HIR::ControlType>(baseMlirType);
+            mlirType = P4HIR::ControlType::get(converter.context(), controlType.getName(),
+                                               controlType.getInputs(), typeArguments);
+        }
+    } else
+        BUG("Expected extern or package specialization: %1%", baseType);
+
+    return setType(type, mlirType);
+}
+
+// TODO: This should never exist outside type inference stage...
+bool P4TypeConverter::preorder(const P4::IR::Type_SpecializedCanonical *type) {
     if ((this->type = converter.findType(type))) return false;
 
     ConversionTracer trace("TypeConverting ", type);
@@ -959,10 +1017,20 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
     ConversionTracer trace("Resolving reference ", node);
     // Check if this is a reference to a member of something we can recognize
     if (const auto *m = node->to<P4::IR::Member>()) {
-        auto base = resolveReference(m->expr);
-        auto field = builder.create<P4HIR::StructExtractRefOp>(getLoc(builder, m), base,
-                                                               m->member.string_view());
-        return setValue(m, field.getResult());
+        auto base = resolveReference(m->expr, unchecked);
+        mlir::Value fieldRef;
+        if (mlir::isa<P4HIR::ReferenceType>(base.getType()))
+            fieldRef = builder
+                           .create<P4HIR::StructExtractRefOp>(getLoc(builder, m), base,
+                                                              m->member.string_view())
+                           .getResult();
+        else
+            fieldRef = builder
+                           .create<P4HIR::StructExtractOp>(getLoc(builder, m), base,
+                                                           m->member.string_view())
+                           .getResult();
+
+        return setValue(m, fieldRef);
     }
 
     // If this is a PathExpression, resolve it to the actual declaration, usualy this
@@ -1032,21 +1100,22 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
 
         // Fold some conversions
         if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
-            // Sign conversions
-            if (auto srcBitsType = mlir::dyn_cast<P4HIR::BitsType>(srcType)) {
-                assert(destBitsType.getWidth() == srcBitsType.getWidth() &&
-                       "expected signess conversion only");
-                auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(cast->expr));
-                return setConstantExpr(
-                    expr, P4HIR::IntAttr::get(context(), destBitsType, castee.getValue()));
-            }
-            // Add bitwidth
-            if (auto srcIntType = mlir::dyn_cast<P4HIR::InfIntType>(srcType)) {
+            if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(srcType)) {
                 auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(cast->expr));
                 return setConstantExpr(
                     expr,
                     P4HIR::IntAttr::get(context(), destBitsType,
                                         castee.getValue().zextOrTrunc(destBitsType.getWidth())));
+            }
+            if (mlir::isa<P4HIR::SerEnumType>(srcType)) {
+                auto castee = mlir::cast<P4HIR::EnumFieldAttr>(getOrCreateConstantExpr(cast->expr));
+                auto enumType = mlir::cast<P4HIR::SerEnumType>(castee.getType());
+                auto casteeVal =
+                    mlir::cast<P4HIR::IntAttr>(enumType.valueOf(castee.getField().getValue()));
+                return setConstantExpr(
+                    expr,
+                    P4HIR::IntAttr::get(context(), destBitsType,
+                                        casteeVal.getValue().zextOrTrunc(destBitsType.getWidth())));
             }
         }
 
@@ -1094,9 +1163,11 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
                     expr, P4HIR::ErrorCodeAttr::get(errorType, m->member.string_view()));
             }
 
-            auto enumType = mlir::cast<P4HIR::EnumType>(baseType);
-            return setConstantExpr(expr,
-                                   P4HIR::EnumFieldAttr::get(enumType, m->member.string_view()));
+            if (mlir::isa<P4HIR::EnumType, P4HIR::SerEnumType>(baseType))
+                return setConstantExpr(
+                    expr, P4HIR::EnumFieldAttr::get(baseType, m->member.string_view()));
+            else
+                BUG("invalid member reference %1%", m);
         }
 
         auto base = mlir::cast<P4HIR::AggAttr>(getOrCreateConstantExpr(m->expr));
@@ -1111,11 +1182,56 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
             BUG("invalid member reference %1%", m);
     }
 
+    if (const auto *eq = expr->to<P4::IR::Equ>()) {
+        auto lhs = getOrCreateConstantExpr(eq->left);
+        auto rhs = getOrCreateConstantExpr(eq->right);
+        return setConstantExpr(expr, P4HIR::BoolAttr::get(context(), lhs == rhs));
+    }
+
+    if (const auto *eq = expr->to<P4::IR::Neq>()) {
+        auto lhs = getOrCreateConstantExpr(eq->left);
+        auto rhs = getOrCreateConstantExpr(eq->right);
+        return setConstantExpr(expr, P4HIR::BoolAttr::get(context(), lhs != rhs));
+    }
+
+    if (const auto *eq = expr->to<P4::IR::Shl>()) {
+        auto lhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->left));
+        auto rhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->right));
+        return setConstantExpr(
+            expr, P4HIR::IntAttr::get(context(), lhs.getType(), lhs.getValue() << rhs.getValue()));
+    }
+
+    if (const auto *eq = expr->to<P4::IR::Shr>()) {
+        auto lhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->left));
+        auto rhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->right));
+        auto lhsType = mlir::cast<P4HIR::BitsType>(lhs.getType());
+        return setConstantExpr(
+            expr, P4HIR::IntAttr::get(context(), lhs.getType(),
+                                      lhsType.isSigned() ? lhs.getValue().ashr(rhs.getValue())
+                                                         : lhs.getValue().lshr(rhs.getValue())));
+    }
+
+    if (const auto *eq = expr->to<P4::IR::BAnd>()) {
+        auto lhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->left));
+        auto rhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->right));
+        return setConstantExpr(
+            expr, P4HIR::IntAttr::get(context(), lhs.getType(), lhs.getValue() & rhs.getValue()));
+    }
+
+    if (const auto *eq = expr->to<P4::IR::BOr>()) {
+        auto lhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->left));
+        auto rhs = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(eq->right));
+        return setConstantExpr(
+            expr, P4HIR::IntAttr::get(context(), lhs.getType(), lhs.getValue() | rhs.getValue()));
+    }
+
     BUG("cannot resolve this constant expression yet %1% (aka %2%)", expr, dbp(expr));
 }
 
 mlir::Value P4HIRConverter::materializeConstantExpr(const P4::IR::Expression *expr) {
     ConversionTracer trace("Materializing constant expression ", expr);
+
+    if (auto val = getValue(expr, {}, /* unchecked */ true)) return val;
 
     auto init = getOrCreateConstantExpr(expr);
     auto loc = getLoc(builder, expr);
@@ -1155,11 +1271,8 @@ void P4HIRConverter::postorder(const P4::IR::Declaration_Variable *decl) {
         } else if (init->is<P4::IR::InvalidHeaderUnion>()) {
             emitSetInvalidForAllHeaders(loc, var);
         } else {
-            auto init = getValue(decl->initializer);
-            // Handle implicit casts that type checker forgot to insert (e.g. for serenums)
             auto objType = llvm::cast<P4HIR::ReferenceType>(type).getObjectType();
-            if (init.getType() != objType) init = builder.create<P4HIR::CastOp>(loc, objType, init);
-            builder.create<P4HIR::AssignOp>(loc, init, var);
+            builder.create<P4HIR::AssignOp>(loc, getValue(decl->initializer, objType), var);
         }
     }
 
@@ -1182,12 +1295,14 @@ bool P4HIRConverter::preorder(const P4::IR::Slice *slice) {
     auto destType = getOrCreateType(slice->type);
 
     mlir::Value sliceVal;
-    if (llvm::isa<P4HIR::ReferenceType>(maybeRef.getType())) {
+    if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(maybeRef.getType());
+        refType && mlir::isa<P4HIR::BitsType>(refType.getObjectType())) {
         sliceVal = builder.create<P4HIR::SliceRefOp>(getLoc(builder, slice), destType, maybeRef,
                                                      slice->getH(), slice->getL());
     } else {
-        sliceVal = builder.create<P4HIR::SliceOp>(
-            getLoc(builder, slice), destType, getValue(slice->e0), slice->getH(), slice->getL());
+        sliceVal = builder.create<P4HIR::SliceOp>(getLoc(builder, slice), destType,
+                                                  getValue(slice->e0, getIntType(slice->e0->type)),
+                                                  slice->getH(), slice->getL());
     }
 
     setValue(slice, sliceVal);
@@ -1195,13 +1310,15 @@ bool P4HIRConverter::preorder(const P4::IR::Slice *slice) {
 }
 
 mlir::Value P4HIRConverter::emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind) {
-    return builder.create<P4HIR::UnaryOp>(getLoc(builder, unop), kind, getValue(unop->expr));
+    auto type = getOrCreateType(unop->type);
+    return builder.create<P4HIR::UnaryOp>(getLoc(builder, unop), kind, getValue(unop->expr, type));
 }
 
 mlir::Value P4HIRConverter::emitBinOp(const P4::IR::Operation_Binary *binop,
                                       P4HIR::BinOpKind kind) {
-    return builder.create<P4HIR::BinOp>(getLoc(builder, binop), kind, getValue(binop->left),
-                                        getValue(binop->right));
+    auto type = getOrCreateType(binop->type);
+    return builder.create<P4HIR::BinOp>(getLoc(builder, binop), kind, getValue(binop->left, type),
+                                        getValue(binop->right, type));
 }
 
 mlir::Value P4HIRConverter::emitConcatOp(const P4::IR::Concat *concatop) {
@@ -1211,8 +1328,15 @@ mlir::Value P4HIRConverter::emitConcatOp(const P4::IR::Concat *concatop) {
 
 mlir::Value P4HIRConverter::emitCmp(const P4::IR::Operation_Relation *relop,
                                     P4HIR::CmpOpKind kind) {
-    return builder.create<P4HIR::CmpOp>(getLoc(builder, relop), kind, getValue(relop->left),
-                                        getValue(relop->right));
+    auto lhs = getValue(relop->left);
+    auto rhs = getValue(relop->right);
+    if (lhs.getType() != rhs.getType()) {
+        // Handle implicit conversion from serenum to underlying type
+        lhs = getValue(relop->left, getIntType(relop->left->type));
+        rhs = getValue(relop->right, getIntType(relop->right->type));
+    }
+
+    return builder.create<P4HIR::CmpOp>(getLoc(builder, relop), kind, lhs, rhs);
 }
 
 #define CONVERT_UNOP(Node, Kind)                                  \
@@ -1252,12 +1376,14 @@ void P4HIRConverter::postorder(const P4::IR::Concat *concat) {
     setValue(concat, emitConcatOp(concat));
 }
 
-#define CONVERT_SHL_SHR_OP(P4C_Shift, PHIR_Shift)                                                \
-    void P4HIRConverter::postorder(const P4::IR::P4C_Shift *op) {                                \
-        ConversionTracer trace("Converting ", op);                                               \
-        auto result = builder.create<P4HIR::PHIR_Shift>(getLoc(builder, op), getValue(op->left), \
-                                                        getValue(op->right));                    \
-        setValue(op, result);                                                                    \
+#define CONVERT_SHL_SHR_OP(P4C_Shift, PHIR_Shift)                                         \
+    void P4HIRConverter::postorder(const P4::IR::P4C_Shift *op) {                         \
+        ConversionTracer trace("Converting ", op);                                        \
+        auto type = getOrCreateType(op->type);                                            \
+        auto intType = getIntType(op->right->type);                                       \
+        auto result = builder.create<P4HIR::PHIR_Shift>(                                  \
+            getLoc(builder, op), getValue(op->left, type), getValue(op->right, intType)); \
+        setValue(op, result);                                                             \
     }
 
 CONVERT_SHL_SHR_OP(Shl, ShlOp);
@@ -1337,7 +1463,8 @@ bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
             emitSetInvalidForAllHeaders(loc, resolveReference(member->expr));
         } else {
             // Do not materialize the whole header, assign validty bit only
-            emitHeaderValidityBitAssignOp(loc, resolveReference(assign->left), P4HIR::ValidityBit::Invalid);
+            emitHeaderValidityBitAssignOp(loc, resolveReference(assign->left),
+                                          P4HIR::ValidityBit::Invalid);
         }
         return false;
     }
@@ -1371,8 +1498,9 @@ bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
         builder.create<P4HIR::AssignSliceOp>(loc, getValue(assign->right), ref, h, l);
     } else {
         auto ref = resolveReference(assign->left);
+        auto objectType = mlir::cast<P4HIR::ReferenceType>(ref.getType()).getObjectType();
         visit(assign->right);
-        builder.create<P4HIR::AssignOp>(loc, getValue(assign->right), ref);
+        builder.create<P4HIR::AssignOp>(loc, getValue(assign->right, objectType), ref);
     }
 
     return false;
@@ -1503,7 +1631,49 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     auto argAttrs = convertParamDirections(f->getParameters(), builder);
     assert(funcType.getNumInputs() == argAttrs.size() && "invalid parameter conversion");
 
-    auto func = builder.create<P4HIR::FuncOp>(getLoc(builder, f), f->name.string_view(), funcType,
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    auto loc = getLoc(builder, f);
+
+    auto *parentOp = builder.getBlock()->getParentOp();
+    auto origSymName = builder.getStringAttr(f->name.string_view());
+    auto symName = origSymName;
+    if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
+        LOG4("Function is overloaded");
+
+        P4HIR::OverloadSetOp ovl;
+        auto getUniqueName = [&](mlir::StringAttr toRename) {
+            unsigned counter = 0;
+            return mlir::SymbolTable::generateSymbolName<256>(
+                toRename,
+                [&](llvm::StringRef candidate) {
+                    return ovl.lookupSymbol(builder.getStringAttr(candidate)) != nullptr;
+                },
+                counter);
+        };
+
+        if (auto otherFunc = llvm::dyn_cast<P4HIR::FuncOp>(otherOp)) {
+            LOG4("Creating overload set");
+
+            ovl = builder.create<P4HIR::OverloadSetOp>(loc, origSymName);
+            builder.setInsertionPointToStart(&ovl.createEntryBlock());
+            otherFunc->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
+
+            // Unique the symbol name to avoid clashes in the symbol table.  The
+            // overload set takes over the symbol name. Still, all the symbols
+            // in `p4Symbol` are created wrt the original name, so we do not use
+            // SymbolTable::rename() here.
+            otherFunc.setSymName(getUniqueName(origSymName));
+        } else {
+            LOG4("Adding to overload set");
+
+            ovl = llvm::cast<P4HIR::OverloadSetOp>(otherOp);
+            builder.setInsertionPointToEnd(&ovl.getBody().front());
+        }
+
+        symName = builder.getStringAttr(getUniqueName(symName));
+    }
+
+    auto func = builder.create<P4HIR::FuncOp>(loc, symName, funcType,
                                               /* isExternal */ false,
                                               llvm::ArrayRef<mlir::NamedAttribute>(), argAttrs);
     func.createEntryBlock();
@@ -1530,7 +1700,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
         }
     }
 
-    auto [it, inserted] = p4Symbols.try_emplace(f, mlir::SymbolRefAttr::get(func));
+    auto [it, inserted] = p4Symbols.try_emplace(f, mlir::SymbolRefAttr::get(origSymName));
     BUG_CHECK(inserted, "duplicate translation of %1%", f);
 
     return false;
@@ -1558,8 +1728,9 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
     auto origSymName = builder.getStringAttr(m->name.string_view());
     auto symName = origSymName;
     if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
-        P4HIR::OverloadSetOp ovl;
+        LOG4("Method is overloaded");
 
+        P4HIR::OverloadSetOp ovl;
         auto getUniqueName = [&](mlir::StringAttr toRename) {
             unsigned counter = 0;
             return mlir::SymbolTable::generateSymbolName<256>(
@@ -1571,6 +1742,8 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
         };
 
         if (auto otherFunc = llvm::dyn_cast<P4HIR::FuncOp>(otherOp)) {
+            LOG4("Creating overload set");
+
             ovl = builder.create<P4HIR::OverloadSetOp>(loc, origSymName);
             builder.setInsertionPointToStart(&ovl.createEntryBlock());
             otherFunc->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
@@ -1581,6 +1754,8 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
             // SymbolTable::rename() here.
             otherFunc.setSymName(getUniqueName(origSymName));
         } else {
+            LOG4("Adding to overload set");
+
             ovl = llvm::cast<P4HIR::OverloadSetOp>(otherOp);
             builder.setInsertionPointToEnd(&ovl.getBody().front());
         }
@@ -1665,7 +1840,6 @@ void P4HIRConverter::postorder(const P4::IR::ExitStatement *ex) {
 mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
                                                     const P4::BuiltInMethod *builtInMethod) {
     mlir::Value callResult;
-    auto header = resolveReference(builtInMethod->appliedTo);
     if (builtInMethod->name == P4::IR::Type_Header::setValid ||
         builtInMethod->name == P4::IR::Type_Header::setInvalid) {
         // Check if the header is a member of a header union
@@ -1679,9 +1853,11 @@ mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
         }
 
         if (builtInMethod->name == P4::IR::Type_Header::setValid) {
-            emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Valid);
+            emitHeaderValidityBitAssignOp(loc, resolveReference(builtInMethod->appliedTo),
+                                          P4HIR::ValidityBit::Valid);
         }
     } else if (builtInMethod->name == P4::IR::Type_Header::isValid) {
+        auto header = resolveReference(builtInMethod->appliedTo, /* unchecked */ true);
         return emitHeaderIsValidCmpOp(loc, header, P4HIR::ValidityBit::Valid);
     } else {
         BUG("Unsupported builtin method: %1%", builtInMethod->name);
@@ -1693,7 +1869,7 @@ mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
 mlir::Value P4HIRConverter::emitHeaderUnionBuiltInMethod(mlir::Location loc,
                                                          const P4::BuiltInMethod *builtInMethod) {
     if (builtInMethod->name == P4::IR::Type_Header::isValid) {
-        auto headerUnion = resolveReference(builtInMethod->appliedTo);
+        auto headerUnion = resolveReference(builtInMethod->appliedTo, /* unchecked */ true);
         return emitHeaderUnionIsValidCmpOp(loc, headerUnion, P4HIR::ValidityBit::Valid);
     }
     BUG("Unsupported Header Union builtin method: %1%", builtInMethod->name);
@@ -1737,7 +1913,8 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 isInContext<P4::IR::ParserState>()) {
                 LOG4("Resolving verify() call");
 
-                // Lower condition
+                // Lower condition. TBD: This is incorrect if arguments are
+                // passed by name.
                 const auto *condExpr = mce->arguments->at(0)->expression;
                 visit(condExpr);
 
@@ -1762,49 +1939,83 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
         }
 
         llvm::SmallVector<mlir::Value, 4> operands;
-        for (auto [idx, arg] : llvm::enumerate(*mce->arguments)) {
+        llvm::DenseMap<const P4::IR::Argument *, mlir::Value> argValues;
+        mlir::Value callResult;
+
+        // Evaluate arguments in the call order
+        for (const auto *arg : *mce->arguments) {
             ConversionTracer trace("Converting ", arg);
             mlir::Value argVal;
-            switch (auto dir = params[idx]->direction) {
+            // TODO: This is pretty inefficient, expose argument => parameter
+            // map from ParameterSubstitution
+            const auto *param = instance->substitution.findParameter(arg);
+            switch (auto dir = param->direction) {
                 case P4::IR::Direction::None:
-                case P4::IR::Direction::In:
+                case P4::IR::Direction::In: {
+                    auto paramType = getOrCreateType(param->type);
+
                     // Nothing to do special, just pass things direct
                     visit(arg->expression);
-                    argVal = getValue(arg->expression);
+                    argVal = getValue(arg->expression, paramType);
+
                     break;
+                }
                 case P4::IR::Direction::Out:
                 case P4::IR::Direction::InOut: {
                     // Create temporary to hold the output value, initialize in case of inout
-                    auto ref = resolveReference(arg->expression);
-                    auto copyIn = b.create<P4HIR::VariableOp>(
-                        loc, ref.getType(),
-                        b.getStringAttr(
-                            llvm::Twine(params[idx]->name.string_view()) +
-                            (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
+                    if (const auto *slice = arg->expression->to<P4::IR::Slice>()) {
+                        auto sliceType = getOrCreateType(slice->type);
+                        auto ref = resolveReference(slice->e0);
+                        auto copyIn = b.create<P4HIR::VariableOp>(
+                            loc, P4HIR::ReferenceType::get(sliceType),
+                            b.getStringAttr(
+                                llvm::Twine(param->name.string_view()) +
+                                (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
 
-                    if (dir == P4::IR::Direction::InOut) {
-                        copyIn.setInit(true);
-                        b.create<P4HIR::AssignOp>(loc, b.create<P4HIR::ReadOp>(loc, ref), copyIn);
+                        if (dir == P4::IR::Direction::InOut) {
+                            copyIn.setInit(true);
+                            b.create<P4HIR::AssignOp>(
+                                loc,
+                                b.create<P4HIR::SliceRefOp>(loc, sliceType, ref, slice->getH(),
+                                                            slice->getL()),
+                                copyIn);
+                        }
+                        argVal = copyIn;
+                    } else {
+                        auto ref = resolveReference(arg->expression);
+                        auto copyIn = b.create<P4HIR::VariableOp>(
+                            loc, ref.getType(),
+                            b.getStringAttr(
+                                llvm::Twine(param->name.string_view()) +
+                                (dir == P4::IR::Direction::InOut ? "_inout_arg" : "_out_arg")));
+
+                        if (dir == P4::IR::Direction::InOut) {
+                            copyIn.setInit(true);
+                            b.create<P4HIR::AssignOp>(loc, b.create<P4HIR::ReadOp>(loc, ref),
+                                                      copyIn);
+                        }
+                        argVal = copyIn;
                     }
-                    argVal = copyIn;
+
                     break;
                 }
             }
-            operands.push_back(argVal);
+            auto [it, inserted] = argValues.try_emplace(arg, argVal);
+            BUG_CHECK(inserted, "duplicate conversion? %1%", it->first);
         }
 
-        mlir::Value callResult;
-        if (const auto *actCall = instance->to<P4::ActionCall>()) {
-            LOG4("resolved as action call");
-            auto actSym = p4Symbols.lookup(actCall->action);
-            BUG_CHECK(actSym, "expected reference action to be converted: %1%", actCall->action);
-            BUG_CHECK(params.size() >= operands.size(),
-                      "invalid number of arguments for action call");
+        // Collect arguments in operand order
+        for (const auto &param : params) {
+            if (auto argument = instance->substitution.lookup(param)) {
+                auto argVal = argValues.lookup(argument);
+                BUG_CHECK(argVal, "unconverted argument?");
 
-            BUG_CHECK(mce->typeArguments->empty(), "expected action to be specialized");
-
-            for (size_t idx = operands.size(); idx < params.size(); ++idx) {
-                const auto &param = params[idx];
+                operands.push_back(argVal);
+            } else {
+                // Parameter is not bound. This is possible only for actions
+                // where argument might come from control plane. Grab
+                // placeholder for it.
+                // TBD: Handle @optional
                 BUG_CHECK(param->direction == P4::IR::Direction::None,
                           "control plane values should be directionless");
 
@@ -1812,6 +2023,14 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 BUG_CHECK(placeholder, "control plane value must be populate");
                 operands.push_back(placeholder);
             }
+        }
+
+        if (const auto *actCall = instance->to<P4::ActionCall>()) {
+            LOG4("resolved as action call");
+            auto actSym = p4Symbols.lookup(actCall->action);
+            BUG_CHECK(actSym, "expected reference action to be converted: %1%", actCall->action);
+
+            BUG_CHECK(mce->typeArguments->empty(), "expected action to be specialized");
 
             b.create<P4HIR::CallOp>(loc, actSym, operands);
         } else if (const auto *fCall = instance->to<P4::FunctionCall>()) {
@@ -1877,15 +2096,27 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             BUG("unsupported call type: %1%", mce);
         }
 
-        for (auto [idx, arg] : llvm::enumerate(*mce->arguments)) {
+        for (const auto *arg : *mce->arguments) {
             // Determine the direction of the parameter
-            if (!params[idx]->hasOut()) continue;
+            // TODO: This is pretty inefficient, expose argument => parameter
+            // map from ParameterSubstitution
+            const auto *param = instance->substitution.findParameter(arg);
+            if (!param->hasOut()) continue;
 
-            mlir::Value copyOut = operands[idx];
-            mlir::Value dest = resolveReference(arg->expression);
-            b.create<P4HIR::AssignOp>(
-                getEndLoc(builder, mce),
-                builder.create<P4HIR::ReadOp>(getEndLoc(builder, mce), copyOut), dest);
+            auto copyOut = argValues.lookup(arg);
+            BUG_CHECK(copyOut, "unconverted argument?");
+            if (const auto *slice = arg->expression->to<P4::IR::Slice>()) {
+                mlir::Value dest = resolveReference(slice->e0);
+                b.create<P4HIR::AssignSliceOp>(
+                    getEndLoc(builder, mce),
+                    builder.create<P4HIR::ReadOp>(getEndLoc(builder, mce), copyOut), dest,
+                    slice->getH(), slice->getL());
+            } else {
+                mlir::Value dest = resolveReference(arg->expression);
+                b.create<P4HIR::AssignOp>(
+                    getEndLoc(builder, mce),
+                    builder.create<P4HIR::ReadOp>(getEndLoc(builder, mce), copyOut), dest);
+            }
         }
 
         // If we are inside the scope, then build the yield of the call result
@@ -1922,15 +2153,11 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
     LOG4("Resolved to: " << dbp(type));
 
     llvm::SmallVector<mlir::Value, 4> operands;
+    llvm::DenseMap<const P4::IR::Argument *, mlir::Value> argValues;
     for (const auto *arg : *cce->arguments) {
         ConversionTracer trace("Converting ", arg);
-        mlir::Value argVal;
-        if (const auto *cce = arg->expression->to<P4::IR::ConstructorCallExpression>()) {
-            visit(cce);
-            argVal = getValue(cce);
-        } else
-            argVal = materializeConstantExpr(arg->expression);
-        operands.push_back(argVal);
+        visit(arg->expression);
+        argValues.try_emplace(arg, getValue(arg->expression));
     }
 
     auto resultType = getOrCreateType(type);
@@ -1945,6 +2172,27 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
         type = resolveType(spec->baseType);
         CHECK_NULL(type);
         LOG4("Resolved to base type: " << dbp(type));
+    }
+
+    // Shuffle arguments into proper order
+    auto populateOperands = [&](const P4::IR::ParameterList *params) {
+        P4::ParameterSubstitution subst;
+        subst.populate(params, cce->arguments);
+        for (const auto &param : params->parameters) {
+            auto argument = subst.lookup(param);
+            auto argVal = argValues.lookup(argument);
+            // TODO: Handle @optional
+            BUG_CHECK(argVal, "unconverted argument for parameter %1%", param);
+            operands.push_back(argVal);
+        }
+    };
+
+    if (const auto *cont = type->to<P4::IR::IContainer>()) {
+        populateOperands(cont->getConstructorParameters());
+    } else {
+        const auto *ext = type->checkedTo<P4::IR::Type_Extern>();
+        const auto *ctor = ext->lookupConstructor(cce->arguments);
+        populateOperands(ctor->getParameters());
     }
 
     if (const auto *parser = type->to<P4::IR::P4Parser>()) {
@@ -2079,8 +2327,8 @@ void P4HIRConverter::postorder(const P4::IR::ArrayIndex *arr) {
 void P4HIRConverter::postorder(const P4::IR::Range *range) {
     ConversionTracer trace("Converting ", range);
 
-    auto lhs = getValue(range->left);
-    auto rhs = getValue(range->right);
+    auto lhs = getValue(range->left, getIntType(range->left->type));
+    auto rhs = getValue(range->right, getIntType(range->right->type));
 
     auto loc = getLoc(builder, range);
     setValue(range, builder.create<P4HIR::RangeOp>(loc, lhs, rhs).getResult());
@@ -2089,8 +2337,8 @@ void P4HIRConverter::postorder(const P4::IR::Range *range) {
 void P4HIRConverter::postorder(const P4::IR::Mask *range) {
     ConversionTracer trace("Converting ", range);
 
-    auto lhs = getValue(range->left);
-    auto rhs = getValue(range->right);
+    auto lhs = getValue(range->left, getIntType(range->left->type));
+    auto rhs = getValue(range->right, getIntType(range->right->type));
 
     auto loc = getLoc(builder, range);
     setValue(range, builder.create<P4HIR::MaskOp>(loc, lhs, rhs).getResult());
@@ -2291,15 +2539,11 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
     LOG4("Resolved to: " << dbp(type));
 
     llvm::SmallVector<mlir::Value, 4> operands;
+    llvm::DenseMap<const P4::IR::Argument *, mlir::Value> argValues;
     for (const auto *arg : *decl->arguments) {
         ConversionTracer trace("Converting ", arg);
-        mlir::Value argVal;
-        if (const auto *cce = arg->expression->to<P4::IR::ConstructorCallExpression>()) {
-            visit(cce);
-            argVal = getValue(cce);
-        } else
-            argVal = materializeConstantExpr(arg->expression);
-        operands.push_back(argVal);
+        visit(arg->expression);
+        argValues.try_emplace(arg, getValue(arg->expression));
     }
 
     auto resultType = getOrCreateType(type);
@@ -2316,7 +2560,28 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         LOG4("Resolved to base type: " << dbp(type));
     }
 
-    // TODO: Reduce code duplication below
+    // Shuffle arguments into proper order
+    auto populateOperands = [&](const P4::IR::ParameterList *params) {
+        P4::ParameterSubstitution subst;
+        subst.populate(params, decl->arguments);
+        for (const auto &param : params->parameters) {
+            auto argument = subst.lookup(param);
+            auto argVal = argValues.lookup(argument);
+            // TODO: Handle @optional
+            BUG_CHECK(argVal, "unconverted argument for parameter %1%", param);
+            operands.push_back(argVal);
+        }
+    };
+
+    if (const auto *cont = type->to<P4::IR::IContainer>()) {
+        populateOperands(cont->getConstructorParameters());
+    } else {
+        const auto *ext = type->checkedTo<P4::IR::Type_Extern>();
+        const auto *ctor = ext->lookupConstructor(decl->arguments);
+        populateOperands(ctor->getParameters());
+    }
+
+    // TODO: Reduce code duplication below. Unify with ConstructCallExpression
     if (const auto *parser = type->to<P4::IR::P4Parser>()) {
         LOG4("resolved as parser instantiation");
         auto parserSym = p4Symbols.lookup(parser);
@@ -2393,8 +2658,53 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Package *pkg) {
     auto ctorType =
         mlir::cast<P4HIR::CtorType>(getOrCreateConstructorType(pkg->getConstructorMethodType()));
 
+    mlir::OpBuilder::InsertionGuard guard(builder);
+
+    // Check if there is a declaration with the same name in the current symbol table.
+    // If yes, create / add to an overload set
+    auto *parentOp = builder.getBlock()->getParentOp();
+    auto origSymName = builder.getStringAttr(pkg->name.string_view());
+    auto symName = origSymName;
+    if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
+        LOG4("Package constructor is overloaded");
+
+        P4HIR::OverloadSetOp ovl;
+        auto getUniqueName = [&](mlir::StringAttr toRename) {
+            unsigned counter = 0;
+            return mlir::SymbolTable::generateSymbolName<256>(
+                toRename,
+                [&](llvm::StringRef candidate) {
+                    return ovl.lookupSymbol(builder.getStringAttr(candidate)) != nullptr;
+                },
+                counter);
+        };
+
+        if (auto otherPkg = llvm::dyn_cast<P4HIR::PackageOp>(otherOp)) {
+            LOG4("Creating overload set");
+
+            ovl = builder.create<P4HIR::OverloadSetOp>(loc, origSymName);
+            builder.setInsertionPointToStart(&ovl.createEntryBlock());
+            otherPkg->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
+
+            // Unique the symbol name to avoid clashes in the symbol table.  The
+            // overload set takes over the symbol name. Still, all the symbols
+            // in `p4Symbol` are created wrt the original name, so we do not use
+            // SymbolTable::rename() here.
+            otherPkg.setSymName(getUniqueName(origSymName));
+        } else {
+            LOG4("Adding to overload set");
+
+            ovl = llvm::cast<P4HIR::OverloadSetOp>(otherOp);
+            builder.setInsertionPointToEnd(&ovl.getBody().front());
+        }
+
+        symName = builder.getStringAttr(getUniqueName(symName));
+
+        LOG4("Translated: " << origSymName.getValue().str() << " -> " << symName.getValue().str());
+    }
+
     builder.create<P4HIR::PackageOp>(
-        loc, pkg->name.string_view(), ctorType,
+        loc, symName, ctorType,
         typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters));
 
     return false;
@@ -2538,7 +2848,14 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
         BUG("cannot handle entries yet");
     } else if (prop->name == P4::IR::TableProperties::sizePropertyName) {
         const auto *expr = prop->value->checkedTo<P4::IR::ExpressionValue>()->expression;
-        auto size = getOrCreateConstantExpr(expr);
+        // Here property value might be a constructor argument. So we need to
+        // see, if we have a placeholder for it
+        mlir::TypedAttr size;
+        if (auto val = getValue(expr, {}, /* unchecked */ true))
+            size = mlir::cast<P4HIR::ConstOp>(val.getDefiningOp()).getValue();
+        else
+            size = getOrCreateConstantExpr(expr);
+
         builder.create<P4HIR::TableSizeOp>(loc, size);
     } else {
         builder.create<P4HIR::TableEntryOp>(
