@@ -247,6 +247,20 @@ def P4HIR_MatchKindAttr : P4HIR_Attr<"MatchKind", "match_kind",
 
 }
 
+//===----------------------------------------------------------------------===//
+// CaseOpKind
+//===----------------------------------------------------------------------===//
+
+def CaseOpKind_DT : I32EnumAttrCase<"Default", 1, "default">;
+def CaseOpKind_EQ : I32EnumAttrCase<"Equal", 2, "equal">;
+def CaseOpKind_AO : I32EnumAttrCase<"Anyof", 3, "anyof">;
+
+def CaseOpKind : I32EnumAttr<
+    "CaseOpKind",
+    "case kind",
+    [CaseOpKind_DT, CaseOpKind_EQ, CaseOpKind_AO]> {
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+}
 
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_ATTRS_TD

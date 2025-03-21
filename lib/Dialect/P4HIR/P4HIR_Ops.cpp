@@ -2208,6 +2208,85 @@ mlir::ParseResult P4HIR::TableActionOp::parse(mlir::OpAsmParser &parser,
     return mlir::success();
 }
 
+//===----------------------------------------------------------------------===//
+// SwitchOp & CaseOp
+//===----------------------------------------------------------------------===//
+void P4HIR::CaseOp::getSuccessorRegions(mlir::RegionBranchPoint point,
+                                        SmallVectorImpl<RegionSuccessor> &regions) {
+    if (!point.isParent()) {
+        regions.push_back(RegionSuccessor());
+        return;
+    }
+
+    regions.push_back(RegionSuccessor(&getCaseRegion()));
+}
+
+void P4HIR::CaseOp::build(OpBuilder &builder, OperationState &result, ArrayAttr value,
+                          P4HIR::CaseOpKind kind,
+                          llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> caseBuilder) {
+    OpBuilder::InsertionGuard guard(builder);
+    result.addAttribute("value", value);
+    result.getOrAddProperties<Properties>().kind =
+        P4HIR::CaseOpKindAttr::get(builder.getContext(), kind);
+    Region *caseRegion = result.addRegion();
+    builder.createBlock(caseRegion);
+
+    caseBuilder(builder, result.location);
+}
+
+LogicalResult P4HIR::CaseOp::verify() {
+    // TODO: Check that case type corresponds to switch condition type
+    return success();
+}
+
+ParseResult parseSwitchOp(OpAsmParser &parser, mlir::Region &bodyRegion,
+                          mlir::OpAsmParser::UnresolvedOperand &cond, mlir::Type &condType) {
+    if (parser.parseLParen() || parser.parseOperand(cond) || parser.parseColon() ||
+        parser.parseType(condType) || parser.parseRParen() ||
+        parser.parseRegion(bodyRegion, /*arguments=*/{},
+                           /*argTypes=*/{}))
+        return failure();
+
+    return ::mlir::success();
+}
+
+void printSwitchOp(OpAsmPrinter &p, P4HIR::SwitchOp op, mlir::Region &bodyRegion,
+                   mlir::Value condition, mlir::Type condType) {
+    p << "(";
+    p << condition;
+    p << " : ";
+    p.printStrippedAttrOrType(condType);
+    p << ")";
+
+    p << ' ';
+    p.printRegion(bodyRegion, /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/true);
+}
+
+void P4HIR::SwitchOp::getSuccessorRegions(mlir::RegionBranchPoint point,
+                                          SmallVectorImpl<RegionSuccessor> &regions) {
+    // If any index all the underlying regions branch back to the parent
+    // operation.
+    if (!point.isParent()) {
+        regions.push_back(RegionSuccessor());
+        return;
+    }
+
+    regions.push_back(RegionSuccessor(&getBody()));
+}
+
+LogicalResult P4HIR::SwitchOp::verify() { return success(); }
+
+void P4HIR::SwitchOp::build(OpBuilder &builder, OperationState &result, mlir::Value cond,
+                            function_ref<void(OpBuilder &, Location)> switchBuilder) {
+    assert(switchBuilder && "the builder callback for regions must be present");
+    OpBuilder::InsertionGuard guardSwitch(builder);
+    Region *swtichRegion = result.addRegion();
+    builder.createBlock(swtichRegion);
+    result.addOperands(cond);
+    switchBuilder(builder, result.location);
+}
+
 namespace {
 struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
     using OpAsmDialectInterface::OpAsmDialectInterface;
