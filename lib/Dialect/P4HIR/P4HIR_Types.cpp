@@ -395,7 +395,7 @@ Type EnumType::parse(AsmParser &p) {
 
             StringRef caseName;
             if (p.parseKeyword(&caseName)) return failure();
-            fields.push_back(StringAttr::get(p.getContext(), name));
+            fields.push_back(StringAttr::get(p.getContext(), caseName));
             return success();
         }))
         return {};
@@ -430,7 +430,7 @@ Type ErrorType::parse(AsmParser &p) {
     if (p.parseCommaSeparatedList(AsmParser::Delimiter::LessGreater, [&]() {
             StringRef caseName;
             if (p.parseKeyword(&caseName)) return failure();
-            fields.push_back(StringAttr::get(p.getContext(), name));
+            fields.push_back(StringAttr::get(p.getContext(), caseName));
             return success();
         }))
         return {};

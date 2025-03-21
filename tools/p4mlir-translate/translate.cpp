@@ -3,9 +3,6 @@
 #include <algorithm>
 #include <climits>
 
-#include "ir/ir-generated.h"
-#include "mlir/IR/OperationSupport.h"
-
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
