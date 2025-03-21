@@ -103,10 +103,16 @@ LogicalResult IntAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type
 
 Attribute EnumFieldAttr::parse(AsmParser &p, Type) {
     StringRef field;
-    P4HIR::EnumType type;
-    if (p.parseLess() || p.parseKeyword(&field) || p.parseComma() ||
-        p.parseCustomTypeWithFallback<P4HIR::EnumType>(type) || p.parseGreater())
+    mlir::Type type;
+    if (p.parseLess() || p.parseKeyword(&field) || p.parseComma() || p.parseType(type) ||
+        p.parseGreater())
         return {};
+
+    if (!mlir::isa<P4HIR::EnumType, P4HIR::SerEnumType>(type)) {
+        p.emitError(p.getCurrentLocation(),
+                    "enum_field attribute could only be used for enum or ser_enum types");
+        return {};
+    }
 
     return EnumFieldAttr::get(type, field);
 }
@@ -118,14 +124,13 @@ void EnumFieldAttr::print(AsmPrinter &p) const {
 }
 
 EnumFieldAttr EnumFieldAttr::get(mlir::Type type, StringAttr value) {
-    EnumType enumType = llvm::dyn_cast<EnumType>(type);
-    if (!enumType) return nullptr;
-
-    // Check whether the provided value is a member of the enum type.
-    if (!enumType.contains(value.getValue())) {
-        //    emitError() << "enum value '" << value.getValue()
-        //                   << "' is not a member of enum type " << enumType;
-        return nullptr;
+    if (EnumType enumType = llvm::dyn_cast<EnumType>(type)) {
+        // Check whether the provided value is a member of the enum type.
+        if (!enumType.contains(value.getValue())) return nullptr;
+    } else {
+        auto serEnumType = llvm::cast<SerEnumType>(type);
+        // Check whether the provided value is a member of the enum type.
+        if (!serEnumType.contains(value.getValue())) return nullptr;
     }
 
     return Base::get(value.getContext(), type, value);

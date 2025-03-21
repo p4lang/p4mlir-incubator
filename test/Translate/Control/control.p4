@@ -1,6 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
-// CHECK-LABEL:   p4hir.control @Pipe1(%arg0: !b10i, %arg1: !i16i, %arg2: !p4hir.ref<!b10i>)() {
+// CHECK-LABEL:   p4hir.control @Pipe1(%arg0: !b10i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "arg1"}, %arg1: !i16i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "arg2"}, %arg2: !p4hir.ref<!b10i> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "oarg2"})()
 control Pipe1(bit<10> arg1, in int<16> arg2, out bit<10> oarg2) {
 // CHECK:     p4hir.func action @foo() {
     action foo() {

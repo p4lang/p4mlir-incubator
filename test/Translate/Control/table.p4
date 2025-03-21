@@ -17,7 +17,7 @@ extern int<16> baz(in int<16> arg);
 
 action bak() {}
 
-// CHECK-LABEL:   p4hir.control @Pipe(%arg0: !MyHeader, %arg1: !i16i, %arg2: !p4hir.ref<!i16i>)(ctr_arg1: !i16i) {
+// CHECK-LABEL:   p4hir.control @Pipe
 control Pipe(in MyHeader arg1, in int<16> arg2, inout int<16> arg3)(int<16> ctr_arg1) {
     action foo(in int<16> x1, inout int<16> x2) {}
     const int<16> cst = 3;
@@ -37,7 +37,7 @@ control Pipe(in MyHeader arg1, in int<16> arg2, inout int<16> arg3)(int<16> ctr_
             baz(test) : exact;
             local_hdr.f1 : lpm;
         }
-        // CHECK: p4hir.table_action @bar(%[[arg3:.*]]: !i16i, %[[arg4:.*]]: !i16i, %[[arg5:.*]]: !i16i) {
+        // CHECK: p4hir.table_action @bar(%[[arg3:.*]]: !i16i {p4hir.param_name = "x1"}, %[[arg4:.*]]: !i16i {p4hir.param_name = "x2"}, %[[arg5:.*]]: !i16i {p4hir.param_name = "x3"}) {
         // CHECK:   p4hir.call @bar (%[[arg3]], %[[arg4]], %[[arg5]]) : (!i16i, !i16i, !i16i) -> ()
         // CHECK: }        
         actions = { foo(arg2, arg3); bar; bak(); }

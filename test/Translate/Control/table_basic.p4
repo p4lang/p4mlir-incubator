@@ -7,16 +7,16 @@ match_kind {
 }
 
 // CHECK-LABEL:  p4hir.extern @ActionProfile
-// CHECK:     p4hir.func @ActionProfile(!b32i {p4hir.dir = #undir})
+// CHECK:     p4hir.func @ActionProfile(!b32i {p4hir.dir = #undir, p4hir.param_name = "size"})
 extern ActionProfile {
    ActionProfile(bit<32> size);
 }
 
-// CHECK-LABEL:  p4hir.control @c(%arg0: !b32i)() {
+// CHECK-LABEL:  p4hir.control @c(%arg0: !b32i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "arg"})()
 control c(in bit<32> arg) {
-    // CHECK: p4hir.func action @a(%arg1: !b32i {p4hir.dir = #undir}) {
+    // CHECK: p4hir.func action @a(%arg1: !b32i {p4hir.dir = #undir, p4hir.param_name = "carg"})
     action a(bit<32> carg) {}
-    // CHECK: p4hir.func action @aa(%arg1: !b32i {p4hir.dir = #p4hir<dir in>}, %arg2: !i8i {p4hir.dir = #undir}) {
+    // CHECK: p4hir.func action @aa(%arg1: !b32i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "arg"}, %arg2: !i8i {p4hir.dir = #undir, p4hir.param_name = "carg"})
     action aa(in bit<32> arg, int<8> carg) {}
     // CHECK: p4hir.func action @b() {
     action b() {}
@@ -24,7 +24,7 @@ control c(in bit<32> arg) {
     // CHECK-LABEL: p4hir.table @t1 {
     table t1 {
     // CHECK: p4hir.table_actions {
-    // CHECK:    p4hir.table_action @a(%arg1: !b32i) {
+    // CHECK:    p4hir.table_action @a(%arg1: !b32i {p4hir.param_name = "carg"}) {
     // CHECK:      p4hir.call @a (%arg1) : (!b32i) -> ()
     // CHECK:    }
     // CHECK:    p4hir.table_action @b() {

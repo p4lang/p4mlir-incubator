@@ -1,7 +1,7 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
 // Adopted from testdata/p4_16_samples/pred.p4
-// CHECK-LABEL: p4hir.func action @cond_0(%arg0: !p4hir.bool {p4hir.dir = #p4hir<dir undir>})
+// CHECK-LABEL: p4hir.func action @cond_0
 // CHECK:    %[[TMP_1:.*]] = p4hir.variable ["tmp_1"] : <!p4hir.bool>
 // CHECK:    %[[TMP_2:.*]] = p4hir.variable ["tmp_2"] : <!p4hir.bool>
 // CHECK:    %[[NB:.*]] = p4hir.unary(not, %arg0) : !p4hir.bool

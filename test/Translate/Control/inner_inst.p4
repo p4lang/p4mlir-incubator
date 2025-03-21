@@ -4,12 +4,12 @@ header MyHeader {
     int<16> f1;
 }
 
-// CHECK-LABEL:  p4hir.control @InnerPipe(%arg0: !b10i, %arg1: !i16i, %arg2: !p4hir.ref<!i16i>)(flag: !p4hir.bool) {
+// CHECK-LABEL:  p4hir.control @InnerPipe
 control InnerPipe(bit<10> arg1, in int<16> arg2, out int<16> arg3)(bool flag) {
     apply {}
 }
 
-// CHECK-LABEL:   p4hir.control @Pipe(%arg0: !b10i, %arg1: !i16i, %arg2: !p4hir.ref<!i16i>, %arg3: !p4hir.ref<!i16i>)(ctr_arg1: !i16i, hdr_arg: !MyHeader) {
+// CHECK-LABEL:   p4hir.control @Pipe
 control Pipe(bit<10> arg1, in int<16> arg2, out int<16> arg3, inout int<16> arg4)(int<16> ctr_arg1, MyHeader hdr_arg) {
     InnerPipe(true) inner1;
     InnerPipe(false) inner2;

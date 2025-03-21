@@ -1,6 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
-// CHECK: p4hir.func @log(!string {p4hir.dir = #undir})
+// CHECK: p4hir.func @log(!string {p4hir.dir = #undir, p4hir.param_name = "s"})
 extern void log(string s);
 
 // CHECK-LABEL: @test
