@@ -126,6 +126,7 @@ class P4TypeConverter : public P4::Inspector, P4::ResolutionContext {
     bool preorder(const P4::IR::Type_Boolean *type) override;
     bool preorder(const P4::IR::Type_String *type) override;
     bool preorder(const P4::IR::Type_Unknown *type) override;
+    bool preorder(const P4::IR::Type_Dontcare *type) override;
     bool preorder(const P4::IR::Type_Typedef *type) override;
     bool preorder(const P4::IR::Type_Name *name) override;
     bool preorder(const P4::IR::Type_Newtype *nt) override;
@@ -664,6 +665,14 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Unknown *type) {
 
     ConversionTracer trace("TypeConverting ", type);
     auto mlirType = P4HIR::UnknownType::get(converter.context());
+    return setType(type, mlirType);
+}
+
+bool P4TypeConverter::preorder(const P4::IR::Type_Dontcare *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    auto mlirType = P4HIR::DontcareType::get(converter.context());
     return setType(type, mlirType);
 }
 
@@ -2156,6 +2165,17 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             // TODO: This is pretty inefficient, expose argument => parameter
             // map from ParameterSubstitution
             const auto *param = instance->substitution.findParameter(arg);
+
+            // This is hack to support dontcare arguments (_). These have
+            // Type_DontCare type, so we just create new uninitialized variable
+            // of parameter type
+            if (arg->expression->is<P4::IR::DefaultExpression>()) {
+                auto type = getOrCreateType(param->type);
+                auto var = builder.create<P4HIR::VariableOp>(
+                    getLoc(builder, arg->expression), P4HIR::ReferenceType::get(type), "dummy");
+                setValue(arg->expression, var);
+            }
+
             switch (auto dir = param->direction) {
                 case P4::IR::Direction::None:
                 case P4::IR::Direction::In: {
