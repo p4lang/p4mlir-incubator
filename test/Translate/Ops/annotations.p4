@@ -27,6 +27,13 @@ extern Annotated {
     void execute(@optional bit<8> index);
 }
 
+extern Virtual {
+    Virtual();
+    void run(in bit<16> ix);  // internally calls f
+    // CHECK: p4hir.func @f(!b16i {p4hir.dir = #in, p4hir.param_name = "ix"}) -> !b16i annotations {synchronous = @run}
+    @synchronous(run) abstract bit<16> f(in bit<16> ix);
+}
+
 // CHECK:   p4hir.func @log(!b32i {p4hir.dir = #in, p4hir.param_name = "data"}) -> !b32i annotations {pure}
 @pure
 extern bit<32> log(in bit<32> data);
