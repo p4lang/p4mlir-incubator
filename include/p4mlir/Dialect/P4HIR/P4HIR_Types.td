@@ -795,6 +795,7 @@ def LoadableP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType,
                                 EnumType, SerEnumType, ErrorType,
                                 ValidBitType, AliasType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
+def SwitchCondType : AnyTypeOf<[AnyIntP4Type, AnyEnumType, ErrorType]>;
 def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType]>;
 def P4ObjectType : AnyTypeOf<[ParserType, ControlType, ExternType, PackageType]>;
 

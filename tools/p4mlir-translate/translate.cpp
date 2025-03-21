@@ -489,6 +489,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             visit(block->components);
         return false;
     }
+    bool preorder(const P4::IR::SwitchStatement *sw) override;
 
     bool preorder(const P4::IR::Constant *c) override {
         materializeConstantExpr(c);
@@ -509,6 +510,14 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         visitAgain();
         return false;
     }
+    bool preorder(const P4::IR::Cast *c) override {
+        // Casts of constants could be used multiple times again and again. We need to visit
+        // again in order to get them scoped properly
+        if (c->expr->is<P4::IR::Literal>()) visitAgain();
+        return true;
+    }
+    void postorder(const P4::IR::Cast *c) override;
+
     bool preorder(const P4::IR::PathExpression *e) override {
         // Should be resolved eslewhere
         return false;
@@ -566,7 +575,6 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(Grt)
     HANDLE_IN_POSTORDER(Geq)
 
-    HANDLE_IN_POSTORDER(Cast)
     HANDLE_IN_POSTORDER(ReturnStatement)
     HANDLE_IN_POSTORDER(ExitStatement)
     HANDLE_IN_POSTORDER(ArrayIndex)
@@ -1764,11 +1772,15 @@ bool P4HIRConverter::preorder(const P4::IR::IfStatement *ifs) {
     builder.create<P4HIR::IfOp>(
         getLoc(builder, ifs), cond, ifs->ifFalse,
         [&](mlir::OpBuilder &b, mlir::Location) {
+            ValueScope scope(p4Values);
+
             visit(ifs->ifTrue);
             P4HIR::buildTerminatedBody(b, getEndLoc(builder, ifs->ifTrue));
         },
         thenAnnotations,
         [&](mlir::OpBuilder &b, mlir::Location) {
+            ValueScope scope(p4Values);
+
             visit(ifs->ifFalse);
             P4HIR::buildTerminatedBody(b, getEndLoc(builder, ifs->ifFalse));
         },
@@ -3054,6 +3066,8 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
     } else if (prop->name == P4::IR::TableProperties::keyPropertyName) {
         builder.create<P4HIR::TableKeyOp>(
             loc, annotations, [&](mlir::OpBuilder &b, mlir::Location) {
+                ValueScope scope(p4Values);
+
                 const auto *key = prop->value->checkedTo<P4::IR::Key>();
                 for (const auto *kel : key->keyElements) {
                     auto kAnnotations = convert(kel->annotations);
@@ -3068,6 +3082,8 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
     } else if (prop->name == P4::IR::TableProperties::defaultActionPropertyName) {
         builder.create<P4HIR::TableDefaultActionOp>(
             loc, annotations, [&](mlir::OpBuilder &b, mlir::Location) {
+                ValueScope scope(p4Values);
+
                 const auto *expr = prop->value->checkedTo<P4::IR::ExpressionValue>()->expression;
                 visit(expr);
             });
@@ -3089,12 +3105,60 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
         builder.create<P4HIR::TableEntryOp>(
             loc, builder.getStringAttr(prop->getName().string_view()), prop->isConstant,
             annotations, [&](mlir::OpBuilder &b, mlir::Type &resultType, mlir::Location) {
+                ValueScope scope(p4Values);
+
                 const auto *expr = prop->value->checkedTo<P4::IR::ExpressionValue>()->expression;
                 auto val = convert(expr);
                 resultType = val.getType();
                 b.create<P4HIR::YieldOp>(getEndLoc(b, prop), val);
             });
     }
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::SwitchStatement *sw) {
+    ConversionTracer trace("Converting ", sw);
+
+    auto cond = convert(sw->expression);
+
+    builder.create<P4HIR::SwitchOp>(
+        getLoc(builder, sw), cond, [&](mlir::OpBuilder &b, mlir::Location) {
+            llvm::SmallVector<mlir::Attribute> cases;
+
+            for (const auto *swCase : sw->cases) {
+                if (!swCase->label->to<P4::IR::DefaultExpression>()) {
+                    // Handle special case: action run enum
+                    if (sw->expression->type->is<P4::IR::Type_ActionEnum>()) {
+                        const auto *path = swCase->label->checkedTo<P4::IR::PathExpression>();
+                        cases.push_back(P4HIR::EnumFieldAttr::get(cond.getType(),
+                                                                  path->path->name.string_view()));
+                    } else
+                        cases.push_back(getOrCreateConstantExpr(swCase->label));
+                }
+
+                if (swCase->statement) {
+                    P4HIR::CaseOpKind caseOpKind;
+                    if (swCase->label->to<P4::IR::DefaultExpression>())
+                        caseOpKind = P4HIR::CaseOpKind::Default;
+                    else
+                        caseOpKind =
+                            cases.size() > 1 ? P4HIR::CaseOpKind::Anyof : P4HIR::CaseOpKind::Equal;
+
+                    builder.create<P4HIR::CaseOp>(
+                        getLoc(b, swCase), b.getArrayAttr(cases), caseOpKind,
+                        [&](mlir::OpBuilder &b, mlir::Location) {
+                            ValueScope scope(p4Values);
+
+                            visit(swCase->statement);
+                            b.create<P4HIR::YieldOp>(getEndLoc(builder, swCase));
+                        });
+                    cases.clear();
+                }
+            }
+
+            b.create<P4HIR::YieldOp>(getEndLoc(builder, sw));
+        });
 
     return false;
 }

@@ -276,7 +276,7 @@ def TableKeyEntryOp : P4HIR_Op<"match_key", []> {
 
 }
 
-def ExitOp : P4HIR_Op<"exit", [ParentOneOf<["ScopeOp", "IfOp",
+def ExitOp : P4HIR_Op<"exit", [ParentOneOf<["ScopeOp", "IfOp", "CaseOp",
                                             "FuncOp", "ControlApplyOp",]>]> {
   let summary = "Represents an exit from action or control";
   let description = [{
