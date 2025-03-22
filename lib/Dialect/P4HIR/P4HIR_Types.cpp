@@ -284,25 +284,80 @@ LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, S
     return result;
 }
 
-LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
+LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef /*unused*/,
                                  ArrayRef<FieldInfo> elements) {
-    llvm::SmallDenseSet<StringAttr> fieldNameSet;
+    if (elements.empty()) {
+        emitError() << "empty p4hir.header type";
+        return failure();
+    }
+
     LogicalResult result = success();
+    llvm::SmallDenseSet<StringAttr> fieldNameSet;
     fieldNameSet.reserve(elements.size());
-    for (const auto &elt : elements)
+    for (const auto &elt : elements) {
         if (!fieldNameSet.insert(elt.name).second) {
             result = failure();
             emitError() << "duplicate field name '" << elt.name.getValue()
                         << "' in p4hir.header type";
         }
+    }
 
-    if (elements.empty()) emitError() << "empty p4hir.header type";
+    auto lastField = elements.back();
+    if (lastField.name != validityBit || !mlir::isa<P4HIR::ValidBitType>(lastField.type)) {
+        result = failure();
+        emitError() << "the last field of p4hir.header type should be validity bit, but got"
+                    << lastField.name.getValue() << " of type " << lastField.type;
+    }
 
-    if (elements.back().name != validityBit ||
-        !mlir::isa<P4HIR::ValidBitType>(elements.back().type))
-        emitError() << "last field of p4hir.header type should be validity bit";
+    auto varbitCount = llvm::count_if(
+        elements, [](const FieldInfo &field) { return mlir::isa<P4HIR::VarBitsType>(field.type); });
 
-    // TODO: Check field types & nesting
+    if (varbitCount > 1) {
+        result = failure();
+        emitError() << "only one varbit field is allowed in p4hir.header type";
+    }
+
+    // If a varbit field is found, ensure it is the last “data” field
+    // immediately before the validity field
+    if (varbitCount == 1) {
+        // Find the index of the varbit field
+        auto varbitField = llvm::find_if(elements, [](const FieldInfo &field) {
+            return mlir::isa<P4HIR::VarBitsType>(field.type);
+        });
+
+        size_t varbitIndex = std::distance(elements.begin(), varbitField);
+        size_t expectedIndex = elements.size() - 2;  // The index is right before validity bit
+
+        if (varbitIndex != expectedIndex) {
+            result = failure();
+            emitError() << "varbit field '" << varbitField->name.getValue()
+                        << "' must be immediately before the validity field in p4hir.header type";
+        }
+    }
+
+    // Helper function to verify inner types recursively, inspecting nested structs
+    std::function<void(ArrayRef<FieldInfo>, bool)> verifyInnerTypes =
+        [&](ArrayRef<FieldInfo> elements, bool isHeader) -> void {
+        for (const auto &elt : elements) {
+            // varbit and validity bit are allowed at the top (header) level only
+            if (isHeader && mlir::isa<P4HIR::VarBitsType, P4HIR::ValidBitType>(elt.type)) {
+                continue;
+            }
+            if (mlir::isa<P4HIR::BitsType, P4HIR::BoolType, P4HIR::SerEnumType>(elt.type)) {
+                continue;
+            }
+            if (const auto structType = mlir::dyn_cast<P4HIR::StructType>(elt.type)) {
+                verifyInnerTypes(structType.getElements(), false);
+                continue;
+            }
+
+            result = failure();
+            emitError() << "field name '" << elt.name.getValue() << "' is of type '" << elt.type
+                        << "' that is not allowed in p4hir.header type";
+        }
+    };
+
+    verifyInnerTypes(elements, true);
 
     return result;
 }

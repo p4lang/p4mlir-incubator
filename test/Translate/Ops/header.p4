@@ -2,7 +2,7 @@
 
 // CHECK: !E = !p4hir.header<"E", __valid: !validity_bit>
 // CHECK: !H = !p4hir.header<"H", x: !b32i, y: !b32i, __valid: !validity_bit>
-// CHECK: !Ethernet = !p4hir.header<"Ethernet", src: !b48i, dest: !b48i, type: !EthTypes, __valid: !validity_bit>
+// CHECK: !Ethernet = !p4hir.header<"Ethernet", src: !b48i, dest: !b48i, type: !EthTypes, b: !p4hir.bool, s: !Internal, v: !p4hir.varbit<32>, __valid: !validity_bit>
 // CHECK: !Headers = !p4hir.struct<"Headers", eth: !Ethernet>
 
 header E {}
@@ -17,10 +17,18 @@ enum bit<16> EthTypes {
     IPv6 = 0x86DD
 }
 
+struct Internal {
+    bit<32> x;
+    int<32> y;
+}
+
 header Ethernet {
     bit<48> src;
     bit<48> dest;
     EthTypes type;
+    bool b;
+    Internal s;
+    varbit<32> v;
 }
 
 struct Headers {
@@ -28,6 +36,8 @@ struct Headers {
 }
 
 header H { bit<32> x; bit<32> y; }
+
+header Hwvb { bit<32> x; bit<32> y; varbit<32> v; }
 
 // CHECK-LABEL: p4hir.func action @test2
 // CHECK:  %[[H:.*]] = p4hir.variable ["h"] : <!H>
@@ -117,4 +127,13 @@ action assign_invalid_header() {
   Ethernet e;
 
   e = (Ethernet){#};
+}
+
+// CHECK-LABEL: p4hir.func action @compare_varbits
+action compare_varbits(inout Hwvb h) {
+  Hwvb h1;
+
+  if (h1.v == h.v) {
+    return;
+  }
 }
