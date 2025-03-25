@@ -246,6 +246,7 @@ def CastOp : P4HIR_Op<"cast",
     `:` type($result) attr-dict
   }];
 
+  let hasFolder = 1;
   // FIXME: add verifier.
 }
 
