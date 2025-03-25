@@ -165,6 +165,14 @@ void P4HIR::CastOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "cast");
 }
 
+OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
+    // Identity.
+    // cast(%a) : A -> A ==> %a
+    if (getOperand().getType() == getType()) return getOperand();
+
+    return {};
+}
+
 //===----------------------------------------------------------------------===//
 // ReadOp
 //===----------------------------------------------------------------------===//
