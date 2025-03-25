@@ -152,6 +152,11 @@ void P4HIR::ConstOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     }
 }
 
+OpFoldResult P4HIR::ConstOp::fold(FoldAdaptor adaptor) {
+    assert(adaptor.getOperands().empty() && "constant has no operands");
+    return getValueAttr();
+}
+
 //===----------------------------------------------------------------------===//
 // CastOp
 //===----------------------------------------------------------------------===//
