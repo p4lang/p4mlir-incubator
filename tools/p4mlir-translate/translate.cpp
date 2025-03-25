@@ -1935,9 +1935,6 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
 
 // We treat method as an external function (w/o body)
 bool P4HIRConverter::preorder(const P4::IR::Method *m) {
-    // Special case: do not emit declaration for verify
-    if (m->name == P4::IR::ParserState::verify) return false;
-
     ConversionTracer trace("Converting ", m);
     ValueScope scope(p4Values);
 
@@ -2131,36 +2128,6 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 }
             }
             return;
-        }
-        // Another special case: some builtin methods are actually externs
-        if (const auto *eCall = instance->to<P4::ExternCall>()) {
-            // Transform verify call inside parser into proper transition op
-            if (eCall->method->name == P4::IR::ParserState::verify &&
-                isInContext<P4::IR::ParserState>()) {
-                LOG4("Resolving verify() call");
-
-                // Lower condition. TBD: This is incorrect if arguments are
-                // passed by name.
-                const auto *condExpr = mce->arguments->at(0)->expression;
-
-                // Emit conditional reject op. Parser control flow
-                // simplification should take care of this and emit a select
-                // transition to a reject-with-error state
-                auto condValue = convert(condExpr);
-                condValue = builder
-                                .create<P4HIR::UnaryOp>(getLoc(builder, condExpr),
-                                                        P4HIR::UnaryOpKind::LNot, condValue)
-                                .getResult();
-                builder.create<P4HIR::IfOp>(
-                    getEndLoc(builder, eCall->method), condValue, false,
-                    [&](mlir::OpBuilder &b, mlir::Location) {
-                        const auto *err = mce->arguments->at(1)->expression;
-                        auto errCode =
-                            mlir::cast<P4HIR::ErrorCodeAttr>(getOrCreateConstantExpr(err));
-                        b.create<P4HIR::ParserRejectOp>(getEndLoc(b, err), errCode);
-                    });
-                return;
-            }
         }
 
         llvm::SmallVector<mlir::Value, 4> operands;
