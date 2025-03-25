@@ -18,6 +18,7 @@ def P4HIR_Dialect : Dialect {
 
     let useDefaultTypePrinterParser = 0;
     let useDefaultAttributePrinterParser = 1;
+    let hasConstantMaterializer = 1;
 
     let extraClassDeclaration = [{
         mlir::Type parseType(mlir::DialectAsmParser &parser) const override;

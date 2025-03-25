@@ -2652,6 +2652,13 @@ struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
 };
 }  // namespace
 
+Operation *P4HIR::P4HIRDialect::materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                                    Location loc) {
+    auto typedAttr = mlir::cast<mlir::TypedAttr>(value);
+    assert(typedAttr.getType() == type && "type mismatch");
+    return builder.create<P4HIR::ConstOp>(loc, typedAttr);
+}
+
 void P4HIR::P4HIRDialect::initialize() {
     registerTypes();
     registerAttributes();
