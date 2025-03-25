@@ -1101,6 +1101,16 @@ void P4HIR::StructExtractOp::getAsmResultNames(function_ref<void(Value, StringRe
     setNameFn(getResult(), getFieldName());
 }
 
+OpFoldResult P4HIR::StructExtractOp::fold(FoldAdaptor adaptor) {
+    // Fold extract from aggregate constant
+    if (auto constOperand = adaptor.getInput()) {
+        auto operandAttr = llvm::cast<ArrayAttr>(constOperand);
+        return operandAttr.getValue()[getFieldIndex()];
+    }
+
+    return {};
+}
+
 void P4HIR::StructExtractRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
     llvm::SmallString<16> name = getFieldName();
     name += "_field_ref";

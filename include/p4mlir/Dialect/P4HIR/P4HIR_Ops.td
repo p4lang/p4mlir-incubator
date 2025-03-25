@@ -1039,6 +1039,7 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
   let results = (outs AnyP4Type:$result);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let hasFolder = 1;
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$input, "P4HIR::FieldInfo":$field)>,
