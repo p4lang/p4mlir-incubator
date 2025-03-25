@@ -247,6 +247,7 @@ def CastOp : P4HIR_Op<"cast",
   }];
 
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
   // FIXME: add verifier.
 }
 

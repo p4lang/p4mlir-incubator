@@ -173,6 +173,19 @@ OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
     return {};
 }
 
+LogicalResult P4HIR::CastOp::canonicalize(P4HIR::CastOp op, PatternRewriter &rewriter) {
+    // Composition.
+    // %b = cast(%a) : A -> B
+    //      cast(%b) : B -> C
+    // ===> cast(%a) : A -> C
+    auto inputCast = mlir::dyn_cast_or_null<CastOp>(op.getSrc().getDefiningOp());
+    if (!inputCast) return failure();
+    auto bitcast =
+        rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), op.getType(), inputCast.getSrc());
+    rewriter.replaceOp(op, bitcast);
+    return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ReadOp
 //===----------------------------------------------------------------------===//
