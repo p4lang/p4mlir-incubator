@@ -15,7 +15,7 @@ p4hir.func action @foo(%arg0 : !p4hir.ref<!bit32> {p4hir.dir = #p4hir<dir inout>
   p4hir.assign %arg1, %0 : !p4hir.ref<!bit32>
   p4hir.assign %1, %arg2 : !p4hir.ref<!bit32>
 
-  p4hir.implicit_return
+  p4hir.return
 }
 
 p4hir.func action @bar() {
@@ -24,5 +24,5 @@ p4hir.func action @bar() {
    %3 = p4hir.const #p4hir.int<7> : !i42i
    p4hir.call @foo(%0, %1, %0, %3) : (!p4hir.ref<!bit32>, !bit32, !p4hir.ref<!bit32>, !i42i) -> ()
 
-   p4hir.implicit_return
+   p4hir.return
 }

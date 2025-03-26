@@ -41,6 +41,6 @@ module {
     p4hir.assign_slice %c0_b3i, %m[7 : 5] : !b3i -> <!b8i>
     %c0_b1i = p4hir.const #int0_b1i
     p4hir.assign_slice %c0_b1i, %x[5 : 5] : !b1i -> <!b8i>
-    p4hir.implicit_return
+    p4hir.return
   }
 }

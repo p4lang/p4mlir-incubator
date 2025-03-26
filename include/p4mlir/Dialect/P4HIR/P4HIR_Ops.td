@@ -726,11 +726,11 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
                                                 "ForOp",
                                              // "ForInOp",
                                              ]>,
-  // Note that ReturnOp is not ReturnLike: currently there is no way to
-  // represent early exits in MLIR "properly"
-  // We might not be able to have it a Terminator at this level in order
-  // to represent dead code. We might lower it to proper terminator later (!)
+                                             ReturnLike, Terminator
+  // Currently there is no way to represent early exits in MLIR "properly"
   // See https://discourse.llvm.org/t/rfc-region-based-control-flow-with-early-exits-in-mlir/76998
+  // For now we rely on RemoveReturns frontend pass to transform into SESE regions for us.
+  // This needs to be moved to MLIR one day
                                    ]> {
   let summary = "Return from function or action";
   let description = [{
@@ -770,32 +770,6 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
   }];
 
   let hasVerifier = 1;
-}
-
-def ImplicitReturnOp : P4HIR_Op<"implicit_return",
-  [Terminator, ParentOneOf<["FuncOp"]>]> {
-  let summary = "Terminator return from the function";
-  let description = [{
-    Represents the terminator placeholder for returning from a function
-  }];
-
-  // The return operation takes an optional input operand to return. This
-  // value must match the return type of the enclosing function.
-  let arguments = (ins Variadic<AnyP4Type>:$input);
-
-  // The return operation only emits the input in the format if it is present.
-  let assemblyFormat = "($input^ `:` type($input))? attr-dict ";
-
-  // Allow building a ImplicitReturnOp with no return operand.
-  let builders = [
-    OpBuilder<(ins), [{ build($_builder, $_state, std::nullopt); }]>
-  ];
-
-  let extraClassDeclaration = [{
-    bool hasOperand() { return getNumOperands() != 0; }
-  }];
-
-  let hasVerifier = 0;
 }
 
 def FuncOp : P4HIR_Op<"func", [

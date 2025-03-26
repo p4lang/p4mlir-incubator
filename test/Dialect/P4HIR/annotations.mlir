@@ -72,13 +72,13 @@ module {
   }
   p4hir.control @c(%arg0: !Foo {p4hir.dir = #in, p4hir.param_name = "ff"}, %arg1: !p4hir.bool {p4hir.dir = #undir, p4hir.param_name = "bb"})() annotations {pkginfo = {bar = "42", foo = 10 : i64}} {
     p4hir.func action @a() annotations {hidden} {
-      p4hir.implicit_return
+      p4hir.return
     }
     p4hir.func action @b() {
-      p4hir.implicit_return
+      p4hir.return
     }
     p4hir.func action @cc() {
-      p4hir.implicit_return
+      p4hir.return
     }
     p4hir.table @t annotations {name = "table.t"} {
       p4hir.table_key {
@@ -129,7 +129,7 @@ module {
   }
 
   p4hir.func action @foo(%arg0: !Meta {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "m"}, %arg1: !packet_in_header_t {p4hir.annotations = {optional}, p4hir.dir = #p4hir<dir in>, p4hir.param_name = "hdr"}, %arg2: !SomeEnum {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "e"}) {
-    p4hir.implicit_return
+    p4hir.return
   }
 }
 

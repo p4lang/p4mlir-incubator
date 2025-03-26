@@ -16,7 +16,7 @@ module {
     %inner = p4hir.instantiate @InnerPipe() as "inner" : () -> !InnerPipe
     p4hir.func action @bar() {
       %x1 = p4hir.variable ["x1"] : <!i16i>
-      p4hir.implicit_return
+      p4hir.return
     }
     p4hir.control_apply {
       p4hir.call @bar () : () -> ()

@@ -46,10 +46,7 @@ header_union U {
 // CHECK:           }) : (!p4hir.bool) -> !p4hir.bool
 // CHECK:           %[[VAL_16:.*]] = p4hir.const #[[$ATTR_TRUE]]
 // CHECK:           %[[VAL_17:.*]] = p4hir.cmp(eq, %[[VAL_6]], %[[VAL_16]]) : !p4hir.bool, !p4hir.bool
-// CHECK:           p4hir.if %[[VAL_17]] {
-// CHECK:             p4hir.return
-// CHECK:           }
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.if %[[VAL_17]]
 
 action header_union_isValid() {
   U u;
@@ -68,7 +65,7 @@ action header_union_isValid() {
 // CHECK:           %[[VAL_5:.*]] = p4hir.const #[[$ATTR_VALID]]
 // CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1_>
 // CHECK:           p4hir.assign %[[VAL_5]], %[[VAL_6]] : <!validity_bit>
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.return
 
 action header_setValid() {
   U u;
@@ -86,7 +83,7 @@ action header_setValid() {
 // CHECK:           %[[VAL_6:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_7:.*]] = p4hir.struct_extract_ref %[[VAL_5]]["__valid"] : <!H2_>
 // CHECK:           p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!validity_bit>
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.return
 
 action header_setInvalid() {
   U u;
@@ -108,7 +105,7 @@ action header_setInvalid() {
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_9:.*]] = p4hir.read %[[VAL_1]] : <!H1_>
 // CHECK:           p4hir.assign %[[VAL_9]], %[[VAL_2]] : <!H1_>
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.return
 
 action assign_header() {
   U u;
@@ -132,7 +129,7 @@ action assign_header() {
 // CHECK:           %[[VAL_9:.*]] = p4hir.const #[[$ATTR_VALID]]
 // CHECK:           %[[VAL_10:.*]] = p4hir.struct (%[[VAL_8]], %[[VAL_9]]) : !H1_
 // CHECK:           p4hir.assign %[[VAL_10]], %[[VAL_1]] : <!H1_>
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.return
 
 action assign_tuple() {
   U u;
@@ -150,7 +147,7 @@ action assign_tuple() {
 // CHECK:           %[[VAL_6:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_7:.*]] = p4hir.struct_extract_ref %[[VAL_5]]["__valid"] : <!H2_>
 // CHECK:           p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!validity_bit>
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.return
 
 action assign_invalid_header() {
   U u;
@@ -163,7 +160,7 @@ action assign_invalid_header() {
 // CHECK:           %[[VAL_1:.*]] = p4hir.variable ["u2"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.read %[[VAL_0]] : <!U>
 // CHECK:           p4hir.assign %[[VAL_2]], %[[VAL_1]] : <!U>
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.return
 
 action assign_header_union() {
   U u1;
@@ -182,7 +179,7 @@ action assign_header_union() {
 // CHECK:           %[[VAL_5:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_4]]["__valid"] : <!H2_>
 // CHECK:           p4hir.assign %[[VAL_5]], %[[VAL_6]] : <!validity_bit>
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.return
 
 action init_with_invalid_header_union() {
   U u = (U){#}; // invalid header union; same as an uninitialized header union.
@@ -198,7 +195,7 @@ action init_with_invalid_header_union() {
 // CHECK:           %[[VAL_5:.*]] = p4hir.const #[[$ATTR_INVALID]]
 // CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_4]]["__valid"] : <!H2_>
 // CHECK:           p4hir.assign %[[VAL_5]], %[[VAL_6]] : <!validity_bit>
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.return
 
 action assign_invalid_header_union() {
   U u;
@@ -212,7 +209,7 @@ action assign_invalid_header_union() {
 // CHECK:           %[[VAL_2:.*]] = p4hir.read %[[VAL_0]] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract %[[VAL_2]]["h1"] : !U
 // CHECK:           p4hir.assign %[[VAL_3]], %[[VAL_1]] : <!H1_>
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.return
 
 action get_header() {
   U u;
@@ -227,10 +224,7 @@ action get_header() {
 // CHECK:           %[[VAL_2:.*]] = p4hir.read %[[VAL_0]] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.read %[[VAL_1]] : <!U>
 // CHECK:           %[[VAL_4:.*]] = p4hir.cmp(eq, %[[VAL_2]], %[[VAL_3]]) : !U, !p4hir.bool
-// CHECK:           p4hir.if %[[VAL_4]] {
-// CHECK:             p4hir.return
-// CHECK:           }
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.if %[[VAL_4]]
 
 action equ_header_unions() {
   U u1;
@@ -247,10 +241,7 @@ action equ_header_unions() {
 // CHECK:           %[[VAL_2:.*]] = p4hir.read %[[VAL_0]] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.read %[[VAL_1]] : <!U>
 // CHECK:           %[[VAL_4:.*]] = p4hir.cmp(ne, %[[VAL_2]], %[[VAL_3]]) : !U, !p4hir.bool
-// CHECK:           p4hir.if %[[VAL_4]] {
-// CHECK:             p4hir.return
-// CHECK:           }
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.if %[[VAL_4]]
 
 action neq_header_unions() {
   U u1;
@@ -287,10 +278,7 @@ action neq_header_unions() {
 // CHECK:           }) : (!p4hir.bool) -> !p4hir.bool
 // CHECK:           %[[VAL_15:.*]] = p4hir.const #[[$ATTR_FALSE]]
 // CHECK:           %[[VAL_16:.*]] = p4hir.cmp(eq, %[[VAL_6]], %[[VAL_15]]) : !p4hir.bool, !p4hir.bool
-// CHECK:           p4hir.if %[[VAL_16]] {
-// CHECK:             p4hir.return
-// CHECK:           }
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.if %[[VAL_16]]
 
 action equ_with_invalid_header_union() {
   U u;
@@ -326,10 +314,7 @@ action equ_with_invalid_header_union() {
 // CHECK:           }) : (!p4hir.bool) -> !p4hir.bool
 // CHECK:           %[[VAL_15:.*]] = p4hir.const #[[$ATTR_TRUE]]
 // CHECK:           %[[VAL_16:.*]] = p4hir.cmp(eq, %[[VAL_6]], %[[VAL_15]]) : !p4hir.bool, !p4hir.bool
-// CHECK:           p4hir.if %[[VAL_16]] {
-// CHECK:             p4hir.return
-// CHECK:           }
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.if %[[VAL_16]]
 
 action neq_with_invalid_header_union() {
   U u;
