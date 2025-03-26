@@ -12,6 +12,10 @@
 using namespace mlir;
 using namespace P4::P4MLIR::P4HIR;
 
+mlir::Type IntAttr::getType() const { return getImpl()->type; }
+
+llvm::APInt IntAttr::getValue() const { return getImpl()->value; }
+
 Attribute IntAttr::parse(AsmParser &parser, Type odsType) {
     mlir::APInt APValue;
     mlir::Type valType = odsType;

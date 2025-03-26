@@ -60,8 +60,10 @@ def P4HIR_IntAttr : P4HIR_Attr<"Int", "int", [TypedAttrInterface]> {
     uint64_t getUInt() const { return getValue().getZExtValue(); }
     bool isNullValue() const { return getValue() == 0; }
   }];
+
   let genVerifyDecl = 1;
   let hasCustomAssemblyFormat = 1;
+  let genStorageClass = 0;
 }
 
 //===----------------------------------------------------------------------===//
