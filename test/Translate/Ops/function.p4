@@ -1,12 +1,15 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
 // CHECK-LABEL: p4hir.func @max(%arg0: !b16i {p4hir.dir = #in, p4hir.param_name = "left"}, %arg1: !b16i {p4hir.dir = #in, p4hir.param_name = "right"}) -> !b16i
+// CHECK:    %[[retval:.*]] = p4hir.variable ["retval"] : <!b16i>
 // CHECK:    %[[CMP:.*]] = p4hir.cmp(gt, %arg0, %arg1) : !b16i, !p4hir.bool
 // CHECK:    p4hir.if %[[CMP]] {
-// CHECK:      p4hir.return %arg0 : !b16i
+// CHECK:      p4hir.assign %arg0, %[[retval]] : <!b16i>
+// CHECK:    } else {
+// CHECK:      p4hir.assign %arg1, %[[retval]] : <!b16i>
 // CHECK:    }
-// CHECK:    p4hir.return %arg1 : !b16i
-// CHECK:    p4hir.implicit_return
+// CHECK:    %[[val:.*]] = p4hir.read %[[retval]] : <!b16i>
+// CHECK:    p4hir.return %[[val]] : !b16i
 // CHECK:  }
 
 bit<16> max(in bit<16> left, in bit<16> right) {
@@ -18,7 +21,7 @@ bit<16> max(in bit<16> left, in bit<16> right) {
 // CHECK-LABEL: p4hir.func action @bar(%arg0: !b16i {p4hir.dir = #in, p4hir.param_name = "arg1"}, %arg1: !b16i {p4hir.dir = #in, p4hir.param_name = "arg2"}, %arg2: !p4hir.ref<!b16i> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "res"})
 // CHECK:    %[[CALL:.*]] = p4hir.call @max (%arg0, %arg1) : (!b16i, !b16i) -> !b16i
 // CHECK:    p4hir.assign %[[CALL]], %arg2 : <!b16i>
-// CHECK:    p4hir.implicit_return
+// CHECK:    p4hir.return
 
 action bar(in bit<16> arg1, in bit<16> arg2, out bit<16> res) {
   res = max(arg1, arg2);
@@ -61,5 +64,5 @@ action test_param() {
 // CHECK:      %[[A_OUT_VAL2:.*]] = p4hir.read %[[X_INOUT]] : <!b1i>
 // CHECK:      p4hir.assign %[[A_OUT_VAL2]], %[[A]] : <!b1i>
 // CHECK:    }
-// CHECK:    p4hir.implicit_return
+// CHECK:    p4hir.return
 // CHECK:  }

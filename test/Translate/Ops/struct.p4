@@ -74,7 +74,7 @@ action test2(inout PortId_t port) {
 // CHECK: %[[VAL:.*]] = p4hir.read %arg0 : <!PortId_t>
 // CHECK: %[[_V_VAL:.*]]  = p4hir.struct_extract %[[VAL]]["_v"] : !PortId_t
 // CHECK: p4hir.assign %{{.*}}, %[[_V_REF]]
-// CHECK: p4hir.implicit_return
+// CHECK: p4hir.return
 
 // CHECK-LABEL: p4hir.func action @test
 // Just few important bits here        

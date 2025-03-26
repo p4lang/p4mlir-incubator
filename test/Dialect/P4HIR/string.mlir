@@ -8,6 +8,6 @@ module {
     %cst = p4hir.const "This is a message" : !p4hir.string
     // CHECK: p4hir.call @log (%[[cst]]) : (!string) -> ()
     p4hir.call @log (%cst) : (!p4hir.string) -> ()
-    p4hir.implicit_return
+    p4hir.return
   }
 }
