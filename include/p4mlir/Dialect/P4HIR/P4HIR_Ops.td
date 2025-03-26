@@ -76,7 +76,7 @@ def ConstOp : P4HIR_Op<"const",
     ];
 
     let hasVerifier = 1;
-    let hasFolder = true;
+    let hasFolder = 1;
 }
 
 def VariableOp : P4HIR_Op<"variable", [
