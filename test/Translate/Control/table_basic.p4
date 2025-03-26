@@ -41,11 +41,11 @@ control c(in bit<32> arg) {
     // CHECK-LABEL: p4hir.table @t2 {
     table t2 {
     // CHECK:  p4hir.table_key {
-    // CHECK:    p4hir.match_key #exact %arg0 : !b32i
+    // CHECK:    p4hir.match_key #exact %arg0 : !b32i annotations {name = "arg.key"}
     // CHECK:    %false = p4hir.const #false
-    // CHECK:    p4hir.match_key #lpm %false : !p4hir.bool
+    // CHECK:    p4hir.match_key #lpm %false : !p4hir.bool annotations {name = "false.key"}
     // CHECK:  }
-        key = { arg : exact; false : lpm; }
+        key = { arg : exact @name("arg.key"); false : lpm @name("false.key"); }
         actions = { a; b;  aa(arg); }
         default_action = b;
         size = 42;
