@@ -87,5 +87,5 @@ action shl_shr() {
 // CHECK:           %[[VAL_41:.*]] = p4hir.variable ["s32i_shr_int", init] : <!i32i>
 // CHECK:           p4hir.assign %[[VAL_40]], %[[VAL_41]] : <!i32i>
 // CHECK:           %[[VAL_42:.*]] = p4hir.const ["int_shr_int"] #[[$ATTR_0]]
-// CHECK:           p4hir.implicit_return
+// CHECK:           p4hir.return
 // CHECK:         }
