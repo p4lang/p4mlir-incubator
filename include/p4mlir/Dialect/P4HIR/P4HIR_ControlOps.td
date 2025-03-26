@@ -210,8 +210,7 @@ def TableDefaultActionOp : P4HIR_Op<"table_default_action",
 }
 
 def TableSizeOp : P4HIR_Op<"table_size",
-  [ConstantLike, Pure,
-   AllTypesMatch<["value", "result"]>,
+  [AllTypesMatch<["value", "result"]>,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>] > {
   let summary = "Represents a table size for a P4 table";
   let description = [{
