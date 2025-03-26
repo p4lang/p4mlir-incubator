@@ -72,8 +72,11 @@ def ConstOp : P4HIR_Op<"const",
         build($_builder, $_state,
               value.getType(), value, $_builder.getStringAttr(name), annotations.empty() ? mlir::DictionaryAttr() : annotations);
       }]>
-
     ];
+
+    let extraClassDeclaration = [{
+      template<class T> T getValueAs() { return mlir::cast<T>(getValue()); }
+    }];
 
     let hasVerifier = 1;
     let hasFolder = 1;

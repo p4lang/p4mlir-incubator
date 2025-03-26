@@ -6,6 +6,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Attributes.h"
@@ -13,6 +14,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
@@ -170,6 +172,33 @@ OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
     // cast(%a) : A -> A ==> %a
     if (getOperand().getType() == getType()) return getOperand();
 
+    // Casts of integer constants
+    if (auto inputConst = mlir::dyn_cast_or_null<ConstOp>(getOperand().getDefiningOp())) {
+        auto destType = getType(), srcType = inputConst.getType();
+
+        if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
+            return mlir::TypeSwitch<Type, OpFoldResult>(srcType)
+                .Case<P4HIR::BitsType, P4HIR::InfIntType>([&](mlir::Type) {
+                    auto castee = inputConst.getValueAs<P4HIR::IntAttr>();
+                    return P4HIR::IntAttr::get(
+                        destBitsType, castee.getValue().zextOrTrunc(destBitsType.getWidth()));
+                })
+                .Case<P4HIR::SerEnumType>([&](P4HIR::SerEnumType enumType) {
+                    auto castee = inputConst.getValueAs<P4HIR::EnumFieldAttr>();
+                    auto casteeVal =
+                        mlir::cast<P4HIR::IntAttr>(enumType.valueOf(castee.getField().getValue()));
+                    return P4HIR::IntAttr::get(
+                        destBitsType, casteeVal.getValue().zextOrTrunc(destBitsType.getWidth()));
+                })
+                .Case<P4HIR::BoolType>([&](mlir::Type) {
+                    auto castee = inputConst.getValueAs<P4HIR::BoolAttr>();
+                    assert(destBitsType.isSigned() && "can only cast to unsigned type");
+                    return P4HIR::IntAttr::get(destBitsType, castee.getValue() ? 1 : 0);
+                })
+                .Default([](Type) { return OpFoldResult(); });
+        }
+    }
+
     return {};
 }
 
@@ -178,12 +207,14 @@ LogicalResult P4HIR::CastOp::canonicalize(P4HIR::CastOp op, PatternRewriter &rew
     // %b = cast(%a) : A -> B
     //      cast(%b) : B -> C
     // ===> cast(%a) : A -> C
-    auto inputCast = mlir::dyn_cast_or_null<CastOp>(op.getSrc().getDefiningOp());
-    if (!inputCast) return failure();
-    auto bitcast =
-        rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), op.getType(), inputCast.getSrc());
-    rewriter.replaceOp(op, bitcast);
-    return success();
+    if (auto inputCast = mlir::dyn_cast_or_null<CastOp>(op.getSrc().getDefiningOp())) {
+        auto bitcast =
+            rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), op.getType(), inputCast.getSrc());
+        rewriter.replaceOp(op, bitcast);
+        return success();
+    }
+
+    return failure();
 }
 
 //===----------------------------------------------------------------------===//
