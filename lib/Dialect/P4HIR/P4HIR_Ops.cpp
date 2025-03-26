@@ -327,6 +327,42 @@ void P4HIR::VariableOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     if (getName() && !getName()->empty()) setNameFn(getResult(), *getName());
 }
 
+LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewriter &rewriter) {
+    // Check if the variable has one unique assignment to it, all other
+    // uses are reads, and that all uses are in the same block as the variable
+    // itself.
+    auto *block = op->getBlock();
+    P4HIR::AssignOp uniqueAssignOp;
+    for (auto *user : op->getUsers()) {
+        // Ensure that all users of the variable are in the same block.
+        // TODO: Relax this condition, only require assignment to be in the same block
+        if (user->getBlock() != block) return failure();
+
+        // Ensure there is at most one unique assignment to the variable.
+        if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(user)) {
+            if (uniqueAssignOp) return failure();
+            uniqueAssignOp = assignOp;
+            continue;
+        }
+
+        // Ensure all other users are reads.
+        if (!mlir::isa<ReadOp>(user)) return failure();
+    }
+    if (!uniqueAssignOp) return failure();
+
+    // Remove the assign op and replace all reads with the new assigned var op.
+    mlir::Value assignedValue = uniqueAssignOp.getValue();
+    rewriter.eraseOp(uniqueAssignOp);
+    for (auto *user : llvm::make_early_inc_range(op->getUsers())) {
+        auto readOp = mlir::cast<P4HIR::ReadOp>(user);
+        rewriter.replaceOp(readOp, assignedValue);
+    }
+
+    // Remove the original variable.
+    rewriter.eraseOp(op);
+    return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ScopeOp
 //===----------------------------------------------------------------------===//
