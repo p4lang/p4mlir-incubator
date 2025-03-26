@@ -145,6 +145,7 @@ def VariableOp : P4HIR_Op<"variable", [
   ];
 
   let hasVerifier = 0;
+  let hasCanonicalizeMethod = 1;
 }
 
 def ReadOp : P4HIR_Op<"read", [
