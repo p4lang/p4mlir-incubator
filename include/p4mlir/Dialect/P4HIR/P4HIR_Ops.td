@@ -999,6 +999,8 @@ def CallOp : P4HIR_Op<"call",
       (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
     }
 
+    mlir::Operation *resolveCallableInTable(mlir::SymbolTableCollection *symbolTable);
+
     void setArg(unsigned index, mlir::Value value) {
       setOperand(index, value);
     }

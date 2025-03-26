@@ -35,7 +35,9 @@ bit<32> loop() {
     // CHECK:        }
 
     // CHECK:     %[[FINAL_SUM:.*]] = p4hir.read %[[SUM]] : <!b32i>
-    // CHECK:     p4hir.return %[[FINAL_SUM]] : !b32i
+    // CHECK:     p4hir.assign %[[FINAL_SUM]], %[[retval:.*]] : <!b32i>
+    // CHECK:     %[[val:.*]] = p4hir.read %[[retval]] : <!b32i>
+    // CHECK:     p4hir.return %[[val]] : !b32i
     return sum;
 }
 

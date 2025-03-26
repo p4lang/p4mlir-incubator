@@ -23,6 +23,7 @@
 #include "mlir/Interfaces/FunctionImplementation.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
@@ -782,6 +783,37 @@ static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs
 
     return type;
 };
+
+// Callee might be:
+//  - Overload set, then we need to look for a particular overload
+//  - Normal functions. They are defined at top-level only. Top-level actions are also here.
+//  - Actions defined at control level. Check for them first.
+// This largely duplicates verifySymbolUses() below, though the latter emits diagnostics
+mlir::Operation *P4HIR::CallOp::resolveCallableInTable(mlir::SymbolTableCollection *symbolTable) {
+    auto sym = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
+    if (!sym) return nullptr;
+
+    // First, check for actions defined at control level
+    if (auto controlOp = (*this)->getParentOfType<P4HIR::ControlOp>()) {
+        if (auto fn = symbolTable->lookupNearestSymbolFrom<P4HIR::FuncOp>(controlOp, sym))
+            return fn.getAction() ? fn : nullptr;
+    }
+
+    // Now, resolve to functions / actions defined at top level
+    if (auto *decl = symbolTable->lookupNearestSymbolFrom(getParentModule(*this), sym)) {
+        if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
+            return fn;
+        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
+            // Find the FuncOp with the correct # of operands
+            for (Operation &nestedOp : ovl.getBody().front()) {
+                auto f = llvm::cast<FuncOp>(nestedOp);
+                if (f.getNumArguments() == getNumOperands()) return f;
+            }
+        }
+    }
+
+    return nullptr;
+}
 
 LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
@@ -2565,6 +2597,36 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
         return AliasResult::NoAlias;
     }
 };
+
+/// This class defines the interface for handling inlining with P4HIR operations.
+struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
+    using DialectInlinerInterface::DialectInlinerInterface;
+
+    // All call operations can be inlined.
+    bool isLegalToInline(Operation *call, Operation *callable, bool wouldBeCloned) const final {
+        if (mlir::isa<P4HIR::CallOp>(call) &&
+            mlir::isa<P4HIR::FuncOp, P4HIR::OverloadSetOp>(callable))
+            return true;
+
+        return false;
+    }
+    // All operations can be inlined.
+    // TODO: Actually not, but we are protected by that isLegalToInline check above
+    bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final { return true; }
+    /// All regions can be inlined.
+    bool isLegalToInline(Region *, Region *, bool, IRMapping &) const final { return true; }
+
+    // Handle the given inlined terminator by replacing it with a new operation
+    // as necessary.
+    void handleTerminator(Operation *op, ValueRange valuesToRepl) const final {
+        // Only return needs to be handled here.
+        auto returnOp = mlir::cast<P4HIR::ReturnOp>(op);
+        // Replace the values directly with the return operands.
+        assert(returnOp.getNumOperands() == valuesToRepl.size());
+        for (auto [from, to] : llvm::zip(valuesToRepl, op->getOperands()))
+            from.replaceAllUsesWith(to);
+    }
+};
 }  // namespace
 
 void P4HIR::P4HIRDialect::initialize() {
@@ -2575,6 +2637,7 @@ void P4HIR::P4HIRDialect::initialize() {
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.cpp.inc"  // NOLINT
         >();
     addInterfaces<P4HIROpAsmDialectInterface>();
+    addInterfaces<P4HIRInlinerInterface>();
 }
 
 #define GET_OP_CLASSES
