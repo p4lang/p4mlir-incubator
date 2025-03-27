@@ -8,6 +8,7 @@
 #include "frontends/common/resolveReferences/resolveReferences.h"
 #include "frontends/p4/methodInstance.h"
 #include "frontends/p4/parameterSubstitution.h"
+#include "frontends/p4/sideEffects.h"
 #include "frontends/p4/typeMap.h"
 #include "ir/ir.h"
 #include "ir/visitor.h"
@@ -585,6 +586,32 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
 #undef HANDLE_IN_POSTORDER
 
+#define HANDLE_IN_PREORDER(Node, Kind)                              \
+    bool preorder(const P4::IR::Node *opAssign) override {          \
+        return emitOpAssignBinOp(opAssign, P4HIR::BinOpKind::Kind); \
+    }
+
+    HANDLE_IN_PREORDER(MulAssign, Mul)
+    HANDLE_IN_PREORDER(DivAssign, Div)
+    HANDLE_IN_PREORDER(ModAssign, Mod)
+    HANDLE_IN_PREORDER(AddAssign, Add)
+    HANDLE_IN_PREORDER(SubAssign, Sub)
+    HANDLE_IN_PREORDER(AddSatAssign, AddSat)
+    HANDLE_IN_PREORDER(SubSatAssign, SubSat)
+    HANDLE_IN_PREORDER(BAndAssign, And)
+    HANDLE_IN_PREORDER(BOrAssign, Or)
+    HANDLE_IN_PREORDER(BXorAssign, Xor)
+
+#undef HANDLE_IN_PREORDER
+
+    bool preorder(const P4::IR::ShlAssign *opAssign) override {
+        return emitOpAssignShlShr(opAssign, true);
+    }
+
+    bool preorder(const P4::IR::ShrAssign *opAssign) override {
+        return emitOpAssignShlShr(opAssign, false);
+    }
+
     void postorder(const P4::IR::Member *m) override;
 
     bool preorder(const P4::IR::Declaration_Constant *decl) override;
@@ -629,6 +656,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             return refType.getObjectType();
         return value.getType();
     }
+    bool emitOpAssignBinOp(const P4::IR::OpAssignmentStatement *opAssign, P4HIR::BinOpKind kind);
+    bool emitOpAssignShlShr(const P4::IR::OpAssignmentStatement *opAssign, bool isShl);
 };
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
@@ -1710,6 +1739,45 @@ bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
         auto objectType = mlir::cast<P4HIR::ReferenceType>(ref.getType()).getObjectType();
         visit(assign->right);
         builder.create<P4HIR::AssignOp>(loc, getValue(assign->right, objectType), ref);
+    }
+
+    return false;
+}
+
+bool P4HIRConverter::emitOpAssignBinOp(const P4::IR::OpAssignmentStatement *opAssign,
+                                       P4HIR::BinOpKind kind) {
+    BUG_CHECK(!P4::SideEffects::check(opAssign->left, this), "side effects in LHS of %s", opAssign);
+
+    auto loc = getLoc(builder, opAssign);
+    auto lhsRef = resolveReference(opAssign->left);
+    visit(opAssign->right);
+
+    auto binop = builder.create<P4HIR::BinOp>(
+        loc, kind, getValue(opAssign->left, getOrCreateType(opAssign->left->type)),
+        getValue(opAssign->right, getOrCreateType(opAssign->right->type)));
+
+    builder.create<P4HIR::AssignOp>(loc, binop, lhsRef);
+
+    return false;
+}
+
+bool P4HIRConverter::emitOpAssignShlShr(const P4::IR::OpAssignmentStatement *opAssign, bool isShl) {
+    BUG_CHECK(!P4::SideEffects::check(opAssign->left, this), "side effects in LHS of %s", opAssign);
+
+    auto loc = getLoc(builder, opAssign);
+    auto lhsRef = resolveReference(opAssign->left);
+    visit(opAssign->right);
+
+    if (isShl) {
+        auto binop = builder.create<P4HIR::ShlOp>(
+            loc, getValue(opAssign->left, getOrCreateType(opAssign->left->type)),
+            getValue(opAssign->right, getOrCreateType(opAssign->right->type)));
+        builder.create<P4HIR::AssignOp>(loc, binop, lhsRef);
+    } else {
+        auto binop = builder.create<P4HIR::ShrOp>(
+            loc, getValue(opAssign->left, getOrCreateType(opAssign->left->type)),
+            getValue(opAssign->right, getOrCreateType(opAssign->right->type)));
+        builder.create<P4HIR::AssignOp>(loc, binop, lhsRef);
     }
 
     return false;
