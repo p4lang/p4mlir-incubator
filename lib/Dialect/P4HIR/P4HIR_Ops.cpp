@@ -192,7 +192,6 @@ OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
                 })
                 .Case<P4HIR::BoolType>([&](mlir::Type) {
                     auto castee = inputConst.getValueAs<P4HIR::BoolAttr>();
-                    assert(destBitsType.isSigned() && "can only cast to unsigned type");
                     return P4HIR::IntAttr::get(destBitsType, castee.getValue() ? 1 : 0);
                 })
                 .Default([](Type) { return OpFoldResult(); });
@@ -1191,9 +1190,12 @@ void P4HIR::StructExtractOp::getAsmResultNames(function_ref<void(Value, StringRe
 
 OpFoldResult P4HIR::StructExtractOp::fold(FoldAdaptor adaptor) {
     // Fold extract from aggregate constant
-    if (auto constOperand = adaptor.getInput()) {
-        auto operandAttr = llvm::cast<ArrayAttr>(constOperand);
-        return operandAttr.getValue()[getFieldIndex()];
+    if (auto aggAttr = adaptor.getInput()) {
+        return mlir::cast<P4HIR::AggAttr>(aggAttr).getFields()[getFieldIndex()];
+    }
+    // Fold extract from struct
+    if (auto structOp = mlir::dyn_cast_or_null<P4HIR::StructOp>(getInput().getDefiningOp())) {
+        return structOp.getOperand(getFieldIndex());
     }
 
     return {};
