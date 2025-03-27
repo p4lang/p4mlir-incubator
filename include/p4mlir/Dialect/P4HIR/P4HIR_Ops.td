@@ -71,10 +71,14 @@ def ConstOp : P4HIR_Op<"const",
         build($_builder, $_state,
               value.getType(), value, $_builder.getStringAttr(name), annotations.empty() ? mlir::DictionaryAttr() : annotations);
       }]>
-
     ];
 
+    let extraClassDeclaration = [{
+      template<class T> T getValueAs() { return mlir::cast<T>(getValue()); }
+    }];
+
     let hasVerifier = 1;
+    let hasFolder = 1;
 }
 
 def VariableOp : P4HIR_Op<"variable", [
@@ -140,6 +144,7 @@ def VariableOp : P4HIR_Op<"variable", [
   ];
 
   let hasVerifier = 0;
+  let hasCanonicalizeMethod = 1;
 }
 
 def ReadOp : P4HIR_Op<"read", [
@@ -244,6 +249,8 @@ def CastOp : P4HIR_Op<"cast",
     `:` type($result) attr-dict
   }];
 
+  let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
   // FIXME: add verifier.
 }
 
@@ -1038,6 +1045,7 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
   let results = (outs AnyP4Type:$result);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let hasFolder = 1;
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$input, "P4HIR::FieldInfo":$field)>,

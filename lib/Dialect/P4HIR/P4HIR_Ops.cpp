@@ -6,6 +6,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Attributes.h"
@@ -13,6 +14,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
@@ -152,12 +154,66 @@ void P4HIR::ConstOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     }
 }
 
+OpFoldResult P4HIR::ConstOp::fold(FoldAdaptor adaptor) {
+    assert(adaptor.getOperands().empty() && "constant has no operands");
+    return adaptor.getValueAttr();
+}
+
 //===----------------------------------------------------------------------===//
 // CastOp
 //===----------------------------------------------------------------------===//
 
 void P4HIR::CastOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "cast");
+}
+
+OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
+    // Identity.
+    // cast(%a) : A -> A ==> %a
+    if (getOperand().getType() == getType()) return getOperand();
+
+    // Casts of integer constants
+    if (auto inputConst = mlir::dyn_cast_or_null<ConstOp>(getOperand().getDefiningOp())) {
+        auto destType = getType(), srcType = inputConst.getType();
+
+        if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
+            return mlir::TypeSwitch<Type, OpFoldResult>(srcType)
+                .Case<P4HIR::BitsType, P4HIR::InfIntType>([&](mlir::Type) {
+                    auto castee = inputConst.getValueAs<P4HIR::IntAttr>();
+                    return P4HIR::IntAttr::get(
+                        destBitsType, castee.getValue().zextOrTrunc(destBitsType.getWidth()));
+                })
+                .Case<P4HIR::SerEnumType>([&](P4HIR::SerEnumType enumType) {
+                    auto castee = inputConst.getValueAs<P4HIR::EnumFieldAttr>();
+                    auto casteeVal =
+                        mlir::cast<P4HIR::IntAttr>(enumType.valueOf(castee.getField().getValue()));
+                    return P4HIR::IntAttr::get(
+                        destBitsType, casteeVal.getValue().zextOrTrunc(destBitsType.getWidth()));
+                })
+                .Case<P4HIR::BoolType>([&](mlir::Type) {
+                    auto castee = inputConst.getValueAs<P4HIR::BoolAttr>();
+                    return P4HIR::IntAttr::get(destBitsType, castee.getValue() ? 1 : 0);
+                })
+                .Default([](Type) { return OpFoldResult(); });
+        }
+    }
+
+    return {};
+}
+
+LogicalResult P4HIR::CastOp::canonicalize(P4HIR::CastOp op, PatternRewriter &rewriter) {
+    // Composition.
+    // %b = cast(%a) : A -> B
+    //      cast(%b) : B -> C
+    // ===> cast(%a) : A -> C
+    if (auto inputCast = mlir::dyn_cast_or_null<CastOp>(op.getSrc().getDefiningOp())) {
+        auto bitcast =
+            rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), op.getType(), inputCast.getSrc());
+        rewriter.replaceOp(op, bitcast);
+        return success();
+    }
+
+    return failure();
 }
 
 //===----------------------------------------------------------------------===//
@@ -268,6 +324,42 @@ void P4HIR::CmpOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 
 void P4HIR::VariableOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     if (getName() && !getName()->empty()) setNameFn(getResult(), *getName());
+}
+
+LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewriter &rewriter) {
+    // Check if the variable has one unique assignment to it, all other
+    // uses are reads, and that all uses are in the same block as the variable
+    // itself.
+    auto *block = op->getBlock();
+    P4HIR::AssignOp uniqueAssignOp;
+    for (auto *user : op->getUsers()) {
+        // Ensure that all users of the variable are in the same block.
+        // TODO: Relax this condition, only require assignment to be in the same block
+        if (user->getBlock() != block) return failure();
+
+        // Ensure there is at most one unique assignment to the variable.
+        if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(user)) {
+            if (uniqueAssignOp) return failure();
+            uniqueAssignOp = assignOp;
+            continue;
+        }
+
+        // Ensure all other users are reads.
+        if (!mlir::isa<ReadOp>(user)) return failure();
+    }
+    if (!uniqueAssignOp) return failure();
+
+    // Remove the assign op and replace all reads with the new assigned var op.
+    mlir::Value assignedValue = uniqueAssignOp.getValue();
+    rewriter.eraseOp(uniqueAssignOp);
+    for (auto *user : llvm::make_early_inc_range(op->getUsers())) {
+        auto readOp = mlir::cast<P4HIR::ReadOp>(user);
+        rewriter.replaceOp(readOp, assignedValue);
+    }
+
+    // Remove the original variable.
+    rewriter.eraseOp(op);
+    return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1094,6 +1186,19 @@ void P4HIR::StructExtractOp::build(OpBuilder &builder, OperationState &odsState,
 
 void P4HIR::StructExtractOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
     setNameFn(getResult(), getFieldName());
+}
+
+OpFoldResult P4HIR::StructExtractOp::fold(FoldAdaptor adaptor) {
+    // Fold extract from aggregate constant
+    if (auto aggAttr = adaptor.getInput()) {
+        return mlir::cast<P4HIR::AggAttr>(aggAttr).getFields()[getFieldIndex()];
+    }
+    // Fold extract from struct
+    if (auto structOp = mlir::dyn_cast_or_null<P4HIR::StructOp>(getInput().getDefiningOp())) {
+        return structOp.getOperand(getFieldIndex());
+    }
+
+    return {};
 }
 
 void P4HIR::StructExtractRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
@@ -2525,6 +2630,13 @@ struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
     }
 };
 }  // namespace
+
+Operation *P4HIR::P4HIRDialect::materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                                    Location loc) {
+    auto typedAttr = mlir::cast<mlir::TypedAttr>(value);
+    assert(typedAttr.getType() == type && "type mismatch");
+    return builder.create<P4HIR::ConstOp>(loc, typedAttr);
+}
 
 void P4HIR::P4HIRDialect::initialize() {
     registerTypes();
