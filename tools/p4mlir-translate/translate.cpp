@@ -586,9 +586,9 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
 #undef HANDLE_IN_POSTORDER
 
-#define HANDLE_IN_PREORDER(Node, Kind)                              \
-    bool preorder(const P4::IR::Node *opAssign) override {          \
-        return emitOpAssignBinOp(opAssign, P4HIR::BinOpKind::Kind); \
+#define HANDLE_IN_PREORDER(Node, Kind)                                \
+    bool preorder(const P4::IR::Node *opAssign) override {            \
+        return expandOpAssignBinOp(opAssign, P4HIR::BinOpKind::Kind); \
     }
 
     HANDLE_IN_PREORDER(MulAssign, Mul)
@@ -605,11 +605,11 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 #undef HANDLE_IN_PREORDER
 
     bool preorder(const P4::IR::ShlAssign *opAssign) override {
-        return emitOpAssignShlShr(opAssign, true);
+        return expandOpAssignShlShr(opAssign, true);
     }
 
     bool preorder(const P4::IR::ShrAssign *opAssign) override {
-        return emitOpAssignShlShr(opAssign, false);
+        return expandOpAssignShlShr(opAssign, false);
     }
 
     void postorder(const P4::IR::Member *m) override;
@@ -656,8 +656,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             return refType.getObjectType();
         return value.getType();
     }
-    bool emitOpAssignBinOp(const P4::IR::OpAssignmentStatement *opAssign, P4HIR::BinOpKind kind);
-    bool emitOpAssignShlShr(const P4::IR::OpAssignmentStatement *opAssign, bool isShl);
+    bool expandOpAssignBinOp(const P4::IR::OpAssignmentStatement *opAssign, P4HIR::BinOpKind kind);
+    bool expandOpAssignShlShr(const P4::IR::OpAssignmentStatement *opAssign, bool isShl);
 };
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
@@ -1744,10 +1744,8 @@ bool P4HIRConverter::preorder(const P4::IR::AssignmentStatement *assign) {
     return false;
 }
 
-bool P4HIRConverter::emitOpAssignBinOp(const P4::IR::OpAssignmentStatement *opAssign,
-                                       P4HIR::BinOpKind kind) {
-    BUG_CHECK(!P4::SideEffects::check(opAssign->left, this), "side effects in LHS of %s", opAssign);
-
+bool P4HIRConverter::expandOpAssignBinOp(const P4::IR::OpAssignmentStatement *opAssign,
+                                         P4HIR::BinOpKind kind) {
     auto loc = getLoc(builder, opAssign);
     auto lhsRef = resolveReference(opAssign->left);
     visit(opAssign->right);
@@ -1761,9 +1759,8 @@ bool P4HIRConverter::emitOpAssignBinOp(const P4::IR::OpAssignmentStatement *opAs
     return false;
 }
 
-bool P4HIRConverter::emitOpAssignShlShr(const P4::IR::OpAssignmentStatement *opAssign, bool isShl) {
-    BUG_CHECK(!P4::SideEffects::check(opAssign->left, this), "side effects in LHS of %s", opAssign);
-
+bool P4HIRConverter::expandOpAssignShlShr(const P4::IR::OpAssignmentStatement *opAssign,
+                                          bool isShl) {
     auto loc = getLoc(builder, opAssign);
     auto lhsRef = resolveReference(opAssign->left);
     visit(opAssign->right);
