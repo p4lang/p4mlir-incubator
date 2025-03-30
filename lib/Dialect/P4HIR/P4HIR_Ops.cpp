@@ -2281,10 +2281,94 @@ void P4HIR::SwitchOp::build(OpBuilder &builder, OperationState &result, mlir::Va
                             function_ref<void(OpBuilder &, Location)> switchBuilder) {
     assert(switchBuilder && "the builder callback for regions must be present");
     OpBuilder::InsertionGuard guardSwitch(builder);
-    Region *swtichRegion = result.addRegion();
-    builder.createBlock(swtichRegion);
+    Region *switchRegion = result.addRegion();
+    builder.createBlock(switchRegion);
     result.addOperands(cond);
     switchBuilder(builder, result.location);
+}
+
+//===----------------------------------------------------------------------===//
+// ForOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::ForOp::build(
+    OpBuilder &builder, OperationState &result,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> condBuilder,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> bodyBuilder,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> updateBuilder) {
+    OpBuilder::InsertionGuard guard(builder);
+
+    Region *condRegion = result.addRegion();
+    builder.createBlock(condRegion);
+    condBuilder(builder, result.location);
+
+    Region *bodyRegion = result.addRegion();
+    builder.createBlock(bodyRegion);
+    bodyBuilder(builder, result.location);
+
+    Region *updateRegion = result.addRegion();
+    builder.createBlock(updateRegion);
+    updateBuilder(builder, result.location);
+}
+
+void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
+                                       SmallVectorImpl<mlir::RegionSuccessor> &regions) {
+    // The entry into the operation is always the condition region
+    if (point.isParent()) {
+        regions.push_back(RegionSuccessor(&getCond()));
+        return;
+    }
+
+    Region *from = point.getRegionOrNull();
+    assert(from && "expected non-null origin region");
+
+    // After evaluating the loop condition:
+    // - Control may enter the body if the condition is true
+    // - Or exit the loop if false
+    if (from == &getCond()) {
+        regions.push_back(RegionSuccessor(&getBody()));
+        regions.push_back(RegionSuccessor());
+        return;
+    }
+
+    // After executing the body, proceed to the update region
+    if (from == &getBody()) {
+        regions.push_back(RegionSuccessor(&getUpdates()));
+        return;
+    }
+
+    // After updates, re-check the loop condition
+    if (from == &getUpdates()) {
+        regions.push_back(RegionSuccessor(&getCond()));
+        return;
+    }
+
+    llvm_unreachable("Unknown branch origin");
+}
+
+llvm::SmallVector<Region *> P4HIR::ForOp::getLoopRegions() {
+    // TODO: The LoopLikeInterface ODS says:
+    // > Returns the regions that make up the body of the loop and should be
+    // > inspected for loop-invariant operations.
+    // When they say body does that include the condition and updates?
+    // Should this be {&getCond(), &getBody(), &getUpdates} instead?
+    // For ClangIR they only return {&getBody()}
+    return {&getBody()};
+}
+
+//===----------------------------------------------------------------------===//
+// ConditionOp
+//===----------------------------------------------------------------------===//
+
+MutableOperandRange P4HIR::ConditionOp::getMutableSuccessorOperands(RegionBranchPoint point) {
+    auto parent = dyn_cast<P4HIR::ForOp>(getOperation()->getParentOp());
+    assert(parent && "p4hir.condition must be inside a p4hir.for");
+
+    assert((point.isParent() || point.getRegionOrNull() == &parent.getBody()) &&
+           "condition op can only exit the loop or branch to the body region");
+
+    // No values are yielded to the successor region
+    return MutableOperandRange(getOperation(), 0, 0);
 }
 
 namespace {

@@ -596,6 +596,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::LOr *lor) override;
     bool preorder(const P4::IR::LAnd *land) override;
     bool preorder(const P4::IR::IfStatement *ifs) override;
+    bool preorder(const P4::IR::ForStatement *f) override;
     bool preorder(const P4::IR::MethodCallStatement *) override {
         // We handle MethodCallExpression instead
         return true;
@@ -3155,6 +3156,49 @@ bool P4HIRConverter::preorder(const P4::IR::SwitchStatement *sw) {
 
             b.create<P4HIR::YieldOp>(getEndLoc(builder, sw));
         });
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::ForStatement *fstmt) {
+    ConversionTracer trace("Converting ", fstmt);
+
+    // Emit the loop into its own scope and attach any loop annotations to the scope itself
+    auto annotations = convert(fstmt->annotations);
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    auto scope = builder.create<P4HIR::ScopeOp>(
+        getLoc(builder, fstmt), annotations, [&](mlir::OpBuilder &, mlir::Location) {
+            // Materialize the loop initializer here to limit the lifetimes of loop-local variables
+            visit(fstmt->init);
+
+            builder.create<P4HIR::ForOp>(
+                getLoc(builder, fstmt),
+                /*condBuilder=*/
+                [&](mlir::OpBuilder &b, mlir::Location) {
+                    ValueScope scope(p4Values);
+
+                    auto cond = convert(fstmt->condition);
+                    builder.create<P4HIR::ConditionOp>(getEndLoc(builder, fstmt->condition), cond);
+                },
+                /*bodyBuilder=*/
+                [&](mlir::OpBuilder &b, mlir::Location) {
+                    ValueScope scope(p4Values);
+
+                    visit(fstmt->body);
+                    builder.create<P4HIR::YieldOp>(getEndLoc(builder, fstmt->body));
+                },
+                /*updatesBuilder=*/
+                [&](mlir::OpBuilder &b, mlir::Location) {
+                    ValueScope scope(p4Values);
+
+                    visit(fstmt->updates);
+                    builder.create<P4HIR::YieldOp>(getEndLoc(builder, fstmt->updates.back()));
+                });
+        });
+
+    // Terminate the scope region with a yield if needed
+    builder.setInsertionPointToEnd(&scope.getScopeRegion().back());
+    P4HIR::buildTerminatedBody(builder, getEndLoc(builder, fstmt));
 
     return false;
 }

@@ -7,6 +7,7 @@ include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/MemorySlotInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -88,7 +89,7 @@ def VariableOp : P4HIR_Op<"variable", [
 
     The presence `init` attribute indicates that the local variable represented
     by this alloca was originally initialized in P4 source code. In such
-    cases, the first use contains the initialization (e.g. via p4hir.store).
+    cases, the first use contains the initialization (e.g. via p4hir.assign).
 
     The result type is a reference to the input's type.
 
@@ -559,7 +560,8 @@ def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
                  "ParserSelectCaseOp",
                  "TableEntryOp",
                  "SwitchOp", "CaseOp",
-                 // "ForInOp", "ForOp",
+                 "ForOp",
+                 // "ForInOp",
                  ]>]> {
   let summary = "Represents the default branching behaviour of a region";
   let description = [{
@@ -721,7 +723,8 @@ def IfOp : P4HIR_Op<"if",
 def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
                                                 "FuncOp", "ControlApplyOp",
                                                 "CaseOp",
-                                             // "ForInOp", "ForOp",
+                                                "ForOp",
+                                             // "ForInOp",
                                              ]>,
   // Note that ReturnOp is not ReturnLike: currently there is no way to
   // represent early exits in MLIR "properly"
@@ -1338,7 +1341,7 @@ def ExternOp : P4HIR_Op<"extern",
 
 def CallMethodOp : P4HIR_Op<"call_method",
   [NoRegionArguments, CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
-  let summary = "Call method of an P4 exern";
+  let summary = "Call method of an P4 extern";
   let description = [{
     Calls named method of a given P4 extern.
 
@@ -1525,6 +1528,82 @@ def SwitchOp : P4HIR_Op<"switch",
     custom<SwitchOp>($body, $condition, type($condition)) attr-dict
   }];
 }
+
+def ForOp : P4HIR_Op<"for",
+      [AutomaticAllocationScope,
+       DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       RecursiveMemoryEffects, NoRegionArguments,
+      ]> {
+
+  let summary = "For operation";
+  let description = [{
+    The `p4hir.for` operation can execute a statement zero or more times.
+
+    Example (summing integers from 0 to 9):
+
+    ```mlir
+    %sum = p4hir.variable ["sum", init] : <!b32i>
+    p4hir.scope {
+      %i = p4hir.variable ["i", init] : <!b32i>
+      p4hir.for : cond {
+        p4hir.assign %init_val, %i : <!b32i>
+        %i_val = p4hir.read %i : <!b32i1>
+        %cond = p4hir.cmp(lt, %i_val, %limit) : !b32i, !p4hir.bool
+        p4hir.condition %cond : !p4hir.bool
+      } body {
+        %sum_val = p4hir.read %sum : <!b32i>
+        %i_val = p4hir.read %i : <!b32i>
+        %add = p4hir.binop(add, %sum_val, %i_val) : !b32i
+        p4hir.assign %add, %sum : <!b32i>
+      } updates {
+        %i_val = p4hir.read %i : <!b32i>
+        %add = p4hir.binop(add, %i_val, %one) : !b32i
+        p4hir.assign %add, %i : <!b32i>
+      }
+    }
+    ```
+  }];
+
+  let regions = (region SizedRegion<1>:$cond,
+                        MinSizedRegion<1>:$body,
+                        SizedRegion<1>:$updates);
+
+  // TODO: Would it be fitting for the verifier here to ensure that $cond ends with p4hir.condition
+  // and $body and $updates end with p4hir.yield?
+  let hasVerifier = 0;
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$condBuilder,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$bodyBuilder,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$updatesBuilder)>
+  ];
+
+  let assemblyFormat = [{
+    `:` `cond` $cond `body` $body `updates` $updates attr-dict
+  }];
+}
+
+
+def ConditionOp : P4HIR_Op<"condition",
+        [HasParent<"ForOp">,
+         DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>,
+         Pure,
+         Terminator,
+        ]> {
+  let summary = "loop continuation condition";
+  let description = [{
+    This operation accepts the continuation  condition for `p4hir.for`
+    If the condition is true, the "body" region of `p4hir.for` is executed,
+    otherwise the loop terminates.
+  }];
+
+  let arguments = (ins BooleanType:$condition);
+
+  let assemblyFormat = [{ $condition attr-dict }];
+}
+
 
 include "p4mlir/Dialect/P4HIR/P4HIR_ParserOps.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_ControlOps.td"
