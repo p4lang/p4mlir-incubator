@@ -1569,9 +1569,7 @@ def ForOp : P4HIR_Op<"for",
                         MinSizedRegion<1>:$body,
                         SizedRegion<1>:$updates);
 
-  // TODO: Would it be fitting for the verifier here to ensure that $cond ends with p4hir.condition
-  // and $body and $updates end with p4hir.yield?
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 
   let skipDefaultBuilders = 1;
   let builders = [

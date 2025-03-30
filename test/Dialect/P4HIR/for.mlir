@@ -14,8 +14,8 @@ module {
     %sum = p4hir.variable ["sum", init] : <!b32i>
     p4hir.assign %cast, %sum : <!b32i>
     p4hir.scope {
-        %c0_b32i_0 = p4hir.const #int0_b32i
-        %cast_1 = p4hir.cast(%c0_b32i_0 : !b32i) : !b32i
+        %1 = p4hir.const #int0_b32i
+        %cast_1 = p4hir.cast(%1 : !b32i) : !b32i
         %i = p4hir.variable ["i", init] : <!b32i>
         p4hir.assign %cast_1, %i : <!b32i>
         p4hir.for : cond {

@@ -2346,13 +2346,21 @@ void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
     llvm_unreachable("Unknown branch origin");
 }
 
+LogicalResult P4HIR::ForOp::verify() {
+    Block &condBlock = getCond().back();
+    if (!isa<P4HIR::ConditionOp>(condBlock.back())) {
+        return emitOpError("expected condition region to terminate with 'p4hir.condition'");
+    }
+
+    Block &updatesBlock = getUpdates().back();
+    if (!isa<P4HIR::YieldOp>(updatesBlock.back())) {
+        return emitOpError("expected updates region to terminate with 'p4hir.yield'");
+    }
+
+    return success();
+}
+
 llvm::SmallVector<Region *> P4HIR::ForOp::getLoopRegions() {
-    // TODO: The LoopLikeInterface ODS says:
-    // > Returns the regions that make up the body of the loop and should be
-    // > inspected for loop-invariant operations.
-    // When they say body does that include the condition and updates?
-    // Should this be {&getCond(), &getBody(), &getUpdates} instead?
-    // For ClangIR they only return {&getBody()}
     return {&getBody()};
 }
 
