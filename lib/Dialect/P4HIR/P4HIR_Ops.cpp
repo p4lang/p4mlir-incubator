@@ -871,13 +871,6 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
 // ArrayCreateOp
 //===----------------------------------------------------------------------===//
 void P4HIR::ArrayCreateOp::print(OpAsmPrinter &printer) {
-    LLVM_DEBUG({
-        llvm::dbgs() << "-----------------------------------\n";
-        llvm::dbgs() << "Debug: Printing ArrayCreateOp with type: ";
-        getType().print(printer); 
-        llvm::dbgs() << "\n";
-    });
-
     if (auto arrayType = getType().dyn_cast<P4HIR::ArrayType>()) {
         printer << "array<";
         printer.printType(arrayType.getElementType());
