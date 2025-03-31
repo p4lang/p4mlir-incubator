@@ -1565,22 +1565,23 @@ def ForOp : P4HIR_Op<"for",
     ```
   }];
 
-  let regions = (region SizedRegion<1>:$cond,
-                        MinSizedRegion<1>:$body,
-                        SizedRegion<1>:$updates);
+  let arguments = (ins OptionalAttr<DictionaryAttr>:$annotations);
+
+  let regions = (region SizedRegion<1>:$condRegion,
+                        MinSizedRegion<1>:$bodyRegion,
+                        SizedRegion<1>:$updatesRegion);
 
   let hasVerifier = 1;
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$condBuilder,
+    OpBuilder<(ins "mlir::DictionaryAttr":$annotations,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$condBuilder,
                    "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$bodyBuilder,
                    "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$updatesBuilder)>
   ];
 
-  let assemblyFormat = [{
-    `:` `cond` $cond `body` $body `updates` $updates attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 

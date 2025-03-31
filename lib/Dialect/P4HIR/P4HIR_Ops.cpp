@@ -2292,7 +2292,7 @@ void P4HIR::SwitchOp::build(OpBuilder &builder, OperationState &result, mlir::Va
 //===----------------------------------------------------------------------===//
 
 void P4HIR::ForOp::build(
-    OpBuilder &builder, OperationState &result,
+    OpBuilder &builder, OperationState &result, mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> condBuilder,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> bodyBuilder,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> updateBuilder) {
@@ -2301,6 +2301,9 @@ void P4HIR::ForOp::build(
     Region *condRegion = result.addRegion();
     builder.createBlock(condRegion);
     condBuilder(builder, result.location);
+
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
 
     Region *bodyRegion = result.addRegion();
     builder.createBlock(bodyRegion);
@@ -2311,11 +2314,68 @@ void P4HIR::ForOp::build(
     updateBuilder(builder, result.location);
 }
 
+void P4HIR::ForOp::print(mlir::OpAsmPrinter &p) {
+    auto &condRegion = getCondRegion();
+    p << " : cond ";
+    p.printRegion(condRegion, /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/false);
+    p << " body";
+    if (auto ann = getAnnotations(); ann && !ann->empty()) {
+        p << " annotations ";
+        p.printAttributeWithoutType(*ann);
+    }
+    auto &bodyRegion = getBodyRegion();
+    p << " ";
+    p.printRegion(bodyRegion, /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/false);
+    auto &updatesRegion = getUpdatesRegion();
+    p << " updates ";
+    p.printRegion(updatesRegion, /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/false);
+}
+
+mlir::ParseResult P4HIR::ForOp::parse(mlir::OpAsmParser &parser,
+                                      mlir::OperationState &result) {
+    result.regions.reserve(3);
+    Region *condRegion = result.addRegion();
+    Region *bodyRegion = result.addRegion();
+    Region *updatesRegion = result.addRegion();
+
+    // Parse condition region
+    if (parser.parseColon() || parser.parseKeyword("cond"))
+        return mlir::failure();
+    if (parser.parseRegion(*condRegion, /*arguments=*/{}, /*argTypes=*/{}))
+        return mlir::failure();
+
+    // Parse the body, which can contain annotations
+    if (parser.parseKeyword("body"))
+        return mlir::failure();
+    mlir::DictionaryAttr annotations;
+    if (mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+        if (parser.parseAttribute<mlir::DictionaryAttr>(annotations)) {
+            return mlir::failure();
+        }
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+    }
+    if (parser.parseRegion(*bodyRegion, /*arguments=*/{}, /*argTypes=*/{})) {
+        return mlir::failure();
+    }
+
+    // Parse the update region
+    if (parser.parseKeyword("updates") || parser.parseRegion(*updatesRegion,
+                                          /*arguments=*/{}, /*argTypes=*/{})) {
+        return mlir::failure();
+    }
+
+    return mlir::success();
+}
+
+
 void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
                                        SmallVectorImpl<mlir::RegionSuccessor> &regions) {
     // The entry into the operation is always the condition region
     if (point.isParent()) {
-        regions.push_back(RegionSuccessor(&getCond()));
+        regions.push_back(RegionSuccessor(&getCondRegion()));
         return;
     }
 
@@ -2325,21 +2385,21 @@ void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
     // After evaluating the loop condition:
     // - Control may enter the body if the condition is true
     // - Or exit the loop if false
-    if (from == &getCond()) {
-        regions.push_back(RegionSuccessor(&getBody()));
+    if (from == &getCondRegion()) {
+        regions.push_back(RegionSuccessor(&getBodyRegion()));
         regions.push_back(RegionSuccessor());
         return;
     }
 
     // After executing the body, proceed to the update region
-    if (from == &getBody()) {
-        regions.push_back(RegionSuccessor(&getUpdates()));
+    if (from == &getBodyRegion()) {
+        regions.push_back(RegionSuccessor(&getUpdatesRegion()));
         return;
     }
 
     // After updates, re-check the loop condition
-    if (from == &getUpdates()) {
-        regions.push_back(RegionSuccessor(&getCond()));
+    if (from == &getUpdatesRegion()) {
+        regions.push_back(RegionSuccessor(&getCondRegion()));
         return;
     }
 
@@ -2347,12 +2407,14 @@ void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
 }
 
 LogicalResult P4HIR::ForOp::verify() {
-    Block &condBlock = getCond().back();
+    Block &condBlock = getCondRegion().back();
     if (!isa<P4HIR::ConditionOp>(condBlock.back())) {
         return emitOpError("expected condition region to terminate with 'p4hir.condition'");
     }
 
-    Block &updatesBlock = getUpdates().back();
+    // TODO: What would we verify here? Simply that 'body' region has a terminator?
+
+    Block &updatesBlock = getUpdatesRegion().back();
     if (!isa<P4HIR::YieldOp>(updatesBlock.back())) {
         return emitOpError("expected updates region to terminate with 'p4hir.yield'");
     }
@@ -2360,8 +2422,10 @@ LogicalResult P4HIR::ForOp::verify() {
     return success();
 }
 
+
+
 llvm::SmallVector<Region *> P4HIR::ForOp::getLoopRegions() {
-    return {&getBody()};
+    return {&getBodyRegion()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -2372,7 +2436,7 @@ MutableOperandRange P4HIR::ConditionOp::getMutableSuccessorOperands(RegionBranch
     auto parent = dyn_cast<P4HIR::ForOp>(getOperation()->getParentOp());
     assert(parent && "p4hir.condition must be inside a p4hir.for");
 
-    assert((point.isParent() || point.getRegionOrNull() == &parent.getBody()) &&
+    assert((point.isParent() || point.getRegionOrNull() == &parent.getBodyRegion()) &&
            "condition op can only exit the loop or branch to the body region");
 
     // No values are yielded to the successor region

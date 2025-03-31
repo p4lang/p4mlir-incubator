@@ -107,6 +107,16 @@ module {
       } : !Annotated
       %size = p4hir.table_size #int42_infint annotations {name = "dummy.size"}
     }
+
+    %cond = p4hir.const #false
+    p4hir.for : cond {
+      p4hir.condition %cond
+    } body annotations {unroll} {
+      p4hir.yield
+    } updates {
+      p4hir.yield
+    }
+
     p4hir.control_apply {
       p4hir.scope annotations {unlikely} {
       }
@@ -122,3 +132,4 @@ module {
     p4hir.implicit_return
   }
 }
+

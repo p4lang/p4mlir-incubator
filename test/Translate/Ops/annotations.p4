@@ -15,7 +15,7 @@ struct Foo {
   @match(ternary) bit<32> bar;
 }
 
-// CHECK-LABEL  p4hir.extern @Annotated annotations {size = ["100"]} {
+// CHECK-LABEL:  p4hir.extern @Annotated annotations {size = ["100"]} {
 // CHECK:    p4hir.func @Annotated() annotations {hidden, name = "annotated", pkginfo = {bar = "42", foo = 10 : i64}}
 // CHECK:    p4hir.func @execute(!b8i {p4hir.annotations = {optional}, p4hir.dir = #undir, p4hir.param_name = "index"}) annotations {name = "exe"}
 
@@ -102,6 +102,14 @@ control c(in Foo ff, bool bb) {
         if (bb) @likely {
 // CHECK:      } else annotations {unlikely} {        
         } else @unlikely {
+        }
+
+// CHECK:      p4hir.for : cond {
+// CHECK:       %[[LOOP_COND:.*]] = p4hir.cmp(lt, %{{.*}}, %{{.*}}) : !b8i, !p4hir.bool
+// CHECK:      } body annotations {unroll} {
+// CHECK:      } updates {
+        @unroll
+        for (bit<8> i = 0; i < 10; i = i + 1) {
         }
     }
 }
