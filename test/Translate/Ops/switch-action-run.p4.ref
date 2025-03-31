@@ -1,0 +1,37 @@
+struct t {
+    bool hit;
+    bool miss;
+    action_enum action_run;
+}
+control ctrl() {
+    action a() {
+        return;
+    }
+    action b() {
+        return;
+    }
+    table t {
+        actions = {
+            a;
+            b;
+        }
+        default_action = a();
+    }
+    apply {
+        bool hasReturned = false;
+
+        t.apply();
+        switch (t.apply().action_run) {
+            b: {
+                exit;
+            }
+            default: {
+                {
+                    hasReturned = true;
+                }
+            }
+        }
+        if ((!hasReturned)) {
+        }
+    }
+}
