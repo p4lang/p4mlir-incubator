@@ -36,7 +36,6 @@ limitations under the License.
 #include "frontends/p4/staticAssert.h"
 #include "frontends/p4/structInitializers.h"
 #include "frontends/p4/tableKeyNames.h"
-#include "frontends/p4/toP4/toP4.h"
 #include "frontends/p4/typeChecking/bindVariables.h"
 #include "frontends/p4/validateMatchAnnotations.h"
 #include "frontends/p4/validateParsedProgram.h"
@@ -50,12 +49,14 @@ limitations under the License.
 #include "lib/error.h"
 #include "lib/gc.h"
 #include "options.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
+#include "p4mlir/lib/Utilities/export_to_p4.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass/PassManager.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
+#include "mlir/Support/LLVM.h"
 #pragma GCC diagnostic pop
 
 #include "translate.h"
@@ -194,6 +195,10 @@ int main(int argc, char *const argv[]) {
 
     mlir::MLIRContext context;
     context.getOrLoadDialect<P4::P4MLIR::P4HIR::P4HIRDialect>();
+    // context.getDiagEngine().registerHandler([](mlir::Diagnostic &diag) {
+    //     llvm::outs() << diag << "\n";
+    //     return mlir::success();
+    // });
 
     auto mod = P4::P4MLIR::toMLIR(context, program, &typeMap);
     if (!mod) return EXIT_FAILURE;
@@ -202,5 +207,18 @@ int main(int argc, char *const argv[]) {
     if (!options.noDump) mod->print(llvm::outs(), flags.enableDebugInfo(options.printLoc));
 
     if (P4::Log::verbose()) std::cerr << "Done." << std::endl;
+
+    if (!options.p4OutputFile.empty()) {
+        if (failed(P4::P4MLIR::Utilities::writeP4HirToP4File(*mod, options.p4OutputFile))) {
+            return EXIT_FAILURE;
+        }
+    } else if (options.dumpToP4) {
+        auto result = P4::P4MLIR::Utilities::exportP4HirToP4(*mod, {});
+        if (failed(result)) {
+            return EXIT_FAILURE;
+        }
+        llvm::outs() << *result;
+    }
+
     return P4::errorCount() > 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }

@@ -1,0 +1,1 @@
+loc("test/Translate/Ops/extern.p4":75:15): error: Unhandled parser statement: %5 = "p4hir.const"() <{value = #p4hir.int<0> : !p4hir.int<32>}> : () -> !p4hir.int<32>

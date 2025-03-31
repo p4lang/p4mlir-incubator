@@ -1,0 +1,1 @@
+loc("test/Translate/Parser/subparser.p4":13:35): error: Unhandled parser statement: %16 = "p4hir.const"() <{name = "ctorArg", value = #p4hir.ctor_param<@subparser2, "ctorArg"> : !p4hir.bool}> : () -> !p4hir.bool

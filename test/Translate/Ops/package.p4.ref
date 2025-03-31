@@ -1,0 +1,4 @@
+control c() {
+    apply {
+    }
+}

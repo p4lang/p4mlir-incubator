@@ -1,0 +1,4 @@
+terminate called after throwing an instance of 'P4::Util::CompilerBug'
+  what():  In file: /mnt/storage/Projekte/p4mlir-incubator/third_party/p4c/lib/crash.cpp:297
+Compiler Bug: Exiting with SIGSEGV
+

@@ -1,0 +1,9 @@
+control Pipe1(bit<10> arg1, in bit<16> arg2, out bit<10> oarg2) {
+    apply {
+        bit<10>x1;
+        x1 = arg1;
+        bit<16>x2;
+        x2 = (bit<16>) 16s5;
+        x2 = arg2;
+    }
+}

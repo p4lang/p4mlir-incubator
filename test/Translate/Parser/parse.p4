@@ -1,12 +1,23 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
-
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | diff -u - %s.ref
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | p4test -
 
 struct empty {}
 
-parser p(in empty e, in int<10> sinit) {
-    int<10> s = sinit;
+struct full {
+    bit<1> hi;
+    empty  bye;
+}
 
+struct local {
+    bit<1> hi;
+}
+
+parser p(in full e, in int<10> sinit) {
+    int<10> s = sinit;
+    local l;
     state start {
+        bit<8> tmp = 2;
         s = 1;
         transition next;
     }

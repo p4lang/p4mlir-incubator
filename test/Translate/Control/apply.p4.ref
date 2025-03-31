@@ -1,0 +1,9 @@
+control InnerPipe(bit<10> arg1, in bit<16> arg2, out bit<16> arg3) {
+    apply {
+    }
+}
+control Pipe(bit<10> arg1, in bit<16> arg2, out bit<16> arg3, inout bit<16> arg4) {
+    apply {
+        bit<16>x1;
+    }
+}

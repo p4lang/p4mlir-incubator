@@ -55,7 +55,8 @@ tool_dirs = [config.p4mlir_tools_dir, config.llvm_tools_dir]
 tools = [
     "mlir-opt",
     "p4mlir-opt",
-    "p4mlir-translate"
+    "p4mlir-translate",
+    "p4-reference-checker"
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

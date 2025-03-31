@@ -1,0 +1,33 @@
+struct T {
+    bit<32> t1;
+    bit<32> t2;
+}
+struct T {
+    bit<32> t1;
+    bit<32> t2;
+}
+struct T {
+    bit<32> t1;
+    bit<32> t2;
+}
+struct S {
+    T s1;
+    T s2;
+}
+struct Empty {
+}
+struct PortId_t {
+    bit<9> _v;
+}
+struct PortId_t {
+    bit<9> _v;
+}
+struct PortId_t {
+    bit<9> _v;
+}
+struct metadata_t {
+    PortId_t foo;
+}
+struct metadata_t {
+    PortId_t foo;
+}

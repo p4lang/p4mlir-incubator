@@ -1,0 +1,25 @@
+struct local {
+    bit<1> hi;
+}
+struct empty {
+}
+struct full {
+    bit<1> hi;
+    empty bye;
+}
+parser p(in full e, in bit<10> sinit) {
+    bit<10>s = sinit;
+    state start {
+        bit<8>tmp;
+        tmp = (bit<8>) 8w2;
+        s = (bit<10>) 10s1;
+        transition next;
+    }
+    state next {
+        s = (bit<10>) 10s2;
+        transition accept;
+    }
+    state drop {
+        transition reject;
+    }
+}

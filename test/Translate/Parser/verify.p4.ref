@@ -1,0 +1,1 @@
+loc("test/Translate/Parser/verify.p4":16:15): error: Unhandled parser state statement: %2 = "p4hir.cmp"(%arg0, %1) <{kind = 5 : i32}> : (!p4hir.bool, !p4hir.bool) -> !p4hir.bool

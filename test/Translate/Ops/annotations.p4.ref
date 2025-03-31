@@ -1,0 +1,23 @@
+struct empty {
+}
+struct Foo {
+    bit<32> bar;
+}
+parser p(in empty e, in bit<10> sinit) {
+    bit<10>s = sinit;
+    state start {
+        s = (bit<10>) 10s1;
+        transition next;
+    }
+    state next {
+        s = (bit<10>) 10s2;
+        transition accept;
+    }
+    state drop {
+        transition reject;
+    }
+}
+control c(in Foo ff, bool bb) {
+    apply {
+    }
+}

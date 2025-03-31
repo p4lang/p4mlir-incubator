@@ -5,3 +5,4 @@ install/
 .cursor/
 .idea/
 compile_commands.json
+p4mlir
