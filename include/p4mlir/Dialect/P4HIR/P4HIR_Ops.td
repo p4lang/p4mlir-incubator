@@ -1126,6 +1126,51 @@ def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
   }];
 }
 
+
+def ArrayCreateOp : P4HIR_Op<"array_create", 
+  [Pure,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "Create an array of a specific type and size";
+  let description = [{
+    Creates an array with the specified element value and size value.
+    %arr = p4hir.array_create %element, %size : !p4hir.bool, i32 -> !p4hir.array<!p4hir.bool, !p4hir.bit<32>>
+  }];
+
+  let arguments = (ins AnyP4Type:$element, AnyP4Type:$size);
+  let results = (outs ArrayType:$result);
+
+  let hasVerifier = 1;
+  let hasCustomAssemblyFormat = 1;
+}
+
+def ArraySetOp : P4HIR_Op<"array_set", [Pure]> {
+  let summary = "Set an element in an array at a given index";
+  let description = [{
+    Sets an element in an array at the specified index.
+    Example:
+    ```mlir
+    %new_arr = p4hir.array_set %arr[2], %value : !p4hir.array<!p4hir.bit<32>, 4> -> !p4hir.array<!p4hir.bit<32>, 4>
+    ```
+  }];
+
+  let arguments = (ins ArrayType:$arr, I32Attr:$index, AnyP4Type:$value);
+  let results = (outs ArrayType:$result);
+  
+  let assemblyFormat = [{
+    $arr `[` $index `]` `,` $value attr-dict `:` type($arr) `,` type($value) `->` type($result)
+  }];
+
+  // let skipDefaultBuilders = 1;
+  let hasVerifier = 0;
+  // TODO: Add verifier and Builders
+  // let builders = [
+  //   OpBuilder<(ins "mlir::Value":$arr, "unsigned":$index, "mlir::Value":$value), [{
+  //     auto arrayType = arr.getType().cast<ArrayType>();
+  //     build($_builder, $_state, arrayType, arr, index, value);
+  //   }]>
+  // ];
+}
+
 def TupleOp : P4HIR_Op<"tuple",
   [Pure,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {

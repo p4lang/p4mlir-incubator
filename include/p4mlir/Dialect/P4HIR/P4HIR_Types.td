@@ -513,6 +513,42 @@ def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit"> {
   }];
 }
 
+
+// ===----------------------------------------------------------------------===//
+// ArrayType
+// ===----------------------------------------------------------------------===//
+def ArrayType : P4HIR_Type<"Array", "array"> {
+  let summary = "array type";
+  let description = [{
+    An array of values of a specific type.
+    !p4hir.array<!p4hir.bit<32>, 4>
+  }];
+
+  let parameters = (ins "mlir::Type":$elementType, "unsigned":$size);
+
+  let assemblyFormat = [{
+    `<` $elementType `,` $size `>`
+  }];
+  
+  let builders = [
+    TypeBuilder<(ins "mlir::Type":$elementType, "unsigned":$size)>
+  ];
+  
+  let genVerifyDecl = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true if the array is empty
+    bool isEmpty() const { return getSize() == 0; }
+
+    /// Returns true if the index is valid
+    bool isValidIndex(unsigned index) const { return index < getSize(); }
+    
+    void getInnerTypes(mlir::SmallVectorImpl<mlir::Type>& types) const {
+      types.push_back(getElementType());
+    }
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // HeaderType
 //===----------------------------------------------------------------------===//
@@ -797,17 +833,17 @@ def AliasType : P4HIR_Type<"Alias", "alias", []> {
 //===----------------------------------------------------------------------===//
 
 def AnyP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType, StringType,
-                           StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
+                           StructType, HeaderType, HeaderUnionType, Builtin_Tuple, ArrayType,
                            EnumType, SerEnumType,
                            ValidBitType,
                            DontcareType, ErrorType, UnknownType, AliasType,
                            SetType]> {}
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType,
-                                  StructType, HeaderType, Builtin_Tuple,
+                                  StructType, HeaderType, Builtin_Tuple, ArrayType,
                                   EnumType, SerEnumType, AliasType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType,
-                                StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
+                                StructType, HeaderType, HeaderUnionType, Builtin_Tuple, ArrayType,
                                 EnumType, SerEnumType, ErrorType,
                                 ValidBitType, AliasType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;

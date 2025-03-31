@@ -306,6 +306,13 @@ LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, S
     return result;
 }
 
+LogicalResult ArrayType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                Type elementType, unsigned size) {
+  if (size <= 0)
+    return emitError() << "ArrayType size must be greater than 0";
+  return success();
+}
+
 LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
                                  ArrayRef<FieldInfo> elements, DictionaryAttr) {
     if (elements.empty()) {

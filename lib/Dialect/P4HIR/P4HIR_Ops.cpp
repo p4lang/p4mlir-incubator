@@ -867,6 +867,73 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
     return success();
 }
 
+void P4HIR::ArrayCreateOp::print(OpAsmPrinter &printer) {
+    LLVM_DEBUG({
+        llvm::dbgs() << "-----------------------------------\n";
+        llvm::dbgs() << "Debug: Printing ArrayCreateOp with type: ";
+        getType().print(printer); 
+        llvm::dbgs() << "\n";
+    });
+
+    if (auto arrayType = getType().dyn_cast<P4HIR::ArrayType>()) {
+        printer << "array<";
+        printer.printType(arrayType.getElementType());
+        printer << ", " << arrayType.getSize();
+        printer << ">";
+        return;
+    }
+    llvm_unreachable("unknown P4HIR type");
+}
+//===----------------------------------------------------------------------===//
+// ArrayCreateOp
+//===----------------------------------------------------------------------===//
+ParseResult P4HIR::ArrayCreateOp::parse(OpAsmParser &parser, OperationState &result) {
+
+    OpAsmParser::UnresolvedOperand elementOperand, sizeOperand;
+    
+    if (parser.parseOperand(elementOperand) || 
+        parser.parseComma() || 
+        parser.parseOperand(sizeOperand))
+        return failure();
+    
+    Type elementType, sizeType;
+    Type resultType;
+    
+    if (parser.parseColonType(elementType) ||
+        parser.parseComma() ||
+        parser.parseType(sizeType) ||
+        parser.parseArrow() ||
+        parser.parseType(resultType))
+        return failure();
+    
+    auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(resultType);
+    if (!arrayType)
+        return parser.emitError(parser.getNameLoc(), "Expected !p4hir.array type");
+    
+    if (parser.resolveOperand(elementOperand, elementType, result.operands) ||
+        parser.resolveOperand(sizeOperand, sizeType, result.operands))
+        return failure();
+    
+    result.addTypes(arrayType);
+    return success();
+}
+
+LogicalResult P4HIR::ArrayCreateOp::verify() {
+    auto arrayType = getType().cast<ArrayType>();
+    if (!arrayType) {
+        return emitOpError() << "result must be an ArrayType";
+    }
+    return success();
+}
+
+void P4HIR::ArrayCreateOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    llvm::SmallString<16> name;
+    llvm::raw_svector_ostream specialName(name);
+    specialName << 'a' << getType().getSize();
+
+    setNameFn(getResult(), name);
+}
+
 //===----------------------------------------------------------------------===//
 // StructOp
 //===----------------------------------------------------------------------===//
