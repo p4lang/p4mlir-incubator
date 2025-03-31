@@ -1,0 +1,59 @@
+extern Crc16<T> {
+    void hash<U>(in U input_data);
+    U id<U>(in U x);
+}
+
+extern ext<H> {
+    ext(H v);
+    void method<T>(H h, T t);
+}
+
+extern ext2<H, V> {
+    ext2(H v);
+    V method<T>(in H h, in T t);
+    H method<T>(in T t);
+}
+
+extern X<T> {
+    X(T t);
+    T method(T t);
+}
+
+extern Y {
+    Y();
+    void method<T>(T t);
+}
+
+extern MyCounter<I> {
+    MyCounter(bit<32> size);
+    void count(in I index);
+}
+
+parser p() {
+    X<int<32>>(32s0) x;
+    Y() y;
+    ext<bit<16>>(16w0) ex;
+    ext2<bit<16>, void>(16w0) ey;
+    state start {
+        x(32s0).method(32s0);
+        y().method<bit<8>>(8w0);
+        ex(16w0).method<bit<8>>(16w0, 8w0);
+        ey(16w0).method<bit<12>>(12w1);
+        ey(16w0).method<bit<8>>(ey(16w0).method<bit<12>>(12w1), 8w0);
+        transition accept;
+    }
+}
+parser Inner(MyCounter<bit<10>> counter_set) {
+    state start {
+        counter_set.count(10w42);
+        transition accept;
+    }
+}
+parser Test() {
+    MyCounter<bit<10>>((bit<32>)(1024)) counter_set;
+    Inner() inner;
+    state start {
+        inner().apply(counter_set((bit<32>)(1024)));
+        transition accept;
+    }
+}

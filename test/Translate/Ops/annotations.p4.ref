@@ -1,0 +1,18 @@
+error: loc("test/Translate/Ops/annotations.p4":114:8): Unsupported operation 'p4hir.for' in common statement context: 
+note: loc("test/Translate/Ops/annotations.p4":114:8): see current operation: 
+"p4hir.for"() <{annotations = {unroll}}> ({
+  %7 = "p4hir.const"() <{value = #p4hir.int<10> : !p4hir.infint}> : () -> !p4hir.infint
+  %8 = "p4hir.cast"(%7) : (!p4hir.infint) -> !p4hir.bit<8>
+  %9 = "p4hir.read"(%3) : (!p4hir.ref<!p4hir.bit<8>>) -> !p4hir.bit<8>
+  %10 = "p4hir.cmp"(%9, %8) <{kind = 1 : i32}> : (!p4hir.bit<8>, !p4hir.bit<8>) -> !p4hir.bool
+  "p4hir.condition"(%10) : (!p4hir.bool) -> ()
+}, {
+  "p4hir.yield"() : () -> ()
+}, {
+  %4 = "p4hir.const"() <{value = #p4hir.int<1> : !p4hir.bit<8>}> : () -> !p4hir.bit<8>
+  %5 = "p4hir.read"(%3) : (!p4hir.ref<!p4hir.bit<8>>) -> !p4hir.bit<8>
+  %6 = "p4hir.binop"(%5, %4) <{kind = 4 : i32}> : (!p4hir.bit<8>, !p4hir.bit<8>) -> !p4hir.bit<8>
+  "p4hir.assign"(%6, %3) : (!p4hir.bit<8>, !p4hir.ref<!p4hir.bit<8>>) -> ()
+  "p4hir.yield"() : () -> ()
+}) : () -> ()
+  98 | }

@@ -1,0 +1,26 @@
+control InnerPipe(bit<10> arg1, in int<16> arg2, out int<16> arg3) {
+    apply {
+    }
+}
+control Pipe(bit<10> arg1, in int<16> arg2, out int<16> arg3, inout int<16> arg4) {
+    InnerPipe() inner;
+    action bar() {
+        bool hasReturned = false;
+        int<16> x1;
+
+        {
+            hasReturned = true;
+        }
+        return;
+    }
+    apply {
+        int<16> x1;
+
+        bar();
+        {
+            int<16> arg3_out_arg;
+            inner().apply(10w1, (int<16>)(2), arg3_out_arg);
+            x1 = arg3_out_arg;
+        }
+    }
+}

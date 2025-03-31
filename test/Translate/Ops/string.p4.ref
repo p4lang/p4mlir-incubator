@@ -1,0 +1,7 @@
+extern void log(string s);
+
+action test() {
+    log("This is a message");
+    return;
+}
+

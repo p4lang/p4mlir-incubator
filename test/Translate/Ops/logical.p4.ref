@@ -1,0 +1,16 @@
+action logical() {
+    bool flag1;
+    bool flag2;
+    bool flag3;
+    bool f1 = (flag2 ? (true) : (flag3));
+    bool f2 = (flag2 ? (flag3) : (false));
+    bool f3 = ((flag2 ? (flag3) : (false)) ? (true) : (flag3));
+    bool f7 = ((flag2 ? (true) : (flag3)) ? (true) : (flag3));
+    bool f8 = (flag2 ? (true) : ((flag3 ? (flag3) : (false))));
+    bool f5 = (flag2 ? (true) : (flag3));
+    bool f6 = (flag1 ? (true) : (flag2));
+
+    f5 = ((f1 ? (f5) : (false)) ? (true) : (flag1));
+    return;
+}
+

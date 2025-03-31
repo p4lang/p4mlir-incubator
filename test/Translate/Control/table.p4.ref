@@ -1,0 +1,17 @@
+error: loc("test/Translate/Control/table.p4":45:20): Method calls are not supported yet in table action lists.
+note: loc("test/Translate/Control/table.p4":45:20): see current operation: 
+"p4hir.scope"() ({
+  %28 = "p4hir.variable"() <{init, name = "x2_inout_arg"}> : () -> !p4hir.ref<!p4hir.int<16>>
+  %29 = "p4hir.read"(%arg2) : (!p4hir.ref<!p4hir.int<16>>) -> !p4hir.int<16>
+  "p4hir.assign"(%29, %28) : (!p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>) -> ()
+  "p4hir.call"(%arg1, %28) <{callee = @foo}> : (!p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>) -> ()
+  %30 = "p4hir.read"(%28) : (!p4hir.ref<!p4hir.int<16>>) -> !p4hir.int<16>
+  "p4hir.assign"(%30, %arg2) : (!p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>) -> ()
+  "p4hir.yield"() : () -> ()
+}) : () -> ()
+  43 |     apply {
+  44 |         myTable.apply();
+  45 |         test = test + 1;
+     |                    ^
+  46 |         local_hdr.f1 = 3;
+  47 |     }

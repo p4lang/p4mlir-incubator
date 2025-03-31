@@ -36,7 +36,6 @@ limitations under the License.
 #include "frontends/p4/staticAssert.h"
 #include "frontends/p4/structInitializers.h"
 #include "frontends/p4/tableKeyNames.h"
-#include "frontends/p4/toP4/toP4.h"
 #include "frontends/p4/typeChecking/bindVariables.h"
 #include "frontends/p4/validateMatchAnnotations.h"
 #include "frontends/p4/validateParsedProgram.h"
@@ -50,10 +49,16 @@ limitations under the License.
 #include "lib/error.h"
 #include "lib/gc.h"
 #include "options.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
+#include "p4mlir/lib/Utilities/export_to_p4.h"
 #include "p4mlir/Common/Registration.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#include "llvm/Support/ErrorOr.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/WithColor.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass/PassManager.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
@@ -90,6 +95,122 @@ class SetStrictStruct : public P4::Inspector {
         return Inspector::init_apply(node);
     }
 };
+
+mlir::LogicalResult handleDiagnostic(mlir::Diagnostic &diag) {
+    llvm::raw_ostream &os = llvm::errs();
+    auto loc = diag.getLocation();
+
+    {
+        // RAII color management
+        llvm::WithColor color(os);
+        switch (diag.getSeverity()) {
+            case mlir::DiagnosticSeverity::Error:
+                color.changeColor(llvm::raw_ostream::RED, /*bold=*/true);
+                os << "error";
+                break;
+            case mlir::DiagnosticSeverity::Warning:
+                color.changeColor(llvm::raw_ostream::YELLOW, /*bold=*/true);
+                os << "warning";
+                break;
+            case mlir::DiagnosticSeverity::Note:
+                // Notes attached to errors/warnings are handled below.
+                // Standalone notes might have different formatting.
+                color.changeColor(llvm::raw_ostream::BLUE, /*bold=*/true);
+                os << "note";
+                break;
+            case mlir::DiagnosticSeverity::Remark:
+                color.changeColor(llvm::raw_ostream::GREEN);
+                os << "remark";
+                break;
+        }
+        os << ": ";
+        os << loc << ": ";
+        os << diag;
+    }
+    os << "\n";
+
+    for (mlir::Diagnostic &note : diag.getNotes()) {
+        llvm::WithColor color(os, llvm::raw_ostream::BLUE, /*bold=*/true);
+        os << "note: ";
+        os << note.getLocation() << ": ";
+        os << note << "\n";
+    }
+
+    // Try to get FileLineColLoc for snippet printing
+    mlir::FileLineColLoc fileLoc;
+    fileLoc = loc.dyn_cast<mlir::FileLineColLoc>();
+
+    if (!fileLoc) {
+        return mlir::success();
+    }
+    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
+        llvm::MemoryBuffer::getFileOrSTDIN(fileLoc.getFilename().strref());
+
+    if (std::error_code ec = fileOrErr.getError()) {
+        return mlir::success();
+    }
+    llvm::StringRef buffer = fileOrErr.get()->getBuffer();
+    unsigned line = fileLoc.getLine();
+    unsigned col = fileLoc.getColumn();
+
+    if (line > 0 && col > 0) {
+        const int contextLines = 2;
+        int firstLine = std::max(1, static_cast<int>(line) - contextLines);
+        int lastLine = static_cast<int>(line) + contextLines;
+
+        llvm::SmallVector<llvm::StringRef> lines;
+        buffer.split(lines, '\n', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
+
+        // Adjust lastLine if it exceeds the number of lines in the file
+        lastLine = std::min(lastLine, static_cast<int>(lines.size()));
+
+        // Ensure firstLine is valid after potential adjustments
+        firstLine = std::min(firstLine, lastLine);
+
+        for (int i = firstLine; i <= lastLine; ++i) {
+            // Format line number consistently
+            os << llvm::format("%*d", 4, i) << " | ";
+
+            // The line index is i-1 because vectors are 0-based
+            llvm::StringRef lineContent = lines[i - 1];
+            // Handle potential DOS line endings (\r\n) if present
+            if (!lineContent.empty() && lineContent.back() == '\r') {
+                lineContent = lineContent.drop_back();
+            }
+
+            if (i == static_cast<int>(line)) {
+                // Print the highlight line
+                {
+                    llvm::WithColor color(os, llvm::raw_ostream::YELLOW);
+                    os << lineContent;
+                }
+                os << "\n";
+
+                // Print the caret line
+                os << "     | ";
+                // Account for potential multi-byte characters (basic handling)
+                // More accurate handling requires locale/UTF-8 awareness
+                for (unsigned c = 1; c < col; ++c) {
+                    // Print space or tab appropriately
+                    if (c - 1 < lineContent.size() && lineContent[c - 1] == '\t') {
+                        os << '\t';
+                    } else {
+                        os << ' ';
+                    }
+                }
+                llvm::WithColor color(os, llvm::raw_ostream::GREEN, /*bold=*/true);
+                os << '^';
+                // TODO: Could add ~~~ for ranges if the diagnostic provides it
+            } else {
+                // Print context line
+                os << lineContent;
+            }
+            os << "\n";
+        }
+    }
+
+    return mlir::success();
+}
 
 }  // namespace
 
@@ -199,6 +320,7 @@ int main(int argc, char *const argv[]) {
 
     mlir::MLIRContext context(registry);
     context.loadAllAvailableDialects();
+    context.getDiagEngine().registerHandler(handleDiagnostic);
 
     auto mod = P4::P4MLIR::toMLIR(context, program, &typeMap);
     if (!mod) return EXIT_FAILURE;
@@ -218,5 +340,20 @@ int main(int argc, char *const argv[]) {
     if (!options.noDump) mod->print(llvm::outs(), flags.enableDebugInfo(options.printLoc));
 
     if (P4::Log::verbose()) std::cerr << "Done." << std::endl;
+
+    P4::P4MLIR::Utilities::P4HirToP4ExporterOptions formatterOutput;
+    formatterOutput.mainPackageOnly = options.mainPackageOnly;
+    if (!options.p4OutputFile.empty()) {
+        if (failed(P4::P4MLIR::Utilities::writeP4HirToP4File(*mod, options.p4OutputFile))) {
+            return EXIT_FAILURE;
+        }
+    } else if (options.dumpToP4) {
+        auto result = P4::P4MLIR::Utilities::exportP4HirToP4(*mod, formatterOutput);
+        if (failed(result)) {
+            return EXIT_FAILURE;
+        }
+        llvm::outs() << *result;
+    }
+
     return P4::errorCount() > 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }

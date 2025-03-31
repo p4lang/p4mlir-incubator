@@ -1,0 +1,17 @@
+error: loc("test/Translate/Ops/function.p4":47:7): Unsupported operation 'p4hir.scope' in exportExpression
+note: loc("test/Translate/Ops/function.p4":47:7): see current operation: 
+%3 = "p4hir.scope"() ({
+  %5 = "p4hir.variable"() <{init, name = "z_inout_arg"}> : () -> !p4hir.ref<!p4hir.bit<1>>
+  %6 = "p4hir.read"(%0) : (!p4hir.ref<!p4hir.bit<1>>) -> !p4hir.bit<1>
+  "p4hir.assign"(%6, %5) : (!p4hir.bit<1>, !p4hir.ref<!p4hir.bit<1>>) -> ()
+  %7 = "p4hir.call"(%5) <{callee = @g}> : (!p4hir.ref<!p4hir.bit<1>>) -> !p4hir.bit<1>
+  %8 = "p4hir.read"(%5) : (!p4hir.ref<!p4hir.bit<1>>) -> !p4hir.bit<1>
+  "p4hir.assign"(%8, %0) : (!p4hir.bit<1>, !p4hir.ref<!p4hir.bit<1>>) -> ()
+  "p4hir.yield"(%7) : (!p4hir.bit<1>) -> ()
+}) : () -> !p4hir.bit<1>
+  45 | // CHECK:      %[[X_INOUT:.*]] = p4hir.variable ["x_inout_arg", init] : <!b1i>
+  46 | // CHECK:      %[[A_VAL:.*]] = p4hir.read %[[A]] : <!b1i>
+  47 | // CHECK:      p4hir.assign %[[A_VAL]], %[[X_INOUT]] : <!b1i>
+     |       ^
+  48 | // CHECK:      %[[G_VAL:.*]] = p4hir.scope {
+  49 | // CHECK:        %[[Z_INOUT:.*]] = p4hir.variable ["z_inout_arg", init] : <!b1i>

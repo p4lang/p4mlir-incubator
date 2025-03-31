@@ -1,0 +1,17 @@
+control c(out bool b) {
+    apply {
+        b = false;
+    }
+}
+parser par(out bool b) {
+    state start {
+        b = false;
+        transition accept;
+    }
+}
+parser pe(bool);
+control ce(bool);
+control ce(bool);
+package top(pe _p, ce _e, ce _e1);
+top(par(), c(), _) main;
+

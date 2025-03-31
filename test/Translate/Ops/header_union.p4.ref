@@ -1,0 +1,155 @@
+header H1 {
+    bit<8> f;
+}
+header H2 {
+    bit<16> g;
+}
+header_union U {
+    H1 h1;
+    H2 h2;
+}
+action header_union_isValid() {
+    bool hasReturned = false;
+    U u;
+
+    if (((u.h1.isValid() ? (true) : ((u.h2.isValid() ? (true) : (false)))) == true)) {
+        hasReturned = true;
+    }
+    if ((!hasReturned)) {
+    }
+    return;
+}
+
+action header_setValid() {
+    U u;
+
+    u.h2.setInvalid();
+    u.h1.setValid();
+    return;
+}
+
+action header_setInvalid() {
+    U u;
+
+    u.h1.setInvalid();
+    u.h2.setInvalid();
+    return;
+}
+
+action assign_header() {
+    U u;
+    H1 h;
+
+    u.h1.setInvalid();
+    u.h2.setInvalid();
+    u.h1 = h;
+    return;
+}
+
+action assign_tuple() {
+    U u;
+
+    u.h1.setInvalid();
+    u.h2.setInvalid();
+    u.h1 = (H1) {f = 8w42};
+    return;
+}
+
+action assign_invalid_header() {
+    U u;
+
+    u.h1.setInvalid();
+    u.h2.setInvalid();
+    return;
+}
+
+action assign_header_union() {
+    U u1;
+    U u2;
+
+    u2 = u1;
+    return;
+}
+
+action init_with_invalid_header_union() {
+    U u;
+
+    u.h1.setInvalid();
+    u.h2.setInvalid();
+    return;
+}
+
+action assign_invalid_header_union() {
+    U u;
+
+    u.h1.setInvalid();
+    u.h2.setInvalid();
+    return;
+}
+
+action get_header() {
+    U u;
+    H1 h2;
+
+    h2 = u.h1;
+    return;
+}
+
+action equ_header_unions() {
+    bool hasReturned_0 = false;
+    U u1;
+    U u2;
+
+    if ((u1 == u2)) {
+        {
+            hasReturned_0 = true;
+        }
+    }
+    if ((!hasReturned_0)) {
+    }
+    return;
+}
+
+action neq_header_unions() {
+    bool hasReturned_1 = false;
+    U u1;
+    U u2;
+
+    if ((u1 != u2)) {
+        {
+            hasReturned_1 = true;
+        }
+    }
+    if ((!hasReturned_1)) {
+    }
+    return;
+}
+
+action equ_with_invalid_header_union() {
+    bool hasReturned_2 = false;
+    U u;
+
+    if (((u.h1.isValid() ? (true) : ((u.h2.isValid() ? (true) : (false)))) == false)) {
+        {
+            hasReturned_2 = true;
+        }
+    }
+    if ((!hasReturned_2)) {
+    }
+    return;
+}
+
+action neq_with_invalid_header_union() {
+    bool hasReturned_3 = false;
+    U u;
+
+    if (((u.h1.isValid() ? (true) : ((u.h2.isValid() ? (true) : (false)))) == true)) {
+        {
+            hasReturned_3 = true;
+        }
+    }
+    if ((!hasReturned_3)) {
+    }
+    return;
+}
+
