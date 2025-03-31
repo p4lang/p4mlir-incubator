@@ -867,6 +867,9 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
     return success();
 }
 
+//===----------------------------------------------------------------------===//
+// ArrayCreateOp
+//===----------------------------------------------------------------------===//
 void P4HIR::ArrayCreateOp::print(OpAsmPrinter &printer) {
     LLVM_DEBUG({
         llvm::dbgs() << "-----------------------------------\n";
@@ -884,13 +887,9 @@ void P4HIR::ArrayCreateOp::print(OpAsmPrinter &printer) {
     }
     llvm_unreachable("unknown P4HIR type");
 }
-//===----------------------------------------------------------------------===//
-// ArrayCreateOp
-//===----------------------------------------------------------------------===//
-ParseResult P4HIR::ArrayCreateOp::parse(OpAsmParser &parser, OperationState &result) {
 
+ParseResult P4HIR::ArrayCreateOp::parse(OpAsmParser &parser, OperationState &result) {
     OpAsmParser::UnresolvedOperand elementOperand, sizeOperand;
-    
     if (parser.parseOperand(elementOperand) || 
         parser.parseComma() || 
         parser.parseOperand(sizeOperand))
