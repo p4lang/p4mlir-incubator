@@ -1,0 +1,8 @@
+error: loc("test/Translate/Parser/subparser.p4":28:16): Unsupported operation 'p4hir.instantiate' in exportExpression
+note: loc("test/Translate/Parser/subparser.p4":28:16): see current operation: %1 = "p4hir.instantiate"() <{callee = @subparser, name = "sp"}> : () -> !p4hir.parser<"subparser", (!p4hir.struct<"empty">)>
+  26 | // CHECK: %[[sp:.*]] = p4hir.instantiate @subparser() as "sp" : () -> !subparser
+  27 | // CHECK: %[[false:.*]] = p4hir.const #false
+  28 | // CHECK: %[[sp2:.*]] = p4hir.instantiate @subparser2(%[[false]]) as "sp2" : (!p4hir.bool) -> !subparser2
+     |                ^
+  29 | // CHECK: %[[sp3:.*]] = p4hir.instantiate @subparser3() as "sp3" : () -> !subparser3
+  30 |     state start {

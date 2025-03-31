@@ -1,0 +1,23 @@
+error: loc("test/Translate/Ops/switch-action-run.p4":21:8): Unsupported operation 'p4hir.switch' in common statement context: 
+note: loc("test/Translate/Ops/switch-action-run.p4":21:8): see current operation: 
+"p4hir.switch"(%3) ({
+  "p4hir.case"() <{kind = 2 : i32, value = [#p4hir.enum_field<b, !p4hir.enum<"action_enum", a, b>> : !p4hir.enum<"action_enum", a, b>]}> ({
+    "p4hir.exit"() : () -> ()
+    "p4hir.yield"() : () -> ()
+  }) : () -> ()
+  "p4hir.case"() <{kind = 1 : i32, value = []}> ({
+    "p4hir.scope"() ({
+      %6 = "p4hir.const"() <{value = #p4hir.bool<true> : !p4hir.bool}> : () -> !p4hir.bool
+      "p4hir.assign"(%6, %1) : (!p4hir.bool, !p4hir.ref<!p4hir.bool>) -> ()
+      "p4hir.yield"() : () -> ()
+    }) : () -> ()
+    "p4hir.yield"() : () -> ()
+  }) : () -> ()
+  "p4hir.yield"() : () -> ()
+}) : (!p4hir.enum<"action_enum", a, b>) -> ()
+  19 |             b: { exit; }
+  20 |             default: { return; }
+  21 |         }
+     |        ^
+  22 |     }
+  23 | }

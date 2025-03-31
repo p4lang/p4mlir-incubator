@@ -1,0 +1,29 @@
+error: loc("test/Translate/Ops/switch-expression.p4":25:8): Unsupported operation 'p4hir.switch' in common statement context: 
+note: loc("test/Translate/Ops/switch-expression.p4":25:8): see current operation: 
+"p4hir.switch"(%2) ({
+  "p4hir.case"() <{kind = 3 : i32, value = [#p4hir.int<16> : !p4hir.bit<32>, #p4hir.int<32> : !p4hir.bit<32>]}> ({
+    %7 = "p4hir.const"() <{value = #p4hir.int<1> : !p4hir.bit<32>}> : () -> !p4hir.bit<32>
+    %8 = "p4hir.cast"(%7) : (!p4hir.bit<32>) -> !p4hir.bit<32>
+    "p4hir.assign"(%8, %arg0) : (!p4hir.bit<32>, !p4hir.ref<!p4hir.bit<32>>) -> ()
+    "p4hir.yield"() : () -> ()
+  }) : () -> ()
+  "p4hir.case"() <{kind = 2 : i32, value = [#p4hir.int<64> : !p4hir.bit<32>]}> ({
+    %5 = "p4hir.const"() <{value = #p4hir.int<2> : !p4hir.bit<32>}> : () -> !p4hir.bit<32>
+    %6 = "p4hir.cast"(%5) : (!p4hir.bit<32>) -> !p4hir.bit<32>
+    "p4hir.assign"(%6, %arg0) : (!p4hir.bit<32>, !p4hir.ref<!p4hir.bit<32>>) -> ()
+    "p4hir.yield"() : () -> ()
+  }) : () -> ()
+  "p4hir.case"() <{kind = 1 : i32, value = [#p4hir.int<92> : !p4hir.bit<32>]}> ({
+    %3 = "p4hir.const"() <{value = #p4hir.int<3> : !p4hir.bit<32>}> : () -> !p4hir.bit<32>
+    %4 = "p4hir.cast"(%3) : (!p4hir.bit<32>) -> !p4hir.bit<32>
+    "p4hir.assign"(%4, %arg0) : (!p4hir.bit<32>, !p4hir.ref<!p4hir.bit<32>>) -> ()
+    "p4hir.yield"() : () -> ()
+  }) : () -> ()
+  "p4hir.yield"() : () -> ()
+}) : (!p4hir.bit<32>) -> ()
+  23 | // CHECK:     }
+  24 |         switch (b) {
+  25 |             16:
+     |        ^
+  26 |             32: { b = 1; }
+  27 |             64: { b = 2; }
