@@ -1,0 +1,80 @@
+action concat_bit5_and_bit5() {
+    bit<5> lhs = (bit<5>)(5w1);
+    lhs = (bit<5>)(5w1);
+    bit<5> rhs = (bit<5>)(5w2);
+    rhs = (bit<5>)(5w2);
+    bit<10> r = {lhs, rhs};
+    r = {lhs, rhs};
+    return;
+}
+
+action concat_bit5_and_bit10() {
+    bit<5> lhs = (bit<5>)(5w1);
+    lhs = (bit<5>)(5w1);
+    bit<10> rhs = (bit<10>)(10w2);
+    rhs = (bit<10>)(10w2);
+    bit<15> result = {lhs, rhs};
+    result = {lhs, rhs};
+    return;
+}
+
+action concat_int5_and_int5() {
+    int<5> lhs = (int<5>)(5s1);
+    lhs = (int<5>)(5s1);
+    int<5> rhs = (int<5>)(5s2);
+    rhs = (int<5>)(5s2);
+    int<10> result = {lhs, rhs};
+    result = {lhs, rhs};
+    return;
+}
+
+action concat_int5_and_int10() {
+    int<5> lhs = (int<5>)(5s1);
+    lhs = (int<5>)(5s1);
+    int<10> rhs = (int<10>)(10s2);
+    rhs = (int<10>)(10s2);
+    int<15> result = {lhs, rhs};
+    result = {lhs, rhs};
+    return;
+}
+
+action concat_bit5_and_int5() {
+    bit<5> lhs = (bit<5>)(5w1);
+    lhs = (bit<5>)(5w1);
+    int<5> rhs = (int<5>)(5s2);
+    rhs = (int<5>)(5s2);
+    bit<10> result = {lhs, rhs};
+    result = {lhs, rhs};
+    return;
+}
+
+action concat_bit5_and_int10() {
+    bit<5> lhs = (bit<5>)(5w1);
+    lhs = (bit<5>)(5w1);
+    int<10> rhs = (int<10>)(10s2);
+    rhs = (int<10>)(10s2);
+    bit<15> result = {lhs, rhs};
+    result = {lhs, rhs};
+    return;
+}
+
+action concat_int5_and_bit5() {
+    int<5> lhs = (int<5>)(5s1);
+    lhs = (int<5>)(5s1);
+    bit<5> rhs = (bit<5>)(5w2);
+    rhs = (bit<5>)(5w2);
+    int<10> result = {lhs, rhs};
+    result = {lhs, rhs};
+    return;
+}
+
+action concat_int5_and_bit10() {
+    int<5> lhs = (int<5>)(5s1);
+    lhs = (int<5>)(5s1);
+    bit<10> rhs = (bit<10>)(10w2);
+    rhs = (bit<10>)(10w2);
+    int<15> result = {lhs, rhs};
+    result = {lhs, rhs};
+    return;
+}
+

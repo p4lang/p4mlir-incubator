@@ -1,0 +1,73 @@
+warning: loc("test/Translate/Ops/switch-action-run.p4":21:16):  Unhandled control/apply statement: %t_apply_result = p4hir.table_apply @t : <"t", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", a, b>>
+note: loc("test/Translate/Ops/switch-action-run.p4":21:16): see current operation: %t_apply_result = p4hir.table_apply @t : <"t", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", a, b>>
+  19 |             b: { exit; }
+  20 |             default: { return; }
+  21 |         }
+     |                ^
+  22 |     }
+  23 | }
+warning: loc("test/Translate/Ops/switch-action-run.p4":21:8):  Unhandled control/apply statement: 
+p4hir.switch (%action_run : !p4hir.enum<"action_enum", a, b>) {
+  p4hir.case(equal, [#p4hir.enum_field<b, !p4hir.enum<"action_enum", a, b>> : !p4hir.enum<"action_enum", a, b>]) {
+    p4hir.exit
+    p4hir.yield
+  }
+  p4hir.case(default, []) {
+    p4hir.scope {
+      %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+      p4hir.assign %true, %hasReturned : <!p4hir.bool>
+    }
+    p4hir.yield
+  }
+  p4hir.yield
+}
+note: loc("test/Translate/Ops/switch-action-run.p4":21:8): see current operation: 
+p4hir.switch (%action_run : !p4hir.enum<"action_enum", a, b>) {
+  p4hir.case(equal, [#p4hir.enum_field<b, !p4hir.enum<"action_enum", a, b>> : !p4hir.enum<"action_enum", a, b>]) {
+    p4hir.exit
+    p4hir.yield
+  }
+  p4hir.case(default, []) {
+    p4hir.scope {
+      %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+      p4hir.assign %true, %hasReturned : <!p4hir.bool>
+    }
+    p4hir.yield
+  }
+  p4hir.yield
+}
+  19 |             b: { exit; }
+  20 |             default: { return; }
+  21 |         }
+     |        ^
+  22 |     }
+  23 | }
+struct t {
+    bool hit;
+    bool miss;
+    action_enum action_run;
+}
+enum action_enum {
+    "a",
+    "b",
+}
+control ctrl() {
+    action a() {
+        return;
+    }
+    action b() {
+        return;
+    }
+    table t {
+        actions = {
+            a;
+            b;
+        }
+    }
+    apply {
+        bool hasReturned = false;
+        hasReturned = false;
+        if ((!hasReturned)) {
+        }
+    }
+}

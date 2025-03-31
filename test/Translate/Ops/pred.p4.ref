@@ -1,0 +1,167 @@
+warning: loc("test/Translate/Ops/pred.p4":24:12):  Unhandled control/apply statement: 
+%0 = p4hir.ternary(%not, true {
+  %val = p4hir.read %tmp_2 : <!p4hir.bool>
+  p4hir.yield %val : !p4hir.bool
+}, false {
+  %val = p4hir.read %tmp_1 : <!p4hir.bool>
+  p4hir.yield %val : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/pred.p4":24:12): see current operation: 
+%0 = p4hir.ternary(%not, true {
+  %val = p4hir.read %tmp_2 : <!p4hir.bool>
+  p4hir.yield %val : !p4hir.bool
+}, false {
+  %val = p4hir.read %tmp_1 : <!p4hir.bool>
+  p4hir.yield %val : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  22 |    tmp_2 = (!in_b && !!in_b ? a == 32w5 : tmp_2);
+  23 |    tmp_1 = (!in_b && !!in_b ? (!in_b && !!in_b ? a == 32w5 : tmp_2) : (!in_b && !in_b ? false : tmp_1));
+  24 | }
+     |            ^
+warning: loc("test/Translate/Ops/pred.p4":25:12):  Unhandled control/apply statement: 
+%1 = p4hir.ternary(%not_0, true {
+  %not_2 = p4hir.unary(not, %arg0) : !p4hir.bool
+  %not_3 = p4hir.unary(not, %not_2) : !p4hir.bool
+  p4hir.yield %not_3 : !p4hir.bool
+}, false {
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  p4hir.yield %false : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/pred.p4":25:12): see current operation: 
+%1 = p4hir.ternary(%not_0, true {
+  %not_2 = p4hir.unary(not, %arg0) : !p4hir.bool
+  %not_3 = p4hir.unary(not, %not_2) : !p4hir.bool
+  p4hir.yield %not_3 : !p4hir.bool
+}, false {
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  p4hir.yield %false : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  23 |    tmp_1 = (!in_b && !!in_b ? (!in_b && !!in_b ? a == 32w5 : tmp_2) : (!in_b && !in_b ? false : tmp_1));
+  24 | }
+warning: loc("test/Translate/Ops/pred.p4":25:12):  Unhandled control/apply statement: 
+%2 = p4hir.ternary(%1, true {
+  %c5_b32i = p4hir.const #p4hir.int<5> : !p4hir.bit<32>
+  %val = p4hir.read %a : <!p4hir.bit<32>>
+  %eq = p4hir.cmp(eq, %val, %c5_b32i) : !p4hir.bit<32>, !p4hir.bool
+  p4hir.yield %eq : !p4hir.bool
+}, false {
+  %val = p4hir.read %tmp_2 : <!p4hir.bool>
+  p4hir.yield %val : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/pred.p4":25:12): see current operation: 
+%2 = p4hir.ternary(%1, true {
+  %c5_b32i = p4hir.const #p4hir.int<5> : !p4hir.bit<32>
+  %val = p4hir.read %a : <!p4hir.bit<32>>
+  %eq = p4hir.cmp(eq, %val, %c5_b32i) : !p4hir.bit<32>, !p4hir.bool
+  p4hir.yield %eq : !p4hir.bool
+}, false {
+  %val = p4hir.read %tmp_2 : <!p4hir.bool>
+  p4hir.yield %val : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  23 |    tmp_1 = (!in_b && !!in_b ? (!in_b && !!in_b ? a == 32w5 : tmp_2) : (!in_b && !in_b ? false : tmp_1));
+  24 | }
+warning: loc("test/Translate/Ops/pred.p4":26:12):  Unhandled control/apply statement: 
+%3 = p4hir.ternary(%not_1, true {
+  %not_2 = p4hir.unary(not, %arg0) : !p4hir.bool
+  %not_3 = p4hir.unary(not, %not_2) : !p4hir.bool
+  p4hir.yield %not_3 : !p4hir.bool
+}, false {
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  p4hir.yield %false : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/pred.p4":26:12): see current operation: 
+%3 = p4hir.ternary(%not_1, true {
+  %not_2 = p4hir.unary(not, %arg0) : !p4hir.bool
+  %not_3 = p4hir.unary(not, %not_2) : !p4hir.bool
+  p4hir.yield %not_3 : !p4hir.bool
+}, false {
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  p4hir.yield %false : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  24 | }
+warning: loc("test/Translate/Ops/pred.p4":26:12):  Unhandled control/apply statement: 
+%4 = p4hir.ternary(%3, true {
+  %not_2 = p4hir.unary(not, %arg0) : !p4hir.bool
+  %5 = p4hir.ternary(%not_2, true {
+    %not_3 = p4hir.unary(not, %arg0) : !p4hir.bool
+    %not_4 = p4hir.unary(not, %not_3) : !p4hir.bool
+    p4hir.yield %not_4 : !p4hir.bool
+  }, false {
+    %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+    p4hir.yield %false : !p4hir.bool
+  }) : (!p4hir.bool) -> !p4hir.bool
+  %6 = p4hir.ternary(%5, true {
+    %c5_b32i = p4hir.const #p4hir.int<5> : !p4hir.bit<32>
+    %val = p4hir.read %a : <!p4hir.bit<32>>
+    %eq = p4hir.cmp(eq, %val, %c5_b32i) : !p4hir.bit<32>, !p4hir.bool
+    p4hir.yield %eq : !p4hir.bool
+  }, false {
+    %val = p4hir.read %tmp_2 : <!p4hir.bool>
+    p4hir.yield %val : !p4hir.bool
+  }) : (!p4hir.bool) -> !p4hir.bool
+  p4hir.yield %6 : !p4hir.bool
+}, false {
+  %not_2 = p4hir.unary(not, %arg0) : !p4hir.bool
+  %5 = p4hir.ternary(%not_2, true {
+    %not_3 = p4hir.unary(not, %arg0) : !p4hir.bool
+    p4hir.yield %not_3 : !p4hir.bool
+  }, false {
+    %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+    p4hir.yield %false : !p4hir.bool
+  }) : (!p4hir.bool) -> !p4hir.bool
+  %6 = p4hir.ternary(%5, true {
+    %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+    p4hir.yield %false : !p4hir.bool
+  }, false {
+    %val = p4hir.read %tmp_1 : <!p4hir.bool>
+    p4hir.yield %val : !p4hir.bool
+  }) : (!p4hir.bool) -> !p4hir.bool
+  p4hir.yield %6 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/pred.p4":26:12): see current operation: 
+%4 = p4hir.ternary(%3, true {
+  %not_2 = p4hir.unary(not, %arg0) : !p4hir.bool
+  %5 = p4hir.ternary(%not_2, true {
+    %not_3 = p4hir.unary(not, %arg0) : !p4hir.bool
+    %not_4 = p4hir.unary(not, %not_3) : !p4hir.bool
+    p4hir.yield %not_4 : !p4hir.bool
+  }, false {
+    %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+    p4hir.yield %false : !p4hir.bool
+  }) : (!p4hir.bool) -> !p4hir.bool
+  %6 = p4hir.ternary(%5, true {
+    %c5_b32i = p4hir.const #p4hir.int<5> : !p4hir.bit<32>
+    %val = p4hir.read %a : <!p4hir.bit<32>>
+    %eq = p4hir.cmp(eq, %val, %c5_b32i) : !p4hir.bit<32>, !p4hir.bool
+    p4hir.yield %eq : !p4hir.bool
+  }, false {
+    %val = p4hir.read %tmp_2 : <!p4hir.bool>
+    p4hir.yield %val : !p4hir.bool
+  }) : (!p4hir.bool) -> !p4hir.bool
+  p4hir.yield %6 : !p4hir.bool
+}, false {
+  %not_2 = p4hir.unary(not, %arg0) : !p4hir.bool
+  %5 = p4hir.ternary(%not_2, true {
+    %not_3 = p4hir.unary(not, %arg0) : !p4hir.bool
+    p4hir.yield %not_3 : !p4hir.bool
+  }, false {
+    %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+    p4hir.yield %false : !p4hir.bool
+  }) : (!p4hir.bool) -> !p4hir.bool
+  %6 = p4hir.ternary(%5, true {
+    %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+    p4hir.yield %false : !p4hir.bool
+  }, false {
+    %val = p4hir.read %tmp_1 : <!p4hir.bool>
+    p4hir.yield %val : !p4hir.bool
+  }) : (!p4hir.bool) -> !p4hir.bool
+  p4hir.yield %6 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  24 | }
+action cond_0(bool in_b) {
+    tmp_1 = ((!in_b) ? (tmp_2) : (tmp_1));
+    tmp_2 = (((!in_b) ? ((!(!in_b))) : (false)) ? ((a == 32w5)) : (tmp_2));
+    tmp_1 = (((!in_b) ? ((!(!in_b))) : (false)) ? ((((!in_b) ? ((!(!in_b))) : (false)) ? ((a == 32w5)) : (tmp_2))) : ((((!in_b) ? ((!in_b)) : (false)) ? (false) : (tmp_1))));
+    return;
+}
+

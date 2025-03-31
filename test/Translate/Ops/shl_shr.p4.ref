@@ -1,0 +1,26 @@
+action shl_shr() {
+    bit<32> u32i_value = (bit<32>)(32w1);
+    u32i_value = (bit<32>)(32w1);
+    int<32> s32i_value = (int<32>)(32s2);
+    s32i_value = (int<32>)(32s2);
+    bit<8> shift = (bit<8>)(8w3);
+    shift = (bit<8>)(8w3);
+    bit<32> u32i_shl_u8i = (u32i_value << shift);
+    u32i_shl_u8i = (u32i_value << shift);
+    bit<32> u32i_shl_int = (u32i_value << 1);
+    u32i_shl_int = (u32i_value << 1);
+    int<32> s32i_shl_u8i = (s32i_value << shift);
+    s32i_shl_u8i = (s32i_value << shift);
+    int<32> s32i_shl_int = (s32i_value << 1);
+    s32i_shl_int = (s32i_value << 1);
+    bit<32> u32i_shr_u8i = (u32i_value >> shift);
+    u32i_shr_u8i = (u32i_value >> shift);
+    bit<32> u32i_shr_int = (u32i_value >> 1);
+    u32i_shr_int = (u32i_value >> 1);
+    int<32> s32i_shr_u8i = (s32i_value >> shift);
+    s32i_shr_u8i = (s32i_value >> shift);
+    int<32> s32i_shr_int = (s32i_value >> 1);
+    s32i_shr_int = (s32i_value >> 1);
+    return;
+}
+

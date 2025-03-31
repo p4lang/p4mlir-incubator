@@ -1,4 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | diff -u - %s.ref
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | p4test -
 
 // CHECK: !Suits = !p4hir.enum<"Suits", Clubs, Diamonds, Hearths, Spades>
 // CHECK: #Suits_Diamonds = #p4hir.enum_field<Diamonds, !Suits> : !Suits

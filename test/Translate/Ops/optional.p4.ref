@@ -1,0 +1,16 @@
+warning: loc("test/Translate/Ops/optional.p4":23:16): Unhandled top-level operation: %uninitialized = p4hir.uninitialized : !p4hir.control<"ce", (!p4hir.ref<!p4hir.bool>)>
+note: loc("test/Translate/Ops/optional.p4":23:16): see current operation: %uninitialized = p4hir.uninitialized : !p4hir.control<"ce", (!p4hir.ref<!p4hir.bool>)>
+  21 | // CHECK: !ce = !p4hir.control<"ce", (!p4hir.ref<!p4hir.bool>)>
+  22 | // CHECK: !par = !p4hir.parser<"par", (!p4hir.ref<!p4hir.bool>)>
+  23 | // CHECK: !pe = !p4hir.parser<"pe", (!p4hir.ref<!p4hir.bool>)>
+     |                ^
+  24 | // CHECK: !top = !p4hir.package<"top">
+  25 | // CHECK:  %[[uninitialized:.*]] = p4hir.uninitialized : !ce
+error: loc("test/Translate/Ops/optional.p4":23:16): p4hir.uninitialized has no direct P4 equivalent.
+note: loc("test/Translate/Ops/optional.p4":23:16): see current operation: %2 = "p4hir.uninitialized"() : () -> !p4hir.control<"ce", (!p4hir.ref<!p4hir.bool>)>
+  21 | // CHECK: !ce = !p4hir.control<"ce", (!p4hir.ref<!p4hir.bool>)>
+  22 | // CHECK: !par = !p4hir.parser<"par", (!p4hir.ref<!p4hir.bool>)>
+  23 | // CHECK: !pe = !p4hir.parser<"pe", (!p4hir.ref<!p4hir.bool>)>
+     |                ^
+  24 | // CHECK: !top = !p4hir.package<"top">
+  25 | // CHECK:  %[[uninitialized:.*]] = p4hir.uninitialized : !ce

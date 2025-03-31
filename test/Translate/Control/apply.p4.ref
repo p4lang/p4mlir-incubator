@@ -1,0 +1,8 @@
+error: loc("test/Translate/Control/apply.p4":13:16): Unhandled operation in exportExpression: %0 = "p4hir.instantiate"() <{callee = @InnerPipe, name = "inner"}> : () -> !p4hir.control<"InnerPipe", (!p4hir.bit<10>, !p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>)>
+note: loc("test/Translate/Control/apply.p4":13:16): see current operation: %0 = "p4hir.instantiate"() <{callee = @InnerPipe, name = "inner"}> : () -> !p4hir.control<"InnerPipe", (!p4hir.bit<10>, !p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>)>
+  11 |     InnerPipe() inner;
+  12 |     action bar() {
+  13 |         int<16> x1;
+     |                ^
+  14 |         return;
+  15 |     }

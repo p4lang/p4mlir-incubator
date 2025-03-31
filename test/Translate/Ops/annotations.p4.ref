@@ -1,0 +1,8 @@
+error: loc("test/Translate/Ops/annotations.p4":89:38): Unhandled operation in exportExpression: %13 = "p4hir.instantiate"() <{callee = @Annotated, name = "Annotated"}> : () -> !p4hir.extern<"Annotated" annotations {size = ["100"]}>
+note: loc("test/Translate/Ops/annotations.p4":89:38): see current operation: %13 = "p4hir.instantiate"() <{callee = @Annotated, name = "Annotated"}> : () -> !p4hir.extern<"Annotated" annotations {size = ["100"]}>
+  87 | // CHECK:      } else annotations {unlikely} {        
+  88 |         } else @unlikely {
+  89 |         }
+     |                                      ^
+  90 | // CHECK:      p4hir.for : cond {
+  91 | // CHECK:       %[[LOOP_COND:.*]] = p4hir.cmp(lt, %{{.*}}, %{{.*}}) : !b8i, !p4hir.bool

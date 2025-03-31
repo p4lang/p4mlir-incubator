@@ -1,0 +1,58 @@
+warning: loc("test/Translate/Ops/switch-expression.p4":25:8):  Unhandled control/apply statement: 
+p4hir.switch (%val : !p4hir.bit<32>) {
+  p4hir.case(anyof, [#p4hir.int<16> : !p4hir.bit<32>, #p4hir.int<32> : !p4hir.bit<32>]) {
+    %c1_b32i = p4hir.const #p4hir.int<1> : !p4hir.bit<32>
+    %cast = p4hir.cast(%c1_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+    p4hir.assign %cast, %arg0 : <!p4hir.bit<32>>
+    p4hir.yield
+  }
+  p4hir.case(equal, [#p4hir.int<64> : !p4hir.bit<32>]) {
+    %c2_b32i = p4hir.const #p4hir.int<2> : !p4hir.bit<32>
+    %cast = p4hir.cast(%c2_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+    p4hir.assign %cast, %arg0 : <!p4hir.bit<32>>
+    p4hir.yield
+  }
+  p4hir.case(default, [#p4hir.int<92> : !p4hir.bit<32>]) {
+    %c3_b32i = p4hir.const #p4hir.int<3> : !p4hir.bit<32>
+    %cast = p4hir.cast(%c3_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+    p4hir.assign %cast, %arg0 : <!p4hir.bit<32>>
+    p4hir.yield
+  }
+  p4hir.yield
+}
+note: loc("test/Translate/Ops/switch-expression.p4":25:8): see current operation: 
+p4hir.switch (%val : !p4hir.bit<32>) {
+  p4hir.case(anyof, [#p4hir.int<16> : !p4hir.bit<32>, #p4hir.int<32> : !p4hir.bit<32>]) {
+    %c1_b32i = p4hir.const #p4hir.int<1> : !p4hir.bit<32>
+    %cast = p4hir.cast(%c1_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+    p4hir.assign %cast, %arg0 : <!p4hir.bit<32>>
+    p4hir.yield
+  }
+  p4hir.case(equal, [#p4hir.int<64> : !p4hir.bit<32>]) {
+    %c2_b32i = p4hir.const #p4hir.int<2> : !p4hir.bit<32>
+    %cast = p4hir.cast(%c2_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+    p4hir.assign %cast, %arg0 : <!p4hir.bit<32>>
+    p4hir.yield
+  }
+  p4hir.case(default, [#p4hir.int<92> : !p4hir.bit<32>]) {
+    %c3_b32i = p4hir.const #p4hir.int<3> : !p4hir.bit<32>
+    %cast = p4hir.cast(%c3_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+    p4hir.assign %cast, %arg0 : <!p4hir.bit<32>>
+    p4hir.yield
+  }
+  p4hir.yield
+}
+  23 | // CHECK:     }
+  24 |         switch (b) {
+  25 |             16:
+     |        ^
+  26 |             32: { b = 1; }
+  27 |             64: { b = 2; }
+control c(inout bit<32> b) {
+    apply {
+    }
+}
+control ct(bit<32>);
+package top(ct _c);
+top(c()) main;
+

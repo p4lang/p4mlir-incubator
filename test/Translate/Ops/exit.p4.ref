@@ -1,0 +1,24 @@
+warning: loc("test/Translate/Ops/exit.p4":9:8):  Unhandled control/apply statement: p4hir.exit
+note: loc("test/Translate/Ops/exit.p4":9:8): see current operation: p4hir.exit
+   7 |     action e() {
+   8 |         exit;
+   9 |     }
+     |        ^
+  10 |     table t {
+  11 |         actions = { e; }
+warning: loc("test/Translate/Ops/exit.p4":26:12):  Unhandled control/apply statement: %t_apply_result = p4hir.table_apply @t : <"t", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", e>>
+note: loc("test/Translate/Ops/exit.p4":26:12): see current operation: %t_apply_result = p4hir.table_apply @t : <"t", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", e>>
+  24 |             t.apply();
+  25 |             c = 3;
+  26 |         } else {
+     |            ^
+  27 |             b = 3;
+  28 |             t.apply();
+error: loc("test/Translate/Ops/exit.p4":26:12): Unhandled operation in exportExpression: %11 = "p4hir.table_apply"() <{callee = @t}> : () -> !p4hir.struct<"t", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", e>>
+note: loc("test/Translate/Ops/exit.p4":26:12): see current operation: %11 = "p4hir.table_apply"() <{callee = @t}> : () -> !p4hir.struct<"t", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", e>>
+  24 |             t.apply();
+  25 |             c = 3;
+  26 |         } else {
+     |            ^
+  27 |             b = 3;
+  28 |             t.apply();

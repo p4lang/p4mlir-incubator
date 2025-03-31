@@ -1,0 +1,8 @@
+error: loc("test/Translate/Control/table_basic.p4":60:25): Unhandled operation in exportExpression: %10 = "p4hir.instantiate"(%9) <{callee = @ActionProfile, name = "ActionProfile"}> : (!p4hir.bit<32>) -> !p4hir.extern<"ActionProfile">
+note: loc("test/Translate/Control/table_basic.p4":60:25): see current operation: %10 = "p4hir.instantiate"(%9) <{callee = @ActionProfile, name = "ActionProfile"}> : (!p4hir.bit<32>) -> !p4hir.extern<"ActionProfile">
+  58 |        // CHECK: p4hir.yield %ActionProfile : !ActionProfile
+  59 |        // CHECK:} : !ActionProfile        
+  60 |     }
+     |                         ^
+  61 |     apply {
+  62 |         if (t1.apply().hit) {

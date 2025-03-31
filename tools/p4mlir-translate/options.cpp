@@ -45,4 +45,25 @@ TranslateOptions::TranslateOptions() {
             return true;
         },
         "do not dump module on exit");
+    registerOption(
+        "--export-p4-to-file", "file",
+        [this](const char *arg) {
+            p4OutputFile = arg;
+            return true;
+        },
+        "Export P4MLIR as P4 to the specified file.");
+    registerOption(
+        "--dump-exported-p4", nullptr,
+        [this](const char *) {
+            dumpToP4 = true;
+            return true;
+        },
+        "Write P4MLIR as P4 to the command line.");
+    registerOption(
+        "--main-only", nullptr,
+        [this](const char *) {
+            mainPackageOnly = true;
+            return true;
+        },
+        "Only emit code relevant to the main package");
 }

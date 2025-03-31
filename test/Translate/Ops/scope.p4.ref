@@ -1,0 +1,15 @@
+action scope() {
+    bit<10> lhs = (bit<10>)(10w1);
+    lhs = (bit<10>)(10w1);
+    bit<10> rhs = (bit<10>)(10w2);
+    rhs = (bit<10>)(10w2);
+    res = (lhs == rhs);
+    res = (lhs != rhs);
+    bit<10> lhs = (bit<10>)(10w1);
+    lhs = (bit<10>)(10w1);
+    bit<10> rhs = (bit<10>)(10w2);
+    rhs = (bit<10>)(10w2);
+    res = (lhs * rhs);
+    return;
+}
+

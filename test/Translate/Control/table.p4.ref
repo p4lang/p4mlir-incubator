@@ -1,0 +1,101 @@
+warning: loc("test/Translate/Control/table.p4":23:76):  Unhandled control statement: %ctr_arg1 = p4hir.const ["ctr_arg1"] #p4hir.ctor_param<@Pipe, "ctr_arg1"> : !p4hir.int<16>
+note: loc("test/Translate/Control/table.p4":23:76): see current operation: %ctr_arg1 = p4hir.const ["ctr_arg1"] #p4hir.ctor_param<@Pipe, "ctr_arg1"> : !p4hir.int<16>
+  21 |     action bar(int<16> x1, int<16> x2, int<16> x3) {
+  22 |         local_hdr.f1 = arg2;
+  23 |     }
+     |                                                                            ^
+  24 |     int<16> test = 52;
+  25 |     table myTable {
+warning: loc("test/Translate/Control/table.p4":25:18):  Unhandled control statement: %cst = p4hir.const ["cst"] #p4hir.int<3> : !p4hir.int<16>
+note: loc("test/Translate/Control/table.p4":25:18): see current operation: %cst = p4hir.const ["cst"] #p4hir.int<3> : !p4hir.int<16>
+  23 |     }
+  24 |     int<16> test = 52;
+  25 |     table myTable {
+     |                  ^
+  26 |         key = {
+  27 |             arg1.f1 - 1 : exact @name("arg1.key");
+warning: loc("test/Translate/Control/table.p4":26:26):  Unhandled control statement: %c23_i16i = p4hir.const #p4hir.int<23> : !p4hir.int<16>
+note: loc("test/Translate/Control/table.p4":26:26): see current operation: %c23_i16i = p4hir.const #p4hir.int<23> : !p4hir.int<16>
+  24 |     int<16> test = 52;
+  25 |     table myTable {
+  26 |         key = {
+     |                          ^
+  27 |             arg1.f1 - 1 : exact @name("arg1.key");
+  28 |             arg3 & 0xAABB : lpm @name("arg3.key");
+warning: loc(unknown):  Unhandled control statement: %valid = p4hir.const #p4hir<validity.bit valid> : !p4hir.validity.bit
+note: loc(unknown): see current operation: %valid = p4hir.const #p4hir<validity.bit valid> : !p4hir.validity.bit
+warning: loc(unknown):  Unhandled control statement: %hdr_MyHeader = p4hir.struct (%c23_i16i, %valid) : !p4hir.header<"MyHeader", f1: !p4hir.int<16>, __valid: !p4hir.validity.bit>
+note: loc(unknown): see current operation: %hdr_MyHeader = p4hir.struct (%c23_i16i, %valid) : !p4hir.header<"MyHeader", f1: !p4hir.int<16>, __valid: !p4hir.validity.bit>
+warning: loc("test/Translate/Control/table.p4":32:19):  Unhandled control statement: %c52_i16i = p4hir.const #p4hir.int<52> : !p4hir.int<16>
+note: loc("test/Translate/Control/table.p4":32:19): see current operation: %c52_i16i = p4hir.const #p4hir.int<52> : !p4hir.int<16>
+  30 |             baz(test) : exact @name("baz.key");
+  31 |             local_hdr.f1 : lpm @name("local_hdr.key");
+  32 |         }
+     |                   ^
+  33 |         // CHECK: p4hir.table_action @bar(%[[arg3:.*]]: !i16i {p4hir.param_name = "x1"}, %[[arg4:.*]]: !i16i {p4hir.param_name = "x2"}, %[[arg5:.*]]: !i16i {p4hir.param_name = "x3"}) {
+  34 |         // CHECK:   p4hir.call @bar (%[[arg3]], %[[arg4]], %[[arg5]]) : (!i16i, !i16i, !i16i) -> ()
+warning: loc("test/Translate/Control/table.p4":32:19):  Unhandled control statement: %cast = p4hir.cast(%c52_i16i : !p4hir.int<16>) : !p4hir.int<16>
+note: loc("test/Translate/Control/table.p4":32:19): see current operation: %cast = p4hir.cast(%c52_i16i : !p4hir.int<16>) : !p4hir.int<16>
+  30 |             baz(test) : exact @name("baz.key");
+  31 |             local_hdr.f1 : lpm @name("local_hdr.key");
+  32 |         }
+     |                   ^
+  33 |         // CHECK: p4hir.table_action @bar(%[[arg3:.*]]: !i16i {p4hir.param_name = "x1"}, %[[arg4:.*]]: !i16i {p4hir.param_name = "x2"}, %[[arg5:.*]]: !i16i {p4hir.param_name = "x3"}) {
+  34 |         // CHECK:   p4hir.call @bar (%[[arg3]], %[[arg4]], %[[arg5]]) : (!i16i, !i16i, !i16i) -> ()
+warning: loc("test/Translate/Control/table.p4":54:8):  Unhandled control/apply statement: %myTable_apply_result = p4hir.table_apply @myTable : <"myTable", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", foo, bar, bak>>
+note: loc("test/Translate/Control/table.p4":54:8): see current operation: %myTable_apply_result = p4hir.table_apply @myTable : <"myTable", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", foo, bar, bak>>
+  48 | }
+header MyHeader {
+    int<16> f1;
+}
+header MyHeader {
+    int<16> f1;
+}
+struct myTable {
+    bool hit;
+    bool miss;
+    action_enum action_run;
+}
+extern Ext {
+    void Ext(int<16> tmp);
+}
+
+extern int<16> baz(in int<16> arg);
+
+action bak() {
+    return;
+}
+
+control Pipe(in MyHeader arg1, in int<16> arg2, inout int<16> arg3) {
+    action foo(in int<16> x1, inout int<16> x2) {
+        return;
+    }
+    MyHeader local_hdr = MyHeader {f1 = 16s23};
+    action bar(int<16> x1, int<16> x2, int<16> x3) {
+        local_hdr.f1 = arg2;
+        return;
+    }
+    int<16> test = (int<16>)(16s52);
+    table myTable {
+        key = {
+            @name("arg1.key") (arg1.f1 - 16s1) : exact;
+            @name("arg3.key") (arg3 & 16s43707) : lpm;
+            @name("cst.key") 16s3 : lpm;
+            @name("baz.key") baz(test) : exact;
+            @name("local_hdr.key") local_hdr.f1 : lpm;
+        }
+        actions = {
+            foo(arg2, arg3);
+            bar;
+            bak;
+        }
+        prop1 = 42;
+        prop2 = baz(16s3);
+        prop3 = baz(( + 16s3));
+        prop5 = baz(test);
+    }
+    apply {
+        test = (test + 16s1);
+        local_hdr.f1 = (int<16>)(16s3);
+    }
+}

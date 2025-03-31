@@ -1,0 +1,1 @@
+error: loc(unknown): Unsupported P4HIR type for P4 top-level declaration: 'tuple<!p4hir.bit<32>, !p4hir.bit<32>>'

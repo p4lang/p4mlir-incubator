@@ -1,0 +1,1 @@
+error: loc(unknown): Unsupported P4HIR type for P4 top-level declaration: '!p4hir.ser_enum<"Serenum", !p4hir.bit<10>, first : #p4hir.int<42> : !p4hir.bit<10>>'

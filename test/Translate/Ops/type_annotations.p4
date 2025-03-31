@@ -1,4 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | diff -u - %s.ref
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | p4test -
 
 // CHECK-DAG: !PortId_32_t = !p4hir.alias<"PortId_32_t" annotations {p4runtime_translation = ["p4.org/psa/v1/PortId_32_t", ",", "32"]}, !b9i>
 

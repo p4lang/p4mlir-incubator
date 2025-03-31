@@ -1,0 +1,42 @@
+warning: loc("test/Translate/Parser/ctor.p4":9:32):  Unhandled parser statement: %ctorval = p4hir.const ["ctorval"] #p4hir.ctor_param<@p, "ctorval"> : !p4hir.bool
+note: loc("test/Translate/Parser/ctor.p4":9:32): see current operation: %ctorval = p4hir.const ["ctorval"] #p4hir.ctor_param<@p, "ctorval"> : !p4hir.bool
+   7 | parser p(in int<10> sinit)(bool ctorval) {
+   8 |     int<10> s = ctorval ? 0 : sinit;
+   9 |     state start {
+     |                                ^
+  10 |         s = 1;
+  11 |         transition next;
+warning: loc("test/Translate/Parser/ctor.p4":10:16):  Unhandled parser statement: 
+%0 = p4hir.ternary(%ctorval, true {
+  %c0_i10i = p4hir.const #p4hir.int<0> : !p4hir.int<10>
+  p4hir.yield %c0_i10i : !p4hir.int<10>
+}, false {
+  p4hir.yield %arg0 : !p4hir.int<10>
+}) : (!p4hir.bool) -> !p4hir.int<10>
+note: loc("test/Translate/Parser/ctor.p4":10:16): see current operation: 
+%0 = p4hir.ternary(%ctorval, true {
+  %c0_i10i = p4hir.const #p4hir.int<0> : !p4hir.int<10>
+  p4hir.yield %c0_i10i : !p4hir.int<10>
+}, false {
+  p4hir.yield %arg0 : !p4hir.int<10>
+}) : (!p4hir.bool) -> !p4hir.int<10>
+   8 |     int<10> s = ctorval ? 0 : sinit;
+   9 |     state start {
+  10 |         s = 1;
+     |                ^
+  11 |         transition next;
+  12 |     }
+parser p(in int<10> sinit) {
+    int<10> s = ( ? (10s0) : (sinit));
+    state start {
+        s = (int<10>)(10s1);
+        transition next;
+    }
+    state next {
+        s = (int<10>)(10s2);
+        transition accept;
+    }
+    state drop {
+        transition reject;
+    }
+}

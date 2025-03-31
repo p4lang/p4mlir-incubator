@@ -1,0 +1,15 @@
+error {
+    "NoError",
+    "SomeError",
+}
+extern void verify(in bool check, in error toSignal);
+
+parser p2(in bool check, out bool matches) {
+    state start {
+        transition next;
+    }
+    state next {
+        matches = true;
+        transition accept;
+    }
+}

@@ -1,0 +1,17 @@
+action foo(in bit<16> arg1, inout int<10> arg2, out bit<16> arg3, bit<16> arg4) {
+    bool hasReturned = false;
+    hasReturned = false;
+    bit<16> x = arg1;
+    x = arg1;
+    arg3 = x;
+    if ((arg1 == arg4)) {
+        arg2 = (arg2 + 10s1);
+    }
+    hasReturned = true;
+    return;
+}
+
+action bar(bit<16> arg1) {
+    return;
+}
+

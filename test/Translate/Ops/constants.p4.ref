@@ -1,0 +1,1 @@
+error: loc(unknown): Unsupported attribute type for P4 constant: #p4hir.aggregate<[#p4hir.int<3> : !p4hir.bit<32>, #p4hir.int<1> : !p4hir.bit<32>]> : !p4hir.struct<"S", a: !p4hir.bit<32>, b: !p4hir.bit<32>>

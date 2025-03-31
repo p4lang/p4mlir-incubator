@@ -1,0 +1,8 @@
+error: loc("test/Translate/Ops/slice.p4":11:13): Unhandled operation in exportExpression: %3 = "p4hir.slice_ref"(%arg1) <{highBit = 7 : i32, lowBit = 1 : i32}> : (!p4hir.ref<!p4hir.int<8>>) -> !p4hir.bit<7>
+note: loc("test/Translate/Ops/slice.p4":11:13): see current operation: %3 = "p4hir.slice_ref"(%arg1) <{highBit = 7 : i32, lowBit = 1 : i32}> : (!p4hir.ref<!p4hir.int<8>>) -> !p4hir.bit<7>
+   9 |   // CHECK: p4hir.slice_ref %arg1[7 : 1] : <!i8i> -> !b7i
+  10 |   bit<7> d = c[7:1];
+  11 |   const int e = 42;
+     |             ^
+  12 |   bit<2> f = e[1:0];
+  13 |   

@@ -1,0 +1,1 @@
+error: loc(unknown): Unsupported P4HIR reference type for P4 top-level declaration: '!p4hir.enum<"Suits", Clubs, Diamonds, Hearths, Spades>'

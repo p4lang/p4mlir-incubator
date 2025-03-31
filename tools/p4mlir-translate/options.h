@@ -12,8 +12,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#ifndef _P4MLIR_OPTIONS_H_
-#define _P4MLIR_OPTIONS_H_
+#ifndef TOOLS_P4MLIR_TRANSLATE_OPTIONS_H_
+#define TOOLS_P4MLIR_TRANSLATE_OPTIONS_H_
 
 #include "frontends/common/options.h"
 #include "frontends/common/parser_options.h"
@@ -26,6 +26,12 @@ class TranslateOptions : public CompilerOptions {
     bool typeinferenceOnly = false;
     bool printLoc = false;
     bool noDump = false;
+    /// Export P4MLIR as P4 to the specified file.
+    std::filesystem::path p4OutputFile = std::filesystem::path();
+    /// Write P4MLIR as P4 to the command line.
+    bool dumpToP4 = false;
+    /// Only emit code relevant to the main package.
+    bool mainPackageOnly = false;
 
     virtual ~TranslateOptions() = default;
 
@@ -40,4 +46,4 @@ using TranslateContext = P4CContextWithOptions<TranslateOptions>;
 
 }  // namespace P4::MLIR
 
-#endif /* _P4MLIR_OPTIONS_H_ */
+#endif /* TOOLS_P4MLIR_TRANSLATE_OPTIONS_H_ */

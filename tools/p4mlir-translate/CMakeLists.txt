@@ -14,10 +14,11 @@ set(LIBS
 set(P4MLIR_TRANSLATE_SRCS
   main.cpp
   options.cpp
-  translate.cpp)
+  translate.cpp
+)
 
 add_llvm_executable(p4mlir-translate ${P4MLIR_TRANSLATE_SRCS})
-target_link_libraries(p4mlir-translate PRIVATE ${P4C_LIBRARIES} ${P4C_LIB_DEPS})
+target_link_libraries(p4mlir-translate PRIVATE ${P4C_LIBRARIES} ${P4C_LIB_DEPS} p4mlir_utilities)
 
 llvm_update_compile_flags(p4mlir-translate)
 target_link_libraries(p4mlir-translate PRIVATE ${LIBS})

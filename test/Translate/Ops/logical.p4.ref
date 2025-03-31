@@ -1,0 +1,252 @@
+warning: loc("test/Translate/Ops/logical.p4":13:14):  Unhandled control/apply statement: 
+%0 = p4hir.ternary(%val, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":13:14): see current operation: 
+%0 = p4hir.ternary(%val, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  11 | // CHECK: %[[FLAG2_VAL:.*]] = p4hir.read %[[FLAG2]] : <!p4hir.bool>
+  12 | // CHECK-NEXT: %[[F1_VAL:.*]] = p4hir.ternary(%[[FLAG2_VAL]], true {
+  13 | // CHECK-NEXT: %[[TRUE_VAL:.*]] = p4hir.const #true
+     |              ^
+  14 | // CHECK-NEXT: p4hir.yield %[[TRUE_VAL]] : !p4hir.bool
+  15 | // CHECK-NEXT:  }, false {
+warning: loc("test/Translate/Ops/logical.p4":23:14):  Unhandled control/apply statement: 
+%1 = p4hir.ternary(%val_0, true {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}, false {
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  p4hir.yield %false : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":23:14): see current operation: 
+%1 = p4hir.ternary(%val_0, true {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}, false {
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  p4hir.yield %false : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  21 |     bool f7 = flag2 || flag3 || flag3;
+  22 |     bool f8 = flag2 || flag3 && flag3;
+  23 |     bool f5 = flag2 || flag3;
+     |              ^
+  24 |     f5 = f1 && f5 || flag1;
+  25 |     bool f6 = flag1 || flag2;
+warning: loc("test/Translate/Ops/logical.p4":24:14):  Unhandled control/apply statement: 
+%2 = p4hir.ternary(%val_1, true {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}, false {
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  p4hir.yield %false : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":24:14): see current operation: 
+%2 = p4hir.ternary(%val_1, true {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}, false {
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  p4hir.yield %false : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  22 |     bool f8 = flag2 || flag3 && flag3;
+  23 |     bool f5 = flag2 || flag3;
+  24 |     f5 = f1 && f5 || flag1;
+     |              ^
+  25 |     bool f6 = flag1 || flag2;
+  26 | }
+warning: loc("test/Translate/Ops/logical.p4":24:14):  Unhandled control/apply statement: 
+%3 = p4hir.ternary(%2, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":24:14): see current operation: 
+%3 = p4hir.ternary(%2, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  22 |     bool f8 = flag2 || flag3 && flag3;
+  23 |     bool f5 = flag2 || flag3;
+  24 |     f5 = f1 && f5 || flag1;
+     |              ^
+  25 |     bool f6 = flag1 || flag2;
+  26 | }
+warning: loc("test/Translate/Ops/logical.p4":25:14):  Unhandled control/apply statement: 
+%4 = p4hir.ternary(%val_2, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":25:14): see current operation: 
+%4 = p4hir.ternary(%val_2, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  23 |     bool f5 = flag2 || flag3;
+  24 |     f5 = f1 && f5 || flag1;
+  25 |     bool f6 = flag1 || flag2;
+     |              ^
+  26 | }
+warning: loc("test/Translate/Ops/logical.p4":25:14):  Unhandled control/apply statement: 
+%5 = p4hir.ternary(%4, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":25:14): see current operation: 
+%5 = p4hir.ternary(%4, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  23 |     bool f5 = flag2 || flag3;
+  24 |     f5 = f1 && f5 || flag1;
+  25 |     bool f6 = flag1 || flag2;
+     |              ^
+  26 | }
+warning: loc("test/Translate/Ops/logical.p4":26:14):  Unhandled control/apply statement: 
+%6 = p4hir.ternary(%val_3, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  %11 = p4hir.ternary(%val_7, true {
+    %val_8 = p4hir.read %flag3 : <!p4hir.bool>
+    p4hir.yield %val_8 : !p4hir.bool
+  }, false {
+    %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+    p4hir.yield %false : !p4hir.bool
+  }) : (!p4hir.bool) -> !p4hir.bool
+  p4hir.yield %11 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":26:14): see current operation: 
+%6 = p4hir.ternary(%val_3, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  %11 = p4hir.ternary(%val_7, true {
+    %val_8 = p4hir.read %flag3 : <!p4hir.bool>
+    p4hir.yield %val_8 : !p4hir.bool
+  }, false {
+    %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+    p4hir.yield %false : !p4hir.bool
+  }) : (!p4hir.bool) -> !p4hir.bool
+  p4hir.yield %11 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  24 |     f5 = f1 && f5 || flag1;
+  25 |     bool f6 = flag1 || flag2;
+  26 | }
+     |              ^
+warning: loc("test/Translate/Ops/logical.p4":27:14):  Unhandled control/apply statement: 
+%7 = p4hir.ternary(%val_4, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":27:14): see current operation: 
+%7 = p4hir.ternary(%val_4, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag3 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  25 |     bool f6 = flag1 || flag2;
+  26 | }
+warning: loc("test/Translate/Ops/logical.p4":28:9):  Unhandled control/apply statement: 
+%8 = p4hir.ternary(%val_5, true {
+  %val_7 = p4hir.read %f5 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}, false {
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  p4hir.yield %false : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":28:9): see current operation: 
+%8 = p4hir.ternary(%val_5, true {
+  %val_7 = p4hir.read %f5 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}, false {
+  %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  p4hir.yield %false : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  26 | }
+warning: loc("test/Translate/Ops/logical.p4":28:9):  Unhandled control/apply statement: 
+%9 = p4hir.ternary(%8, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag1 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":28:9): see current operation: 
+%9 = p4hir.ternary(%8, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag1 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  26 | }
+warning: loc("test/Translate/Ops/logical.p4":29:14):  Unhandled control/apply statement: 
+%10 = p4hir.ternary(%val_6, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag2 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+note: loc("test/Translate/Ops/logical.p4":29:14): see current operation: 
+%10 = p4hir.ternary(%val_6, true {
+  %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  p4hir.yield %true : !p4hir.bool
+}, false {
+  %val_7 = p4hir.read %flag2 : <!p4hir.bool>
+  p4hir.yield %val_7 : !p4hir.bool
+}) : (!p4hir.bool) -> !p4hir.bool
+  26 | }
+action logical() {
+    bool f1 = (flag2 ? (true) : (flag3));
+    f1 = (flag2 ? (true) : (flag3));
+    bool f2 = (flag2 ? (flag3) : (false));
+    f2 = (flag2 ? (flag3) : (false));
+    bool f3 = ((flag2 ? (flag3) : (false)) ? (true) : (flag3));
+    f3 = ((flag2 ? (flag3) : (false)) ? (true) : (flag3));
+    bool f7 = ((flag2 ? (true) : (flag3)) ? (true) : (flag3));
+    f7 = ((flag2 ? (true) : (flag3)) ? (true) : (flag3));
+    bool f8 = (flag2 ? (true) : ((flag3 ? (flag3) : (false))));
+    f8 = (flag2 ? (true) : ((flag3 ? (flag3) : (false))));
+    bool f5 = (flag2 ? (true) : (flag3));
+    f5 = (flag2 ? (true) : (flag3));
+    f5 = ((f1 ? (f5) : (false)) ? (true) : (flag1));
+    bool f6 = (flag1 ? (true) : (flag2));
+    f6 = (flag1 ? (true) : (flag2));
+    return;
+}
+

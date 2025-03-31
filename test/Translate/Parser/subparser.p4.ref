@@ -1,0 +1,64 @@
+warning: loc("test/Translate/Parser/subparser.p4":13:35):  Unhandled parser statement: %ctorArg = p4hir.const ["ctorArg"] #p4hir.ctor_param<@subparser2, "ctorArg"> : !p4hir.bool
+note: loc("test/Translate/Parser/subparser.p4":13:35): see current operation: %ctorArg = p4hir.const ["ctorArg"] #p4hir.ctor_param<@subparser2, "ctorArg"> : !p4hir.bool
+  11 |     state start {
+  12 |         transition accept;
+  13 |     }
+     |                                   ^
+  14 | }
+  15 | parser subparser3(inout int<10> s, out bool matched)() {
+warning: loc("test/Translate/Parser/subparser.p4":28:16):  Unhandled parser statement: %sp = p4hir.instantiate @subparser() as "sp" : () -> !p4hir.parser<"subparser", (!p4hir.struct<"empty">)>
+note: loc("test/Translate/Parser/subparser.p4":28:16): see current operation: %sp = p4hir.instantiate @subparser() as "sp" : () -> !p4hir.parser<"subparser", (!p4hir.struct<"empty">)>
+  26 | // CHECK: %[[sp:.*]] = p4hir.instantiate @subparser() as "sp" : () -> !subparser
+  27 | // CHECK: %[[false:.*]] = p4hir.const #false
+  28 | // CHECK: %[[sp2:.*]] = p4hir.instantiate @subparser2(%[[false]]) as "sp2" : (!p4hir.bool) -> !subparser2
+     |                ^
+  29 | // CHECK: %[[sp3:.*]] = p4hir.instantiate @subparser3() as "sp3" : () -> !subparser3
+  30 |     state start {
+warning: loc("test/Translate/Parser/subparser.p4":29:15):  Unhandled parser statement: %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+note: loc("test/Translate/Parser/subparser.p4":29:15): see current operation: %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  27 | // CHECK: %[[false:.*]] = p4hir.const #false
+  28 | // CHECK: %[[sp2:.*]] = p4hir.instantiate @subparser2(%[[false]]) as "sp2" : (!p4hir.bool) -> !subparser2
+  29 | // CHECK: %[[sp3:.*]] = p4hir.instantiate @subparser3() as "sp3" : () -> !subparser3
+     |               ^
+  30 |     state start {
+  31 |         s = 1;
+warning: loc("test/Translate/Parser/subparser.p4":29:22):  Unhandled parser statement: %sp2 = p4hir.instantiate @subparser2(%false) as "sp2" : (!p4hir.bool) -> !p4hir.parser<"subparser2", (!p4hir.struct<"empty">)>
+note: loc("test/Translate/Parser/subparser.p4":29:22): see current operation: %sp2 = p4hir.instantiate @subparser2(%false) as "sp2" : (!p4hir.bool) -> !p4hir.parser<"subparser2", (!p4hir.struct<"empty">)>
+  27 | // CHECK: %[[false:.*]] = p4hir.const #false
+  28 | // CHECK: %[[sp2:.*]] = p4hir.instantiate @subparser2(%[[false]]) as "sp2" : (!p4hir.bool) -> !subparser2
+  29 | // CHECK: %[[sp3:.*]] = p4hir.instantiate @subparser3() as "sp3" : () -> !subparser3
+     |                      ^
+  30 |     state start {
+  31 |         s = 1;
+warning: loc("test/Translate/Parser/subparser.p4":30:17):  Unhandled parser statement: %sp3 = p4hir.instantiate @subparser3() as "sp3" : () -> !p4hir.parser<"subparser3", (!p4hir.ref<!p4hir.int<10>>, !p4hir.ref<!p4hir.bool>)>
+note: loc("test/Translate/Parser/subparser.p4":30:17): see current operation: %sp3 = p4hir.instantiate @subparser3() as "sp3" : () -> !p4hir.parser<"subparser3", (!p4hir.ref<!p4hir.int<10>>, !p4hir.ref<!p4hir.bool>)>
+  28 | // CHECK: %[[sp2:.*]] = p4hir.instantiate @subparser2(%[[false]]) as "sp2" : (!p4hir.bool) -> !subparser2
+  29 | // CHECK: %[[sp3:.*]] = p4hir.instantiate @subparser3() as "sp3" : () -> !subparser3
+  30 |     state start {
+     |                 ^
+  31 |         s = 1;
+  32 |         sp.apply(e);
+warning: loc("test/Translate/Parser/subparser.p4":38:8):  Unhandled parser state statement: p4hir.apply %sp(%arg0) : !p4hir.parser<"subparser", (!p4hir.struct<"empty">)>
+note: loc("test/Translate/Parser/subparser.p4":38:8): see current operation: p4hir.apply %sp(%arg0) : !p4hir.parser<"subparser", (!p4hir.struct<"empty">)>
+  36 |     state next {
+  37 |         s = 2;
+  38 |         sp2.apply(e);
+     |        ^
+  39 | // CHECK: p4hir.apply %[[sp2]](%arg0) : !subparser2
+  40 | // CHECK: p4hir.scope
+warning: loc("test/Translate/Parser/subparser.p4":45:8):  Unhandled parser state statement: p4hir.apply %sp2(%arg0) : !p4hir.parser<"subparser2", (!p4hir.struct<"empty">)>
+note: loc("test/Translate/Parser/subparser.p4":45:8): see current operation: p4hir.apply %sp2(%arg0) : !p4hir.parser<"subparser2", (!p4hir.struct<"empty">)>
+  43 |         sp3.apply(s, matched);
+  44 |         transition accept;
+  45 |     }
+     |        ^
+  46 |     state drop {}
+  47 | }
+error: loc("test/Translate/Parser/subparser.p4":30:17): Unhandled operation in exportExpression: %4 = "p4hir.instantiate"() <{callee = @subparser3, name = "sp3"}> : () -> !p4hir.parser<"subparser3", (!p4hir.ref<!p4hir.int<10>>, !p4hir.ref<!p4hir.bool>)>
+note: loc("test/Translate/Parser/subparser.p4":30:17): see current operation: %4 = "p4hir.instantiate"() <{callee = @subparser3, name = "sp3"}> : () -> !p4hir.parser<"subparser3", (!p4hir.ref<!p4hir.int<10>>, !p4hir.ref<!p4hir.bool>)>
+  28 | // CHECK: %[[sp2:.*]] = p4hir.instantiate @subparser2(%[[false]]) as "sp2" : (!p4hir.bool) -> !subparser2
+  29 | // CHECK: %[[sp3:.*]] = p4hir.instantiate @subparser3() as "sp3" : () -> !subparser3
+  30 |     state start {
+     |                 ^
+  31 |         s = 1;
+  32 |         sp.apply(e);

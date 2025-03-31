@@ -1,0 +1,16 @@
+action foo() {
+    bool b0 = true;
+    b0 = true;
+    int<32> b2 = 32s255;
+    b2 = 32s255;
+    int<32> b3 = (-b2);
+    b3 = (-b2);
+    int<32> b4 = (~b2);
+    b4 = (~b2);
+    bool b5 = (!b0);
+    b5 = (!b0);
+    int<32> b6 = (+b2);
+    b6 = (+b2);
+    return;
+}
+

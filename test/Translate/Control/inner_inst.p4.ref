@@ -1,0 +1,48 @@
+warning: loc("test/Translate/Control/inner_inst.p4":10:72):  Unhandled control statement: %flag = p4hir.const ["flag"] #p4hir.ctor_param<@InnerPipe, "flag"> : !p4hir.bool
+note: loc("test/Translate/Control/inner_inst.p4":10:72): see current operation: %flag = p4hir.const ["flag"] #p4hir.ctor_param<@InnerPipe, "flag"> : !p4hir.bool
+   8 | control InnerPipe(bit<10> arg1, in int<16> arg2, out int<16> arg3)(bool flag) {
+   9 |     apply {}
+  10 | }
+     |                                                                        ^
+  11 | // CHECK-LABEL:   p4hir.control @Pipe
+  12 | control Pipe(bit<10> arg1, in int<16> arg2, out int<16> arg3, inout int<16> arg4)(int<16> ctr_arg1, MyHeader hdr_arg) {
+warning: loc("test/Translate/Control/inner_inst.p4":15:90):  Unhandled control statement: %ctr_arg1 = p4hir.const ["ctr_arg1"] #p4hir.ctor_param<@Pipe, "ctr_arg1"> : !p4hir.int<16>
+note: loc("test/Translate/Control/inner_inst.p4":15:90): see current operation: %ctr_arg1 = p4hir.const ["ctr_arg1"] #p4hir.ctor_param<@Pipe, "ctr_arg1"> : !p4hir.int<16>
+  13 |     InnerPipe(true) inner1;
+  14 |     InnerPipe(false) inner2;
+  15 |     // CHECK: %[[inner1:.*]] = p4hir.instantiate @InnerPipe(%true) as "inner1" : (!p4hir.bool) -> !InnerPipe
+     |                                                                                          ^
+  16 |     // CHECK: %[[inner2:.*]] = p4hir.instantiate @InnerPipe(%false) as "inner2" : (!p4hir.bool) -> !InnerPipe
+  17 |     
+warning: loc("test/Translate/Control/inner_inst.p4":15:109):  Unhandled control statement: %hdr_arg = p4hir.const ["hdr_arg"] #p4hir.ctor_param<@Pipe, "hdr_arg"> : !p4hir.header<"MyHeader", f1: !p4hir.int<16>, __valid: !p4hir.validity.bit>
+note: loc("test/Translate/Control/inner_inst.p4":15:109): see current operation: %hdr_arg = p4hir.const ["hdr_arg"] #p4hir.ctor_param<@Pipe, "hdr_arg"> : !p4hir.header<"MyHeader", f1: !p4hir.int<16>, __valid: !p4hir.validity.bit>
+  13 |     InnerPipe(true) inner1;
+  14 |     InnerPipe(false) inner2;
+  15 |     // CHECK: %[[inner1:.*]] = p4hir.instantiate @InnerPipe(%true) as "inner1" : (!p4hir.bool) -> !InnerPipe
+     |                                                                                                             ^
+  16 |     // CHECK: %[[inner2:.*]] = p4hir.instantiate @InnerPipe(%false) as "inner2" : (!p4hir.bool) -> !InnerPipe
+  17 |     
+warning: loc("test/Translate/Control/inner_inst.p4":16:14):  Unhandled control statement: %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+note: loc("test/Translate/Control/inner_inst.p4":16:14): see current operation: %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  14 |     InnerPipe(false) inner2;
+  15 |     // CHECK: %[[inner1:.*]] = p4hir.instantiate @InnerPipe(%true) as "inner1" : (!p4hir.bool) -> !InnerPipe
+  16 |     // CHECK: %[[inner2:.*]] = p4hir.instantiate @InnerPipe(%false) as "inner2" : (!p4hir.bool) -> !InnerPipe
+     |              ^
+  17 |     
+  18 |     action bar() {
+warning: loc("test/Translate/Control/inner_inst.p4":17:14):  Unhandled control statement: %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+note: loc("test/Translate/Control/inner_inst.p4":17:14): see current operation: %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  15 |     // CHECK: %[[inner1:.*]] = p4hir.instantiate @InnerPipe(%true) as "inner1" : (!p4hir.bool) -> !InnerPipe
+  16 |     // CHECK: %[[inner2:.*]] = p4hir.instantiate @InnerPipe(%false) as "inner2" : (!p4hir.bool) -> !InnerPipe
+  17 |     
+     |              ^
+  18 |     action bar() {
+  19 |         int<16> x1;
+error: loc("test/Translate/Control/inner_inst.p4":16:20): Unhandled operation in exportExpression: %3 = "p4hir.instantiate"(%2) <{callee = @InnerPipe, name = "inner1"}> : (!p4hir.bool) -> !p4hir.control<"InnerPipe", (!p4hir.bit<10>, !p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>)>
+note: loc("test/Translate/Control/inner_inst.p4":16:20): see current operation: %3 = "p4hir.instantiate"(%2) <{callee = @InnerPipe, name = "inner1"}> : (!p4hir.bool) -> !p4hir.control<"InnerPipe", (!p4hir.bit<10>, !p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>)>
+  14 |     InnerPipe(false) inner2;
+  15 |     // CHECK: %[[inner1:.*]] = p4hir.instantiate @InnerPipe(%true) as "inner1" : (!p4hir.bool) -> !InnerPipe
+  16 |     // CHECK: %[[inner2:.*]] = p4hir.instantiate @InnerPipe(%false) as "inner2" : (!p4hir.bool) -> !InnerPipe
+     |                    ^
+  17 |     
+  18 |     action bar() {
