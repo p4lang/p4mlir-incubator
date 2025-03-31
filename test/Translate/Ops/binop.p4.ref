@@ -1,0 +1,41 @@
+action bit_binops() {
+    bit<10> res;
+    bit<10> lhs = (bit<10>)(10w1);
+    bit<10> rhs = (bit<10>)(10w2);
+    bit<10> r1 = (lhs + rhs);
+    bit<10> r2 = (lhs - rhs);
+    bit<10> r3 = (lhs * rhs);
+    bit<10> r4 = (lhs * 10w3);
+    bit<10> r5 = (10w2 * rhs);
+    bit<10> r6 = (rhs * rhs);
+    bit<10> r7 = ((lhs + (rhs * 10w3)) + (10w2 - rhs));
+    bit<10> r8 = (lhs / rhs);
+    bit<10> r9 = (lhs % lhs);
+    bit<10> r10 = (lhs |+| rhs);
+    bit<10> r11 = (lhs |-| rhs);
+    bit<10> r12 = (lhs | rhs);
+    bit<10> r13 = (lhs & rhs);
+    bit<10> r14 = (lhs ^ rhs);
+
+    return;
+}
+
+action int_binops() {
+    int<10> res;
+    int<10> lhs = (int<10>)(10s1);
+    int<10> rhs = (int<10>)(10s2);
+    int<10> r1 = (lhs + rhs);
+    int<10> r2 = (lhs - rhs);
+    int<10> r3 = (lhs * rhs);
+    int<10> r4 = (lhs * 10s3);
+    int<10> r5 = (10s2 * rhs);
+    int<10> r6 = (rhs * rhs);
+    int<10> r7 = (lhs |+| rhs);
+    int<10> r8 = (lhs |-| rhs);
+    int<10> r11 = (lhs | rhs);
+    int<10> r12 = (lhs & rhs);
+    int<10> r13 = (lhs ^ rhs);
+
+    return;
+}
+
