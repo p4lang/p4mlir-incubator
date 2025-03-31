@@ -1,0 +1,10 @@
+extern foo(in bits<16> arg2, bits<10> arg1);
+
+extern bar();
+
+extern baz(inout bits<16> x);
+
+extern quuz(out bits<16> a);
+
+extern bazz(in bits<16> arg1);
+

@@ -1,0 +1,4 @@
+extern foo(in bits<16> arg1, inout bits<10> arg2, out bits<16> arg3, bits<16> arg4);
+
+extern bar(bits<16> arg1);
+

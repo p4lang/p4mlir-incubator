@@ -1,0 +1,4 @@
+extern bit_binops();
+
+extern int_binops();
+

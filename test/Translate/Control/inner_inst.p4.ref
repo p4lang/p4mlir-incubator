@@ -1,0 +1,40 @@
+ Control statement not implemented: %flag = p4hir.const ["flag"] #p4hir.ctor_param<@InnerPipe, "flag"> : !p4hir.bool
+ Control statement not implemented: %ctr_arg1 = p4hir.const ["ctr_arg1"] #p4hir.ctor_param<@Pipe, "ctr_arg1"> : !p4hir.int<16>
+ Control statement not implemented: %hdr_arg = p4hir.const ["hdr_arg"] #p4hir.ctor_param<@Pipe, "hdr_arg"> : !p4hir.header<"MyHeader", f1: !p4hir.int<16>, __valid: !p4hir.validity.bit>
+ Control statement not implemented: %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+ Control statement not implemented: %inner1 = p4hir.instantiate @InnerPipe(%true) as "inner1" : (!p4hir.bool) -> !p4hir.control<"InnerPipe", (!p4hir.bit<10>, !p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>)>
+ Control statement not implemented: %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+ Control statement not implemented: %inner2 = p4hir.instantiate @InnerPipe(%false) as "inner2" : (!p4hir.bool) -> !p4hir.control<"InnerPipe", (!p4hir.bit<10>, !p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>)>
+ Control statement not implemented: 
+p4hir.func action @bar() {
+  %false_0 = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  %hasReturned = p4hir.variable ["hasReturned", init] : <!p4hir.bool>
+  p4hir.assign %false_0, %hasReturned : <!p4hir.bool>
+  %x1 = p4hir.variable ["x1"] : <!p4hir.int<16>>
+  p4hir.scope {
+    %true_1 = p4hir.const #p4hir.bool<true> : !p4hir.bool
+    p4hir.assign %true_1, %hasReturned : <!p4hir.bool>
+  }
+  p4hir.return
+}
+ Control apply statement not implemented: p4hir.call @bar () : () -> ()
+ Control apply statement not implemented: 
+p4hir.scope {
+  %c1_b10i = p4hir.const #p4hir.int<1> : !p4hir.bit<10>
+  %arg3_out_arg = p4hir.variable ["arg3_out_arg"] : <!p4hir.int<16>>
+  p4hir.apply %inner1(%c1_b10i, %ctr_arg1, %arg3_out_arg) : !p4hir.control<"InnerPipe", (!p4hir.bit<10>, !p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>)>
+  %val = p4hir.read %arg3_out_arg : <!p4hir.int<16>>
+  p4hir.assign %val, %x1 : <!p4hir.int<16>>
+}
+header MyHeader {
+    bits<16> f1;
+}
+control InnerPipe(bits<10> arg1, in bits<16> arg2, out bits<16> arg3) {
+    apply {
+    }
+}
+control Pipe(bits<10> arg1, in bits<16> arg2, out bits<16> arg3, inout bits<16> arg4) {
+    apply {
+        bits<16>x1;
+    }
+}

@@ -1,0 +1,10 @@
+extern max(in bits<16> left, in bits<16> right);
+
+extern bar(in bits<16> arg1, in bits<16> arg2, out bits<16> res);
+
+extern f(inout bits<1> x, in bits<1> y);
+
+extern g(inout bits<1> z);
+
+extern test_param();
+

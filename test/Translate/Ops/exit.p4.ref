@@ -1,0 +1,65 @@
+ Control statement not implemented: 
+p4hir.func action @e() {
+  p4hir.exit
+  p4hir.return
+}
+ Control statement not implemented: 
+p4hir.table @t {
+  p4hir.table_actions {
+    p4hir.table_action @e() {
+      p4hir.call @e () : () -> ()
+    }
+  }
+  p4hir.table_default_action {
+    p4hir.call @e () : () -> ()
+  }
+}
+ Control apply statement not implemented: %c0_b32i = p4hir.const #p4hir.int<0> : !p4hir.bit<32>
+ Control apply statement not implemented: %cast = p4hir.cast(%c0_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+ Control apply statement not implemented: %c1_b32i = p4hir.const #p4hir.int<1> : !p4hir.bit<32>
+ Control apply statement not implemented: %cast_0 = p4hir.cast(%c1_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+ Control apply statement not implemented: %c2_b32i = p4hir.const #p4hir.int<2> : !p4hir.bit<32>
+ Control apply statement not implemented: %cast_1 = p4hir.cast(%c2_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+ Control apply statement not implemented: %t_apply_result = p4hir.table_apply @t : <"t", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", e>>
+ Control apply statement not implemented: %hit = p4hir.struct_extract %t_apply_result["hit"] : !p4hir.struct<"t", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", e>>
+ Control apply statement not implemented: 
+p4hir.if %hit {
+  %c2_b32i_2 = p4hir.const #p4hir.int<2> : !p4hir.bit<32>
+  %cast_3 = p4hir.cast(%c2_b32i_2 : !p4hir.bit<32>) : !p4hir.bit<32>
+  p4hir.assign %cast_3, %b : <!p4hir.bit<32>>
+  %t_apply_result_4 = p4hir.table_apply @t : <"t", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", e>>
+  %c3_b32i = p4hir.const #p4hir.int<3> : !p4hir.bit<32>
+  %cast_5 = p4hir.cast(%c3_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+  p4hir.assign %cast_5, %c : <!p4hir.bit<32>>
+  %c5_b32i = p4hir.const #p4hir.int<5> : !p4hir.bit<32>
+  %cast_6 = p4hir.cast(%c5_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+  p4hir.assign %cast_6, %c : <!p4hir.bit<32>>
+} else {
+  %c3_b32i = p4hir.const #p4hir.int<3> : !p4hir.bit<32>
+  %cast_2 = p4hir.cast(%c3_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+  p4hir.assign %cast_2, %b : <!p4hir.bit<32>>
+  %t_apply_result_3 = p4hir.table_apply @t : <"t", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !p4hir.enum<"action_enum", e>>
+  %c4_b32i = p4hir.const #p4hir.int<4> : !p4hir.bit<32>
+  %cast_4 = p4hir.cast(%c4_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+  p4hir.assign %cast_4, %c : <!p4hir.bit<32>>
+  p4hir.exit
+}
+struct t {
+    bool hit;
+    bool miss;
+    p4hir.enum action_run;
+}
+control ctrl() {
+    apply {
+        bits<32>a;
+        bits<32>b;
+        bits<32>c;
+        a = (bits<32>) 32w0;
+        b = (bits<32>) 32w1;
+        c = (bits<32>) 32w2;
+    }
+}
+
+noop _npackage p(noop _n);
+p(ctrl()) main;
+

@@ -1,0 +1,31 @@
+ Control apply statement not implemented: %val = p4hir.read %arg0 : <!p4hir.bit<32>>
+ Control apply statement not implemented: 
+p4hir.switch (%val : !p4hir.bit<32>) {
+  p4hir.case(anyof, [#p4hir.int<16> : !p4hir.bit<32>, #p4hir.int<32> : !p4hir.bit<32>]) {
+    %c1_b32i = p4hir.const #p4hir.int<1> : !p4hir.bit<32>
+    %cast = p4hir.cast(%c1_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+    p4hir.assign %cast, %arg0 : <!p4hir.bit<32>>
+    p4hir.yield
+  }
+  p4hir.case(equal, [#p4hir.int<64> : !p4hir.bit<32>]) {
+    %c2_b32i = p4hir.const #p4hir.int<2> : !p4hir.bit<32>
+    %cast = p4hir.cast(%c2_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+    p4hir.assign %cast, %arg0 : <!p4hir.bit<32>>
+    p4hir.yield
+  }
+  p4hir.case(default, [#p4hir.int<92> : !p4hir.bit<32>]) {
+    %c3_b32i = p4hir.const #p4hir.int<3> : !p4hir.bit<32>
+    %cast = p4hir.cast(%c3_b32i : !p4hir.bit<32>) : !p4hir.bit<32>
+    p4hir.assign %cast, %arg0 : <!p4hir.bit<32>>
+    p4hir.yield
+  }
+  p4hir.yield
+}
+control c(inout bits<32> b) {
+    apply {
+    }
+}
+
+ct _cpackage top(ct _c);
+top(c()) main;
+

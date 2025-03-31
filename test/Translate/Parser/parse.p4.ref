@@ -1,0 +1,16 @@
+struct empty {
+}
+parser p(in empty e, in bits<10> sinit) {
+    bits<10>s = sinit;
+    state start {
+        s = (bits<10>) 10s1;
+        transition next;
+    }
+    state next {
+        s = (bits<10>) 10s2;
+        transition accept;
+    }
+    state drop {
+        transition reject;
+    }
+}

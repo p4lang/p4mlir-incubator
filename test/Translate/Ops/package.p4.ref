@@ -1,0 +1,20 @@
+extern packet_in {
+    extern extract(out T hdr);
+    extern extract(out T variableSizeHeader, in bits<32> variableFieldSizeInBits);
+    extern lookahead();
+    extern advance(in bits<32> sizeInBits);
+    extern length();
+}
+
+extern packet_out {
+    extern emit(in T hdr);
+}
+
+control c() {
+    apply {
+    }
+}
+
+e _epackage top(e _e);
+top(c()) main;
+

@@ -1,0 +1,16 @@
+extern concat_bit5_and_bit5();
+
+extern concat_bit5_and_bit10();
+
+extern concat_int5_and_int5();
+
+extern concat_int5_and_int10();
+
+extern concat_bit5_and_int5();
+
+extern concat_bit5_and_int10();
+
+extern concat_int5_and_bit5();
+
+extern concat_int5_and_bit10();
+

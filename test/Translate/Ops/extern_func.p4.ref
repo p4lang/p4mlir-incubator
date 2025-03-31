@@ -1,0 +1,1 @@
+Unhandled parser state statement: %4 = "p4hir.call"(%2, %3) <{callee = @externFunc, type_operands = [!p4hir.bit<8>, !p4hir.bit<16>]}> : (!p4hir.bit<16>, !p4hir.bit<8>) -> !p4hir.bit<8>

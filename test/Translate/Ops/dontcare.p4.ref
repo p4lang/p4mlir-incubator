@@ -1,0 +1,38 @@
+header Header {
+    bits<32> data;
+}
+header Header {
+    bits<32> data;
+}
+struct empty_t {
+}
+struct intrinsic_metadata_t {
+    bits<8> f0;
+    bits<8> f1;
+}
+extern packet_in {
+    extern extract(out T hdr);
+    extern extract(out T variableSizeHeader, in bits<32> variableFieldSizeInBits);
+    extern lookahead();
+    extern advance(in bits<32> sizeInBits);
+    extern length();
+}
+
+parser p0(packet_in p, out Header h) {
+    state start {
+        packet_in.extract(hdr_out_arg);
+        transition next;
+    }
+    state next {
+        packet_in.extract(hdr_out_arg);
+        transition accept;
+    }
+}
+control nothing(inout empty_t hdr, inout empty_t meta, in intrinsic_metadata_t imeta) {
+    apply {
+    }
+}
+
+C<H, M> cpackage P<H, M>(C<H, M> c);
+P(nothing()) main;
+
