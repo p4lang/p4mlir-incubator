@@ -42,6 +42,7 @@ limitations under the License.
 #include "lib/crash.h"
 #include "lib/error.h"
 #include "lib/gc.h"
+#include "mlir_to_p4.h"
 #include "options.h"
 
 #pragma GCC diagnostic push
@@ -180,6 +181,8 @@ int main(int argc, char *const argv[]) {
 
     mlir::MLIRContext context;
     context.getOrLoadDialect<P4::P4MLIR::P4HIR::P4HIRDialect>();
+    auto toP4 = P4::ToP4(&std::cout, false);
+    program->apply(toP4);
 
     auto mod = P4::P4MLIR::toMLIR(context, program, &typeMap);
     if (!mod) return EXIT_FAILURE;
@@ -188,5 +191,10 @@ int main(int argc, char *const argv[]) {
     if (!options.noDump) mod->print(llvm::outs(), flags.enableDebugInfo(options.printLoc));
 
     if (P4::Log::verbose()) std::cerr << "Done." << std::endl;
+
+    P4::P4MLIR::MlirToP4 converter(*mod);
+    std::string p4Code = converter.convert();
+    std::cout << "Generated P4:\n" << p4Code << std::endl;
+
     return P4::errorCount() > 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }
