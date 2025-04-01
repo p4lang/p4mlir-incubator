@@ -2374,7 +2374,7 @@ llvm::SmallVector<Region *> P4HIR::ForOp::getLoopRegions() {
 //===----------------------------------------------------------------------===//
 
 MutableOperandRange P4HIR::ConditionOp::getMutableSuccessorOperands(RegionBranchPoint point) {
-    auto parent = cast<P4HIR::ForOp>(getOperation()->getParentOp());
+    auto parent = mlir::cast<P4HIR::ForOp>(getOperation()->getParentOp());
     assert((point.isParent() || point.getRegionOrNull() == &parent.getBodyRegion()) &&
            "condition op can only exit the loop or branch to the body region");
 
