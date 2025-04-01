@@ -31,11 +31,11 @@ control Pipe(in MyHeader arg1, in int<16> arg2, inout int<16> arg3)(int<16> ctr_
 
     table myTable {
         key = {
-            arg1.f1 - 1 : exact;
-            arg3 & 0xAABB : lpm;
-            cst : lpm;
-            baz(test) : exact;
-            local_hdr.f1 : lpm;
+            arg1.f1 - 1 : exact @name("arg1.key");
+            arg3 & 0xAABB : lpm @name("arg3.key");
+            cst : lpm @name("cst.key");
+            baz(test) : exact @name("baz.key");
+            local_hdr.f1 : lpm @name("local_hdr.key");
         }
         // CHECK: p4hir.table_action @bar(%[[arg3:.*]]: !i16i {p4hir.param_name = "x1"}, %[[arg4:.*]]: !i16i {p4hir.param_name = "x2"}, %[[arg5:.*]]: !i16i {p4hir.param_name = "x3"}) {
         // CHECK:   p4hir.call @bar (%[[arg3]], %[[arg4]], %[[arg5]]) : (!i16i, !i16i, !i16i) -> ()

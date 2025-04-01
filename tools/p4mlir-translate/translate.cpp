@@ -2624,9 +2624,11 @@ bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
     // accept / reject states are special, their bodies contain only accept / reject ops
     if (state->name == P4::IR::ParserState::accept) {
         builder.create<P4HIR::ParserAcceptOp>(getLoc(builder, state));
+        visitAgain();
         return false;
     } else if (state->name == P4::IR::ParserState::reject) {
         builder.create<P4HIR::ParserRejectOp>(getLoc(builder, state));
+        visitAgain();
         return false;
     }
 

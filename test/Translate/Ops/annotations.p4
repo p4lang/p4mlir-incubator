@@ -72,7 +72,7 @@ control c(in Foo ff, bool bb) {
 // CHECK:     p4hir.table @t annotations {name = "table.t"}
     @name("table.t") table t {
 // CHECK:         p4hir.match_key #exact %c42_b10i : !b10i annotations {name = "exact.key"}    
-        key = { 10w42 : exact @name("exact.key"); false : lpm; }
+        key = { 10w42 : exact @name("exact.key"); false : lpm @name("false.key"); }
         actions = {
 // CHECK: p4hir.table_action @a() {        
            a;
