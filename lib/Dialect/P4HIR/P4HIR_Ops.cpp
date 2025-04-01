@@ -2314,6 +2314,14 @@ void P4HIR::ForOp::build(
     updateBuilder(builder, result.location);
 }
 
+void P4HIR::ForOp::build(
+    OpBuilder &builder, OperationState &result,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> condBuilder,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> bodyBuilder,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> updateBuilder) {
+    build(builder, result, mlir::DictionaryAttr() , condBuilder, bodyBuilder, updateBuilder);
+}
+
 void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
                                        SmallVectorImpl<mlir::RegionSuccessor> &regions) {
     // The entry into the operation is always the condition region
