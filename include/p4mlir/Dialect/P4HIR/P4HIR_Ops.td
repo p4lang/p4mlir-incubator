@@ -1578,10 +1578,15 @@ def ForOp : P4HIR_Op<"for",
     OpBuilder<(ins "mlir::DictionaryAttr":$annotations,
                    "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$condBuilder,
                    "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$bodyBuilder,
-                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$updatesBuilder)>
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$updatesBuilder)>,
+    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$condBuilder,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$bodyBuilder,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$updatesBuilder)>,
   ];
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = [{
+    `:` `cond` $condRegion `body` (`annotations` $annotations^)? $bodyRegion `updates` $updatesRegion attr-dict
+  }];
 }
 
 

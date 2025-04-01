@@ -2314,63 +2314,6 @@ void P4HIR::ForOp::build(
     updateBuilder(builder, result.location);
 }
 
-void P4HIR::ForOp::print(mlir::OpAsmPrinter &p) {
-    auto &condRegion = getCondRegion();
-    p << " : cond ";
-    p.printRegion(condRegion, /*printEntryBlockArgs=*/false,
-                  /*printBlockTerminators=*/false);
-    p << " body";
-    if (auto ann = getAnnotations(); ann && !ann->empty()) {
-        p << " annotations ";
-        p.printAttributeWithoutType(*ann);
-    }
-    auto &bodyRegion = getBodyRegion();
-    p << " ";
-    p.printRegion(bodyRegion, /*printEntryBlockArgs=*/false,
-                  /*printBlockTerminators=*/false);
-    auto &updatesRegion = getUpdatesRegion();
-    p << " updates ";
-    p.printRegion(updatesRegion, /*printEntryBlockArgs=*/false,
-                  /*printBlockTerminators=*/false);
-}
-
-mlir::ParseResult P4HIR::ForOp::parse(mlir::OpAsmParser &parser,
-                                      mlir::OperationState &result) {
-    result.regions.reserve(3);
-    Region *condRegion = result.addRegion();
-    Region *bodyRegion = result.addRegion();
-    Region *updatesRegion = result.addRegion();
-
-    // Parse condition region
-    if (parser.parseColon() || parser.parseKeyword("cond"))
-        return mlir::failure();
-    if (parser.parseRegion(*condRegion, /*arguments=*/{}, /*argTypes=*/{}))
-        return mlir::failure();
-
-    // Parse the body, which can contain annotations
-    if (parser.parseKeyword("body"))
-        return mlir::failure();
-    mlir::DictionaryAttr annotations;
-    if (mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
-        if (parser.parseAttribute<mlir::DictionaryAttr>(annotations)) {
-            return mlir::failure();
-        }
-        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
-    }
-    if (parser.parseRegion(*bodyRegion, /*arguments=*/{}, /*argTypes=*/{})) {
-        return mlir::failure();
-    }
-
-    // Parse the update region
-    if (parser.parseKeyword("updates") || parser.parseRegion(*updatesRegion,
-                                          /*arguments=*/{}, /*argTypes=*/{})) {
-        return mlir::failure();
-    }
-
-    return mlir::success();
-}
-
-
 void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
                                        SmallVectorImpl<mlir::RegionSuccessor> &regions) {
     // The entry into the operation is always the condition region
@@ -2422,8 +2365,6 @@ LogicalResult P4HIR::ForOp::verify() {
     return success();
 }
 
-
-
 llvm::SmallVector<Region *> P4HIR::ForOp::getLoopRegions() {
     return {&getBodyRegion()};
 }
@@ -2433,9 +2374,7 @@ llvm::SmallVector<Region *> P4HIR::ForOp::getLoopRegions() {
 //===----------------------------------------------------------------------===//
 
 MutableOperandRange P4HIR::ConditionOp::getMutableSuccessorOperands(RegionBranchPoint point) {
-    auto parent = dyn_cast<P4HIR::ForOp>(getOperation()->getParentOp());
-    assert(parent && "p4hir.condition must be inside a p4hir.for");
-
+    auto parent = cast<P4HIR::ForOp>(getOperation()->getParentOp());
     assert((point.isParent() || point.getRegionOrNull() == &parent.getBodyRegion()) &&
            "condition op can only exit the loop or branch to the body region");
 
