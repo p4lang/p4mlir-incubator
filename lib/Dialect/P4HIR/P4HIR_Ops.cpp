@@ -1729,6 +1729,30 @@ void P4HIR::RangeOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "range");
 }
 
+LogicalResult P4HIR::RangeOp::verify() {
+    // Ranges are allowed if their direct parent is a ParserSelectCaseOp.
+    // This covers the common use case in P4 select expressions.
+    if (mlir::isa<P4HIR::ParserSelectCaseOp>(getOperation()->getParentOp())) {
+        return mlir::success();
+    }
+
+    // However, ranges can also be used as collections in ForInOp, which means
+    // their results can only be used once and their user must be a ForInOp.
+    mlir::Value result = getOperation()->getResult(0);
+    if (!result.hasOneUse()) {
+        return emitOpError("when not nested in p4hir.select_case, ")
+               << "expected single use by p4hir.foreach but found "
+               << std::distance(result.user_begin(), result.user_end()) << " uses";
+    }
+    mlir::Operation *user = *result.user_begin();
+    if (!mlir::isa<P4HIR::ForInOp>(user)) {
+         return emitOpError("when not nested in p4hir.select_case, ")
+                << "the user must be p4hir.foreach, but found " << user->getName();
+    }
+
+    return mlir::success();
+}
+
 //===----------------------------------------------------------------------===//
 // MaskOp
 //===----------------------------------------------------------------------===//
@@ -2456,7 +2480,7 @@ void P4HIR::ForOp::build(
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> condBuilder,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> bodyBuilder,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> updateBuilder) {
-    build(builder, result, mlir::DictionaryAttr() , condBuilder, bodyBuilder, updateBuilder);
+    build(builder, result, mlir::DictionaryAttr(), condBuilder, bodyBuilder, updateBuilder);
 }
 
 void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
@@ -2496,14 +2520,14 @@ void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
 
 LogicalResult P4HIR::ForOp::verify() {
     Block &condBlock = getCondRegion().back();
-    if (!isa<P4HIR::ConditionOp>(condBlock.back())) {
+    if (!mlir::isa<P4HIR::ConditionOp>(condBlock.back())) {
         return emitOpError("expected condition region to terminate with 'p4hir.condition'");
     }
 
     // TODO: What would we verify here? Simply that 'body' region has a terminator?
 
     Block &updatesBlock = getUpdatesRegion().back();
-    if (!isa<P4HIR::YieldOp>(updatesBlock.back())) {
+    if (!mlir::isa<P4HIR::YieldOp>(updatesBlock.back())) {
         return emitOpError("expected updates region to terminate with 'p4hir.yield'");
     }
 
@@ -2512,6 +2536,27 @@ LogicalResult P4HIR::ForOp::verify() {
 
 llvm::SmallVector<Region *> P4HIR::ForOp::getLoopRegions() {
     return {&getBodyRegion()};
+}
+
+//===----------------------------------------------------------------------===//
+// ForInOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::ForInOp::build(
+    OpBuilder &builder, OperationState &result, mlir::Value collection,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Value, mlir::Location)> bodyBuilder) {
+    result.addOperands(collection);
+    OpBuilder::InsertionGuard guard(builder);
+
+    // TODO: Support different collection types
+    auto collectionType = mlir::cast<P4HIR::SetType>(collection.getType());
+    mlir::Type elementType = collectionType.getElementType();
+
+    Region *region = result.addRegion();
+    Block *block = builder.createBlock(region);
+
+    mlir::BlockArgument loopVar = block->addArgument(elementType, result.location);
+    bodyBuilder(builder, loopVar, result.location);
 }
 
 //===----------------------------------------------------------------------===//

@@ -596,7 +596,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::LOr *lor) override;
     bool preorder(const P4::IR::LAnd *land) override;
     bool preorder(const P4::IR::IfStatement *ifs) override;
-    bool preorder(const P4::IR::ForStatement *f) override;
+    bool preorder(const P4::IR::ForStatement *fstmt) override;
+    bool preorder(const P4::IR::ForInStatement *forin) override;
     bool preorder(const P4::IR::MethodCallStatement *) override {
         // We handle MethodCallExpression instead
         return true;
@@ -3212,6 +3213,26 @@ bool P4HIRConverter::preorder(const P4::IR::ForStatement *fstmt) {
     // Terminate the scope region with a yield if needed
     builder.setInsertionPointToEnd(&scope.getScopeRegion().back());
     P4HIR::buildTerminatedBody(builder, getEndLoc(builder, fstmt));
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::ForInStatement *forin) {
+    ConversionTracer trace("Converting ", forin);
+
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    auto collection = convert(forin->collection);
+    builder.create<P4HIR::ForInOp>(
+        getLoc(builder, forin), collection,
+        /*bodyBuilder=*/
+        [&](mlir::OpBuilder &b, mlir::Value iterativeVal, mlir::Location) {
+            ValueScope scope (p4Values);
+
+            setValue(forin->decl, iterativeVal);
+
+            visit(forin->body);
+            P4HIR::buildTerminatedBody(b, getEndLoc(builder, forin->body));
+    });
 
     return false;
 }

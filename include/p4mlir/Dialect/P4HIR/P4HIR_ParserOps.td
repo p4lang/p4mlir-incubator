@@ -181,7 +181,6 @@ def RangeOp : P4HIR_Op<"range", [Pure,
   TypesMatchWith<
        "the resulting type of a range operation must be the set of right-hand side operand types",
        "result", "rhs", "cast<P4HIR::SetType>($_self).getElementType()">,
-  ParentOneOf<["ParserSelectCaseOp"]>, // TBD: ForInOp
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
 
   let summary = "Range operation";
@@ -202,6 +201,8 @@ def RangeOp : P4HIR_Op<"range", [Pure,
   let assemblyFormat = [{
     `(` $lhs `,` $rhs `)` `:` qualified(type($result)) attr-dict
   }];
+
+  let hasVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{

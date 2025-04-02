@@ -80,3 +80,11 @@ bit<32> loop() {
 action multiple_statements() {
     for (bit<8> i = 0, bit<8> j = 0; i <= 10 || j <= 5; i = i + j, j = j + 1) {}
 }
+
+bit<32> for_in() {
+    bit<32> sum = 0;
+    for (bit<32> x in 0..9) {
+        sum += x;
+    }
+    return sum;
+}
