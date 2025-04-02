@@ -33,8 +33,11 @@ std::string complexTypeToP4String(const mlir::Type &type) {
         ss << structType.getName().str();
     } else if (auto headerUnion = llvm::dyn_cast<P4HIR::HeaderUnionType>(type)) {
         ss << headerUnion.getName().str();
+    } else if (auto externType = llvm::dyn_cast<P4HIR::ExternType>(type)) {
+        ss << externType.getName().str();
     } else {
         llvm::errs() << "Unsupported " << type << "\n";
+        llvm::report_fatal_error("Encountered unhandled type.");
     }
     return ss.str();
 }
@@ -78,96 +81,123 @@ std::string constantToP4String(const P4HIR::ConstOp &constant) {
 }
 
 std::string convertExpression(mlir::Operation *op) {
-    llvm::outs() << "#### " << op->getName() << " ####\n";
-    // llvm::outs() << op->getLoc() << "\n";
     std::stringstream ss;
-
-    if (auto funcOp = llvm::dyn_cast<P4HIR::FuncOp>(op)) {
-    } else if (auto overloadSetOp = llvm::dyn_cast<P4HIR::OverloadSetOp>(op)) {
-    } else if (auto externOp = llvm::dyn_cast<P4HIR::ExternOp>(op)) {
-    } else if (auto constOp = llvm::dyn_cast<P4HIR::ConstOp>(op)) {
+    if (auto constOp = llvm::dyn_cast<P4HIR::ConstOp>(op)) {
         ss << constantToP4String(constOp);
-    } else if (auto packageOp = llvm::dyn_cast<P4HIR::PackageOp>(op)) {
-    } else if (auto structExtractRefOp = llvm::dyn_cast<P4HIR::StructExtractRefOp>(op)) {
-    } else if (auto variableOp = llvm::dyn_cast<P4HIR::VariableOp>(op)) {
-    } else if (auto callMethodOp = llvm::dyn_cast<P4HIR::CallMethodOp>(op)) {
-    } else if (auto readOp = llvm::dyn_cast<P4HIR::ReadOp>(op)) {
-    } else if (auto yieldOp = llvm::dyn_cast<P4HIR::YieldOp>(op)) {
-    } else if (auto scopeOp = llvm::dyn_cast<P4HIR::ScopeOp>(op)) {
-    } else if (auto stateOp = llvm::dyn_cast<P4HIR::ParserStateOp>(op)) {
-    } else if (auto transitionOp = llvm::dyn_cast<P4HIR::ParserTransitionOp>(op)) {
-    } else if (auto parserAcceptOp = llvm::dyn_cast<P4HIR::ParserAcceptOp>(op)) {
-    } else if (auto parserRejectOp = llvm::dyn_cast<P4HIR::ParserRejectOp>(op)) {
-    } else if (auto parserOp = llvm::dyn_cast<P4HIR::ParserOp>(op)) {
-    } else if (auto controlApplyOp = llvm::dyn_cast<P4HIR::ControlApplyOp>(op)) {
-    } else if (auto controlOp = llvm::dyn_cast<P4HIR::ControlOp>(op)) {
-    } else if (auto structExtractOp = llvm::dyn_cast<P4HIR::StructExtractOp>(op)) {
-    } else if (auto cmpOp = llvm::dyn_cast<P4HIR::CmpOp>(op)) {
-    } else if (auto castOp = llvm::dyn_cast<P4HIR::CastOp>(op)) {
-    } else if (auto implicitReturnOp = llvm::dyn_cast<P4HIR::ImplicitReturnOp>(op)) {
-    } else if (auto callOp = llvm::dyn_cast<P4HIR::CallOp>(op)) {
-    } else if (auto tableActionOp = llvm::dyn_cast<P4HIR::TableActionOp>(op)) {
-    } else if (auto tableActionsOp = llvm::dyn_cast<P4HIR::TableActionsOp>(op)) {
-    } else if (auto tableApplyOp = llvm::dyn_cast<P4HIR::TableApplyOp>(op)) {
-    } else if (auto tableDefaultActionOp = llvm::dyn_cast<P4HIR::TableDefaultActionOp>(op)) {
-    } else if (auto tableOp = llvm::dyn_cast<P4HIR::TableOp>(op)) {
-    } else if (auto instantiateOp = llvm::dyn_cast<P4HIR::InstantiateOp>(op)) {
-    } else if (auto subModule = llvm::dyn_cast<mlir::ModuleOp>(op)) {
-        llvm::errs() << "Not sure what to do with module yet" << "\n";
     } else {
         llvm::errs() << "Unhandled operation: " << op->getName() << "\n";
         llvm::report_fatal_error("Encountered unhandled operation.");
     }
-    // llvm::outs() << ss.str();
+    return ss.str();
+}
+
+std::string convertParameter(mlir::BlockArgument &param) {
+    std::stringstream ss;
+    auto paramType = param.getType();
+    if (auto ref = llvm::dyn_cast<P4HIR::ReferenceType>(paramType)) {
+        ss << complexTypeToP4String(ref.getObjectType());
+    } else if (auto headerType = llvm::dyn_cast<P4HIR::HeaderType>(paramType)) {
+        ss << headerType.getName().str();
+    } else if (auto structType = llvm::dyn_cast<P4HIR::StructType>(paramType)) {
+        ss << structType.getName().str();
+    } else if (auto headerUnionType = llvm::dyn_cast<P4HIR::HeaderUnionType>(paramType)) {
+        ss << headerUnionType.getName().str();
+    } else if (auto externType = llvm::dyn_cast<P4HIR::ExternType>(paramType)) {
+    } else {
+        llvm::errs() << "Unhandled parameter type: " << paramType << "\n";
+        llvm::report_fatal_error("Encountered unhandled parameter.");
+    }
+
     return ss.str();
 }
 
 std::string convertOperation(mlir::Operation *op) {
-    llvm::outs() << "#### " << op->getName() << " ####\n";
+    // llvm::outs() << "#### " << op->getName() << " ####\n";
     // llvm::outs() << op->getLoc() << "\n";
     std::stringstream ss;
-
     if (auto funcOp = llvm::dyn_cast<P4HIR::FuncOp>(op)) {
-    } else if (auto overloadSetOp = llvm::dyn_cast<P4HIR::OverloadSetOp>(op)) {
-    } else if (auto externOp = llvm::dyn_cast<P4HIR::ExternOp>(op)) {
-    } else if (auto constOp = llvm::dyn_cast<P4HIR::ConstOp>(op)) {
     } else if (auto packageOp = llvm::dyn_cast<P4HIR::PackageOp>(op)) {
-    } else if (auto structExtractRefOp = llvm::dyn_cast<P4HIR::StructExtractRefOp>(op)) {
-    } else if (auto variableOp = llvm::dyn_cast<P4HIR::VariableOp>(op)) {
-    } else if (auto callMethodOp = llvm::dyn_cast<P4HIR::CallMethodOp>(op)) {
-    } else if (auto readOp = llvm::dyn_cast<P4HIR::ReadOp>(op)) {
+        // } else if (auto callMethodOp = llvm::dyn_cast<P4HIR::CallMethodOp>(op)) {
     } else if (auto assignOp = llvm::dyn_cast<P4HIR::AssignOp>(op)) {
         auto result = referenceToP4String(*assignOp.getRef().getDefiningOp());
         ss << referenceToP4String(*assignOp.getRef().getDefiningOp());
         ss << " = ";
         ss << convertExpression(assignOp.getValue().getDefiningOp());
-        llvm::outs() << "RESUILT:222 " << ss.str() << "\n";
         ss << "\n";
-    } else if (auto yieldOp = llvm::dyn_cast<P4HIR::YieldOp>(op)) {
-    } else if (auto scopeOp = llvm::dyn_cast<P4HIR::ScopeOp>(op)) {
-    } else if (auto stateOp = llvm::dyn_cast<P4HIR::ParserStateOp>(op)) {
-    } else if (auto transitionOp = llvm::dyn_cast<P4HIR::ParserTransitionOp>(op)) {
-    } else if (auto parserAcceptOp = llvm::dyn_cast<P4HIR::ParserAcceptOp>(op)) {
-    } else if (auto parserRejectOp = llvm::dyn_cast<P4HIR::ParserRejectOp>(op)) {
-    } else if (auto parserOp = llvm::dyn_cast<P4HIR::ParserOp>(op)) {
     } else if (auto controlApplyOp = llvm::dyn_cast<P4HIR::ControlApplyOp>(op)) {
+        ss << "apply {\n";
+        for (auto &op : controlApplyOp.getOps()) {
+            ss << convertOperation(&op);
+        }
+        ss << "}\n";
+    } else if (auto parserOp = llvm::dyn_cast<P4HIR::ParserOp>(op)) {
+        ss << "parser " << parserOp.getName().str() << "(";
+        bool needsComma = false;
+        for (auto arg : parserOp.getArguments()) {
+            if (needsComma) {
+                ss << ", ";
+            }
+            auto direction =
+                parserOp.getArgAttr(arg.getArgNumber(), P4HIR::FuncOp::getDirectionAttrName());
+            auto castDirection = llvm::dyn_cast<P4HIR::ParamDirectionAttr>(direction);
+            if (castDirection.getValue() == P4HIR::ParamDirection::In) {
+                ss << "in ";
+            } else if (castDirection.getValue() == P4HIR::ParamDirection::Out) {
+                ss << "out ";
+            } else if (castDirection.getValue() == P4HIR::ParamDirection::InOut) {
+                ss << "inout ";
+            } else if (castDirection.getValue() == P4HIR::ParamDirection::None) {
+            } else {
+                llvm::errs() << "Unhandled direction: " << castDirection << "\n";
+            }
+            ss << complexTypeToP4String(arg.getType()) << " ";
+            auto name =
+                parserOp.getArgAttr(arg.getArgNumber(), P4HIR::FuncOp::getParamNameAttrName());
+            ss << name.cast<mlir::StringAttr>().getValue().str();
+            needsComma = true;
+        }
+        ss << ") {\n";
+        for (auto &op : parserOp.getOps()) {
+            ss << convertOperation(&op);
+        }
+        ss << "}\n";
     } else if (auto controlOp = llvm::dyn_cast<P4HIR::ControlOp>(op)) {
-    } else if (auto structExtractOp = llvm::dyn_cast<P4HIR::StructExtractOp>(op)) {
-    } else if (auto cmpOp = llvm::dyn_cast<P4HIR::CmpOp>(op)) {
-    } else if (auto castOp = llvm::dyn_cast<P4HIR::CastOp>(op)) {
-    } else if (auto implicitReturnOp = llvm::dyn_cast<P4HIR::ImplicitReturnOp>(op)) {
-    } else if (auto callOp = llvm::dyn_cast<P4HIR::CallOp>(op)) {
-    } else if (auto tableActionOp = llvm::dyn_cast<P4HIR::TableActionOp>(op)) {
-    } else if (auto tableActionsOp = llvm::dyn_cast<P4HIR::TableActionsOp>(op)) {
-    } else if (auto tableApplyOp = llvm::dyn_cast<P4HIR::TableApplyOp>(op)) {
-    } else if (auto tableDefaultActionOp = llvm::dyn_cast<P4HIR::TableDefaultActionOp>(op)) {
-    } else if (auto tableOp = llvm::dyn_cast<P4HIR::TableOp>(op)) {
+        ss << "control " << controlOp.getName().str() << "(";
+        bool needsComma = false;
+        for (auto arg : controlOp.getArguments()) {
+            if (needsComma) {
+                ss << ", ";
+            }
+            auto direction =
+                controlOp.getArgAttr(arg.getArgNumber(), P4HIR::FuncOp::getDirectionAttrName());
+            auto castDirection = llvm::dyn_cast<P4HIR::ParamDirectionAttr>(direction);
+            if (castDirection.getValue() == P4HIR::ParamDirection::In) {
+                ss << "in ";
+            } else if (castDirection.getValue() == P4HIR::ParamDirection::Out) {
+                ss << "out ";
+            } else if (castDirection.getValue() == P4HIR::ParamDirection::InOut) {
+                ss << "inout ";
+            } else if (castDirection.getValue() == P4HIR::ParamDirection::None) {
+            } else {
+                llvm::errs() << "Unhandled direction: " << castDirection << "\n";
+            }
+            ss << complexTypeToP4String(arg.getType()) << " ";
+            auto name =
+                controlOp.getArgAttr(arg.getArgNumber(), P4HIR::FuncOp::getParamNameAttrName());
+            ss << name.cast<mlir::StringAttr>().getValue().str();
+            needsComma = true;
+        }
+        ss << ") {\n";
+        for (auto &op : controlOp.getOps()) {
+            ss << convertOperation(&op);
+        }
+        ss << "}\n";
     } else if (auto instantiateOp = llvm::dyn_cast<P4HIR::InstantiateOp>(op)) {
     } else if (auto subModule = llvm::dyn_cast<mlir::ModuleOp>(op)) {
         llvm::errs() << "Not sure what to do with module yet" << "\n";
     } else {
-        llvm::errs() << "Unhandled operation: " << op->getName() << "\n";
-        llvm::report_fatal_error("Encountered unhandled operation.");
+        llvm::errs() << "Unhandled operation: " << op->getName() << " with " << *op << "\n";
+        // llvm::report_fatal_error("Encountered unhandled operation.");
     }
     // llvm::outs() << ss.str();
     return ss.str();
@@ -180,9 +210,15 @@ std::string MlirToP4::convert() {
     module.walk([&](mlir::Operation *op) {
         if (auto subModule = llvm::dyn_cast<mlir::ModuleOp>(op)) {
             llvm::outs() << "Converting module: " << subModule->getName() << "\n";
-            subModule.walk(
-                [&](mlir::Operation *moduleOp) { p4Code += convertOperation(moduleOp); });
+            for (auto &op : subModule.getOps()) {
+                llvm::outs() << "Converting operation: " << op.getName() << "\n";
+                // if (op.hasTrait<mlir::OpTrait::ZeroResults>()) {
+                p4Code += convertOperation(&op);
+                // }
+            }
+            return mlir::WalkResult::interrupt();
         }
+        return mlir::WalkResult::advance();
     });
     return p4Code;
 }
