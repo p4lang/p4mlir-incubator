@@ -560,8 +560,7 @@ def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
                  "ParserSelectCaseOp",
                  "TableEntryOp",
                  "SwitchOp", "CaseOp",
-                 "ForOp",
-                 // "ForInOp",
+                 "ForOp", "ForInOp",
                  ]>]> {
   let summary = "Represents the default branching behaviour of a region";
   let description = [{
@@ -723,8 +722,7 @@ def IfOp : P4HIR_Op<"if",
 def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
                                                 "FuncOp", "ControlApplyOp",
                                                 "CaseOp",
-                                                "ForOp",
-                                             // "ForInOp",
+                                                "ForOp", "ForInOp",
                                              ]>,
   // Note that ReturnOp is not ReturnLike: currently there is no way to
   // represent early exits in MLIR "properly"
@@ -1587,6 +1585,35 @@ def ForOp : P4HIR_Op<"for",
   let assemblyFormat = [{
     `:` `cond` $condRegion `body` (`annotations` $annotations^)? $bodyRegion `updates` $updatesRegion attr-dict
   }];
+}
+
+def ForInOp : P4HIR_Op<"foreach",
+      [AutomaticAllocationScope,
+       DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       RecursiveMemoryEffects,
+       SingleBlockImplicitTerminator<"P4HIR::YieldOp">,
+      ]> {
+
+let summary = "For-In operations";
+let description = [{
+  The `p4hir.foreach` operation executes a statement for each element in a collection.
+}];
+
+  // TODO: Should support either ArrayTypes or SetTypes
+  let arguments = (ins SetType:$collection);
+
+  let regions = (region AnyRegion:$bodyRegion);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$collection,
+               "llvm::function_ref<void(mlir::OpBuilder &, mlir::Value, mlir::Location)>":$bodyBuilder)>,
+  ];
+
+  let assemblyFormat = [{
+    `in` $collection `:` type($collection) $bodyRegion attr-dict
+  }];
+  // let hasCustomAssemblyFormat = 1;
 }
 
 
