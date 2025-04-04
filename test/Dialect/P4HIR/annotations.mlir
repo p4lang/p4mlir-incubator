@@ -109,14 +109,12 @@ module {
     }
 
     %cond = p4hir.const #false
-    p4hir.scope {
-      p4hir.for : cond {
-        p4hir.condition %cond
-      } body annotations {unroll} {
-        p4hir.yield
-      } updates {
-        p4hir.yield
-      }
+    p4hir.for : cond {
+      p4hir.condition %cond
+    } body annotations {unroll} {
+      p4hir.yield
+    } updates {
+      p4hir.yield
     }
 
     p4hir.control_apply {

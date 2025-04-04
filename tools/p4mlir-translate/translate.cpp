@@ -3178,41 +3178,50 @@ bool P4HIRConverter::preorder(const P4::IR::SwitchStatement *sw) {
 bool P4HIRConverter::preorder(const P4::IR::ForStatement *fstmt) {
     ConversionTracer trace("Converting ", fstmt);
 
+    auto annotations = convert(fstmt->annotations);
+
     mlir::OpBuilder::InsertionGuard guard(builder);
-    auto scope = builder.create<P4HIR::ScopeOp>(
-        getLoc(builder, fstmt), [&](mlir::OpBuilder &, mlir::Location) {
-            // Materialize the loop initializer here to limit the lifetimes of loop-local variables
-            visit(fstmt->init);
-            auto annotations = convert(fstmt->annotations);
 
-            builder.create<P4HIR::ForOp>(
-                getLoc(builder, fstmt), annotations,
-                /*condBuilder=*/
-                [&](mlir::OpBuilder &b, mlir::Location) {
-                    ValueScope scope(p4Values);
+    // We only wrap our for loop within a dedicated block scope when there are any
+    // declarations in our init statements to limit the lifetimes of loop-local variables.
+    bool emitScope = std::any_of(fstmt->init.begin(), fstmt->init.end(),
+        [](const P4::IR::StatOrDecl *stmt) { return stmt->is<P4::IR::Declaration>(); });
 
-                    auto cond = convert(fstmt->condition);
-                    builder.create<P4HIR::ConditionOp>(getEndLoc(builder, fstmt->condition), cond);
-                },
-                /*bodyBuilder=*/
-                [&](mlir::OpBuilder &b, mlir::Location) {
-                    ValueScope scope(p4Values);
+    auto buildForLoop = [&](mlir::OpBuilder &b, mlir::Location loc) {
+        visit(fstmt->init);
 
-                    visit(fstmt->body);
-                    P4HIR::buildTerminatedBody(builder, getEndLoc(builder, fstmt->body));
-                },
-                /*updatesBuilder=*/
-                [&](mlir::OpBuilder &b, mlir::Location) {
-                    ValueScope scope(p4Values);
+        b.create<P4HIR::ForOp>(
+            loc, annotations,
+            /*condBuilder=*/
+            [&](mlir::OpBuilder &b, mlir::Location) {
+                ValueScope scope(p4Values);
 
-                    visit(fstmt->updates);
-                    P4HIR::buildTerminatedBody(builder, getEndLoc(builder, fstmt->updates.back()));
-                });
-        });
+                auto cond = convert(fstmt->condition);
+                b.create<P4HIR::ConditionOp>(getEndLoc(builder, fstmt->condition), cond);
+            },
+            /*bodyBuilder=*/
+            [&](mlir::OpBuilder &b, mlir::Location) {
+                ValueScope scope(p4Values);
 
-    // Terminate the scope region with a yield if needed
-    builder.setInsertionPointToEnd(&scope.getScopeRegion().back());
-    P4HIR::buildTerminatedBody(builder, getEndLoc(builder, fstmt));
+                visit(fstmt->body);
+                P4HIR::buildTerminatedBody(b, getEndLoc(builder, fstmt->body));
+            },
+            /*updatesBuilder=*/
+            [&](mlir::OpBuilder &b, mlir::Location) {
+                ValueScope scope(p4Values);
+
+                visit(fstmt->updates);
+                P4HIR::buildTerminatedBody(b, getEndLoc(builder, fstmt->updates.back()));
+            });
+    };
+
+    if (emitScope) {
+        auto scope = builder.create<P4HIR::ScopeOp>(getLoc(builder, fstmt), buildForLoop);
+        builder.setInsertionPointToEnd(&scope.getScopeRegion().back());
+        P4HIR::buildTerminatedBody(builder, getEndLoc(builder, fstmt));
+    } else {
+        buildForLoop(builder, getLoc(builder, fstmt));
+    }
 
     return false;
 }
@@ -3226,13 +3235,13 @@ bool P4HIRConverter::preorder(const P4::IR::ForInStatement *forin) {
         getLoc(builder, forin), collection,
         /*bodyBuilder=*/
         [&](mlir::OpBuilder &b, mlir::Value iterativeVal, mlir::Location) {
-            ValueScope scope (p4Values);
+            ValueScope scope(p4Values);
 
             setValue(forin->decl, iterativeVal);
 
             visit(forin->body);
             P4HIR::buildTerminatedBody(b, getEndLoc(builder, forin->body));
-    });
+        });
 
     return false;
 }
