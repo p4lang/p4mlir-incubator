@@ -45,4 +45,11 @@ TranslateOptions::TranslateOptions() {
             return true;
         },
         "do not dump module on exit");
+    registerOption(
+        "--write-to-p4", "file",
+        [this](const char *arg) {
+            p4OutputFile = arg;
+            return true;
+        },
+        "Write the P4 MLIR to the specified file.");
 }

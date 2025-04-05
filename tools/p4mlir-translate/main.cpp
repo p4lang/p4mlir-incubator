@@ -13,6 +13,7 @@ limitations under the License.
 */
 
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 
 #include "frontends/common/constantFolding.h"
@@ -42,8 +43,8 @@ limitations under the License.
 #include "lib/crash.h"
 #include "lib/error.h"
 #include "lib/gc.h"
-#include "mlir_to_p4.h"
 #include "options.h"
+#include "p4mlir/lib/Utilities/mlir_to_p4.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -82,6 +83,40 @@ class SetStrictStruct : public P4::Inspector {
         return Inspector::init_apply(node);
     }
 };
+
+int writeMlirToP4File(mlir::ModuleOp module, std::filesystem::path p4OutputFile) {
+    try {
+        if (p4OutputFile.has_parent_path()) {
+            std::filesystem::create_directories(p4OutputFile.parent_path());
+        }
+
+        std::ofstream outfile(p4OutputFile,
+                              std::ios::out | std::ios::trunc);  // trunc to overwrite.
+        if (!outfile.is_open()) {
+            std::cerr << "Error: Failed to open file for writing: " << p4OutputFile << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        P4::P4MLIR::Utilities::convertMlirToP4(module, outfile, {});
+        if (outfile.fail()) {
+            std::cerr << "Error: Failed to write to file: " << p4OutputFile << std::endl;
+            outfile.close();
+            return EXIT_FAILURE;
+        }
+        outfile.close();
+
+    } catch (const std::filesystem::filesystem_error &ex) {
+        std::cerr << "Filesystem error: " << ex.what() << std::endl;
+        return EXIT_FAILURE;
+    } catch (const std::exception &ex) {
+        std::cerr << "Standard exception: " << ex.what() << std::endl;
+        return EXIT_FAILURE;
+    } catch (...) {
+        std::cerr << "Unknown exception occurred." << std::endl;
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
 
 }  // namespace
 
@@ -192,9 +227,14 @@ int main(int argc, char *const argv[]) {
 
     if (P4::Log::verbose()) std::cerr << "Done." << std::endl;
 
-    P4::P4MLIR::MlirToP4 converter(*mod);
-    std::string p4Code = converter.convert();
-    std::cout << "Generated P4:\n" << p4Code << std::endl;
+    if (!options.p4OutputFile.empty()) {
+        if (writeMlirToP4File(*mod, options.p4OutputFile) != EXIT_SUCCESS) {
+            return EXIT_FAILURE;
+        }
+    } else {
+        /// FIXME: Remove once MlirToP4Program is fully implemented.
+        std::cout << P4::P4MLIR::Utilities::convertMlirToP4(*mod, {}) << std::endl;
+    }
 
     return P4::errorCount() > 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }
