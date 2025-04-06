@@ -2557,8 +2557,14 @@ void P4HIR::ForInOp::build(
     Region *region = result.addRegion();
     Block *block = builder.createBlock(region);
 
-    mlir::BlockArgument interationArg = block->addArgument(elementType, result.location);
+    mlir::BlockArgument iterationArg = block->addArgument(elementType, result.location);
     bodyBuilder(builder, iterationArg, result.location);
+}
+
+void P4HIR::ForInOp::build(
+    OpBuilder &builder, OperationState &result, mlir::Value collection,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Value, mlir::Location)> bodyBuilder) {
+    build(builder, result, collection, DictionaryAttr(), bodyBuilder);
 }
 
 ParseResult P4HIR::ForInOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
@@ -2584,7 +2590,7 @@ ParseResult P4HIR::ForInOp::parse(mlir::OpAsmParser &parser, mlir::OperationStat
     Type expectedElementType;
     if (auto setType = mlir::dyn_cast<P4HIR::SetType>(collectionType)) {
         expectedElementType = setType.getElementType();
-         // TODO: Add support for other collection types like arrays
+        // TODO: Add support for other collection types like arrays
     } else {
         return parser.emitError(loc, "expected an iterable collection type, found")
                << collectionType;
@@ -2635,7 +2641,6 @@ void P4HIR::ForInOp::getSuccessorRegions(mlir::RegionBranchPoint point,
     regions.push_back(RegionSuccessor(&getBodyRegion()));
     regions.push_back(RegionSuccessor());
 }
-
 
 llvm::SmallVector<Region *> P4HIR::ForInOp::getLoopRegions() { return {&getBodyRegion()}; }
 

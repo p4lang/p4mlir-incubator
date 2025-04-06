@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <climits>
-#include "ir/dump.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"

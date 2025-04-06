@@ -1594,6 +1594,8 @@ let description = [{
   let builders = [
     OpBuilder<(ins "mlir::Value":$collection, "mlir::DictionaryAttr":$annotations,
                    "llvm::function_ref<void(mlir::OpBuilder &, mlir::Value, mlir::Location)>":$bodyBuilder)>,
+    OpBuilder<(ins "mlir::Value":$collection,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Value, mlir::Location)>":$bodyBuilder)>,
   ];
 
   let hasCustomAssemblyFormat = 1;
