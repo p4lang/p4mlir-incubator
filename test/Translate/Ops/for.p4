@@ -92,6 +92,20 @@ action for_no_decls() {
     for (i = 0; i < 10; i = i + 1) {}
 }
 
+// CHECK-LABEL: p4hir.func @for_in() -> !b32i
+// CHECK:       p4hir.scope {
+// CHECK:         %[[CONST_0:.*]] = p4hir.const #int0_b32i
+// CHECK:         %[[CAST_0:.*]] = p4hir.cast(%[[CONST_0]] : !b32i) : !b32i
+// CHECK:         %[[CONST_9:.*]] = p4hir.const #int9_infint
+// CHECK:         %[[CAST_9:.*]] = p4hir.cast(%[[CONST_9]] : !infint) : !b32i
+// CHECK:         %[[RANGE:.*]] = p4hir.range(%[[CAST_0]], %[[CAST_9]]) : !p4hir.set<!b32i>
+// CHECK:         p4hir.foreach %[[ARG:.*]] : !b32i in %[[RANGE]] : !p4hir.set<!b32i> {
+// CHECK:           %[[SUM_VAL:.*]] = p4hir.read %[[SUM]] : <!b32i>
+// CHECK:           %[[ADD:.*]] = p4hir.binop(add, %[[SUM_VAL]], %[[ARG]]) : !b32i
+// CHECK:           p4hir.assign %[[ADD]], %[[SUM]] : <!b32i>
+// CHECK:           p4hir.yield
+// CHECK:         }
+// CHECK:       }
 bit<32> for_in() {
     bit<32> sum = 0;
     for (bit<32> x in 0..9) {

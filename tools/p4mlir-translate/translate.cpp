@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <climits>
+#include "ir/dump.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
@@ -3179,7 +3180,6 @@ bool P4HIRConverter::preorder(const P4::IR::ForStatement *fstmt) {
     ConversionTracer trace("Converting ", fstmt);
 
     auto annotations = convert(fstmt->annotations);
-
     mlir::OpBuilder::InsertionGuard guard(builder);
 
     // We only wrap our for loop within a dedicated block scope when there are any
@@ -3229,19 +3229,34 @@ bool P4HIRConverter::preorder(const P4::IR::ForStatement *fstmt) {
 bool P4HIRConverter::preorder(const P4::IR::ForInStatement *forin) {
     ConversionTracer trace("Converting ", forin);
 
+    auto annotations = convert(forin->annotations);
     mlir::OpBuilder::InsertionGuard guard(builder);
-    auto collection = convert(forin->collection);
-    builder.create<P4HIR::ForInOp>(
-        getLoc(builder, forin), collection,
-        /*bodyBuilder=*/
-        [&](mlir::OpBuilder &b, mlir::Value iterativeVal, mlir::Location) {
-            ValueScope scope(p4Values);
 
-            setValue(forin->decl, iterativeVal);
+    bool emitScope = forin->collection->is<P4::IR::Range>();
 
-            visit(forin->body);
-            P4HIR::buildTerminatedBody(b, getEndLoc(builder, forin->body));
-        });
+    auto buildForInLoop = [&](mlir::OpBuilder &b, mlir::Location loc) {
+        auto collection = convert(forin->collection);
+
+        b.create<P4HIR::ForInOp>(
+            loc, collection, annotations,
+            /*bodyBuilder=*/
+            [&](mlir::OpBuilder &b, mlir::Value iterationArg, mlir::Location) {
+                ValueScope scope(p4Values);
+
+                setValue(forin->decl, iterationArg);
+
+                visit(forin->body);
+                P4HIR::buildTerminatedBody(b, getEndLoc(builder, forin->body));
+            });
+    };
+
+    if (emitScope) {
+        auto scope = builder.create<P4HIR::ScopeOp>(getLoc(builder, forin), buildForInLoop);
+        builder.setInsertionPointToEnd(&scope.getScopeRegion().back());
+        P4HIR::buildTerminatedBody(builder, getEndLoc(builder, forin));
+    } else {
+        buildForInLoop(builder, getLoc(builder, forin));
+    }
 
     return false;
 }

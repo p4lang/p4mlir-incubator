@@ -1574,6 +1574,7 @@ def ForOp : P4HIR_Op<"for",
 def ForInOp : P4HIR_Op<"foreach",
       [AutomaticAllocationScope,
        DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursiveMemoryEffects,
        SingleBlockImplicitTerminator<"P4HIR::YieldOp">,
       ]> {
@@ -1584,20 +1585,18 @@ let description = [{
 }];
 
   // TODO: Should support either ArrayTypes or SetTypes
-  let arguments = (ins SetType:$collection);
+  let arguments = (ins SetType:$collection,
+                       OptionalAttr<DictionaryAttr>:$annotations);
 
   let regions = (region AnyRegion:$bodyRegion);
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<(ins "mlir::Value":$collection,
-               "llvm::function_ref<void(mlir::OpBuilder &, mlir::Value, mlir::Location)>":$bodyBuilder)>,
+    OpBuilder<(ins "mlir::Value":$collection, "mlir::DictionaryAttr":$annotations,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Value, mlir::Location)>":$bodyBuilder)>,
   ];
 
-  let assemblyFormat = [{
-    `in` $collection `:` type($collection) $bodyRegion attr-dict
-  }];
-  // let hasCustomAssemblyFormat = 1;
+  let hasCustomAssemblyFormat = 1;
 }
 
 

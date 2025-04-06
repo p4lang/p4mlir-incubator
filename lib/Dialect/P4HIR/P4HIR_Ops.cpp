@@ -1746,8 +1746,8 @@ LogicalResult P4HIR::RangeOp::verify() {
     }
     mlir::Operation *user = *result.user_begin();
     if (!mlir::isa<P4HIR::ForInOp>(user)) {
-         return emitOpError("when not nested in p4hir.select_case, ")
-                << "the user must be p4hir.foreach, but found " << user->getName();
+        return emitOpError("when not nested in p4hir.select_case, ")
+               << "the user must be p4hir.foreach, but found " << user->getName();
     }
 
     return mlir::success();
@@ -2534,9 +2534,7 @@ LogicalResult P4HIR::ForOp::verify() {
     return success();
 }
 
-llvm::SmallVector<Region *> P4HIR::ForOp::getLoopRegions() {
-    return {&getBodyRegion()};
-}
+llvm::SmallVector<Region *> P4HIR::ForOp::getLoopRegions() { return {&getBodyRegion()}; }
 
 //===----------------------------------------------------------------------===//
 // ForInOp
@@ -2544,8 +2542,12 @@ llvm::SmallVector<Region *> P4HIR::ForOp::getLoopRegions() {
 
 void P4HIR::ForInOp::build(
     OpBuilder &builder, OperationState &result, mlir::Value collection,
+    mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Value, mlir::Location)> bodyBuilder) {
     result.addOperands(collection);
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+
     OpBuilder::InsertionGuard guard(builder);
 
     // TODO: Support different collection types
@@ -2555,13 +2557,87 @@ void P4HIR::ForInOp::build(
     Region *region = result.addRegion();
     Block *block = builder.createBlock(region);
 
-    mlir::BlockArgument loopVar = block->addArgument(elementType, result.location);
-    bodyBuilder(builder, loopVar, result.location);
+    mlir::BlockArgument interationArg = block->addArgument(elementType, result.location);
+    bodyBuilder(builder, iterationArg, result.location);
 }
 
-llvm::SmallVector<Region *> P4HIR::ForInOp::getLoopRegions() {
-    return {&getBodyRegion()};
+ParseResult P4HIR::ForInOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+    llvm::SMLoc loc = parser.getCurrentLocation();
+
+    // Parse loop iteration variable including its type
+    mlir::OpAsmParser::Argument iterationArg;
+    if (parser.parseArgument(iterationArg, /*allowType=*/true, /*allowAttrs=*/false))
+        return parser.emitError(parser.getNameLoc(),
+                                "expected iteration variable argument ('%var : type')");
+
+    if (parser.parseKeyword("in")) return failure();
+
+    // Parse collection operand and its type
+    OpAsmParser::UnresolvedOperand collection;
+    Type collectionType;
+    if (parser.parseOperand(collection) || parser.parseColonType(collectionType))
+        return parser.emitError(parser.getNameLoc(),
+                                "expected collection operand ('%collection : type')");
+    if (parser.resolveOperand(collection, collectionType, result.operands)) return failure();
+
+    // Verify that the collection type is iterable and determine element type
+    Type expectedElementType;
+    if (auto setType = mlir::dyn_cast<P4HIR::SetType>(collectionType)) {
+        expectedElementType = setType.getElementType();
+         // TODO: Add support for other collection types like arrays
+    } else {
+        return parser.emitError(loc, "expected an iterable collection type, found")
+               << collectionType;
+    }
+    if (iterationArg.type != expectedElementType) {
+        return parser.emitError(loc, "loop variable type (")
+               << iterationArg.type << ") does not match element type of collection ("
+               << expectedElementType << ")";
+    }
+
+    // Parse optional annotations
+    mlir::DictionaryAttr annotations;
+    if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+        if (parser.parseAttribute<mlir::DictionaryAttr>(annotations)) return failure();
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+    }
+
+    // Parse the loop body region, passing the iteration variable as a block argument
+    Region *bodyRegion = result.addRegion();
+    SmallVector<OpAsmParser::Argument, 1> regionArgs = {iterationArg};
+    if (parser.parseRegion(*bodyRegion, regionArgs, /*enableNameShadowing=*/false))
+        return failure();
+
+    return success();
 }
+
+void P4HIR::ForInOp::print(mlir::OpAsmPrinter &printer) {
+    printer << " ";
+    printer.printOperand(getRegion().getArgument(0));
+    printer << " : ";
+    printer.printType(getRegion().getArgument(0).getType());
+
+    printer << " in " << getCollection() << " : ";
+    printer.printType(getCollection().getType());
+
+    if (auto ann = getAnnotations(); ann && !ann->empty()) {
+        printer << " annotations ";
+        printer.printAttributeWithoutType(*ann);
+    }
+    printer << ' ';
+    printer.printRegion(getBodyRegion(),
+                        /*printEntryBlockArgs=*/false,
+                        /*printBlockTerminators=*/true);
+}
+
+void P4HIR::ForInOp::getSuccessorRegions(mlir::RegionBranchPoint point,
+                                         SmallVectorImpl<RegionSuccessor> &regions) {
+    regions.push_back(RegionSuccessor(&getBodyRegion()));
+    regions.push_back(RegionSuccessor());
+}
+
+
+llvm::SmallVector<Region *> P4HIR::ForInOp::getLoopRegions() { return {&getBodyRegion()}; }
 
 //===----------------------------------------------------------------------===//
 // ConditionOp
