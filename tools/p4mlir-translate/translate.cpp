@@ -3187,6 +3187,8 @@ bool P4HIRConverter::preorder(const P4::IR::ForStatement *fstmt) {
         [](const P4::IR::StatOrDecl *stmt) { return stmt->is<P4::IR::Declaration>(); });
 
     auto buildForLoop = [&](mlir::OpBuilder &b, mlir::Location loc) {
+        ValueScope scope(p4Values);
+
         visit(fstmt->init);
 
         b.create<P4HIR::ForOp>(
@@ -3234,6 +3236,8 @@ bool P4HIRConverter::preorder(const P4::IR::ForInStatement *forin) {
     bool emitScope = forin->collection->is<P4::IR::Range>();
 
     auto buildForInLoop = [&](mlir::OpBuilder &b, mlir::Location loc) {
+        ValueScope scope(p4Values);
+
         auto collection = convert(forin->collection);
 
         b.create<P4HIR::ForInOp>(

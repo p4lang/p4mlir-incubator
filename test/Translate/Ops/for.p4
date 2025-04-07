@@ -82,11 +82,7 @@ action multiple_statements() {
 }
 
 // CHECK-LABEL: p4hir.func action @for_no_decls
-// CHECK-NEXT:  %[[I:.*]] = p4hir.variable ["i"] : <!b32i>
-// CHECK-NEXT:  %[[CONST_0:.*]] = p4hir.const #int0_b32i
-// CHECK-NEXT:  %[[CAST_0:.*]] = p4hir.cast(%[[CONST_0]] : !b32i) : !b32i
-// CHECK-NEXT:  p4hir.assign %[[CAST_0]], %[[I]] : <!b32i>
-// CHECK-NEXT:  p4hir.for : cond {
+// CHECK-NOT:   p4hir.scope
 action for_no_decls() {
     bit<32> i;
     for (i = 0; i < 10; i = i + 1) {}
@@ -109,7 +105,7 @@ action for_no_decls() {
 bit<32> for_in() {
     bit<32> sum = 0;
     for (bit<32> x in 0..9) {
-        sum += x;
+        sum = sum + x;
     }
     return sum;
 }
