@@ -8,7 +8,6 @@
 #include "frontends/common/resolveReferences/resolveReferences.h"
 #include "frontends/p4/methodInstance.h"
 #include "frontends/p4/parameterSubstitution.h"
-#include "frontends/p4/sideEffects.h"
 #include "frontends/p4/typeMap.h"
 #include "ir/ir.h"
 #include "ir/visitor.h"
@@ -604,13 +603,15 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
 #undef HANDLE_IN_PREORDER
 
-    bool preorder(const P4::IR::ShlAssign *opAssign) override {
-        return expandOpAssignShlShr(opAssign, true);
+#define HANDLE_IN_PREORDER(Node, ShiftOp)                     \
+    bool preorder(const P4::IR::Node *opAssign) override {    \
+        return expandOpAssignShift<P4HIR::ShiftOp>(opAssign); \
     }
 
-    bool preorder(const P4::IR::ShrAssign *opAssign) override {
-        return expandOpAssignShlShr(opAssign, false);
-    }
+    HANDLE_IN_PREORDER(ShlAssign, ShlOp)
+    HANDLE_IN_PREORDER(ShrAssign, ShrOp)
+
+#undef HANDLE_IN_PREORDER
 
     void postorder(const P4::IR::Member *m) override;
 
@@ -657,7 +658,9 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return value.getType();
     }
     bool expandOpAssignBinOp(const P4::IR::OpAssignmentStatement *opAssign, P4HIR::BinOpKind kind);
-    bool expandOpAssignShlShr(const P4::IR::OpAssignmentStatement *opAssign, bool isShl);
+
+    template <typename ShiftOp>
+    bool expandOpAssignShift(const P4::IR::OpAssignmentStatement *opAssign);
 };
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
@@ -1750,32 +1753,24 @@ bool P4HIRConverter::expandOpAssignBinOp(const P4::IR::OpAssignmentStatement *op
     auto lhsRef = resolveReference(opAssign->left);
     visit(opAssign->right);
 
+    auto type = getOrCreateType(opAssign->left->type);
     auto binop = builder.create<P4HIR::BinOp>(
-        loc, kind, getValue(opAssign->left, getOrCreateType(opAssign->left->type)),
-        getValue(opAssign->right, getOrCreateType(opAssign->right->type)));
-
+        loc, kind, getValue(opAssign->left, type), getValue(opAssign->right, type));
     builder.create<P4HIR::AssignOp>(loc, binop, lhsRef);
 
     return false;
 }
 
-bool P4HIRConverter::expandOpAssignShlShr(const P4::IR::OpAssignmentStatement *opAssign,
-                                          bool isShl) {
+template <typename ShiftOp>
+bool P4HIRConverter::expandOpAssignShift(const P4::IR::OpAssignmentStatement *opAssign) {
     auto loc = getLoc(builder, opAssign);
     auto lhsRef = resolveReference(opAssign->left);
     visit(opAssign->right);
 
-    if (isShl) {
-        auto binop = builder.create<P4HIR::ShlOp>(
-            loc, getValue(opAssign->left, getOrCreateType(opAssign->left->type)),
-            getValue(opAssign->right, getOrCreateType(opAssign->right->type)));
-        builder.create<P4HIR::AssignOp>(loc, binop, lhsRef);
-    } else {
-        auto binop = builder.create<P4HIR::ShrOp>(
-            loc, getValue(opAssign->left, getOrCreateType(opAssign->left->type)),
-            getValue(opAssign->right, getOrCreateType(opAssign->right->type)));
-        builder.create<P4HIR::AssignOp>(loc, binop, lhsRef);
-    }
+    auto type = getOrCreateType(opAssign->left->type);
+    auto shiftop = builder.create<ShiftOp>(
+        loc, getValue(opAssign->left, type), getValue(opAssign->right, type));
+    builder.create<P4HIR::AssignOp>(loc, shiftop, lhsRef);
 
     return false;
 }
