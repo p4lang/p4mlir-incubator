@@ -2214,14 +2214,20 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 operands.push_back(argVal);
             } else {
                 // Parameter is not bound. This is possible only for actions
-                // where argument might come from control plane. Grab
-                // placeholder for it.
-                // TBD: Handle @optional
-                BUG_CHECK(param->direction == P4::IR::Direction::None,
-                          "control plane values should be directionless");
+                // where argument might come from control plane or @optional argument.
+                // Grab a suitable placeholder for it.
+                mlir::Value placeholder;
+                if (param->isOptional()) {
+                    placeholder = builder.create<P4HIR::UninitializedOp>(
+                        getLoc(builder, mce), getOrCreateType(param->type));
+                } else {
+                    BUG_CHECK(param->direction == P4::IR::Direction::None,
+                              "control plane values should be directionless");
 
-                auto placeholder = controlPlaneValues.lookup(param);
-                BUG_CHECK(placeholder, "control plane value must be populate");
+                    placeholder = controlPlaneValues.lookup(param);
+                    BUG_CHECK(placeholder, "control plane value must be populate");
+                }
+
                 operands.push_back(placeholder);
             }
         }
@@ -2381,7 +2387,10 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
         for (const auto &param : params->parameters) {
             auto argument = subst.lookup(param);
             auto argVal = argValues.lookup(argument);
-            // TODO: Handle @optional
+            // Create a placeholder for @optional arguments
+            if (!argVal && param->isOptional())
+                argVal = builder.create<P4HIR::UninitializedOp>(getLoc(builder, cce),
+                                                                getOrCreateType(param->type));
             BUG_CHECK(argVal, "unconverted argument for parameter %1%", param);
             operands.push_back(argVal);
         }
@@ -2774,7 +2783,10 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         for (const auto &param : params->parameters) {
             auto argument = subst.lookup(param);
             auto argVal = argValues.lookup(argument);
-            // TODO: Handle @optional
+            // Create a placeholder for @optional arguments
+            if (!argVal && param->isOptional())
+                argVal = builder.create<P4HIR::UninitializedOp>(getLoc(builder, decl),
+                                                                getOrCreateType(param->type));
             BUG_CHECK(argVal, "unconverted argument for parameter %1%", param);
             operands.push_back(argVal);
         }

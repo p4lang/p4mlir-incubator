@@ -2527,6 +2527,14 @@ MutableOperandRange P4HIR::ConditionOp::getMutableSuccessorOperands(RegionBranch
     return MutableOperandRange(getOperation(), 0, 0);
 }
 
+//===----------------------------------------------------------------------===//
+// UninitializedOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::UninitializedOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "uninitialized");
+}
+
 namespace {
 struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
     using OpAsmDialectInterface::OpAsmDialectInterface;

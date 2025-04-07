@@ -1592,6 +1592,19 @@ def ConditionOp : P4HIR_Op<"condition",
   let assemblyFormat = [{ $condition attr-dict }];
 }
 
+def UninitializedOp : P4HIR_Op<"uninitialized",
+  [ConstantLike, Pure,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "Materialize an uninitialized value";
+  let description = [{
+    Placeholder value used to "fill in" @optional arguments.
+  }];
+
+  let results = (outs AnyType:$val);
+
+  let assemblyFormat = [{ attr-dict `:` qualified(type($val)) }];
+}
+
 
 include "p4mlir/Dialect/P4HIR/P4HIR_ParserOps.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_ControlOps.td"
