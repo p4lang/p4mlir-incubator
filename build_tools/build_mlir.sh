@@ -40,6 +40,8 @@ CMAKE_FLAGS+=" -DLLVM_ENABLE_EH=ON"
 
 cmake -G Ninja "$LLVM_REPO_DIR"/llvm $CMAKE_FLAGS
 
-ninja
+JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+ninja -j$JOBS
+
 ninja check-mlir
 ninja install

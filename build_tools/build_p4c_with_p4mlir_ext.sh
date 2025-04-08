@@ -57,7 +57,9 @@ CMAKE_FLAGS+=" -DLLVM_EXTERNAL_LIT=$LLVM_BUILD_DIR/bin/llvm-lit"
 mkdir -p "$P4C_BUILD_DIR"
 cd "$P4C_BUILD_DIR"
 cmake -G Ninja "$P4C_REPO_DIR" $CMAKE_FLAGS
-ninja
+
+JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+ninja -j$JOBS
 
 # Run some tests
 ninja check-p4mlir
