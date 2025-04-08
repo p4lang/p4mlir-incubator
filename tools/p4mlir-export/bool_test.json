@@ -1,0 +1,22 @@
+{
+    "name":"",
+    "operations":
+    [
+        {
+            "attributes":
+            {
+                "value":
+                {
+                    "type":"unknown","value":"#p4hir.bool<false> : !p4hir.bool"
+                }
+            },"name":"p4hir.const","regions":[],"result_types":
+            [
+                {
+                    "dialect":"p4hir",
+                    "value":"!p4hir.bool"
+                }
+            ]
+        }
+    ]
+    ,"type":"module"
+}
