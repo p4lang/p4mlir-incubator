@@ -22,7 +22,7 @@ action assign() {
     // CHECK:           %[[val_b:.*]] = p4hir.read %[[var_b]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(add, %[[val_a]], %[[val_b]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_res]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> a;
     bit<10> b;
@@ -40,7 +40,7 @@ action mul_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(mul, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -55,7 +55,7 @@ action mul_assign_with_const() {
     // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[var_lhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(mul, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs *= 3;
@@ -69,7 +69,7 @@ action mul_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(mul, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
     
     bit<10> lhs;
     lhs *= Serenum.first;
@@ -83,7 +83,7 @@ action div_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(div, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -98,7 +98,7 @@ action div_assign_with_const() {
     // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[var_lhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(div, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs /= 3;
@@ -112,7 +112,7 @@ action div_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(div, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
     
     bit<10> lhs;
     lhs /= Serenum.first;
@@ -126,7 +126,7 @@ action mod_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(mod, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -141,7 +141,7 @@ action mod_assign_with_const() {
     // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[var_lhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(mod, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs %= 3;
@@ -155,7 +155,7 @@ action mod_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(mod, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
     
     bit<10> lhs;
     lhs %= Serenum.first;
@@ -169,7 +169,7 @@ action add_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(add, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -184,7 +184,7 @@ action add_assign_with_const() {
     // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[var_lhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(add, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs += 3;
@@ -198,7 +198,7 @@ action add_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(add, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
     
     bit<10> lhs;
     lhs += Serenum.first;
@@ -212,7 +212,7 @@ action sub_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(sub, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -227,7 +227,7 @@ action sub_assign_with_const() {
     // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[var_lhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(sub, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs -= 3;
@@ -241,7 +241,7 @@ action sub_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(sub, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
     
     bit<10> lhs;
     lhs -= Serenum.first;
@@ -255,7 +255,7 @@ action sadd_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(sadd, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -270,7 +270,7 @@ action sadd_assign_with_const() {
     // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[var_lhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(sadd, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs |+|= 3;
@@ -284,7 +284,7 @@ action sadd_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(sadd, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
     
     bit<10> lhs;
     lhs |+|= Serenum.first;
@@ -298,7 +298,7 @@ action ssub_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(ssub, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -313,7 +313,7 @@ action ssub_assign_with_const() {
     // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[var_lhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(ssub, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs |-|= 3;
@@ -327,7 +327,7 @@ action ssub_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(ssub, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
     
     bit<10> lhs;
     lhs |-|= Serenum.first;
@@ -341,7 +341,7 @@ action shl_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_shl_res:.*]] = p4hir.shl(%[[val_lhs]], %[[val_rhs]] : !b10i) : !b10i
     // CHECK:           p4hir.assign %[[val_shl_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -356,7 +356,7 @@ action shl_assign_with_const() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[val_int3_infint]] : !infint) : !b10i
     // CHECK:           %[[val_shl_res:.*]] = p4hir.shl(%[[val_lhs]], %[[val_rhs]] : !b10i) : !b10i
     // CHECK:           p4hir.assign %[[val_shl_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs <<= 3;
@@ -370,7 +370,7 @@ action shl_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_shl_res:.*]] = p4hir.shl(%[[val_lhs]], %[[val_rhs]] : !b10i) : !b10i
     // CHECK:           p4hir.assign %[[val_shl_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs <<= Serenum.first;
@@ -384,7 +384,7 @@ action shr_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_shr_res:.*]] = p4hir.shr(%[[val_lhs]], %[[val_rhs]] : !b10i) : !b10i
     // CHECK:           p4hir.assign %[[val_shr_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -399,7 +399,7 @@ action shr_assign_with_const() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[val_int3_infint]] : !infint) : !b10i
     // CHECK:           %[[val_shr_res:.*]] = p4hir.shr(%[[val_lhs]], %[[val_rhs]] : !b10i) : !b10i
     // CHECK:           p4hir.assign %[[val_shr_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs >>= 3;
@@ -413,7 +413,7 @@ action shr_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_shr_res:.*]] = p4hir.shr(%[[val_lhs]], %[[val_rhs]] : !b10i) : !b10i
     // CHECK:           p4hir.assign %[[val_shr_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs >>= Serenum.first;
@@ -428,7 +428,7 @@ action and_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(and, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -443,7 +443,7 @@ action and_assign_with_const() {
     // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[var_lhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(and, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs &= 3;
@@ -457,7 +457,7 @@ action and_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(and, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
     
     bit<10> lhs;
     lhs &= Serenum.first;
@@ -471,7 +471,7 @@ action or_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(or, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -486,7 +486,7 @@ action or_assign_with_const() {
     // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[var_lhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(or, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs |= 3;
@@ -500,7 +500,7 @@ action or_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(or, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
     
     bit<10> lhs;
     lhs |= Serenum.first;
@@ -514,7 +514,7 @@ action xor_assign_with_var() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.read %[[var_rhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(xor, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     bit<10> rhs;
@@ -529,7 +529,7 @@ action xor_assign_with_const() {
     // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[var_lhs]] : <!b10i>
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(xor, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
 
     bit<10> lhs;
     lhs ^= 3;
@@ -543,7 +543,7 @@ action xor_assign_with_serenum() {
     // CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[const_serenum_first]] : !Serenum) : !b10i
     // CHECK:           %[[val_binop_res:.*]] = p4hir.binop(xor, %[[val_lhs]], %[[val_rhs]]) : !b10i
     // CHECK:           p4hir.assign %[[val_binop_res]], %[[var_lhs]] : <!b10i>
-    // CHECK:           p4hir.implicit_return
+    // CHECK:           p4hir.return
     
     bit<10> lhs;
     lhs ^= Serenum.first;
