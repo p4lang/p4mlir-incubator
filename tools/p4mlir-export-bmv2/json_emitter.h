@@ -22,7 +22,7 @@ namespace P4::P4MLIR {
 class JsonEmitter {
 public:
 
-    // Emit a P4HIR-ISO json, given MLIR module.
+    // Direct Emit bmv2 json, given MLIR module.
     static llvm::json::Value emitModule(mlir::ModuleOp module);
     static llvm::json::Value emitOperation(mlir::Operation *op);
     static llvm::json::Value emitAttribute(mlir::Attribute attr);
