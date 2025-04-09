@@ -760,18 +760,18 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
 
   // The return operation takes an optional input operand to return. This
   // value must match the return type of the enclosing function.
-  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let arguments = (ins Optional<AnyP4Type>:$input);
 
   // The return operation only emits the input in the format if it is present.
-  let assemblyFormat = "($input^ `:` type($input))? attr-dict ";
+  let assemblyFormat = [{ ($input^ `:` type($input))? attr-dict }];
 
   // Allow building a ReturnOp with no return operand.
   let builders = [
-    OpBuilder<(ins), [{ build($_builder, $_state, std::nullopt); }]>
+    OpBuilder<(ins), [{ build($_builder, $_state, nullptr); }]>
   ];
 
   let extraClassDeclaration = [{
-    bool hasOperand() { return getNumOperands() != 0; }
+    bool hasOperand() { return getInput() != nullptr; }
   }];
 
   let hasVerifier = 1;
@@ -1600,7 +1600,6 @@ let description = [{
 
   let hasCustomAssemblyFormat = 1;
 }
-
 
 def ConditionOp : P4HIR_Op<"condition",
         [HasParent<"ForOp">,

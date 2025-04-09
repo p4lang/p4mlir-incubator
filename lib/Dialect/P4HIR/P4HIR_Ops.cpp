@@ -644,7 +644,7 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
     elseBuilder(builder, result.location);
 }
 
-mlir::LogicalResult P4HIR::ReturnOp::verify() {
+LogicalResult P4HIR::ReturnOp::verify() {
     // Returns can be present in multiple different scopes, get the wrapping
     // function and start from there.
     auto fnOp = getOperation()->getParentOfType<FunctionOpInterface>();
@@ -653,13 +653,9 @@ mlir::LogicalResult P4HIR::ReturnOp::verify() {
                                 "actions and control apply blocks";
     }
 
-    // ReturnOps currently only have a single optional operand.
-    if (getNumOperands() > 1) return emitOpError() << "expects at most 1 return operand";
-
     // Ensure returned type matches the function signature.
     auto expectedTy = mlir::cast<P4HIR::FuncType>(fnOp.getFunctionType()).getReturnType();
-    auto actualTy =
-        (getNumOperands() == 0 ? P4HIR::VoidType::get(getContext()) : getOperand(0).getType());
+    auto actualTy = hasOperand() ? getInput().getType() : P4HIR::VoidType::get(getContext());
     if (actualTy != expectedTy)
         return emitOpError() << "returns " << actualTy << " but enclosing function returns "
                              << expectedTy;
