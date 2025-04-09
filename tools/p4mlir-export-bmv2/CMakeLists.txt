@@ -29,7 +29,7 @@ mlir_check_all_link_libraries(p4mlir-export-bmv2)
 
 add_custom_target(linkp4mlir_export_out
   COMMAND ${CMAKE_COMMAND} -E create_symlink 
-          ${P4MLIR_BINARY_DIR}/bin/p4mlir-export-bmv2 
+          ${P4MLIR_BINARY_DIR}/bin/p4mlir-export-bmv2
           ${P4C_BINARY_DIR}/p4mlir-export-bmv2
   COMMAND ${CMAKE_COMMAND} -E create_symlink 
           ${P4C_BINARY_DIR}/p4include 

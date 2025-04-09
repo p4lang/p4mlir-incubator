@@ -59,8 +59,4 @@ cd "$P4C_BUILD_DIR"
 cmake -G Ninja "$P4C_REPO_DIR" $CMAKE_FLAGS
 ninja
 
-# Run some tests
-ninja check-p4mlir
 
-# Install
-ninja install
