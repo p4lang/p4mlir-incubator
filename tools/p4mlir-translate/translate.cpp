@@ -1754,8 +1754,8 @@ bool P4HIRConverter::expandOpAssignBinOp(const P4::IR::OpAssignmentStatement *op
     visit(opAssign->right);
 
     auto type = getOrCreateType(opAssign->left->type);
-    auto binop = builder.create<P4HIR::BinOp>(
-        loc, kind, getValue(opAssign->left, type), getValue(opAssign->right, type));
+    auto binop = builder.create<P4HIR::BinOp>(loc, kind, getValue(opAssign->left, type),
+                                              getValue(opAssign->right, type));
     builder.create<P4HIR::AssignOp>(loc, binop, lhsRef);
 
     return false;
@@ -1768,8 +1768,8 @@ bool P4HIRConverter::expandOpAssignShift(const P4::IR::OpAssignmentStatement *op
     visit(opAssign->right);
 
     auto type = getOrCreateType(opAssign->left->type);
-    auto shiftop = builder.create<ShiftOp>(
-        loc, getValue(opAssign->left, type), getValue(opAssign->right, type));
+    auto shiftop = builder.create<ShiftOp>(loc, getValue(opAssign->left, type),
+                                           getValue(opAssign->right, type));
     builder.create<P4HIR::AssignOp>(loc, shiftop, lhsRef);
 
     return false;
@@ -3243,8 +3243,9 @@ bool P4HIRConverter::preorder(const P4::IR::ForStatement *fstmt) {
 
     // We only wrap our for loop within a dedicated block scope when there are any
     // declarations in our init statements to limit the lifetimes of loop-local variables.
-    bool emitScope = std::any_of(fstmt->init.begin(), fstmt->init.end(),
-        [](const P4::IR::StatOrDecl *stmt) { return stmt->is<P4::IR::Declaration>(); });
+    bool emitScope =
+        std::any_of(fstmt->init.begin(), fstmt->init.end(),
+                    [](const P4::IR::StatOrDecl *stmt) { return stmt->is<P4::IR::Declaration>(); });
 
     auto buildForLoop = [&](mlir::OpBuilder &b, mlir::Location loc) {
         ValueScope scope(p4Values);
@@ -3300,17 +3301,16 @@ bool P4HIRConverter::preorder(const P4::IR::ForInStatement *forin) {
 
         auto collection = convert(forin->collection);
 
-        b.create<P4HIR::ForInOp>(
-            loc, collection, annotations,
-            /*bodyBuilder=*/
-            [&](mlir::OpBuilder &b, mlir::Value iterationArg, mlir::Location) {
-                ValueScope scope(p4Values);
+        b.create<P4HIR::ForInOp>(loc, collection, annotations,
+                                 /*bodyBuilder=*/
+                                 [&](mlir::OpBuilder &b, mlir::Value iterationArg, mlir::Location) {
+                                     ValueScope scope(p4Values);
 
-                setValue(forin->decl, iterationArg);
+                                     setValue(forin->decl, iterationArg);
 
-                visit(forin->body);
-                P4HIR::buildTerminatedBody(b, getEndLoc(builder, forin->body));
-            });
+                                     visit(forin->body);
+                                     P4HIR::buildTerminatedBody(b, getEndLoc(builder, forin->body));
+                                 });
     };
 
     if (emitScope) {
