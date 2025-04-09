@@ -10,10 +10,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "json_emitter.h"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/raw_ostream.h"
+#pragma GCC diagnostic pop
+
+
+#include "json_emitter.h"
+
 
 using namespace llvm::json;
 

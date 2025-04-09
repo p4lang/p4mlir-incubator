@@ -9,6 +9,7 @@ set(P4MLIR_TEST_DEPENDS
   FileCheck count not
   p4mlir-opt
   p4mlir-translate
+  p4mlir-export-bmv2
 )
 
 add_lit_testsuite(check-p4mlir "Running the P4MLIR regression tests"

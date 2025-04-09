@@ -16,6 +16,12 @@ limitations under the License.
 #include <iostream>
 #include "options.h"
 
+#if HAVE_LIBGC
+extern "C" {
+    #include "gc.h"
+}
+#endif
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "mlir/IR/OperationSupport.h"
@@ -27,7 +33,13 @@ limitations under the License.
 #include "json_emitter.h"
 
 
+
+
 int main(int argc, char *const argv[]) {
+
+#if HAVE_LIBGC
+    GC_disable();
+#endif
 
     P4::AutoCompileContext autoP4MLIRExportContext(new P4::MLIR::ExportContext);
     auto &options = P4::MLIR::ExportContext::get().options();

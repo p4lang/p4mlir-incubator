@@ -13,9 +13,13 @@ limitations under the License.
 #ifndef P4MLIR_JSON_EMITTER_H
 #define P4MLIR_JSON_EMITTER_H
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/Support/JSON.h"
+#pragma GCC diagnostic pop
+
 
 namespace P4::P4MLIR {
 
