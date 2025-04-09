@@ -1634,6 +1634,60 @@ def UninitializedOp : P4HIR_Op<"uninitialized",
 }
 
 
+def ArrayOp : P4HIR_Op<"array",
+  [Pure,
+   SameTypeOperands,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "Create an array from values.";
+  // FIXME: Better constraint type
+  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let results = (outs ArrayType:$result);
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+
+  let builders = [
+    // ValueRange needs to contain at least one element.
+    OpBuilder<(ins "::mlir::ValueRange":$input)>
+  ];
+
+  let extraClassDeclaration = [{
+    /// If the all elements of the array are identical, returns that element
+    /// value. Otherwise returns a null value.
+    ::mlir::Value getUniformElement();
+    /// Returns true if all array elements are identical.
+    bool isUniform() { return !!getUniformElement(); }
+  }];
+}
+
+
+class ArrayElementTypeConstraint<string result, string input>
+  : TypesMatchWith<"Result must be arrays element type",
+                   input, result,
+                   "mlir::cast<ArrayType>($_self).getElementType()">;
+
+def ArrayGetOp : P4HIR_Op<"array_get",
+    [Pure, ArrayElementTypeConstraint<"result", "input">]> {
+  let summary = "Get the value in an array at the specified index";
+  let arguments = (ins ArrayType:$input, AnyIntP4Type:$index);
+  let results = (outs AnyP4Type:$result);
+
+  let hasFolder = 1;
+
+  let assemblyFormat = [{
+    $input `[` $index `]` attr-dict `:` qualified(type($input)) `,` qualified(type($index))
+  }];
+}
+
+def ArraySetOp : P4HIR_Op<"array_set",
+    [Pure, ArrayElementTypeConstraint<"value", "input">]> {
+  let summary = "Get the value in an array at the specified index";
+  let arguments = (ins ArrayType:$input, AnyIntP4Type:$index, AnyP4Type:$value);
+
+  let assemblyFormat = [{
+    $input `[` $index `]` `=` $value attr-dict `:` qualified(type($input)) `,` qualified(type($index))
+  }];
+}
+
 include "p4mlir/Dialect/P4HIR/P4HIR_ParserOps.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_ControlOps.td"
 

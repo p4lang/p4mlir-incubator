@@ -63,7 +63,7 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
 
     if (mlir::isa<P4HIR::AggAttr>(attrType)) {
         if (!mlir::isa<P4HIR::StructType, P4HIR::HeaderType, P4HIR::HeaderUnionType,
-                       mlir::TupleType>(opType))
+                       mlir::TupleType, P4HIR::ArrayType>(opType))
             return op->emitOpError("result type (") << opType << ") is not an aggregate type";
 
         return success();
@@ -2665,6 +2665,71 @@ void P4HIR::UninitializedOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "uninitialized");
 }
 
+//===----------------------------------------------------------------------===//
+// ArrayOp
+//===----------------------------------------------------------------------===//
+
+ParseResult P4HIR::ArrayOp::parse(OpAsmParser &parser, OperationState &result) {
+    llvm::SMLoc inputOperandsLoc = parser.getCurrentLocation();
+    llvm::SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
+    Type declType;
+
+    if (parser.parseLSquare() || parser.parseOperandList(operands) || parser.parseRSquare() ||
+        parser.parseOptionalAttrDict(result.attributes) || parser.parseColonType(declType))
+        return failure();
+
+    auto arrayType = mlir::dyn_cast<ArrayType>(declType);
+    if (!arrayType) return parser.emitError(parser.getNameLoc(), "expected !p4hir.array type");
+
+    llvm::SmallVector<Type, 4> arrayInnerTypes(arrayType.getSize(), arrayType.getElementType());
+    result.addTypes(arrayType);
+
+    if (parser.resolveOperands(operands, arrayInnerTypes, inputOperandsLoc, result.operands))
+        return failure();
+    return success();
+}
+
+void P4HIR::ArrayOp::print(OpAsmPrinter &printer) {
+    printer << " [";
+    printer.printOperands(getInput());
+    printer << "]";
+    printer.printOptionalAttrDict((*this)->getAttrs());
+    printer << " : " << getType();
+}
+
+LogicalResult P4HIR::ArrayOp::verify() {
+    auto arrayType = mlir::cast<ArrayType>(getType());
+
+    if (arrayType.getSize() != getInput().size())
+        return emitOpError("array element count mismatch");
+
+    for (auto value : getInput())
+        if (arrayType.getElementType() != value.getType())
+            return emitOpError("value `") << value << "` type does not match array element type";
+
+    return success();
+}
+
+void P4HIR::ArrayOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    setNameFn(getResult(), "array");
+}
+
+OpFoldResult P4HIR::ArrayGetOp::fold(FoldAdaptor adaptor) {
+    // We can only fold constant indices
+    auto idxAttr = mlir::dyn_cast_or_null<P4HIR::IntAttr>(adaptor.getIndex());
+    if (!idxAttr) return {};
+
+    // Fold extract from aggregate constant
+    if (auto aggAttr = adaptor.getInput())
+        return mlir::cast<P4HIR::AggAttr>(aggAttr).getFields()[idxAttr.getUInt()];
+
+    // Fold extract from array
+    if (auto arrayOp = mlir::dyn_cast_or_null<P4HIR::ArrayOp>(getInput().getDefiningOp()))
+        return arrayOp.getOperand(idxAttr.getUInt());
+
+    return {};
+}
+
 namespace {
 struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
     using OpAsmDialectInterface::OpAsmDialectInterface;
@@ -2774,6 +2839,12 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
         if (auto ctorType = mlir::dyn_cast<P4HIR::CtorType>(type)) {
             os << "ctor_";
             getAlias(ctorType.getReturnType(), os);
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(type)) {
+            os << "arr_" << arrayType.getSize() << "x";
+            getAlias(arrayType.getElementType(), os);
             return AliasResult::OverridableAlias;
         }
 

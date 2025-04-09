@@ -39,6 +39,8 @@
 
 !tuple = tuple<!bit42, !void, !SuitsSerializable>
 
+!array = !p4hir.array<42 x !bit42>
+
 // No need to check stuff. If it parses, it's fine.
 // CHECK: module
 module {

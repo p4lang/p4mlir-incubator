@@ -793,6 +793,35 @@ def AliasType : P4HIR_Type<"Alias", "alias", []> {
 }
 
 //===----------------------------------------------------------------------===//
+// ArrayType
+//===----------------------------------------------------------------------===//
+def ArrayType : P4HIR_Type<"Array", "array", [
+  DeclareTypeInterfaceMethods<DestructurableTypeInterface>,
+  DeclareTypeInterfaceMethods<FieldIDTypeInterface>
+]> {
+  let summary = "fixed-sized array";
+  let description = [{
+    Fixed sized arrays are roughly similar to C arrays. Arrays are always considered
+    packed.
+  }];
+
+  let mnemonic = "array";
+  let parameters = (ins "size_t":$size, "::mlir::Type":$elementType);
+  let genVerifyDecl = 1;
+
+  let builders = [
+    AttrBuilderWithInferredContext<
+      (ins "size_t":$size, "mlir::Type":$elementType), [{
+        return $_get(elementType.getContext(), size, elementType);
+      }]>
+  ];
+
+  let assemblyFormat = [{
+    `<` $size `x` $elementType `>`
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
@@ -801,7 +830,7 @@ def AnyP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType, Strin
                            EnumType, SerEnumType,
                            ValidBitType,
                            DontcareType, ErrorType, UnknownType, AliasType,
-                           SetType]> {}
+                           SetType, ArrayType]> {}
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType,
                                   StructType, HeaderType, Builtin_Tuple,
