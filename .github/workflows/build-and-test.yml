@@ -14,10 +14,13 @@ concurrency:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-24.04
+    name: test-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
 
     steps:
-
     - name: Checkout repo
       uses: actions/checkout@v4
       with:
