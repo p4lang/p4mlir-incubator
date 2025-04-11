@@ -12,12 +12,9 @@ sudo apt-get install -y \
     lld \
     ninja-build \
     pkg-config \
-    python-is-python3 \
+    cmake \
     python3 \
     python3-pip
-
-pip install --upgrade \
-    cmake
 
 # Install additional LLVM & MLIR dependencies
 # https://llvm.org/docs/GettingStarted.html#requirements
