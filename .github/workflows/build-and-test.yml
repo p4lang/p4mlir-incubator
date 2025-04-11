@@ -58,9 +58,9 @@ jobs:
         build_tools/ubuntu_install_mlir_requirements.sh
 
     - name: Build and test MLIR
-      if: steps.cache-llvm.outputs.cache-hit != 'true'
       run: |
-        build_tools/build_mlir.sh
+        build_tools/build_mlir.sh 2>&1 | tee build_mlir.log  
+        cat build_mlir.log  
 
     # --------
     # Build and test P4MLIR.
@@ -69,3 +69,8 @@ jobs:
     - name: Build and test P4MLIR
       run: |
         build_tools/build_p4c_with_p4mlir_ext.sh
+    
+    - name: Run P4MLIR tests
+      run: |
+        build_tools/unittest.sh 2>&1 | tee unittest.log  
+        cat unittest.log  
