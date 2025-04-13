@@ -14,11 +14,12 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: test-${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: test-${{ matrix.distribution }}
+    runs-on: ${{ matrix.distribution }}
     strategy:
+      fail-fast: false  # Let all matrix jobs complete, even if one fails
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
+        distribution: [ubuntu-22.04, ubuntu-24.04]
 
     steps:
     - name: Checkout repo
@@ -33,9 +34,15 @@ jobs:
     - name: Enable ccache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
-        key: ${{ runner.os }}-${{ matrix.os }}-llvm-commit-${{ steps.get-llvm-hash.outputs.hash }}-mlir-build-script-${{ hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh') }}
+        # The ccache key combines runner OS and distribution, LLVM version, and build configuration to prevent unsafe cache hits while maximizing valid reuse.
+        # ccache key components:
+        # - ${{ steps.get-llvm-hash.outputs.hash }}
+        #   - Pins cache to the exact LLVM commit. Without this, a cache hit could return incompatible build results.
+        # - hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh')
+        #   - The build_mlir.sh script defines critical build flags (e.g., -DLLVM_ENABLE_RTTI=ON, compiler choices, linker options).
+        #     If the script changes (e.g., enabling/disabling features), cached objects from a previous version might be invalid or unsafe to reuse.
+        key: ${{ runner.os }}-${{ matrix.distribution }}-llvm-commit-${{ steps.get-llvm-hash.outputs.hash }}-mlir-build-script-${{ hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh') }}
         max-size: 2G
-
     - name: Cache LLVM
       id: cache-llvm
       uses: actions/cache@v3
@@ -43,7 +50,7 @@ jobs:
         path: |
           third_party/llvm-project/build/bin/llvm-lit
           install
-        key: ${{ runner.os }}-${{ matrix.os }}-llvm-commit-${{ steps.get-llvm-hash.outputs.hash }}-mlir-build-script-${{ hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh') }}
+        key: ${{ runner.os }}-${{ matrix.distribution }}-llvm-commit-${{ steps.get-llvm-hash.outputs.hash }}-mlir-build-script-${{ hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh') }}
 
     - name: Install requirements
       run: |
