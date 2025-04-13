@@ -26,24 +26,16 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Enable ccache
-      uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        key: ${{ runner.os }}
-        max-size: 2G
-
-    # --------
-    # Build and test MLIR. Use cache when available.
-    # --------
-
     - name: Get LLVM hash
       id: get-llvm-hash
       run: echo "hash=$(git rev-parse @:./third_party/llvm-project)" >> $GITHUB_OUTPUT
 
-    - name: Get workflow hash
-      id: get-workflow-hash
-      run: echo "hash=$(md5sum $GITHUB_WORKSPACE/.github/workflows/build-and-test.yml | awk '{print $1}')" >> $GITHUB_OUTPUT
-    
+    - name: Enable ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: ${{ runner.os }}-${{ matrix.os }}-llvm-commit-${{ steps.get-llvm-hash.outputs.hash }}-mlir-build-script-${{ hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh') }}
+        max-size: 2G
+
     - name: Cache LLVM
       id: cache-llvm
       uses: actions/cache@v3
@@ -51,11 +43,15 @@ jobs:
         path: |
           third_party/llvm-project/build/bin/llvm-lit
           install
-        key: ${{ runner.os }}-llvm-${{ steps.get-llvm-hash.outputs.hash }}-${{ steps.get-workflow-hash.outputs.hash }}
+        key: ${{ runner.os }}-${{ matrix.os }}-llvm-commit-${{ steps.get-llvm-hash.outputs.hash }}-mlir-build-script-${{ hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh') }}
 
     - name: Install requirements
       run: |
         build_tools/ubuntu_install_mlir_requirements.sh
+
+    # --------
+    # Build and test MLIR. Use cache when available.
+    # --------
 
     - name: Build and test MLIR
       if: steps.cache-llvm.outputs.cache-hit != 'true'
