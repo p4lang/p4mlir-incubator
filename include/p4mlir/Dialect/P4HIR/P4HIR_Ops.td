@@ -294,6 +294,7 @@ def UnaryOp : P4HIR_Op<"unary",
   }];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def BinOpKind_Mul    : I32EnumAttrCase<"Mul",   1, "mul">;

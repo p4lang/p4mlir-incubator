@@ -245,6 +245,43 @@ void P4HIR::UnaryOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), stringifyEnum(getKind()));
 }
 
+OpFoldResult P4HIR::UnaryOp::fold(FoldAdaptor adaptor) {
+    // Identity.
+    // plus(%x) -> %x
+    if (getKind() == P4HIR::UnaryOpKind::UPlus) return getInput();
+
+    // Double negation.
+    if (auto inputOp = mlir::dyn_cast_or_null<UnaryOp>(getInput().getDefiningOp())) {
+        if (getKind() == inputOp.getKind()) {
+            if (getKind() == P4HIR::UnaryOpKind::LNot ||  // not(not(%a)) -> %a
+                getKind() == P4HIR::UnaryOpKind::Cmpl ||  // compl(compl(%a)) -> %a
+                getKind() == P4HIR::UnaryOpKind::Neg) {   // neg(neg(%a)) -> %a
+                return inputOp.getInput();
+            }
+        }
+    }
+
+    // Constant folding
+    if (auto opAttr = adaptor.getInput()) {
+        if (getKind() == P4HIR::UnaryOpKind::LNot) {
+            if (auto boolAttr = mlir::dyn_cast<P4HIR::BoolAttr>(opAttr)) {
+                return P4HIR::BoolAttr::get(getContext(), !boolAttr.getValue());
+            }
+        } else if (getKind() == P4HIR::UnaryOpKind::Neg) {
+            if (auto intAttr = mlir::dyn_cast<P4HIR::IntAttr>(opAttr)) {
+                return P4HIR::IntAttr::get(intAttr.getType(), -intAttr.getValue());
+            }
+        } else if (getKind() == P4HIR::UnaryOpKind::Cmpl) {
+            if (auto intAttr = mlir::dyn_cast<P4HIR::IntAttr>(opAttr)) {
+                return P4HIR::IntAttr::get(intAttr.getType(), ~intAttr.getValue());
+            }
+        }
+        // UPlus gets handled by the identity rule above
+    }
+
+    return {};
+}
+
 //===----------------------------------------------------------------------===//
 // BinaryOp
 //===----------------------------------------------------------------------===//
