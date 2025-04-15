@@ -251,7 +251,7 @@ OpFoldResult P4HIR::UnaryOp::fold(FoldAdaptor adaptor) {
     if (getKind() == P4HIR::UnaryOpKind::UPlus) return getInput();
 
     // Double negation.
-    if (auto inputOp = mlir::dyn_cast_or_null<UnaryOp>(getInput().getDefiningOp())) {
+    if (auto inputOp = mlir::dyn_cast_if_present<UnaryOp>(getInput().getDefiningOp())) {
         if (getKind() == inputOp.getKind()) {
             if (getKind() == P4HIR::UnaryOpKind::LNot ||  // not(not(%a)) -> %a
                 getKind() == P4HIR::UnaryOpKind::Cmpl ||  // compl(compl(%a)) -> %a
@@ -291,7 +291,7 @@ void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 }
 
 //===----------------------------------------------------------------------===//
-// ShrOp, ShlOp
+// ShrOp & ShlOp
 //===----------------------------------------------------------------------===//
 
 void P4HIR::ShlOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
@@ -302,13 +302,84 @@ void P4HIR::ShrOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "shr");
 }
 
+LogicalResult verifyShiftOperation(Operation *op, Type rhsType) {
+    if (auto rhsBitsType = dyn_cast<P4HIR::BitsType>(rhsType)) {
+        if (rhsBitsType.isSigned()) {
+            return op->emitOpError("the right-hand side operand of a shift must be unsigned");
+        }
+    }
+    return success();
+}
+
+LogicalResult P4HIR::ShlOp::verify() {
+    auto rhsType = getRhs().getType();
+    return verifyShiftOperation(getOperation(), rhsType);
+}
+
+LogicalResult P4HIR::ShrOp::verify() {
+    auto rhsType = getRhs().getType();
+    return verifyShiftOperation(getOperation(), rhsType);
+}
+
+OpFoldResult P4HIR::ShlOp::fold(FoldAdaptor adaptor) {
+    // Can't fold anything if shift amount is not constant
+    auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs());
+    if (!rhsAttr) return {};
+    auto shift = rhsAttr.getUInt();
+
+    // Identity.
+    // shl(%x, 0) -> %x
+    if (shift == 0) return getLhs();
+
+    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
+        auto width = bitsType.getWidth();
+        // shl(%x : bit/int<W>, c) -> 0 if c >= W
+        if (shift >= width) return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
+
+        if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
+            // Arithmetic and logical left shifts produce the same value
+            return P4HIR::IntAttr::get(bitsType, lhsAttr.getValue().shl(shift));
+        }
+    }
+
+    return {};
+}
+
+OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
+    // Can't fold anything if shift amount is not constant
+    auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs());
+    if (!rhsAttr) return {};
+    auto shift = rhsAttr.getUInt();
+
+    // Identity.
+    // shl(%x, 0) -> %x
+    if (shift == 0) return getLhs();
+
+    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
+        auto width = bitsType.getWidth();
+        bool isSigned = bitsType.isSigned();
+        // shr(%x : bit<W>, c) -> 0 if c >= W
+        if (!isSigned && shift >= width) {
+            return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
+        }
+
+        if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
+            auto result =
+                isSigned ? lhsAttr.getValue().ashr(shift) : lhsAttr.getValue().lshr(shift);
+            return P4HIR::IntAttr::get(getContext(), bitsType, result);
+        }
+    }
+
+    return {};
+}
+
 //===----------------------------------------------------------------------===//
 // ConcatOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult P4HIR::ConcatOp::verify() {
-    auto lhsType = cast<BitsType>(getOperand(0).getType());
-    auto rhsType = cast<BitsType>(getOperand(1).getType());
+    auto lhsType = cast<BitsType>(getLhs().getType());
+    auto rhsType = cast<BitsType>(getRhs().getType());
     auto resultType = cast<BitsType>(getResult().getType());
 
     auto expectedWidth = lhsType.getWidth() + rhsType.getWidth();
@@ -321,30 +392,6 @@ LogicalResult P4HIR::ConcatOp::verify() {
                                 "signedness of the left-hand side operand";
 
     return success();
-}
-
-//===----------------------------------------------------------------------===//
-// ShlOp & ShrOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult verifyArithmeticShiftOperation(Operation *op, Type rhsType) {
-    if (auto rhsBitsType = dyn_cast<P4HIR::BitsType>(rhsType)) {
-        if (rhsBitsType.isSigned()) {
-            return op->emitOpError()
-                   << "the right-hand side operand of an arithmetic shift must be unsigned";
-        }
-    }
-    return success();
-}
-
-LogicalResult P4HIR::ShlOp::verify() {
-    auto rhsType = getOperand(1).getType();
-    return verifyArithmeticShiftOperation(getOperation(), rhsType);
-}
-
-LogicalResult P4HIR::ShrOp::verify() {
-    auto rhsType = getOperand(1).getType();
-    return verifyArithmeticShiftOperation(getOperation(), rhsType);
 }
 
 //===----------------------------------------------------------------------===//
