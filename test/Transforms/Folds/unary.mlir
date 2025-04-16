@@ -11,34 +11,33 @@
 
 // CHECK-LABEL: module
 module {
-
-  // CHECK: %[[true:.*]] = p4hir.const #true
-  // CHECK: %[[false:.*]] = p4hir.const #false
-  // CHECK: %[[cminus6:.*]] = p4hir.const #int-6_b8i
-  // CHECK: %[[cminus5:.*]] = p4hir.const #int-5_b8i
-  // CHECK: %[[c5:.*]] = p4hir.const #int5_b8i
+  // CHECK-DAG: %[[true:.*]] = p4hir.const #true
+  // CHECK-DAG: %[[false:.*]] = p4hir.const #false
+  // CHECK-DAG: %[[cminus6_b8i:.*]] = p4hir.const #int-6_b8i
+  // CHECK-DAG: %[[cminus5_b8i:.*]] = p4hir.const #int-5_b8i
+  // CHECK-DAG: %[[c5:.*]] = p4hir.const #int5_b8i
   %true = p4hir.const #true
   %false = p4hir.const #false
-  %c-6 = p4hir.const #int-6_b8i
-  %c-5 = p4hir.const #int-5_b8i
-  %c5 = p4hir.const #int5_b8i
+  %c-6_b8i = p4hir.const #int-6_b8i
+  %c-5_b8i = p4hir.const #int-5_b8i
+  %c5_b8i = p4hir.const #int5_b8i
 
   p4hir.func @blackhole(!b8i)
   p4hir.func @blackhole_bool(!b)
 
   // CHECK-LABEL: p4hir.func @test_unary_const
   p4hir.func @test_unary_const() {
-    // CHECK: p4hir.call @blackhole (%[[cminus5]]) : (!b8i) -> ()
-    %r1 = p4hir.unary(minus, %c5) : !b8i
+    // CHECK: p4hir.call @blackhole (%[[cminus5_b8i]]) : (!b8i) -> ()
+    %r1 = p4hir.unary(minus, %c5_b8i) : !b8i
     p4hir.call @blackhole(%r1) : (!b8i) -> ()
 
     // CHECK: p4hir.call @blackhole (%[[c5]]) : (!b8i) -> ()
-    %r2 = p4hir.unary(plus, %c5) : !b8i
+    %r2 = p4hir.unary(plus, %c5_b8i) : !b8i
     p4hir.call @blackhole(%r2) : (!b8i) -> ()
 
     // ~5 = -6
-    // CHECK: p4hir.call @blackhole (%[[cminus6]]) : (!b8i) -> ()
-    %r3 = p4hir.unary(cmpl, %c5) : !b8i
+    // CHECK: p4hir.call @blackhole (%[[cminus6_b8i]]) : (!b8i) -> ()
+    %r3 = p4hir.unary(cmpl, %c5_b8i) : !b8i
     p4hir.call @blackhole(%r3) : (!b8i) -> ()
 
     // CHECK: p4hir.call @blackhole_bool (%[[false]]) : (!p4hir.bool) -> ()
@@ -60,9 +59,9 @@ module {
     p4hir.call @blackhole(%m2) : (!b8i) -> ()
 
     // CHECK: p4hir.call @blackhole (%arg0)
-    %c1 = p4hir.unary(cmpl, %arg_b8i) : !b8i
-    %c2 = p4hir.unary(cmpl, %c1) : !b8i
-    p4hir.call @blackhole(%c2) : (!b8i) -> ()
+    %c1_b8i = p4hir.unary(cmpl, %arg_b8i) : !b8i
+    %c2_b8i = p4hir.unary(cmpl, %c1_b8i) : !b8i
+    p4hir.call @blackhole(%c2_b8i) : (!b8i) -> ()
 
     // CHECK: p4hir.call @blackhole_bool (%arg1)
     %n1 = p4hir.unary(not, %arg_b) : !b

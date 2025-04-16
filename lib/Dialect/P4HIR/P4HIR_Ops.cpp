@@ -352,21 +352,25 @@ OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
     auto shift = rhsAttr.getUInt();
 
     // Identity.
-    // shl(%x, 0) -> %x
+    // shr(%x, 0) -> %x
     if (shift == 0) return getLhs();
 
     if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
         auto width = bitsType.getWidth();
         bool isSigned = bitsType.isSigned();
         // shr(%x : bit<W>, c) -> 0 if c >= W
-        if (!isSigned && shift >= width) {
-            return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
-        }
+        if (!isSigned && shift >= width) return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
 
         if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
+            // For signed types with shift >= width, result depends on lhs operand's sign bit
+            if (isSigned && shift >= width) {
+                return lhsAttr.getValue().isNegative()
+                           ? P4HIR::IntAttr::get(bitsType, APInt::getAllOnes(width))
+                           : P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
+            }
             auto result =
                 isSigned ? lhsAttr.getValue().ashr(shift) : lhsAttr.getValue().lshr(shift);
-            return P4HIR::IntAttr::get(getContext(), bitsType, result);
+            return P4HIR::IntAttr::get(bitsType, result);
         }
     }
 
