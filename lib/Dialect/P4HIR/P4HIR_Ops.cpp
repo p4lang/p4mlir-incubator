@@ -173,7 +173,7 @@ OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
     if (getOperand().getType() == getType()) return getOperand();
 
     // Casts of integer constants
-    if (auto inputConst = mlir::dyn_cast_or_null<ConstOp>(getOperand().getDefiningOp())) {
+    if (auto inputConst = mlir::dyn_cast_if_present<ConstOp>(getOperand().getDefiningOp())) {
         auto destType = getType(), srcType = inputConst.getType();
 
         if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
@@ -206,7 +206,7 @@ LogicalResult P4HIR::CastOp::canonicalize(P4HIR::CastOp op, PatternRewriter &rew
     // %b = cast(%a) : A -> B
     //      cast(%b) : B -> C
     // ===> cast(%a) : A -> C
-    if (auto inputCast = mlir::dyn_cast_or_null<CastOp>(op.getSrc().getDefiningOp())) {
+    if (auto inputCast = mlir::dyn_cast_if_present<CastOp>(op.getSrc().getDefiningOp())) {
         auto bitcast =
             rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), op.getType(), inputCast.getSrc());
         rewriter.replaceOp(op, bitcast);
@@ -291,93 +291,6 @@ void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 }
 
 //===----------------------------------------------------------------------===//
-// ShrOp & ShlOp
-//===----------------------------------------------------------------------===//
-
-void P4HIR::ShlOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
-    setNameFn(getResult(), "shl");
-}
-
-void P4HIR::ShrOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
-    setNameFn(getResult(), "shr");
-}
-
-LogicalResult verifyShiftOperation(Operation *op, Type rhsType) {
-    if (auto rhsBitsType = dyn_cast<P4HIR::BitsType>(rhsType)) {
-        if (rhsBitsType.isSigned()) {
-            return op->emitOpError("the right-hand side operand of a shift must be unsigned");
-        }
-    }
-    return success();
-}
-
-LogicalResult P4HIR::ShlOp::verify() {
-    auto rhsType = getRhs().getType();
-    return verifyShiftOperation(getOperation(), rhsType);
-}
-
-LogicalResult P4HIR::ShrOp::verify() {
-    auto rhsType = getRhs().getType();
-    return verifyShiftOperation(getOperation(), rhsType);
-}
-
-OpFoldResult P4HIR::ShlOp::fold(FoldAdaptor adaptor) {
-    // Can't fold anything if shift amount is not constant
-    auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs());
-    if (!rhsAttr) return {};
-    auto shift = rhsAttr.getUInt();
-
-    // Identity.
-    // shl(%x, 0) -> %x
-    if (shift == 0) return getLhs();
-
-    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
-        auto width = bitsType.getWidth();
-        // shl(%x : bit/int<W>, c) -> 0 if c >= W
-        if (shift >= width) return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
-
-        if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
-            // Arithmetic and logical left shifts produce the same value
-            return P4HIR::IntAttr::get(bitsType, lhsAttr.getValue().shl(shift));
-        }
-    }
-
-    return {};
-}
-
-OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
-    // Can't fold anything if shift amount is not constant
-    auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs());
-    if (!rhsAttr) return {};
-    auto shift = rhsAttr.getUInt();
-
-    // Identity.
-    // shr(%x, 0) -> %x
-    if (shift == 0) return getLhs();
-
-    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
-        auto width = bitsType.getWidth();
-        bool isSigned = bitsType.isSigned();
-        // shr(%x : bit<W>, c) -> 0 if c >= W
-        if (!isSigned && shift >= width) return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
-
-        if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
-            // For signed types with shift >= width, result depends on lhs operand's sign bit
-            if (isSigned && shift >= width) {
-                return lhsAttr.getValue().isNegative()
-                           ? P4HIR::IntAttr::get(bitsType, APInt::getAllOnes(width))
-                           : P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
-            }
-            auto result =
-                isSigned ? lhsAttr.getValue().ashr(shift) : lhsAttr.getValue().lshr(shift);
-            return P4HIR::IntAttr::get(bitsType, result);
-        }
-    }
-
-    return {};
-}
-
-//===----------------------------------------------------------------------===//
 // ConcatOp
 //===----------------------------------------------------------------------===//
 
@@ -396,6 +309,141 @@ LogicalResult P4HIR::ConcatOp::verify() {
                                 "signedness of the left-hand side operand";
 
     return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ShlOp & ShrOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::ShlOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "shl");
+}
+
+void P4HIR::ShrOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "shr");
+}
+
+LogicalResult verifyShiftOperation(Operation *op, Type rhsType) {
+    // FIXME: Relax this condition for compile-time known non-negative values.
+    if (auto rhsBitsType = dyn_cast<P4HIR::BitsType>(rhsType)) {
+        if (rhsBitsType.isSigned()) {
+            return op->emitOpError("the right-hand side operand of a shift must be unsigned");
+        }
+    }
+    return success();
+}
+
+LogicalResult P4HIR::ShlOp::verify() {
+    auto rhsType = getRhs().getType();
+    return verifyShiftOperation(getOperation(), rhsType);
+}
+
+LogicalResult P4HIR::ShrOp::verify() {
+    auto rhsType = getRhs().getType();
+    return verifyShiftOperation(getOperation(), rhsType);
+}
+
+template <typename ShiftOp>
+OpFoldResult foldZeroConstants(ShiftOp op, typename ShiftOp::FoldAdaptor adaptor) {
+    // Identity.
+    // shl/shr(%x, 0) -> %x
+    if (auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs())) {
+        if (rhsAttr.getUInt() == 0) return op.getLhs();
+    }
+
+    // Zero.
+    // shl/shr(0, c) -> 0
+    if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
+        if (lhsAttr.getValue() == 0) {
+            if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(op.getType())) {
+                return P4HIR::IntAttr::get(op.getType(), APInt::getZero(bitsType.getWidth()));
+            } else if (auto infIntType = mlir::dyn_cast<P4HIR::InfIntType>(op.getType())) {
+                return P4HIR::IntAttr::get(op.getType(), APInt::getZero(1));
+            }
+        }
+    }
+
+    return {};
+}
+
+OpFoldResult P4HIR::ShlOp::fold(FoldAdaptor adaptor) {
+    if (auto fold = foldZeroConstants(*this, adaptor)) {
+        return fold;
+    }
+
+    auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs());
+    if (!rhsAttr) return {};
+    auto shift = rhsAttr.getUInt();
+
+    // Zero.
+    // shl(%x : bit/int<W>, c) -> 0 if c >= W
+    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
+        auto width = bitsType.getWidth();
+        if (shift >= width) return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
+    }
+
+    // Constant folding
+    if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
+        if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
+            // Arithmetic and logical left shifts produce the same value
+            return P4HIR::IntAttr::get(bitsType, lhsAttr.getValue().shl(shift));
+        } else if (auto infIntType = mlir::dyn_cast<P4HIR::InfIntType>(getType())) {
+            // For InfIntType, we define a << b as a * (2^b):
+            // - 2^b = 1 << b which requires (b+1) bits
+            // - Multiplying an n-bit number by a (b+1)-bit number requires at most (n+b+1) bits
+            auto productWidth = lhsAttr.getValue().getBitWidth() + shift + 1;
+            APInt A = lhsAttr.getValue().sext(productWidth);
+            APInt twoPowB = APInt::getOneBitSet(productWidth, shift);
+            return P4HIR::IntAttr::get(infIntType, A * twoPowB);
+        }
+    }
+
+    return {};
+}
+
+OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
+    if (auto fold = foldZeroConstants(*this, adaptor)) {
+        return fold;
+    }
+
+    auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs());
+    if (!rhsAttr) return {};
+    auto shift = rhsAttr.getUInt();
+
+    // Zero (on unsigned fized-width integers)
+    // shr(%x : bit<W>, c) -> 0 if c >= W
+    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
+        auto width = bitsType.getWidth();
+        if (bitsType.isUnsigned() && shift >= width)
+            return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
+    }
+
+    // Constant folding
+    if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
+        auto lhsVal = lhsAttr.getValue();
+        if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
+            auto width = bitsType.getWidth();
+            // For fixed-width signed types, shifting by width or more results in all sign bits
+            // The unsigned case is already handled above
+            if (shift >= width) {
+                return lhsVal.isNegative()
+                           ? P4HIR::IntAttr::get(getType(), APInt::getAllOnes(width))
+                           : P4HIR::IntAttr::get(getType(), APInt::getZero(width));
+            }
+            auto result = bitsType.isSigned() ? lhsAttr.getValue().ashr(shift)
+                                              : lhsAttr.getValue().lshr(shift);
+            return P4HIR::IntAttr::get(bitsType, result);
+        } else if (auto infIntType = mlir::dyn_cast<P4HIR::InfIntType>(getType())) {
+            // For InfIntType, we define a >> b as a / (2^b)
+            // We take the max width to handle shift >= width cases
+            auto quotientWidth = std::max(static_cast<uint64_t>(lhsVal.getBitWidth()), shift + 1);
+            APInt A = lhsVal.sext(quotientWidth);
+            APInt twoPowB = APInt::getOneBitSet(quotientWidth, shift);
+            return P4HIR::IntAttr::get(infIntType, A.sdiv(twoPowB));
+        }
+    }
+
+    return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1282,7 +1330,7 @@ OpFoldResult P4HIR::StructExtractOp::fold(FoldAdaptor adaptor) {
         return mlir::cast<P4HIR::AggAttr>(aggAttr).getFields()[getFieldIndex()];
     }
     // Fold extract from struct
-    if (auto structOp = mlir::dyn_cast_or_null<P4HIR::StructOp>(getInput().getDefiningOp())) {
+    if (auto structOp = mlir::dyn_cast_if_present<P4HIR::StructOp>(getInput().getDefiningOp())) {
         return structOp.getOperand(getFieldIndex());
     }
 
@@ -1564,7 +1612,8 @@ void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
     }
 
     printer << ' ';
-    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
+                        /*printBlockTerminators=*/true);
 }
 
 mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
@@ -2128,7 +2177,8 @@ void P4HIR::ControlOp::print(mlir::OpAsmPrinter &printer) {
     }
 
     printer << ' ';
-    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
+                        /*printBlockTerminators=*/true);
 }
 
 mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
@@ -2395,7 +2445,8 @@ void P4HIR::TableActionOp::print(mlir::OpAsmPrinter &printer) {
     }
 
     printer << ' ';
-    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
+                        /*printBlockTerminators=*/true);
 }
 
 mlir::ParseResult P4HIR::TableActionOp::parse(mlir::OpAsmParser &parser,
@@ -2804,7 +2855,7 @@ void P4HIR::ArrayOp::getAsmResultNames(function_ref<void(Value, StringRef)> setN
 
 OpFoldResult P4HIR::ArrayGetOp::fold(FoldAdaptor adaptor) {
     // We can only fold constant indices
-    auto idxAttr = mlir::dyn_cast_or_null<P4HIR::IntAttr>(adaptor.getIndex());
+    auto idxAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getIndex());
     if (!idxAttr) return {};
 
     // Fold extract from aggregate constant
@@ -2812,7 +2863,7 @@ OpFoldResult P4HIR::ArrayGetOp::fold(FoldAdaptor adaptor) {
         return mlir::cast<P4HIR::AggAttr>(aggAttr).getFields()[idxAttr.getUInt()];
 
     // Fold extract from array
-    if (auto arrayOp = mlir::dyn_cast_or_null<P4HIR::ArrayOp>(getInput().getDefiningOp()))
+    if (auto arrayOp = mlir::dyn_cast_if_present<P4HIR::ArrayOp>(getInput().getDefiningOp()))
         return arrayOp.getOperand(idxAttr.getUInt());
 
     return {};
