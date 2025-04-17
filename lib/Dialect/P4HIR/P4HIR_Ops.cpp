@@ -348,18 +348,15 @@ OpFoldResult foldZeroConstants(ShiftOp op, typename ShiftOp::FoldAdaptor adaptor
     // Identity.
     // shl/shr(%x, 0) -> %x
     if (auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs())) {
-        if (rhsAttr.getUInt() == 0) return op.getLhs();
+        if (rhsAttr.getValue().isZero()) return op.getLhs();
     }
 
     // Zero.
     // shl/shr(0, c) -> 0
     if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
-        if (lhsAttr.getValue() == 0) {
-            if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(op.getType())) {
-                return P4HIR::IntAttr::get(op.getType(), APInt::getZero(bitsType.getWidth()));
-            } else if (auto infIntType = mlir::dyn_cast<P4HIR::InfIntType>(op.getType())) {
-                return P4HIR::IntAttr::get(op.getType(), APInt::getZero(1));
-            }
+        auto lhsVal = lhsAttr.getValue();
+        if (lhsVal.isZero()) {
+            return P4HIR::IntAttr::get(op.getType(), APInt::getZero(lhsVal.getBitWidth()));
         }
     }
 
@@ -375,7 +372,7 @@ OpFoldResult P4HIR::ShlOp::fold(FoldAdaptor adaptor) {
     if (!rhsAttr) return {};
     auto shift = rhsAttr.getUInt();
 
-    // Zero.
+    // Shift overflow.
     // shl(%x : bit/int<W>, c) -> 0 if c >= W
     if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
         auto width = bitsType.getWidth();
@@ -410,7 +407,7 @@ OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
     if (!rhsAttr) return {};
     auto shift = rhsAttr.getUInt();
 
-    // Zero (on unsigned fized-width integers)
+    // Shift overflow (on unsigned fixed-width integers)
     // shr(%x : bit<W>, c) -> 0 if c >= W
     if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
         auto width = bitsType.getWidth();
