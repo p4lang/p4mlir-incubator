@@ -315,6 +315,18 @@ LogicalResult P4HIR::ConcatOp::verify() {
 // ShlOp & ShrOp
 //===----------------------------------------------------------------------===//
 
+bool isSignedIntegerType(mlir::Type type) {
+    if (!type) return false;
+    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(type)) {
+        return bitsType.isSigned();
+    }
+    if (mlir::isa<P4HIR::InfIntType>(type)) {
+        // InfIntType is always considered a signed integer type
+        return true;
+    }
+    return false;
+}
+
 void P4HIR::ShlOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "shl");
 }
@@ -325,7 +337,7 @@ void P4HIR::ShrOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 
 LogicalResult verifyShiftOperation(Operation *op, Type rhsType) {
     // FIXME: Relax this condition for compile-time known non-negative values.
-    if (auto rhsBitsType = dyn_cast<P4HIR::BitsType>(rhsType)) {
+    if (auto rhsBitsType = mlir::dyn_cast<P4HIR::BitsType>(rhsType)) {
         if (rhsBitsType.isSigned()) {
             return op->emitOpError("the right-hand side operand of a shift must be unsigned");
         }
@@ -370,29 +382,29 @@ OpFoldResult P4HIR::ShlOp::fold(FoldAdaptor adaptor) {
 
     auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs());
     if (!rhsAttr) return {};
-    auto shift = rhsAttr.getUInt();
+    auto shift = rhsAttr.getValue();
 
     // Shift overflow.
     // shl(%x : bit/int<W>, c) -> 0 if c >= W
     if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
-        auto width = bitsType.getWidth();
-        if (shift >= width) return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
+        unsigned width = bitsType.getWidth();
+        if (shift.uge(width)) return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
     }
+
+    // Check if shift amount fits in a uin64_t
+    std::optional<uint64_t> shiftOpt = shift.tryZExtValue();
+    if (!shiftOpt.has_value()) {
+        // TODO: Should we log an error here? P4C throws an error on shift > 2048
+        return {};
+    }
+    uint64_t shiftAmt = shiftOpt.value();
 
     // Constant folding
     if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
-        if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
-            // Arithmetic and logical left shifts produce the same value
-            return P4HIR::IntAttr::get(bitsType, lhsAttr.getValue().shl(shift));
-        } else if (auto infIntType = mlir::dyn_cast<P4HIR::InfIntType>(getType())) {
-            // For InfIntType, we define a << b as a * (2^b):
-            // - 2^b = 1 << b which requires (b+1) bits
-            // - Multiplying an n-bit number by a (b+1)-bit number requires at most (n+b+1) bits
-            auto productWidth = lhsAttr.getValue().getBitWidth() + shift + 1;
-            APInt A = lhsAttr.getValue().sext(productWidth);
-            APInt twoPowB = APInt::getOneBitSet(productWidth, shift);
-            return P4HIR::IntAttr::get(infIntType, A * twoPowB);
-        }
+        auto lhsVal = lhsAttr.getValue();
+        if (auto infIntType = mlir::dyn_cast<P4HIR::InfIntType>(getType()))
+            lhsVal = lhsVal.sextOrTrunc(lhsVal.getActiveBits() + shiftAmt + 1);
+        return P4HIR::IntAttr::get(getType(), lhsVal.shl(shift));
     }
 
     return {};
@@ -405,39 +417,21 @@ OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
 
     auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs());
     if (!rhsAttr) return {};
-    auto shift = rhsAttr.getUInt();
+    auto shift = rhsAttr.getValue();
 
-    // Shift overflow (on unsigned fixed-width integers)
+    // Shift overflow (on unsigned fixed-width integers).
     // shr(%x : bit<W>, c) -> 0 if c >= W
     if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
-        auto width = bitsType.getWidth();
-        if (bitsType.isUnsigned() && shift >= width)
+        unsigned width = bitsType.getWidth();
+        if (bitsType.isUnsigned() && shift.uge(width))
             return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
     }
 
     // Constant folding
     if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
         auto lhsVal = lhsAttr.getValue();
-        if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
-            auto width = bitsType.getWidth();
-            // For fixed-width signed types, shifting by width or more results in all sign bits
-            // The unsigned case is already handled above
-            if (shift >= width) {
-                return lhsVal.isNegative()
-                           ? P4HIR::IntAttr::get(getType(), APInt::getAllOnes(width))
-                           : P4HIR::IntAttr::get(getType(), APInt::getZero(width));
-            }
-            auto result = bitsType.isSigned() ? lhsAttr.getValue().ashr(shift)
-                                              : lhsAttr.getValue().lshr(shift);
-            return P4HIR::IntAttr::get(bitsType, result);
-        } else if (auto infIntType = mlir::dyn_cast<P4HIR::InfIntType>(getType())) {
-            // For InfIntType, we define a >> b as a / (2^b)
-            // We take the max width to handle shift >= width cases
-            auto quotientWidth = std::max(static_cast<uint64_t>(lhsVal.getBitWidth()), shift + 1);
-            APInt A = lhsVal.sext(quotientWidth);
-            APInt twoPowB = APInt::getOneBitSet(quotientWidth, shift);
-            return P4HIR::IntAttr::get(infIntType, A.sdiv(twoPowB));
-        }
+        APInt result = isSignedIntegerType(getType()) ? lhsVal.ashr(shift) : lhsVal.lshr(shift);
+        return P4HIR::IntAttr::get(getType(), result);
     }
 
     return {};
