@@ -315,18 +315,6 @@ LogicalResult P4HIR::ConcatOp::verify() {
 // ShlOp & ShrOp
 //===----------------------------------------------------------------------===//
 
-bool isSignedIntegerType(mlir::Type type) {
-    if (!type) return false;
-    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(type)) {
-        return bitsType.isSigned();
-    }
-    if (mlir::isa<P4HIR::InfIntType>(type)) {
-        // InfIntType is always considered a signed integer type
-        return true;
-    }
-    return false;
-}
-
 void P4HIR::ShlOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "shl");
 }
@@ -353,6 +341,17 @@ LogicalResult P4HIR::ShlOp::verify() {
 LogicalResult P4HIR::ShrOp::verify() {
     auto rhsType = getRhs().getType();
     return verifyShiftOperation(getOperation(), rhsType);
+}
+
+bool isSignedIntegerType(const mlir::Type type) {
+    if (const auto bitsType = dyn_cast<P4HIR::BitsType>(type)) {
+        return bitsType.isSigned();
+    }
+    if (mlir::isa<P4HIR::InfIntType>(type)) {
+        // InfIntType is always considered a signed integer type
+        return true;
+    }
+    return false;
 }
 
 template <typename ShiftOp>
@@ -391,12 +390,9 @@ OpFoldResult P4HIR::ShlOp::fold(FoldAdaptor adaptor) {
         if (shift.uge(width)) return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
     }
 
-    // Check if shift amount fits in a uin64_t
+    // Try unwrapping shift used to extend infint width
     std::optional<uint64_t> shiftOpt = shift.tryZExtValue();
-    if (!shiftOpt.has_value()) {
-        // TODO: Should we log an error here? P4C throws an error on shift > 2048
-        return {};
-    }
+    if (!shiftOpt.has_value()) return {};
     uint64_t shiftAmt = shiftOpt.value();
 
     // Constant folding
@@ -419,7 +415,7 @@ OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
     if (!rhsAttr) return {};
     auto shift = rhsAttr.getValue();
 
-    // Shift overflow (on unsigned fixed-width integers).
+    // Shift overflow on unsigned fixed-width integers.
     // shr(%x : bit<W>, c) -> 0 if c >= W
     if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
         unsigned width = bitsType.getWidth();
@@ -1603,8 +1599,7 @@ void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
     }
 
     printer << ' ';
-    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
-                        /*printBlockTerminators=*/true);
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
 }
 
 mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
@@ -2168,8 +2163,7 @@ void P4HIR::ControlOp::print(mlir::OpAsmPrinter &printer) {
     }
 
     printer << ' ';
-    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
-                        /*printBlockTerminators=*/true);
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
 }
 
 mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
@@ -2436,8 +2430,7 @@ void P4HIR::TableActionOp::print(mlir::OpAsmPrinter &printer) {
     }
 
     printer << ' ';
-    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
-                        /*printBlockTerminators=*/true);
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
 }
 
 mlir::ParseResult P4HIR::TableActionOp::parse(mlir::OpAsmParser &parser,
