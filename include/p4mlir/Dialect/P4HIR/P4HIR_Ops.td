@@ -416,6 +416,7 @@ def ShlOp : P4HIR_Op<"shl",
   ];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 
   let assemblyFormat = [{
     `(` $lhs `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
@@ -453,6 +454,7 @@ def ShrOp : P4HIR_Op<"shr",
   ];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 
   let assemblyFormat = [{
     `(` $lhs `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
