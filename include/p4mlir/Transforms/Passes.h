@@ -27,6 +27,7 @@ namespace P4::P4MLIR {
 #include "p4mlir/Transforms/Passes.h.inc"
 
 std::unique_ptr<mlir::Pass> createPrintParsersGraphPass();
+std::unique_ptr<mlir::Pass> createSimplifyParsersPass();
 
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"

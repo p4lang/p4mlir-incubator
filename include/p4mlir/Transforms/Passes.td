@@ -13,7 +13,33 @@ def PrintParsersGraph : Pass<"p4hir-print-parsers-graph"> {
   }];
 
   let constructor = "P4MLIR::createPrintParsersGraphPass()";
-  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+
+//===----------------------------------------------------------------------===//
+// SimplifyParsers
+//===----------------------------------------------------------------------===//
+
+def SimplifyParsers : Pass<"p4hir-simplify-parsers"> {
+  let summary = "Simplifies parser control flow";
+  let description = [{
+    This pass removes parser states that are unreachable from the 'start' state
+    and collapses linear chains of states into a single state.
+
+    A linear chain is a sequence of states (e.g., s0 -> s1 -> s2) where each state
+    has exactly one successor and each successor has exactly one predecessor
+    with no annotations on any state in the chain.
+
+    Special states ('start', 'accept', 'reject') are preserved.
+
+    Example:
+
+    Before:
+      start -> s0 -> s1 -> accept
+
+    After:
+      start -> s0 -> accept
+    (with operations from s1 merged into s0)
+  }];
+  let constructor = "P4MLIR::createSimplifyParsersPass()";
 }
 
 #endif // P4MLIR_TRANSFORMS_PASSES_TD
