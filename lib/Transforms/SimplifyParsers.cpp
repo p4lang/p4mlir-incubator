@@ -18,18 +18,15 @@ struct SimplifyParsers : public impl::SimplifyParsersBase<SimplifyParsers> {
 
  private:
     /// Finds all states reachable from the 'start' state.
-    llvm::DenseSet<P4HIR::ParserStateOp> findReachableStates(P4HIR::ParserOp &parser,
-                                                             mlir::SymbolTable &symbolTable);
+    llvm::DenseSet<P4HIR::ParserStateOp> findReachableStates(P4HIR::ParserOp parser);
 
     /// Collapses linear sequences of states without branches or annotations.
-    void collapseChains(P4HIR::ParserOp &parser, mlir::SymbolTable &symbolTable);
+    void collapseChains(P4HIR::ParserOp parser);
 };
 }  // end anonymous namespace
 
-llvm::DenseSet<P4HIR::ParserStateOp> SimplifyParsers::findReachableStates(
-    P4HIR::ParserOp &parser, mlir::SymbolTable &symbolTable) {
-    auto term = llvm::cast<P4HIR::ParserTransitionOp>(parser.getBody().back().getTerminator());
-    auto start = symbolTable.lookup<P4HIR::ParserStateOp>(term.getStateAttr().getLeafReference());
+llvm::DenseSet<P4HIR::ParserStateOp> SimplifyParsers::findReachableStates(P4HIR::ParserOp parser) {
+    auto start = parser.getStartState();
     llvm::SmallVector<P4HIR::ParserStateOp> worklist{start};
     llvm::DenseSet<P4HIR::ParserStateOp> visited{start};
 
@@ -37,14 +34,10 @@ llvm::DenseSet<P4HIR::ParserStateOp> SimplifyParsers::findReachableStates(
 
     while (!worklist.empty()) {
         auto state = worklist.pop_back_val();
-        for (auto nextOp : parser.getSuccessors(state, symbolTable)) {
-            auto next = llvm::cast<P4HIR::ParserStateOp>(nextOp);
-            if (mlir::isa<P4HIR::ParserAcceptOp>(next.getTerminator())) {
-                acceptReachable = true;
-            } else if (mlir::isa<P4HIR::ParserRejectOp>(next.getTerminator())) {
-                rejectReachable = true;
-            }
-            if (visited.insert(next).second) worklist.push_back(next);
+        for (auto next : state.getNextStates()) {
+            if (next.isAccept()) acceptReachable = true;
+            else if (next.isReject()) rejectReachable = true;
+            if (!visited.contains(next)) worklist.push_back(next);
         }
     }
 
@@ -54,24 +47,18 @@ llvm::DenseSet<P4HIR::ParserStateOp> SimplifyParsers::findReachableStates(
     return visited;
 }
 
-void SimplifyParsers::collapseChains(P4HIR::ParserOp &parser, mlir::SymbolTable &symbolTable) {
+void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
     mlir::DenseMap<P4HIR::ParserStateOp, unsigned> indegree;
     // succ[s1] = s2 if there is exactly one outgoing edge from s1 to s2.
     mlir::DenseMap<P4HIR::ParserStateOp, P4HIR::ParserStateOp> succ;
 
     // We diconnect any annotated states since they can't be collapsed
     // and if we kept them they'd stop any merging downstream.
-    for (auto state : parser.getBody().getOps<P4HIR::ParserStateOp>()) {
+    for (auto state : parser.states()) {
         if (state.getAnnotations()) continue;
 
-        llvm::SmallVector<mlir::Operation *> successors = parser.getSuccessors(state, symbolTable);
-        for (auto nextOp : successors) {
-            auto next = llvm::cast<P4HIR::ParserStateOp>(nextOp);
+        for (auto next : state.getNextStates()) {
             if (!next.getAnnotations()) ++indegree[next];
-        }
-        if (successors.size() == 1) {
-            auto next = llvm::cast<P4HIR::ParserStateOp>(successors.front());
-            if (!next.getAnnotations()) succ[state] = next;
         }
     }
 
@@ -84,15 +71,16 @@ void SimplifyParsers::collapseChains(P4HIR::ParserOp &parser, mlir::SymbolTable 
         for (auto it = succ.find(head); it != succ.end(); it = succ.find(it->second)) {
             P4HIR::ParserStateOp next = it->second;
             if (indegree[next] != 1) break;
-
-            Block &headBlock = head.getBody().back();
-            Block &nextBlock = next.getBody().back();
+            auto &headOps = head.getBody().back().getOperations();
+            auto &nextOps = next.getBody().back().getOperations();
 
             // Remove the terminator (transition to 'next') from the current head body.
-            headBlock.getTerminator()->erase();
+            headOps.back().erase();
 
             // Splice all operations from 'next' into the head body.
-            headBlock.getOperations().splice(headBlock.end(), nextBlock.getOperations());
+            headOps.splice(headOps.end(), nextOps);
+
+            // Remove the now-empty 'next' state.
             next.erase();
         }
     }
@@ -100,13 +88,11 @@ void SimplifyParsers::collapseChains(P4HIR::ParserOp &parser, mlir::SymbolTable 
 
 void SimplifyParsers::runOnOperation() {
     getOperation()->walk([&](P4HIR::ParserOp parser) {
-        mlir::SymbolTable symbolTable(parser);
-
-        llvm::DenseSet<P4HIR::ParserStateOp> reachable = findReachableStates(parser, symbolTable);
-        for (auto s : llvm::make_early_inc_range(parser.getBody().getOps<P4HIR::ParserStateOp>()))
+        llvm::DenseSet<P4HIR::ParserStateOp> reachable = findReachableStates(parser);
+        for (auto s : llvm::make_early_inc_range(parser.states()))
             if (!reachable.contains(s)) s.erase();
 
-        collapseChains(parser, symbolTable);
+        collapseChains(parser);
 
         return WalkResult::advance();
     });

@@ -1919,7 +1919,7 @@ LogicalResult P4HIR::RangeOp::verify() {
 
     // However, ranges can also be used as collections in ForInOp, which means
     // their results can only be used once and their user must be a ForInOp.
-    mlir::Value result = getOperation()->getResult(0);
+    mlir::Value result = getResult();
     if (!result.hasOneUse()) {
         return emitOpError("when not nested in p4hir.select_case, ")
                << "expected single use by p4hir.foreach but found "

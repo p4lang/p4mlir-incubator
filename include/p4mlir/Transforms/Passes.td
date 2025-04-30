@@ -13,6 +13,8 @@ def PrintParsersGraph : Pass<"p4hir-print-parsers-graph"> {
   }];
 
   let constructor = "P4MLIR::createPrintParsersGraphPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
 
 //===----------------------------------------------------------------------===//
 // SimplifyParsers
@@ -47,6 +49,7 @@ def SimplifyParsers : Pass<"p4hir-simplify-parsers"> {
       s3 = s3 + s4 + accept
   }];
   let constructor = "P4MLIR::createSimplifyParsersPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
 #endif // P4MLIR_TRANSFORMS_PASSES_TD

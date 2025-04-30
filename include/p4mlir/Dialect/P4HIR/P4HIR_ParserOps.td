@@ -50,9 +50,6 @@ def ParserOp : P4HIR_Op<"parser",
     ParserStateOp getStartState();
 
     void createEntryBlock();
-
-    llvm::SmallVector<mlir::Operation *> getSuccessors(P4HIR::ParserStateOp &state,
-                                                          mlir::SymbolTable &symbolTable);
   }];
 }
 
