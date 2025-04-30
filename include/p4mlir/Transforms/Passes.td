@@ -24,20 +24,27 @@ def SimplifyParsers : Pass<"p4hir-simplify-parsers"> {
     This pass removes parser states that are unreachable from the 'start' state
     and collapses linear chains of states into a single state.
 
-    A linear chain is a sequence of states (e.g., s0 -> s1 -> s2) where each state
-    has exactly one successor and each successor has exactly one predecessor
-    with no annotations on any state in the chain.
-
-    Special states ('start', 'accept', 'reject') are preserved.
+    Linear chains are any two states where s1 has exactly one outgoing edge
+    to s2 and s2 has exactly one incoming edge from s1 with no annotations
+    in any state in the chain.
 
     Example:
 
     Before:
-      start -> s0 -> s1 -> accept
+      start --> s0 ---> s1 ---> s3 ---> s4 ---> accept
+                |               ^
+                v               |
+                s2--------------+
 
     After:
-      start -> s0 -> accept
-    (with operations from s1 merged into s0)
+      start ---> s1 ---> s3 (with accept terminator)
+         |               ^
+         v               |
+         s2--------------+
+
+    where:
+      start = start + s0
+      s3 = s3 + s4 + accept
   }];
   let constructor = "P4MLIR::createSimplifyParsersPass()";
 }

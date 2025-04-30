@@ -23,22 +23,13 @@ struct SimplifyParsers : public impl::SimplifyParsersBase<SimplifyParsers> {
 
     /// Collapses linear sequences of states without branches or annotations.
     void collapseChains(P4HIR::ParserOp &parser, mlir::SymbolTable &symbolTable);
-
-    /// Calculates state in-degrees and identifies unique successors.
-    void buildIndegreeAndSuccessor(
-        P4HIR::ParserOp &parser, mlir::SymbolTable &symbolTable,
-        llvm::DenseMap<P4HIR::ParserStateOp, unsigned> &indegree,
-        llvm::DenseMap<P4HIR::ParserStateOp, P4HIR::ParserStateOp> &succ);
 };
 }  // end anonymous namespace
 
 llvm::DenseSet<P4HIR::ParserStateOp> SimplifyParsers::findReachableStates(
     P4HIR::ParserOp &parser, mlir::SymbolTable &symbolTable) {
-    auto start = symbolTable.lookup<P4HIR::ParserStateOp>("start");
-    if (!start) {
-        parser.emitOpError("Parser missing 'start' state");
-        return {};
-    }
+    auto term = llvm::cast<P4HIR::ParserTransitionOp>(parser.getBody().back().getTerminator());
+    auto start = symbolTable.lookup<P4HIR::ParserStateOp>(term.getStateAttr().getLeafReference());
     llvm::SmallVector<P4HIR::ParserStateOp> worklist{start};
     llvm::DenseSet<P4HIR::ParserStateOp> visited{start};
 
@@ -46,24 +37,15 @@ llvm::DenseSet<P4HIR::ParserStateOp> SimplifyParsers::findReachableStates(
 
     while (!worklist.empty()) {
         auto state = worklist.pop_back_val();
-        Operation *term = state.getBody().back().getTerminator();
-
-        mlir::TypeSwitch<Operation *, void>(term)
-            .Case<P4HIR::ParserAcceptOp>([&](auto) { acceptReachable = true; })
-            .Case<P4HIR::ParserRejectOp>([&](auto) { rejectReachable = true; })
-            .Case<P4HIR::ParserTransitionOp>([&](auto transition) {
-                auto next = symbolTable.lookup<P4HIR::ParserStateOp>(
-                    transition.getStateAttr().getLeafReference());
-                if (visited.insert(next).second) worklist.push_back(next);
-            })
-            .Case<P4HIR::ParserTransitionSelectOp>([&](P4HIR::ParserTransitionSelectOp select) {
-                for (auto selectCase : select.getBody().getOps<P4HIR::ParserSelectCaseOp>()) {
-                    auto next = symbolTable.lookup<P4HIR::ParserStateOp>(
-                        selectCase.getStateAttr().getLeafReference());
-                    if (visited.insert(next).second) worklist.push_back(next);
-                }
-            })
-            .Default([&](auto) { llvm_unreachable("Unknown parser terminator"); });
+        for (auto nextOp : parser.getSuccessors(state, symbolTable)) {
+            auto next = llvm::cast<P4HIR::ParserStateOp>(nextOp);
+            if (mlir::isa<P4HIR::ParserAcceptOp>(next.getTerminator())) {
+                acceptReachable = true;
+            } else if (mlir::isa<P4HIR::ParserRejectOp>(next.getTerminator())) {
+                rejectReachable = true;
+            }
+            if (visited.insert(next).second) worklist.push_back(next);
+        }
     }
 
     if (!acceptReachable && !rejectReachable)
@@ -72,80 +54,46 @@ llvm::DenseSet<P4HIR::ParserStateOp> SimplifyParsers::findReachableStates(
     return visited;
 }
 
-void SimplifyParsers::buildIndegreeAndSuccessor(
-    P4HIR::ParserOp &parser, mlir::SymbolTable &symbolTable,
-    llvm::DenseMap<P4HIR::ParserStateOp, unsigned> &indegree,
-    llvm::DenseMap<P4HIR::ParserStateOp, P4HIR::ParserStateOp> &succ) {
-    // Helper function to identify special states that should never be collapsed
-    auto isSpecial = [](P4HIR::ParserStateOp state) {
-        auto name = state.getSymName();
-        return name == "start" || name == "accept" || name == "reject";
-    };
-
-    for (auto state : parser.getBody().getOps<P4HIR::ParserStateOp>()) {
-        if (isSpecial(state)) continue;
-
-        Operation *term = state.getBody().back().getTerminator();
-        mlir::TypeSwitch<Operation *, void>(term)
-            .Case<P4HIR::ParserAcceptOp, P4HIR::ParserRejectOp>([&](auto) {})
-            .Case<P4HIR::ParserTransitionOp>([&](auto tr) {
-                auto next =
-                    symbolTable.lookup<P4HIR::ParserStateOp>(tr.getStateAttr().getLeafReference());
-                if (isSpecial(next)) return;
-
-                ++indegree[next];
-                succ[state] = next;
-            })
-            .Case<P4HIR::ParserTransitionSelectOp>([&](P4HIR::ParserTransitionSelectOp sel) {
-                llvm::SmallVector<P4HIR::ParserStateOp> targets;
-                for (auto selectCase : sel.getBody().getOps<P4HIR::ParserSelectCaseOp>()) {
-                    auto next = symbolTable.lookup<P4HIR::ParserStateOp>(
-                        selectCase.getStateAttr().getLeafReference());
-                    targets.push_back(next);
-                    if (isSpecial(next)) return;
-
-                    ++indegree[next];
-                }
-                // A select with only one case is treated the same as a direct transition
-                if (targets.size() == 1 && !isSpecial(targets.front()))
-                    succ[state] = targets.front();
-            })
-            .Default([&](auto) { llvm_unreachable("Unknown parser terminator"); });
-    }
-}
-
 void SimplifyParsers::collapseChains(P4HIR::ParserOp &parser, mlir::SymbolTable &symbolTable) {
     mlir::DenseMap<P4HIR::ParserStateOp, unsigned> indegree;
-    // succ[s1] = s2 if there is exactly one outgoing edge from s1 to s2
+    // succ[s1] = s2 if there is exactly one outgoing edge from s1 to s2.
     mlir::DenseMap<P4HIR::ParserStateOp, P4HIR::ParserStateOp> succ;
-    buildIndegreeAndSuccessor(parser, symbolTable, indegree, succ);
 
-    // Identify collapsible chain head states
-    llvm::SmallVector<P4HIR::ParserStateOp> chainHeads;
-    for (auto &[state, next] : succ) {
-        if (indegree[state] > 0 || state.getAnnotations()) continue;
-        chainHeads.push_back(state);
+    // We diconnect any annotated states since they can't be collapsed
+    // and if we kept them they'd stop any merging downstream.
+    for (auto state : parser.getBody().getOps<P4HIR::ParserStateOp>()) {
+        if (state.getAnnotations()) continue;
+
+        llvm::SmallVector<mlir::Operation *> successors = parser.getSuccessors(state, symbolTable);
+        for (auto nextOp : successors) {
+            auto next = llvm::cast<P4HIR::ParserStateOp>(nextOp);
+            if (!next.getAnnotations()) ++indegree[next];
+        }
+        if (successors.size() == 1) {
+            auto next = llvm::cast<P4HIR::ParserStateOp>(successors.front());
+            if (!next.getAnnotations()) succ[state] = next;
+        }
     }
 
-    // Process each chain, collapsing all states into the head state
-    for (auto head : chainHeads) {
-        Block &headBody = head.getBody().back();
+    // Process each chain head, collapsing states whenever possible.
+    for (auto &[head, _] : succ) {
+        if (indegree[head] == 1) continue;  // not a chain head
 
-        // Walk forward through the chain using successor map
-        // ensuring the next state has only one incoming edge and no annotations
+        // Walk forward through the chain using successor map ensuring the next state
+        // has only one incoming edge.
         for (auto it = succ.find(head); it != succ.end(); it = succ.find(it->second)) {
             P4HIR::ParserStateOp next = it->second;
-            if (indegree[next] != 1 || next.getAnnotations()) break;
+            if (indegree[next] != 1) break;
 
-            Block &nextBody = next.getBody().back();
+            Block &headBlock = head.getBody().back();
+            Block &nextBlock = next.getBody().back();
 
-            // Remove the terminator (transition to 'next') from the current head body
-            headBody.getTerminator()->erase();
+            // Remove the terminator (transition to 'next') from the current head body.
+            headBlock.getTerminator()->erase();
 
-            // Splice all operations from 'next' into the head body
-            headBody.getOperations().splice(headBody.end(), nextBody.getOperations(),
-                                            nextBody.begin(), nextBody.end());
-            next->erase();
+            // Splice all operations from 'next' into the head body.
+            headBlock.getOperations().splice(headBlock.end(), nextBlock.getOperations());
+            next.erase();
         }
     }
 }
