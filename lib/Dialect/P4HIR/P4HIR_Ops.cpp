@@ -1602,13 +1602,14 @@ P4HIR::ParserStateOp::StateRange P4HIR::ParserStateOp::getNextStates() {
         });
 }
 
-P4HIR::ParserStateOp P4HIR::ParserStateOp::StateIterator::mapElement(mlir::Operation *op) const {
-    return mlir::TypeSwitch<Operation *, ParserStateOp>(op)
+P4HIR::ParserStateOp P4HIR::ParserStateOp::StateIterator::mapElement(mlir::Operation &op) const {
+    return mlir::TypeSwitch<Operation *, ParserStateOp>(&op)
         .Case<ParserTransitionOp>([&](ParserTransitionOp transition) {
-            return lookupParserState(op, transition.getStateAttr());
+            return lookupParserState(&op, transition.getStateAttr());
         })
-        .Case<ParserSelectCaseOp>(
-            [&](ParserSelectCaseOp select) { return lookupParserState(op, select.getStateAttr()); })
+        .Case<ParserSelectCaseOp>([&](ParserSelectCaseOp select) {
+            return lookupParserState(&op, select.getStateAttr());
+        })
         .Default([&](auto) {
             llvm_unreachable("Unknown parser terminator");
             return nullptr;

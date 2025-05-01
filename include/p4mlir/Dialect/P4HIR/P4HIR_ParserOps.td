@@ -41,8 +41,10 @@ def ParserOp : P4HIR_Op<"parser",
 
     /// IR-related methods
 
-    /// Returns the iterator over all states defined in the parswr
-    auto states() { return getBody().getOps<P4HIR::ParserStateOp>(); }
+    /// Returns the range over all states defined in the parswr
+    auto state_begin() { return getBody().back().op_begin<P4HIR::ParserStateOp>(); }
+    auto state_end() { return getBody().back().op_end<P4HIR::ParserStateOp>(); }
+    auto states() { return getBody().back().getOps<P4HIR::ParserStateOp>(); }
 
     /// Returns the "start" state of a parser
     ParserStateOp getStartState();
@@ -86,7 +88,7 @@ def ParserStateOp : P4HIR_Op<"state",
      using BaseT::BaseT;
 
      /// Map the transitions to the iterator result type.
-     ParserStateOp mapElement(mlir::Operation *op) const;
+     ParserStateOp mapElement(mlir::Operation &op) const;
    };
 
    using StateRange = mlir::iterator_range<StateIterator>;
