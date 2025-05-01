@@ -21,6 +21,8 @@ def ParserOp : P4HIR_Op<"parser",
   ];
 
   let extraClassDeclaration = [{
+    /// Hooks for FunctionOpInterface used to build CallGraph. For Parser this would
+    /// correspond to subparser apply() calls.
     mlir::Region *getCallableRegion() { return &getBody(); }
 
     auto getFunctionType() { return getApplyType(); }
@@ -37,17 +39,61 @@ def ParserOp : P4HIR_Op<"parser",
       return {};
     }
 
+    /// IR-related methods
+
+    /// Returns the iterator over all states defined in the parswr
+    auto states() { return getBody().getOps<P4HIR::ParserStateOp>(); }
+
+    /// Returns the "start" state of a parser
+    ParserStateOp getStartState();
+
     void createEntryBlock();
   }];
 }
 
 def ParserStateOp : P4HIR_Op<"state",
-   [Symbol, AutomaticAllocationScope]> {
- let arguments = (ins SymbolNameAttr:$sym_name, 
+   [Symbol, AutomaticAllocationScope,
+    HasParent<"ParserOp">]> {
+ let arguments = (ins SymbolNameAttr:$sym_name,
                       OptionalAttr<DictionaryAttr>:$annotations);
  let regions = (region MinSizedRegion<1>:$body);
  let assemblyFormat = [{
    $sym_name (`annotations` $annotations^)? $body attr-dict
+ }];
+
+ let extraClassDeclaration = [{
+    /// Returns the op that determines the next transition of a state:
+    ///  - Could be accept or reject (AcceptOp, RejectOp)
+    ///  - Direct transition (TransitionOp)
+    ///  - Select transition (TransitionSelectOp)
+    auto getNextTransition() { return getBody().back().getTerminator(); }
+
+    /// Checks if this state accepts the packet
+    bool isAccept() {
+      return mlir::isa<ParserAcceptOp>(getNextTransition());
+    }
+
+    /// Checks if this state rejects the packet
+    bool isReject() {
+      return mlir::isa<ParserRejectOp>(getNextTransition());
+    }
+
+   /// Iterator adaptor that extracts ParserStateOp's from the transitions
+   class StateIterator final
+    : public llvm::mapped_iterator_base<StateIterator,
+                                        mlir::Block::iterator, ParserStateOp> {
+   public:
+     using BaseT::BaseT;
+
+     /// Map the transitions to the iterator result type.
+     ParserStateOp mapElement(mlir::Operation *op) const;
+   };
+
+   using StateRange = mlir::iterator_range<StateIterator>;
+
+   /// Returns all states the given state could transition to. Returns empty range
+   /// if we're inside accept or reject states.
+   StateRange getNextStates();
  }];
 }
 
@@ -59,6 +105,11 @@ def ParserTransitionOp : P4HIR_Op<"transition",
   let assemblyFormat = [{
     `to` $state attr-dict
   }];
+
+ let extraClassDeclaration = [{
+   /// Returns next state
+   ParserStateOp getNextState();
+ }];
 }
 
 def ParserAcceptOp : P4HIR_Op<"parser_accept",
@@ -93,6 +144,30 @@ def ParserTransitionSelectOp : P4HIR_Op<"transition_select",
     $select `:` type($select) $body attr-dict
   }];
   // FIXME: Implement verifier for cases
+
+ let extraClassDeclaration = [{
+   /// Returns all select cases
+   auto selects() { return getBody().back().getOps<ParserSelectCaseOp>(); }
+
+   /// Iterator adaptor that extracts ParserStateOp
+   class StateIterator final
+    : public llvm::mapped_iterator_base<StateIterator,
+                                        mlir::Block::op_iterator<ParserSelectCaseOp>, ParserStateOp> {
+   public:
+     using BaseT::BaseT;
+
+     /// Map the SelectCaseOp to the iterator result type.
+     ParserStateOp mapElement(ParserSelectCaseOp op) const;
+   };
+
+   using StateRange = mlir::iterator_range<StateIterator>;
+
+   /// Returns all states the given transition_select could transition to.
+   StateRange getNextStates() {
+     auto selectCases = selects();
+     return { StateIterator(selectCases.begin()), StateIterator(selectCases.end()) };
+   }
+ }];
 }
 
 def ParserSelectCaseOp : P4HIR_Op<"select_case",
@@ -219,7 +294,7 @@ def MaskOp : P4HIR_Op<"mask", [Pure,
   TypesMatchWith<
        "the resulting type of a mask operation must be the set of right-hand side operand types",
        "result", "rhs", "cast<P4HIR::SetType>($_self).getElementType()">,
-  ParentOneOf<["ParserSelectCaseOp"]>,       
+  ParentOneOf<["ParserSelectCaseOp"]>,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
 
   let summary = "Mask operation";

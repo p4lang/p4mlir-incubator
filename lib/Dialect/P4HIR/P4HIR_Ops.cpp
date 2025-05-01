@@ -1540,6 +1540,12 @@ LogicalResult P4HIR::AssignSliceOp::verify() {
 // ParserOp
 //===----------------------------------------------------------------------===//
 
+// Parser states use fully-qualified names so we lookup from the top-level moduleOp
+static P4HIR::ParserStateOp lookupParserState(Operation *op, mlir::SymbolRefAttr stateName) {
+    return mlir::SymbolTable::lookupNearestSymbolFrom<P4HIR::ParserStateOp>(getParentModule(op),
+                                                                            stateName);
+}
+
 void P4HIR::ParserOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
                             llvm::StringRef sym_name, P4HIR::FuncType applyType,
                             P4HIR::CtorType ctorType, ArrayRef<DictionaryAttr> argAttrs,
@@ -1565,6 +1571,48 @@ void P4HIR::ParserOp::createEntryBlock() {
     Block &first = getFunctionBody().emplaceBlock();
     auto loc = getFunctionBody().getLoc();
     for (auto argType : getFunctionType().getInputs()) first.addArgument(argType, loc);
+}
+
+P4HIR::ParserStateOp P4HIR::ParserOp::getStartState() {
+    auto transition = llvm::cast<ParserTransitionOp>(getBody().back().getTerminator());
+    return lookupParserState(getOperation(), transition.getStateAttr());
+}
+
+P4HIR::ParserStateOp::StateRange P4HIR::ParserStateOp::getNextStates() {
+    auto &block = getBody().back();
+
+    if (block.begin() == block.end()) return {block.begin(), block.end()};
+
+    return mlir::TypeSwitch<Operation *, StateRange>(this->getNextTransition())
+        .Case<ParserTransitionOp>([&](auto) {
+            // Wrap terminator by itself
+            return StateRange{--block.end(), block.end()};
+        })
+        .Case<ParserTransitionSelectOp>([&](ParserTransitionSelectOp select) {
+            auto selects = select.selects();
+            // Wrap filtered iterator over select cases
+            return StateRange(mlir::Block::iterator(selects.begin()),
+                              mlir::Block::iterator(selects.end()));
+        })
+        .Case<ParserAcceptOp, ParserRejectOp>(
+            [&](auto) { return StateRange{block.end(), block.end()}; })
+        .Default([&](auto) {
+            llvm_unreachable("Unknown parser terminator");
+            return StateRange{block.end(), block.end()};
+        });
+}
+
+P4HIR::ParserStateOp P4HIR::ParserStateOp::StateIterator::mapElement(mlir::Operation *op) const {
+    return mlir::TypeSwitch<Operation *, ParserStateOp>(op)
+        .Case<ParserTransitionOp>([&](ParserTransitionOp transition) {
+            return lookupParserState(op, transition.getStateAttr());
+        })
+        .Case<ParserSelectCaseOp>(
+            [&](ParserSelectCaseOp select) { return lookupParserState(op, select.getStateAttr()); })
+        .Default([&](auto) {
+            llvm_unreachable("Unknown parser terminator");
+            return nullptr;
+        });
 }
 
 void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
@@ -1702,6 +1750,10 @@ mlir::LogicalResult P4HIR::ParserTransitionOp::verifySymbolUses(
     return verifyStateTarget(*this, getStateAttr(), symbolTable);
 }
 
+P4HIR::ParserStateOp P4HIR::ParserTransitionOp::getNextState() {
+    return lookupParserState(getOperation(), getStateAttr());
+}
+
 void P4HIR::ParserSelectCaseOp::build(
     mlir::OpBuilder &builder, mlir::OperationState &result,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> keyBuilder,
@@ -1717,6 +1769,11 @@ void P4HIR::ParserSelectCaseOp::build(
 mlir::LogicalResult P4HIR::ParserSelectCaseOp::verifySymbolUses(
     mlir::SymbolTableCollection &symbolTable) {
     return verifyStateTarget(*this, getStateAttr(), symbolTable);
+}
+
+P4HIR::ParserStateOp P4HIR::ParserTransitionSelectOp::StateIterator::mapElement(
+    P4HIR::ParserSelectCaseOp op) const {
+    return lookupParserState(op.getOperation(), op.getStateAttr());
 }
 
 //===----------------------------------------------------------------------===//
