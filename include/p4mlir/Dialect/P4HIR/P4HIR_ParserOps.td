@@ -41,7 +41,7 @@ def ParserOp : P4HIR_Op<"parser",
 
     /// IR-related methods
 
-    /// Returns the range over all states defined in the parswr
+    /// Returns the range over all states defined in the parser
     auto state_begin() { return getBody().back().op_begin<P4HIR::ParserStateOp>(); }
     auto state_end() { return getBody().back().op_end<P4HIR::ParserStateOp>(); }
     auto states() { return getBody().back().getOps<P4HIR::ParserStateOp>(); }
