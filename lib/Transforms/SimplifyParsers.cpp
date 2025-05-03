@@ -1,7 +1,9 @@
 #include <llvm/Support/ErrorHandling.h>
 
+#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "p4mlir/Dialect/P4HIR/ParserGraph.h"
 #include "p4mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "p4hir-simplify-parsers"
@@ -17,35 +19,10 @@ struct SimplifyParsers : public impl::SimplifyParsersBase<SimplifyParsers> {
     void runOnOperation() override;
 
  private:
-    /// Finds all states reachable from the 'start' state.
-    llvm::DenseSet<P4HIR::ParserStateOp> findReachableStates(P4HIR::ParserOp parser);
-
     /// Collapses linear sequences of states without branches or annotations.
     void collapseChains(P4HIR::ParserOp parser);
 };
 }  // end anonymous namespace
-
-llvm::DenseSet<P4HIR::ParserStateOp> SimplifyParsers::findReachableStates(P4HIR::ParserOp parser) {
-    auto start = parser.getStartState();
-    llvm::SmallVector<P4HIR::ParserStateOp> worklist{start};
-    llvm::DenseSet<P4HIR::ParserStateOp> visited{start};
-
-    bool acceptReachable = false, rejectReachable = false;
-
-    while (!worklist.empty()) {
-        auto state = worklist.pop_back_val();
-        for (auto next : state.getNextStates()) {
-            if (next.isAccept()) acceptReachable = true;
-            else if (next.isReject()) rejectReachable = true;
-            if (!visited.contains(next)) worklist.push_back(next);
-        }
-    }
-
-    if (!acceptReachable && !rejectReachable)
-        parser.emitWarning("Parser never reaches the 'accept' or 'reject' state.");
-
-    return visited;
-}
 
 void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
     mlir::DenseMap<P4HIR::ParserStateOp, unsigned> indegree;
@@ -57,28 +34,38 @@ void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
     for (auto state : parser.states()) {
         if (state.getAnnotations()) continue;
 
+        unsigned transitionsCount = 0;
+        P4HIR::ParserStateOp successor;
         for (auto next : state.getNextStates()) {
+            ++transitionsCount;
+            successor = next;
             if (!next.getAnnotations()) ++indegree[next];
+        }
+
+        // Check that there is only one outgoing edge and the destination state is not annotated.
+        if (transitionsCount == 1 && !successor.getAnnotations()) {
+            succ[state] = successor;
         }
     }
 
     // Process each chain head, collapsing states whenever possible.
     for (auto &[head, _] : succ) {
         if (indegree[head] == 1) continue;  // not a chain head
+        LLVM_DEBUG(llvm::dbgs() << "Chain starting with " << head.getName() << "\n");
 
         // Walk forward through the chain using successor map ensuring the next state
         // has only one incoming edge.
         for (auto it = succ.find(head); it != succ.end(); it = succ.find(it->second)) {
             P4HIR::ParserStateOp next = it->second;
             if (indegree[next] != 1) break;
-            auto &headOps = head.getBody().back().getOperations();
-            auto &nextOps = next.getBody().back().getOperations();
+            LLVM_DEBUG(llvm::dbgs() << "\tCollapsing " << next.getName() << "\n");
+            auto &headOps = head.getBody().front().getOperations();
 
             // Remove the terminator (transition to 'next') from the current head body.
-            headOps.back().erase();
+            head.getNextTransition()->erase();
 
             // Splice all operations from 'next' into the head body.
-            headOps.splice(headOps.end(), nextOps);
+            headOps.splice(headOps.end(), next.getBody().front().getOperations());
 
             // Remove the now-empty 'next' state.
             next.erase();
@@ -88,9 +75,23 @@ void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
 
 void SimplifyParsers::runOnOperation() {
     getOperation()->walk([&](P4HIR::ParserOp parser) {
-        llvm::DenseSet<P4HIR::ParserStateOp> reachable = findReachableStates(parser);
-        for (auto s : llvm::make_early_inc_range(parser.states()))
-            if (!reachable.contains(s)) s.erase();
+        LLVM_DEBUG(llvm::dbgs() << "\n--- Simplifying parser '" << parser.getName() << "' ---\n");
+        llvm::df_iterator_default_set<llvm::GraphTraits<P4HIR::ParserOp>::NodeRef> reachable;
+        bool acceptReachable = false, rejectReachable = false;
+
+        /// Finds all states reachable from the start state and deletes unreachable states.
+        for (auto it = llvm::df_ext_begin(parser, reachable);
+             it != llvm::df_ext_end(parser, reachable); ++it) {
+            auto state = mlir::cast<P4HIR::ParserStateOp>(*it);
+            LLVM_DEBUG(llvm::dbgs() << "DFS visiting " << state.getName() << "\n");
+            if (state.isAccept()) acceptReachable = true;
+            if (state.isReject()) rejectReachable = true;
+        }
+        if (!acceptReachable && !rejectReachable)
+            parser.emitWarning("Parser never reaches the 'accept' or 'reject' state.");
+
+        for (auto state : llvm::make_early_inc_range(parser.states()))
+            if (!reachable.contains(state)) state.erase();
 
         collapseChains(parser);
 
