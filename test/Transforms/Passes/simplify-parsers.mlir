@@ -8,20 +8,19 @@
 // CHECK-LABEL: module
 // CHECK-LABEL: p4hir.parser @p
 // CHECK-NEXT:  p4hir.state @start
+// CHECK-NOT:   p4hir.state @s0
 // CHECK-NEXT:  p4hir.const
 // CHECK-NEXT:  p4hir.variable
 // CHECK-NEXT:  p4hir.assign
+// CHECK-NOT:   p4hir.state @s1
 // CHECK-NEXT:  p4hir.const
 // CHECK-NEXT:  p4hir.transition_select
 // CHECK:       p4hir.select_case
 // CHECK:       p4hir.select_case
+// CHECK-NOT:   p4hir.state @s_dead
 // CHECK:       p4hir.state @accept
 // CHECK:       p4hir.state @reject
 // CHECK:       p4hir.transition
-
-// CHECK-NOT:   p4hir.state @s0
-// CHECK-NOT:   p4hir.state @s1
-// CHECK-NOT:   p4hir.state @s_dead
 module {
   p4hir.parser @p()() {
     p4hir.state @start {
@@ -63,17 +62,17 @@ module {
 // CHECK-LABEL: module
 // CHECK-LABEL: p4hir.parser @branching
 // CHECK:       p4hir.state @start
+// CHECK-NOT:   p4hir.state @s0
 // CHECK:       p4hir.transition_select
 // CHECK:       p4hir.state @s1
 // CHECK:       p4hir.state @s2
 // CHECK:       p4hir.state @s3
-// CHECK:       p4hir.parser_accept
-// CHECK:       p4hir.transition
-
-// CHECK-NOT:   p4hir.state @s0
 // CHECK-NOT:   p4hir.state @s4
 // CHECK-NOT:   p4hir.state @accept
+// CHECK:       p4hir.parser_accept
 // CHECK-NOT:   p4hir.state @reject
+// CHECK:       p4hir.transition
+
 module {
   p4hir.parser @branching()() {
     p4hir.state @start {
@@ -118,9 +117,8 @@ module {
 // CHECK:       p4hir.state @start
 // CHECK:       p4hir.state @s0 annotations {name = "state.s0"}
 // CHECK:       p4hir.state @s1
-// CHECK:       p4hir.parser_accept
-
 // CHECK-NOT:   p4hir.state @accept
+// CHECK:       p4hir.parser_accept
 // CHECK-NOT:   p4hir.state @reject
 module {
   p4hir.parser @annotations()() {
@@ -140,5 +138,65 @@ module {
       p4hir.parser_reject
     }
     p4hir.transition to @annotations::@start
+  }
+}
+
+// CHECK-LABEL: module
+// CHECK-LABEL: p4hir.parser @annotated_branching
+// CHECK:       p4hir.state @start
+// CHECK:       p4hir.transition_select
+// CHECK-NOT:   p4hir.state @s0
+// CHECK:       p4hir.state @s1 annotations {name = "annotated.s1"}
+// CHECK:       p4hir.transition
+// CHECK:       p4hir.state @s2
+// CHECK:       p4hir.transition
+// CHECK:       p4hir.state @s3
+// CHECK-NOT:   p4hir.state @s4
+// CHECK-NOT:   p4hir.state @accept
+// CHECK:       p4hir.parser_accept
+// CHECK-NOT:   p4hir.state @reject
+module {
+  p4hir.parser @annotated_branching()() {
+    p4hir.state @start {
+      p4hir.transition to @annotated_branching::@s0
+    }
+    p4hir.state @s0 {
+      %true = p4hir.const #true
+      p4hir.transition_select %true : !p4hir.bool {
+        p4hir.select_case {
+          %set = p4hir.set (%true) : !p4hir.set<!p4hir.bool>
+          p4hir.yield %set : !p4hir.set<!p4hir.bool>
+        } to @annotated_branching::@s1
+        p4hir.select_case {
+          %everything = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+          p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
+        } to @annotated_branching::@s2
+      }
+    }
+    p4hir.state @s1 annotations {name = "annotated.s1"} {
+      p4hir.transition to @annotated_branching::@s3
+    }
+    p4hir.state @s2 {
+      p4hir.transition to @annotated_branching::@s3
+    }
+    p4hir.state @s3 {
+      %true = p4hir.const #true
+      p4hir.transition_select %true : !p4hir.bool {
+        p4hir.select_case {
+          %set = p4hir.set (%true) : !p4hir.set<!p4hir.bool>
+          p4hir.yield %set : !p4hir.set<!p4hir.bool>
+        } to @annotated_branching::@s4
+      }
+    }
+    p4hir.state @s4 {
+      p4hir.transition to @annotated_branching::@accept
+    }
+    p4hir.state @accept {
+      p4hir.parser_accept
+    }
+    p4hir.state @reject {
+      p4hir.parser_reject
+    }
+    p4hir.transition to @annotated_branching::@start
   }
 }

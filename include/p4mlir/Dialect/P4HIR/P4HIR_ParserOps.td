@@ -3,7 +3,8 @@
 
 def ParserOp : P4HIR_Op<"parser",
     [Symbol, SymbolTable,
-     FunctionOpInterface, AutomaticAllocationScope]> {
+     FunctionOpInterface, AutomaticAllocationScope,
+     SingleBlockImplicitTerminator<"ParserTransitionOp">]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FuncType>:$applyType,
                        TypeAttrOf<CtorType>:$ctorType,
