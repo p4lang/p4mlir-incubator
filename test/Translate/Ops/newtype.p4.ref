@@ -1,0 +1,13 @@
+type bit<9> Narrow;
+type bit<32> Wide;
+const Narrow PSA_CPU_PORT = (Narrow) 9w192;
+
+action c(out bool b) {
+    Wide x = (Wide)(32w3);
+    Narrow y = (Narrow)((bit<9>)((bit<32>)(x)));
+
+    y = (Narrow) 9w192;
+    b = (y == (Narrow)(9w10));
+    return;
+}
+

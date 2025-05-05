@@ -32,6 +32,7 @@ fi
 # Configure CMake flags
 CMAKE_FLAGS="-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER:-clang}"
 CMAKE_FLAGS+=" -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER:-clang++}"
+CMAKE_FLAGS+=" -DCMAKE_BUILD_TYPE=RelWithDebInfo"
 
 # Configure P4C CMake flags
 # https://github.com/p4lang/p4c/blob/main/CMakeLists.txt

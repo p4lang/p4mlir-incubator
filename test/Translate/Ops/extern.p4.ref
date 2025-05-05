@@ -1,0 +1,8 @@
+error: loc("test/Translate/Ops/extern.p4":75:21): Unsupported operation 'p4hir.instantiate' in exportExpression
+note: loc("test/Translate/Ops/extern.p4":75:21): see current operation: %6 = "p4hir.instantiate"(%5) <{callee = @X, name = "x"}> : (!p4hir.int<32>) -> !p4hir.extern<"X"<!p4hir.int<32>>>
+  73 |       // CHECK: p4hir.call_method @Y::@method<[!b8i]> (%[[y]], %{{.*}}) : !Y, (!b8i) -> ()
+  74 |       y.method(8w0);
+  75 |       // CHECK: p4hir.call_method @ext::@method<[!b8i]> (%[[ex]], %{{.*}}, %{{.*}}) : !ext_b16i, (!b16i, !b8i) -> ()
+     |                     ^
+  76 |       ex.method(0, 8w0);
+  77 |       // CHECK: p4hir.call_method @ext2::@method<[!b12i]> (%[[ey]], %{{.*}}) : !ext2_b16i_void, (!b12i) -> !b16i

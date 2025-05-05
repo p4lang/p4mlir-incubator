@@ -1,0 +1,20 @@
+enum bit<8> PreservedFieldList {
+    Field = 8w1
+}
+struct Meta {
+    bit<1> b;
+    PreservedFieldList f;
+}
+type bit<9> PortId_32_t;
+header packet_in_header_t {
+    PortId_32_t ingress_port;
+    PortId_32_t target_egress_port;
+}
+enum SomeEnum {
+    Field,
+    Field2
+}
+action foo(in Meta m, in packet_in_header_t hdr, SomeEnum e) {
+    return;
+}
+
