@@ -41,7 +41,7 @@ void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
     // We diconnect any annotated states since they can't be collapsed
     // and if we kept them they'd poison any merging downstream.
     for (auto state : parser.states()) {
-        if (std::distance(state.getNextStates().begin(), state.getNextStates().end()) != 1)
+        if (!llvm::hasNItems(state.getNextStates(), 1))
             continue;
         if (state.getAnnotations()) continue;
         P4HIR::ParserStateOp successor = *state.getNextStates().begin();
