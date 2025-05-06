@@ -27,23 +27,23 @@ struct SimplifyParsers : public impl::SimplifyParsersBase<SimplifyParsers> {
 void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
     // TODO: Revisit this to use ParserCallGraph instead
     mlir::DenseMap<P4HIR::ParserStateOp, unsigned> indegree;
-    mlir::DenseMap<P4HIR::ParserStateOp, unsigned> outdegree;
     for (auto state : parser.states()) {
         for (auto next : state.getNextStates()) {
-            ++outdegree[state];
             ++indegree[next];
         }
     }
 
-    // succ[s1] = s2 if there is exactly one outgoing edge from s1 to s2.
+    // succ[s1] = s2 if there is exactly one outgoing edge from s1 to s2
+    // and s2 has exactly one incoming edge from s1.
     mlir::DenseMap<P4HIR::ParserStateOp, P4HIR::ParserStateOp> succ;
-    // pred[s2] = s1 if there is exactly one outgoing edge from s1 to s2.
     mlir::DenseMap<P4HIR::ParserStateOp, P4HIR::ParserStateOp> pred;
 
     // We diconnect any annotated states since they can't be collapsed
     // and if we kept them they'd poison any merging downstream.
     for (auto state : parser.states()) {
-        if (outdegree[state] != 1 || state.getAnnotations()) continue;
+        if (std::distance(state.getNextStates().begin(), state.getNextStates().end()) != 1)
+            continue;
+        if (state.getAnnotations()) continue;
         P4HIR::ParserStateOp successor = *state.getNextStates().begin();
         if (indegree[successor] != 1 || successor.getAnnotations()) continue;
 
@@ -95,7 +95,8 @@ void SimplifyParsers::runOnOperation() {
         for (auto state : llvm::make_early_inc_range(parser.states())) {
             if (!reachable.contains(state)) {
                 if (state.isAccept()) {
-                    parser.emitWarning() << "Parser has unreachable accept state " << state.getName();
+                    parser.emitWarning()
+                        << "Parser has unreachable accept state " << state.getName();
                 } else {
                     LLVM_DEBUG(llvm::dbgs()
                                << "Removing unreachable state '" << state.getName() << "'\n");
