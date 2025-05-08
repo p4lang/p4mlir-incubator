@@ -27,6 +27,8 @@ struct SimplifyParsers : public impl::SimplifyParsersBase<SimplifyParsers> {
 void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
     // TODO: Revisit this to use ParserCallGraph instead
     mlir::DenseMap<P4HIR::ParserStateOp, unsigned> indegree;
+    // Initialize indegree[start] to 1 to account for the implicit parser entry edge.
+    indegree[parser.getStartState()] = 1;
     for (auto state : parser.states()) {
         for (auto next : state.getNextStates()) {
             ++indegree[next];
@@ -39,11 +41,13 @@ void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
     mlir::DenseMap<P4HIR::ParserStateOp, P4HIR::ParserStateOp> pred;
 
     // We diconnect any annotated states since they can't be collapsed
-    // and if we kept them they'd poison any merging downstream.
+    // and if we kept them they'd poison downstream merging.
     for (auto state : parser.states()) {
-        if (!llvm::hasNItems(state.getNextStates(), 1))
-            continue;
-        if (state.getAnnotations()) continue;
+        if (!llvm::hasNItems(state.getNextStates(), 1)) continue;
+        // Name annotations are special, if they are the only annotation
+        // then they can be merged into as heads.
+        auto ann = state.getAnnotations();
+        if (ann && !(ann->size() == 1 && ann->contains("name"))) continue;
         P4HIR::ParserStateOp successor = *state.getNextStates().begin();
         if (indegree[successor] != 1 || successor.getAnnotations()) continue;
 
