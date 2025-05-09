@@ -290,6 +290,41 @@ void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), stringifyEnum(getKind()));
 }
 
+LogicalResult P4HIR::BinOp::verify() {
+    auto operandType = getLhs().getType();
+
+    return mlir::TypeSwitch<Type, LogicalResult>(operandType)
+        .Case<P4HIR::BitsType>([&](P4HIR::BitsType) { return success(); })
+        .Case<P4HIR::InfIntType>([&](P4HIR::InfIntType) {
+            // Check constraints specific to InfIntType ('int' in P4 spec)
+            switch (getKind()) {
+                case BinOpKind::AddSat:
+                case BinOpKind::SubSat:
+                    emitOpError() << "saturating arithmetic ('" << stringifyEnum(getKind())
+                                  << "') is not valid for !p4hir.infint";
+                    return failure();
+                case BinOpKind::Or:
+                case BinOpKind::Xor:
+                case BinOpKind::And:
+                    emitOpError() << "bitwise operations ('" << stringifyEnum(getKind())
+                                  << "') is not valid for !p4hir.infint";
+                    return failure();
+                case BinOpKind::Mul:
+                case BinOpKind::Div:
+                case BinOpKind::Mod:
+                case BinOpKind::Add:
+                case BinOpKind::Sub:
+                    return success();
+            }
+            llvm_unreachable("Unknown BinOp kind");
+        })
+        .Default([&](Type type) {
+            emitOpError() << "unsupported operand type " << type << " for binary operation";
+            return failure();
+        });
+    ;
+}
+
 //===----------------------------------------------------------------------===//
 // ConcatOp
 //===----------------------------------------------------------------------===//
