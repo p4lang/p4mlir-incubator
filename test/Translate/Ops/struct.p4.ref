@@ -1,0 +1,70 @@
+struct T {
+    int<32> t1;
+    int<32> t2;
+}
+struct S {
+    T s1;
+    T s2;
+}
+struct Empty {
+}
+struct PortId_t {
+    bit<9> _v;
+}
+struct metadata_t {
+    PortId_t foo;
+}
+const T t = {32s10, 32s20};
+
+const S s = {{32s15, 32s25}, {32s10, 32s20}};
+
+const int<32> x = 32s10;
+
+const int<32> y = 32s25;
+
+const int<32> w = 32s10;
+
+const T tt1 = {32s15, 32s25};
+
+const Empty e = {};
+
+const T t1 = {32s10, 32s20};
+
+const S s1 = {{32s15, 32s25}, {32s10, 32s20}};
+
+const int<32> x1 = 32s10;
+
+const int<32> y1 = 32s25;
+
+const int<32> w1 = 32s10;
+
+const T t2 = {32s15, 32s25};
+
+const PortId_t PSA_CPU_PORT = {9w192};
+
+action test2(inout PortId_t port) {
+    port._v = (port._v + 9w1);
+    return;
+}
+
+action test(inout metadata_t meta) {
+    bit<9> vv;
+    PortId_t p1 = (PortId_t) {_v = vv};
+    PortId_t p;
+    bit<9> v;
+
+    v = p._v;
+    v = meta.foo._v;
+    meta.foo._v = (bit<9>)(9w1);
+    {
+        PortId_t port_inout_arg;
+        port_inout_arg = meta.foo;
+        test2(port_inout_arg);
+        meta.foo = port_inout_arg;
+    }
+    if ((meta.foo == {9w192})) {
+        meta.foo._v = (meta.foo._v + 9w1);
+    }
+    return;
+}
+
