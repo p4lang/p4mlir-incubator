@@ -1,2 +1,5 @@
+# If this project is instantiated as standalone use compilation database in the third-party directory.
+If:
+  PathMatch: third_party/p4c/build/.*
 CompileFlags:
   CompilationDatabase: third_party/p4c/build/
