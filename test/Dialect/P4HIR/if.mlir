@@ -1,5 +1,4 @@
-// RUN: p4mlir-opt %s -o %t.mlir
-// RUN: FileCheck --input-file=%t.mlir %s
+// RUN: p4mlir-opt %s | FileCheck %s
 
 module {
   // No need to check stuff. If it parses, it's fine.

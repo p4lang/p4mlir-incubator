@@ -19,6 +19,58 @@ struct FlattenCFGPass : public P4::P4MLIR::impl::FlattenCFGBase<FlattenCFGPass> 
     void runOnOperation() override;
 };
 
+struct IfOpFlattening : public OpRewritePattern<P4HIR::IfOp> {
+    using OpRewritePattern<P4HIR::IfOp>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(P4HIR::IfOp ifOp,
+                                        mlir::PatternRewriter &rewriter) const override {
+        mlir::OpBuilder::InsertionGuard guard(rewriter);
+        auto loc = ifOp.getLoc();
+        auto emptyElse = ifOp.getElseRegion().empty();
+
+        auto *currentBlock = rewriter.getInsertionBlock();
+        auto *afterBlock = rewriter.splitBlock(currentBlock, rewriter.getInsertionPoint());
+
+        // Inline then region
+        auto *thenBeforeBody = &ifOp.getThenRegion().front();
+        auto *thenAfterBody = &ifOp.getThenRegion().back();
+        rewriter.inlineRegionBefore(ifOp.getThenRegion(), afterBlock);
+
+        rewriter.setInsertionPointToEnd(thenAfterBody);
+        if (auto thenYieldOp = dyn_cast<P4HIR::YieldOp>(thenAfterBody->getTerminator())) {
+            rewriter.replaceOpWithNewOp<P4HIR::BrOp>(thenYieldOp, thenYieldOp.getArgs(),
+                                                     afterBlock);
+        }
+
+        rewriter.setInsertionPointToEnd(afterBlock);
+
+        // Has else region: inline it.
+        mlir::Block *elseBeforeBody = nullptr;
+        mlir::Block *elseAfterBody = nullptr;
+        if (!emptyElse) {
+            elseBeforeBody = &ifOp.getElseRegion().front();
+            elseAfterBody = &ifOp.getElseRegion().back();
+            rewriter.inlineRegionBefore(ifOp.getElseRegion(), afterBlock);
+        } else {
+            elseBeforeBody = elseAfterBody = afterBlock;
+        }
+
+        rewriter.setInsertionPointToEnd(currentBlock);
+        rewriter.create<P4HIR::BrCondOp>(loc, ifOp.getCondition(), thenBeforeBody, elseBeforeBody);
+
+        if (!emptyElse) {
+            rewriter.setInsertionPointToEnd(elseAfterBody);
+            if (auto elseYieldOp = dyn_cast<P4HIR::YieldOp>(elseAfterBody->getTerminator())) {
+                rewriter.replaceOpWithNewOp<P4HIR::BrOp>(elseYieldOp, elseYieldOp.getArgs(),
+                                                         afterBlock);
+            }
+        }
+
+        rewriter.replaceOp(ifOp, afterBlock->getArguments());
+        return mlir::success();
+    }
+};
+
 class ScopeOpFlattening : public mlir::OpRewritePattern<P4HIR::ScopeOp> {
  public:
     using OpRewritePattern<P4HIR::ScopeOp>::OpRewritePattern;
@@ -65,12 +117,12 @@ class ScopeOpFlattening : public mlir::OpRewritePattern<P4HIR::ScopeOp> {
 void FlattenCFGPass::runOnOperation() {
     RewritePatternSet patterns(&getContext());
 
-    patterns.add<ScopeOpFlattening>(patterns.getContext());
+    patterns.add<IfOpFlattening, ScopeOpFlattening>(patterns.getContext());
 
     // Collect operations to apply patterns.
     llvm::SmallVector<Operation *, 16> ops;
     getOperation()->walk<mlir::WalkOrder::PostOrder>([&](Operation *op) {
-        if (isa<P4HIR::ScopeOp>(op)) ops.push_back(op);
+        if (mlir::isa<P4HIR::IfOp, P4HIR::ScopeOp>(op)) ops.push_back(op);
     });
 
     // Apply patterns.
