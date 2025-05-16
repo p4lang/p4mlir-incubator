@@ -1045,7 +1045,7 @@ bool P4TypeConverter::preorder(const P4::IR::Type_ActionEnum *type) {
         cases.push_back(
             mlir::StringAttr::get(converter.context(), action->getName().string_view()));
     }
-    auto mlirType = P4HIR::EnumType::get(converter.context(), "action_enum", cases);
+    auto mlirType = P4HIR::EnumType::get(converter.context(), cases);
     return setType(type, mlirType);
 }
 

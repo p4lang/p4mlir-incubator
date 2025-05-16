@@ -1,8 +1,8 @@
 // RUN: p4mlir-opt --verify-roundtrip %s | FileCheck %s
 
 !ActionProfile = !p4hir.extern<"ActionProfile">
-!action_enum = !p4hir.enum<"action_enum", a, b>
-!action_enum1 = !p4hir.enum<"action_enum", a, b, aa>
+!action_enum = !p4hir.enum<a, b>
+!action_enum1 = !p4hir.enum<a, b, aa>
 !b32i = !p4hir.bit<32>
 !i8i = !p4hir.int<8>
 !infint = !p4hir.infint
