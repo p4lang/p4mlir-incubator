@@ -340,6 +340,9 @@ def BinOp : P4HIR_Op<"binop", [Pure,
   let arguments = (ins Arg<BinOpKind, "binop kind">:$kind,
                        AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
 
+  let hasVerifier = 1;
+  let hasCanonicalizer = 1;
+
   let assemblyFormat = [{
     `(` $kind `,` $lhs `,` $rhs  `)` `:` type($lhs) attr-dict
   }];
