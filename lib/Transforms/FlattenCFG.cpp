@@ -114,15 +114,61 @@ class ScopeOpFlattening : public mlir::OpRewritePattern<P4HIR::ScopeOp> {
     }
 };
 
+class TernaryOpFlattening : public mlir::OpRewritePattern<P4HIR::TernaryOp> {
+ public:
+    using OpRewritePattern<P4HIR::TernaryOp>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(P4HIR::TernaryOp op,
+                                        mlir::PatternRewriter &rewriter) const override {
+        auto loc = op->getLoc();
+        auto *condBlock = rewriter.getInsertionBlock();
+        auto opPosition = rewriter.getInsertionPoint();
+        auto *afterBlock = rewriter.splitBlock(condBlock, opPosition);
+        llvm::SmallVector<mlir::Location, 2> locs;
+        // Ternary result is optional, make sure to populate the location only
+        // when relevant.
+        if (op->getNumResults()) locs.push_back(loc);
+        auto *continueBlock = rewriter.createBlock(afterBlock, op->getResultTypes(), locs);
+        rewriter.create<P4HIR::BrOp>(loc, afterBlock);
+
+        auto &trueRegion = op.getTrueRegion();
+        auto *trueBlock = &trueRegion.front();
+        mlir::Operation *trueTerminator = trueRegion.back().getTerminator();
+        rewriter.setInsertionPointToEnd(&trueRegion.back());
+        auto trueYieldOp = mlir::cast<P4HIR::YieldOp>(trueTerminator);
+
+        rewriter.replaceOpWithNewOp<P4HIR::BrOp>(trueYieldOp, trueYieldOp.getArgs(), continueBlock);
+        rewriter.inlineRegionBefore(trueRegion, continueBlock);
+
+        auto *falseBlock = continueBlock;
+        auto &falseRegion = op.getFalseRegion();
+
+        falseBlock = &falseRegion.front();
+        mlir::Operation *falseTerminator = falseRegion.back().getTerminator();
+        rewriter.setInsertionPointToEnd(&falseRegion.back());
+        auto falseYieldOp = mlir::cast<P4HIR::YieldOp>(falseTerminator);
+        rewriter.replaceOpWithNewOp<P4HIR::BrOp>(falseYieldOp, falseYieldOp.getArgs(),
+                                                 continueBlock);
+        rewriter.inlineRegionBefore(falseRegion, continueBlock);
+
+        rewriter.setInsertionPointToEnd(condBlock);
+        rewriter.create<P4HIR::BrCondOp>(loc, op.getCond(), trueBlock, falseBlock);
+
+        rewriter.replaceOp(op, continueBlock->getArguments());
+
+        return mlir::success();
+    }
+};
+
 void FlattenCFGPass::runOnOperation() {
     RewritePatternSet patterns(&getContext());
 
-    patterns.add<IfOpFlattening, ScopeOpFlattening>(patterns.getContext());
+    patterns.add<IfOpFlattening, ScopeOpFlattening, TernaryOpFlattening>(patterns.getContext());
 
     // Collect operations to apply patterns.
     llvm::SmallVector<Operation *, 16> ops;
     getOperation()->walk<mlir::WalkOrder::PostOrder>([&](Operation *op) {
-        if (mlir::isa<P4HIR::IfOp, P4HIR::ScopeOp>(op)) ops.push_back(op);
+        if (mlir::isa<P4HIR::IfOp, P4HIR::ScopeOp, P4HIR::TernaryOp>(op)) ops.push_back(op);
     });
 
     // Apply patterns.
