@@ -580,9 +580,21 @@ def EnumType : P4HIR_Type<"Enum", "enum", []> {
                    annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
     }]>,
 
+     TypeBuilder<(ins "llvm::ArrayRef<mlir::Attribute>":$fields,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, "", mlir::ArrayAttr::get($_ctxt, fields),
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>,
+
     TypeBuilder<(ins "llvm::StringRef":$name, "mlir::ArrayAttr":$fields,
                      CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
       return $_get($_ctxt, name, fields,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>,
+
+    TypeBuilder<(ins "mlir::ArrayAttr":$fields,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, "", fields,
                    annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
     }]>,
   ];

@@ -445,10 +445,13 @@ Type EnumType::parse(AsmParser &p) {
     if (p.parseCommaSeparatedList(AsmParser::Delimiter::LessGreater, [&]() {
             // First, try to parse name
             if (!parsedName) {
-                if (p.parseKeywordOrString(&name) || p.parseOptionalAttrDict(annotations))
-                    return failure();
+                bool hasName = llvm::succeeded(p.parseOptionalString(&name));
+
+                if (p.parseOptionalAttrDict(annotations)) return failure();
+
                 parsedName = true;
-                return success();
+                // If there is name, then proceed to the next field
+                if (hasName || !annotations.empty()) return success();
             }
 
             StringRef caseName;
@@ -465,12 +468,17 @@ Type EnumType::parse(AsmParser &p) {
 void EnumType::print(AsmPrinter &p) const {
     auto fields = getFields();
     p << '<';
-    p.printString(getName());
-    if (auto annotations = getAnnotations(); annotations && !annotations.empty()) {
-        p << ' ';
-        p.printAttributeWithoutType(annotations);
+    bool firstField = true;
+    if (!getName().empty()) {
+        p.printString(getName());
+        firstField = false;
     }
-    if (!fields.empty()) p << ", ";
+    if (auto annotations = getAnnotations(); annotations && !annotations.empty()) {
+        if (!firstField) p << ' ';
+        p.printAttributeWithoutType(annotations);
+        firstField = false;
+    }
+    if (!fields.empty() && !firstField) p << ", ";
     llvm::interleaveComma(fields, p, [&](Attribute enumerator) {
         p << mlir::cast<StringAttr>(enumerator).getValue();
     });

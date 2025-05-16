@@ -2954,7 +2954,8 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
         }
 
         if (auto enumType = mlir::dyn_cast<P4HIR::EnumType>(type)) {
-            os << enumType.getName();
+            auto name = enumType.getName();
+            os << (name.empty() ? "anon" : name);
             return AliasResult::OverridableAlias;
         }
 
@@ -3072,7 +3073,8 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
 
         if (auto enumFieldAttr = mlir::dyn_cast<P4HIR::EnumFieldAttr>(attr)) {
             if (auto enumType = mlir::dyn_cast<P4HIR::EnumType>(enumFieldAttr.getType()))
-                os << enumType.getName() << "_" << enumFieldAttr.getField().getValue();
+                os << (enumType.getName().empty() ? "anon" : enumType.getName()) << "_"
+                   << enumFieldAttr.getField().getValue();
             else
                 os << mlir::cast<P4HIR::SerEnumType>(enumFieldAttr.getType()).getName() << "_"
                    << enumFieldAttr.getField().getValue();
