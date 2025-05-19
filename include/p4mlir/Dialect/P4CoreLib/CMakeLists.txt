@@ -1,0 +1,7 @@
+set(LLVM_TARGET_DEFINITIONS P4CoreLib.td)
+mlir_tablegen(P4CoreLib_Dialect.h.inc -gen-dialect-decls -dialect=p4corelib)
+mlir_tablegen(P4CoreLib_Dialect.cpp.inc -gen-dialect-defs -dialect=p4corelib)
+mlir_tablegen(P4CoreLib_Ops.h.inc -gen-op-decls)
+mlir_tablegen(P4CoreLib_Ops.cpp.inc -gen-op-defs)
+add_public_tablegen_target(P4MLIR_P4CoreLib_IncGen)
+add_dependencies(mlir-headers P4MLIR_P4CoreLib_IncGen)
