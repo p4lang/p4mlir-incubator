@@ -7,6 +7,7 @@ error {
 
 /// Check a predicate @check in the parser; if the predicate is true do nothing,
 /// otherwise set the parser error to @toSignal, and transition to the `reject` state.
+@corelib
 extern void verify(in bool check, in error toSignal);
 
 parser p2(in bool check, out bool matches) {
