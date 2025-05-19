@@ -7,7 +7,7 @@ include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_Types.td"
 
 //===----------------------------------------------------------------------===//
-// Base P4CoreLob operation definition.
+// Base P4CoreLib operation definition.
 //===----------------------------------------------------------------------===//
 
 class P4CoreLib_Op<string mnemonic, list<Trait> traits = []> :

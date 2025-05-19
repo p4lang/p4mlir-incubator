@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// This fle contains the declarations to register conversion passes.
+// This file contains the declarations to register conversion passes.
 //
 //===----------------------------------------------------------------------===//
 

@@ -3,7 +3,6 @@ set(LIBS
   P4MLIR_P4CoreLib
   P4MLIRConversion
   P4MLIRTransforms
-  P4MLIRConversion
 
   MLIRFuncDialect
   MLIROptLib
