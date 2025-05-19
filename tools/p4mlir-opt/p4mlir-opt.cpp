@@ -1,14 +1,16 @@
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/InitAllDialects.h"
-#include "mlir/InitAllPasses.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
+#include "mlir/Transforms/Passes.h"
+#include "p4mlir/Conversion/Passes.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Transforms/Passes.h"
 
 int main(int argc, char **argv) {
-    mlir::registerAllPasses();
+    mlir::registerTransformsPasses();
+
     P4::P4MLIR::registerPasses();
 
     mlir::DialectRegistry registry;
