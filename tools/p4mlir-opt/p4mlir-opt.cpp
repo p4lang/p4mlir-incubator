@@ -12,10 +12,10 @@ int main(int argc, char **argv) {
     mlir::registerTransformsPasses();
 
     P4::P4MLIR::registerPasses();
+    P4::P4MLIR::registerP4MLIRConversionPasses();
 
     mlir::DialectRegistry registry;
-    registry.insert<P4::P4MLIR::P4HIR::P4HIRDialect,
-                    P4::P4MLIR::P4CoreLib::P4CoreLibDialect,
+    registry.insert<P4::P4MLIR::P4HIR::P4HIRDialect, P4::P4MLIR::P4CoreLib::P4CoreLibDialect,
                     mlir::func::FuncDialect>();
 
     return mlir::asMainReturnCode(
