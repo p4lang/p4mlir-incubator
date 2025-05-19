@@ -2913,6 +2913,33 @@ OpFoldResult P4HIR::ArrayGetOp::fold(FoldAdaptor adaptor) {
     return {};
 }
 
+//===----------------------------------------------------------------------===//
+// BrOp
+//===----------------------------------------------------------------------===//
+
+mlir::SuccessorOperands P4HIR::BrOp::getSuccessorOperands(unsigned index) {
+    assert(index == 0 && "invalid successor index");
+    return mlir::SuccessorOperands(getDestOperandsMutable());
+}
+
+Block *P4HIR::BrOp::getSuccessorForOperands(ArrayRef<Attribute>) { return getDest(); }
+
+//===----------------------------------------------------------------------===//
+// BrCondOp
+//===----------------------------------------------------------------------===//
+
+mlir::SuccessorOperands P4HIR::BrCondOp::getSuccessorOperands(unsigned index) {
+    assert(index < getNumSuccessors() && "invalid successor index");
+    return SuccessorOperands(index == 0 ? getDestOperandsTrueMutable()
+                                        : getDestOperandsFalseMutable());
+}
+
+Block *P4HIR::BrCondOp::getSuccessorForOperands(ArrayRef<Attribute> operands) {
+    if (IntegerAttr condAttr = dyn_cast_if_present<IntegerAttr>(operands.front()))
+        return condAttr.getValue().isOne() ? getDestTrue() : getDestFalse();
+    return nullptr;
+}
+
 namespace {
 struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
     using OpAsmDialectInterface::OpAsmDialectInterface;
