@@ -146,7 +146,7 @@ Attribute ErrorCodeAttr::parse(AsmParser &p, Type) {
         p.parseCustomTypeWithFallback<P4HIR::ErrorType>(type) || p.parseGreater())
         return {};
 
-    return EnumFieldAttr::get(type, field);
+    return ErrorCodeAttr::get(type, field);
 }
 
 void ErrorCodeAttr::print(AsmPrinter &p) const {
@@ -159,7 +159,7 @@ ErrorCodeAttr ErrorCodeAttr::get(mlir::Type type, StringAttr value) {
     ErrorType errorType = llvm::dyn_cast<ErrorType>(type);
     if (!errorType) return nullptr;
 
-    // Check whether the provided value is a member of the enum type.
+    // Check whether the provided value is a member of the error type.
     if (!errorType.contains(value.getValue())) {
         //    emitError() << "error code '" << value.getValue()
         //                   << "' is not a member of error type " << errorType;
