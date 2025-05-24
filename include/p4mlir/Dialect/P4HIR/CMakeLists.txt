@@ -5,6 +5,7 @@ mlir_tablegen(P4HIR_Ops.h.inc -gen-op-decls)
 mlir_tablegen(P4HIR_Ops.cpp.inc -gen-op-defs)
 mlir_tablegen(P4HIR_Types.h.inc -gen-typedef-decls -typedefs-dialect=p4hir)
 mlir_tablegen(P4HIR_Types.cpp.inc -gen-typedef-defs -typedefs-dialect=p4hir)
+mlir_tablegen(P4HIR_Patterns.inc -gen-rewriters)
 add_public_tablegen_target(P4MLIR_P4HIR_IncGen)
 add_dependencies(mlir-headers P4MLIR_P4HIR_IncGen)
 
@@ -22,7 +23,6 @@ add_dependencies(mlir-headers P4MLIR_P4HIR_EnumIncGen)
 set(LLVM_TARGET_DEFINITIONS P4HIR_TypeInterfaces.td)
 mlir_tablegen(P4HIR_TypeInterfaces.h.inc -gen-type-interface-decls)
 mlir_tablegen(P4HIR_TypeInterfaces.cpp.inc -gen-type-interface-defs)
-
 add_public_tablegen_target(P4MLIR_P4HIR_TypeInterfacesIncGen)
 add_dependencies(mlir-headers P4MLIR_P4HIR_TypeInterfacesIncGen)
 
