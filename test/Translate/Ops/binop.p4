@@ -44,13 +44,6 @@ action int_binops() {
     int<10> r5 = 2 * rhs;
 
     int<10> r6 = rhs * rhs;
-
-    int<10> r7 = lhs |+| rhs;
-    int<10> r8 = lhs |-| rhs;
-
-    int<10> r11 = lhs | rhs;
-    int<10> r12 = lhs & rhs;
-    int<10> r13 = lhs ^ rhs;
 }
 
 // CHECK-LABEL:   p4hir.func action @bit_binops()
@@ -139,7 +132,7 @@ action int_binops() {
 // CHECK:         %[[VAL_67:.*]] = p4hir.binop(xor, %[[VAL_65]], %[[VAL_66]]) : !b10i
 // CHECK:         %[[VAL_68:.*]] = p4hir.variable ["r14", init] : <!b10i>
 // CHECK:         p4hir.assign %[[VAL_67]], %[[VAL_68]] : <!b10i>
-// CHECK-LABEL: p4hir.func action @int_binops()
+// CHECK-LABEL:   p4hir.func action @int_binops()
 // CHECK:         %[[VAL_69:.*]] = p4hir.variable ["res"] : <!i10i>
 // CHECK:         %[[VAL_70:.*]] = p4hir.const #int1_i10i
 // CHECK:         %[[VAL_71:.*]] = p4hir.cast(%[[VAL_70]] : !i10i) : !i10i
@@ -178,29 +171,3 @@ action int_binops() {
 // CHECK:         %[[VAL_97:.*]] = p4hir.read %[[VAL_75]] : <!i10i>
 // CHECK:         %[[VAL_98:.*]] = p4hir.binop(mul, %[[VAL_96]], %[[VAL_97]]) : !i10i
 // CHECK:         %[[VAL_99:.*]] = p4hir.variable ["r6", init] : <!i10i>
-// CHECK:         p4hir.assign %[[VAL_98]], %[[VAL_99]] : <!i10i>
-// CHECK:         %[[VAL_100:.*]] = p4hir.read %[[VAL_72]] : <!i10i>
-// CHECK:         %[[VAL_101:.*]] = p4hir.read %[[VAL_75]] : <!i10i>
-// CHECK:         %[[VAL_102:.*]] = p4hir.binop(sadd, %[[VAL_100]], %[[VAL_101]]) : !i10i
-// CHECK:         %[[VAL_103:.*]] = p4hir.variable ["r7", init] : <!i10i>
-// CHECK:         p4hir.assign %[[VAL_102]], %[[VAL_103]] : <!i10i>
-// CHECK:         %[[VAL_104:.*]] = p4hir.read %[[VAL_72]] : <!i10i>
-// CHECK:         %[[VAL_105:.*]] = p4hir.read %[[VAL_75]] : <!i10i>
-// CHECK:         %[[VAL_106:.*]] = p4hir.binop(ssub, %[[VAL_104]], %[[VAL_105]]) : !i10i
-// CHECK:         %[[VAL_107:.*]] = p4hir.variable ["r8", init] : <!i10i>
-// CHECK:         p4hir.assign %[[VAL_106]], %[[VAL_107]] : <!i10i>
-// CHECK:         %[[VAL_108:.*]] = p4hir.read %[[VAL_72]] : <!i10i>
-// CHECK:         %[[VAL_109:.*]] = p4hir.read %[[VAL_75]] : <!i10i>
-// CHECK:         %[[VAL_110:.*]] = p4hir.binop(or, %[[VAL_108]], %[[VAL_109]]) : !i10i
-// CHECK:         %[[VAL_111:.*]] = p4hir.variable ["r11", init] : <!i10i>
-// CHECK:         p4hir.assign %[[VAL_110]], %[[VAL_111]] : <!i10i>
-// CHECK:         %[[VAL_112:.*]] = p4hir.read %[[VAL_72]] : <!i10i>
-// CHECK:         %[[VAL_113:.*]] = p4hir.read %[[VAL_75]] : <!i10i>
-// CHECK:         %[[VAL_114:.*]] = p4hir.binop(and, %[[VAL_112]], %[[VAL_113]]) : !i10i
-// CHECK:         %[[VAL_115:.*]] = p4hir.variable ["r12", init] : <!i10i>
-// CHECK:         p4hir.assign %[[VAL_114]], %[[VAL_115]] : <!i10i>
-// CHECK:         %[[VAL_116:.*]] = p4hir.read %[[VAL_72]] : <!i10i>
-// CHECK:         %[[VAL_117:.*]] = p4hir.read %[[VAL_75]] : <!i10i>
-// CHECK:         %[[VAL_118:.*]] = p4hir.binop(xor, %[[VAL_116]], %[[VAL_117]]) : !i10i
-// CHECK:         %[[VAL_119:.*]] = p4hir.variable ["r13", init] : <!i10i>
-// CHECK:         p4hir.assign %[[VAL_118]], %[[VAL_119]] : <!i10i>

@@ -32,6 +32,10 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
+namespace {
+#include "p4mlir/Dialect/P4HIR/P4HIR_Patterns.inc"
+} // namespace
+
 using namespace mlir;
 using namespace P4::P4MLIR;
 
@@ -288,6 +292,40 @@ OpFoldResult P4HIR::UnaryOp::fold(FoldAdaptor adaptor) {
 
 void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), stringifyEnum(getKind()));
+}
+
+LogicalResult P4HIR::BinOp::verify() {
+    auto operandType = getLhs().getType();
+
+    if (mlir::isa<P4HIR::BitsType>(operandType)) {
+        return mlir::success();
+    } else if (mlir::isa<P4HIR::InfIntType>(operandType)) {
+        switch (getKind()) {
+            case BinOpKind::AddSat:
+            case BinOpKind::SubSat:
+                emitOpError() << "saturating arithmetic ('" << stringifyEnum(getKind())
+                              << "') is not valid for " << operandType;
+                return mlir::failure();
+            case BinOpKind::Or:
+            case BinOpKind::Xor:
+            case BinOpKind::And:
+                emitOpError() << "bitwise operations ('" << stringifyEnum(getKind())
+                              << "') is not valid for " << operandType;
+                return mlir::failure();
+            case BinOpKind::Mul:
+            case BinOpKind::Div:
+            case BinOpKind::Mod:
+            case BinOpKind::Add:
+            case BinOpKind::Sub:
+                return mlir::success();
+        }
+    }
+
+    llvm_unreachable("Unknown BinOp kind");
+}
+
+void P4HIR::BinOp::getCanonicalizationPatterns(RewritePatternSet &patterns, MLIRContext *context) {
+    patterns.add<P4HIR_BinOp_AddZero>(context);
 }
 
 //===----------------------------------------------------------------------===//
