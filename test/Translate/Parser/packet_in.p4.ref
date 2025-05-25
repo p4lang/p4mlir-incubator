@@ -1,0 +1,19 @@
+error: loc("test/Translate/Parser/packet_in.p4":62:19):  Unsupported parser state statement 'p4hir.transition_select'
+note: loc("test/Translate/Parser/packet_in.p4":62:19): see current operation: 
+"p4hir.transition_select"(%23) ({
+  "p4hir.select_case"() <{state = @parserI::@parse_ipv4}> ({
+    %25 = "p4hir.const"() <{value = #p4hir.int<2048> : !p4hir.bit<16>}> : () -> !p4hir.bit<16>
+    %26 = "p4hir.set"(%25) : (!p4hir.bit<16>) -> !p4hir.set<!p4hir.bit<16>>
+    "p4hir.yield"(%26) : (!p4hir.set<!p4hir.bit<16>>) -> ()
+  }) : () -> ()
+  "p4hir.select_case"() <{state = @parserI::@accept}> ({
+    %24 = "p4hir.universal_set"() : () -> !p4hir.set<!p4hir.dontcare>
+    "p4hir.yield"(%24) : (!p4hir.set<!p4hir.dontcare>) -> ()
+  }) : () -> ()
+}) : (!p4hir.bit<16>) -> ()
+  60 |     state parse_ipv4 {
+  61 | // CHECK: p4hir.call_method @packet_in::@extract<[!ipv4_t]> (%{{.*}}, %{{.*}}) : ![[packet_in]], (!p4hir.ref<!ipv4_t>) -> ()    
+  62 |         pkt.extract(hdr.ipv4);
+     |                   ^
+  63 |         transition select(hdr.ipv4.version, hdr.ipv4.protocol) {
+  64 |           (4w0x4, 8w0x06): accept;

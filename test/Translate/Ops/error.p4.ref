@@ -1,0 +1,15 @@
+error {
+    Foo,
+    Bar,
+    Baz
+}
+struct S {
+    error e;
+}
+action test(inout S s) {
+    s.e = error.Foo;
+    return;
+}
+
+const S s = {error.Baz};
+
