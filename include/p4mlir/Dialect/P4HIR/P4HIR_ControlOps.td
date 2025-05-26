@@ -2,7 +2,7 @@
 #define P4MLIR_DIALECT_P4HIR_P4HIR_CONTROLOPS_TD
 
 def ControlOp : P4HIR_Op<"control",
-    [Symbol, SymbolTable,
+    [Symbol, SymbolTable, Annotated,
      FunctionOpInterface, AutomaticAllocationScope]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FuncType>:$applyType,
@@ -52,7 +52,7 @@ def ControlApplyOp : P4HIR_Op<"control_apply",
 }
 
 def TableOp : P4HIR_Op<"table",
-   [Symbol, NoTerminator,
+   [Symbol, NoTerminator, Annotated,
     ParentOneOf<["ControlOp"]>]> {
   let arguments = (ins SymbolNameAttr:$sym_name, OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
@@ -117,6 +117,7 @@ def TableApplyOp : P4HIR_Op<"table_apply",
 
 def TableEntryOp : P4HIR_Op<"table_entry", [
    NoRegionArguments, SingleBlockImplicitTerminator<"YieldOp">,
+   Annotated,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
    ]> {
   let summary = "Represents a named P4 table entry";
@@ -142,7 +143,7 @@ def TableEntryOp : P4HIR_Op<"table_entry", [
   ];
 }
 
-def TableActionsOp : P4HIR_Op<"table_actions", [
+def TableActionsOp : P4HIR_Op<"table_actions", [ Annotated,
        NoRegionArguments, NoTerminator]> {
   let summary = "Represents a list of actions for a P4 table";
   let description = [{
@@ -166,7 +167,7 @@ def TableActionsOp : P4HIR_Op<"table_actions", [
 }
 
 def TableActionOp : P4HIR_Op<"table_action",
-    [AutomaticAllocationScope, NoTerminator,
+    [AutomaticAllocationScope, NoTerminator, Annotated,
      // DeclareOpInterfaceMethods<SymbolUserOpInterface>
     ]> {
   let arguments = (ins TypeAttrOf<FuncType>:$cplaneType, SymbolRefAttr:$action,
@@ -187,7 +188,7 @@ def TableActionOp : P4HIR_Op<"table_action",
 
 
 def TableDefaultActionOp : P4HIR_Op<"table_default_action",
-  [NoRegionArguments, NoTerminator]> {
+  [Annotated, NoRegionArguments, NoTerminator]> {
   let summary = "Represents a P4 table default action";
   let description = [{
 
@@ -210,7 +211,7 @@ def TableDefaultActionOp : P4HIR_Op<"table_default_action",
 }
 
 def TableSizeOp : P4HIR_Op<"table_size",
-  [AllTypesMatch<["value", "result"]>,
+  [AllTypesMatch<["value", "result"]>, Annotated,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>] > {
   let summary = "Represents a table size for a P4 table";
   let description = [{
@@ -226,7 +227,7 @@ def TableSizeOp : P4HIR_Op<"table_size",
 }
 
 def TableKeyOp : P4HIR_Op<"table_key",
-  [NoRegionArguments, NoTerminator]> {
+  [Annotated, NoRegionArguments, NoTerminator]> {
   let summary = "Represents a P4 table key";
   let description = [{
 
@@ -248,7 +249,7 @@ def TableKeyOp : P4HIR_Op<"table_key",
   ];
 }
 
-def TableKeyEntryOp : P4HIR_Op<"match_key", []> {
+def TableKeyEntryOp : P4HIR_Op<"match_key", [Annotated]> {
   let summary = "Represents a P4 table key entry";
   let description = [{
 
