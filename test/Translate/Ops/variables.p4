@@ -4,47 +4,86 @@
 
 // Adopted from spec-ex04.p4
 
-action foo() {
-  bit<32> b0 = 32w0xFF;       // a 32-bit bit-string with value 00FF
-  int<32> b2 = 32s0xFF;       // a 32-bit signed number with value 255
-  int<32> b3 = -32s0xFF;      // a 32-bit signed number with value -255
-  bit<8> b4 = 8w0b10101010;   // an 8-bit bit-string with value AA
-  bit<8> b5 = 8w0b_1010_1010; // same value as above
-  bit<8> b6 = 8w170;          // same value as above
-  bit<8> b7 = 8w0b1010_1010;  // an 8-bit unsigned number with value 170
-  int<8> b8 = (int<8>)b7;
-  int<42> b9;
-  bit<8> b10 = (bit<8>)b8;
+// CHECK-LABEL:   p4hir.func action @int_no_init
+// CHECK:           %[[var_a:.*]] = p4hir.variable ["a"] : <!i42i>
+// CHECK:           p4hir.return
+
+action int_no_init() {
+    int<42> a;
 }
 
-// CHECK-LABEL: p4hir.func action @foo()   
-// CHECK:         %[[VAL_0:.*]] = p4hir.const #int255_b32i
-// CHECK:         %[[VAL_1:.*]] = p4hir.variable ["b0", init] : <!b32i>
-// CHECK:         p4hir.assign %[[VAL_0]], %[[VAL_1]] : <!b32i>
-// CHECK:         %[[VAL_2:.*]] = p4hir.const #int255_i32i
-// CHECK:         %[[VAL_3:.*]] = p4hir.variable ["b2", init] : <!i32i>
-// CHECK:         p4hir.assign %[[VAL_2]], %[[VAL_3]] : <!i32i>
-// CHECK:         %[[VAL_4:.*]] = p4hir.const #int-255_i32i
-// CHECK:         %[[VAL_5:.*]] = p4hir.variable ["b3", init] : <!i32i>
-// CHECK:         p4hir.assign %[[VAL_4]], %[[VAL_5]] : <!i32i>
-// CHECK:         %[[VAL_6:.*]] = p4hir.const #int-86_b8i
-// CHECK:         %[[VAL_7:.*]] = p4hir.variable ["b4", init] : <!b8i>
-// CHECK:         p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!b8i>
-// CHECK:         %[[VAL_8:.*]] = p4hir.const #int-86_b8i
-// CHECK:         %[[VAL_9:.*]] = p4hir.variable ["b5", init] : <!b8i>
-// CHECK:         p4hir.assign %[[VAL_8]], %[[VAL_9]] : <!b8i>
-// CHECK:         %[[VAL_10:.*]] = p4hir.const #int-86_b8i
-// CHECK:         %[[VAL_11:.*]] = p4hir.variable ["b6", init] : <!b8i>
-// CHECK:         p4hir.assign %[[VAL_10]], %[[VAL_11]] : <!b8i>
-// CHECK:         %[[VAL_12:.*]] = p4hir.const #int-86_b8i
-// CHECK:         %[[VAL_13:.*]] = p4hir.variable ["b7", init] : <!b8i>
-// CHECK:         p4hir.assign %[[VAL_12]], %[[VAL_13]] : <!b8i>
-// CHECK:         %[[VAL_14_1:.*]] = p4hir.read %[[VAL_13]] : <!b8i>
-// CHECK:         %[[VAL_15_1:.*]] = p4hir.cast(%[[VAL_14_1]] : !b8i) : !i8i
-// CHECK:         %[[VAL_16_1:.*]] = p4hir.variable ["b8", init] : <!i8i>
-// CHECK:         p4hir.assign %[[VAL_15_1]], %[[VAL_16_1]] : <!i8i>
-// CHECK:         %[[VAL_14:.*]] = p4hir.variable ["b9"] : <!i42i>
-// CHECK:         %[[VAL_14_2:.*]] = p4hir.read %[[VAL_16_1]] : <!i8i>
-// CHECK:         %[[VAL_16:.*]] = p4hir.cast(%[[VAL_14_2]] : !i8i) : !b8i
-// CHECK:         %[[VAL_15:.*]] = p4hir.variable ["b10", init] : <!b8i>
-// CHECK:         p4hir.assign %[[VAL_16]], %[[VAL_15]] : <!b8i>
+// CHECK-LABEL:   p4hir.func action @bit_assign_bit_string_in_hex_format
+// CHECK:           %[[const_int255_b32i:.*]] = p4hir.const #int255_b32i
+// CHECK:           %[[var_a:.*]] = p4hir.variable ["a", init] : <!b32i>
+// CHECK:           p4hir.assign %[[const_int255_b32i]], %[[var_a]] : <!b32i>
+// CHECK:           p4hir.return
+
+action bit_assign_bit_string_in_hex_format() {
+    bit<32> a = 32w0xFF;       // a 32-bit bit-string with value 00FF
+}
+
+// CHECK-LABEL:   p4hir.func action @int_assign_signed_positive_number_in_hex_format
+// CHECK:           %[[const_int255_i32i:.*]] = p4hir.const #int255_i32i
+// CHECK:           %[[var_a:.*]] = p4hir.variable ["a", init] : <!i32i>
+// CHECK:           p4hir.assign %[[const_int255_i32i]], %[[var_a]] : <!i32i>
+// CHECK:           p4hir.return
+
+action int_assign_signed_positive_number_in_hex_format() {
+    int<32> a = 32s0xFF;       // a 32-bit signed number with value 255
+}
+
+// CHECK-LABEL:   p4hir.func action @int_assign_signed_negative_number_in_hex_format()
+// CHECK:           %[[const_int_negative_255_i32i:.*]] = p4hir.const #int-255_i32i
+// CHECK:           %[[var_a:.*]] = p4hir.variable ["a", init] : <!i32i>
+// CHECK:           p4hir.assign %[[const_int_negative_255_i32i]], %[[var_a]] : <!i32i>
+// CHECK:           p4hir.return
+
+action int_assign_signed_negative_number_in_hex_format() {
+    int<32> a = -32s0xFF;      // a 32-bit signed number with value -255
+}
+
+// CHECK-LABEL:   p4hir.func action @bit_assign_bit_string_in_decimal_format
+// CHECK:           %[[const_int_negative_86_b8i:.*]] = p4hir.const #int-86_b8i
+// CHECK:           %[[var_a:.*]] = p4hir.variable ["a", init] : <!b8i>
+// CHECK:           p4hir.assign %[[const_int_negative_86_b8i]], %[[var_a]] : <!b8i>
+// CHECK:           p4hir.return
+
+action bit_assign_bit_string_in_decimal_format() {
+    bit<8> a = 8w170;          // 170 (this is -86)
+}
+
+// CHECK-LABEL:   p4hir.func action @bit_assign_bit_string_in_binary_formats
+// CHECK:           %[[const1_int_negative_86_b8i:.*]] = p4hir.const #int-86_b8i
+// CHECK:           %[[var_a:.*]] = p4hir.variable ["a", init] : <!b8i>
+// CHECK:           p4hir.assign %[[const1_int_negative_86_b8i]], %[[var_a]] : <!b8i>
+// CHECK:           %[[const2_int_negative_86_b8i:.*]] = p4hir.const #int-86_b8i
+// CHECK:           %[[var_b:.*]] = p4hir.variable ["b", init] : <!b8i>
+// CHECK:           p4hir.assign %[[const2_int_negative_86_b8i]], %[[var_b]] : <!b8i>
+// CHECK:           %[[const3_int_negative_86_b8i:.*]] = p4hir.const #int-86_b8i
+// CHECK:           %[[var_c:.*]] = p4hir.variable ["c", init] : <!b8i>
+// CHECK:           p4hir.assign %[[const3_int_negative_86_b8i]], %[[var_c]] : <!b8i>
+// CHECK:           p4hir.return
+
+action bit_assign_bit_string_in_binary_formats() {
+    bit<8> a = 8w0b10101010;   // an 8-bit bit-string with value AA
+    bit<8> b = 8w0b_1010_1010; // same value as above
+    bit<8> c = 8w0b1010_1010;  // an 8-bit unsigned number with value 170
+}
+
+// CHECK-LABEL:   p4hir.func action @init_with_cast
+// CHECK:           %[[var_a:.*]] = p4hir.variable ["a"] : <!b8i>
+// CHECK:           %[[val_a:.*]] = p4hir.read %[[var_a]] : <!b8i>
+// CHECK:           %[[val_cast_a:.*]] = p4hir.cast(%[[val_a]] : !b8i) : !i8i
+// CHECK:           %[[var_b:.*]] = p4hir.variable ["b", init] : <!i8i>
+// CHECK:           p4hir.assign %[[val_cast_a]], %[[var_b]] : <!i8i>
+// CHECK:           %[[val_b:.*]] = p4hir.read %[[var_b]] : <!i8i>
+// CHECK:           %[[val_cast_b:.*]] = p4hir.cast(%[[val_b]] : !i8i) : !b8i
+// CHECK:           %[[var_c:.*]] = p4hir.variable ["c", init] : <!b8i>
+// CHECK:           p4hir.assign %[[val_cast_b]], %[[var_c]] : <!b8i>
+// CHECK:           p4hir.return
+
+action init_with_cast() {
+    bit<8> a;
+    int<8> b = (int<8>)a;
+    bit<8> c = (bit<8>)b;
+}

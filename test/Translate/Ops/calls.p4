@@ -26,7 +26,7 @@ action quuz(out int<16> a) {
 
 // CHECK-LABEL: bazz
 action bazz(in int<16> arg1) {
-    // CHECK: p4hir.call @foo (%arg0, %{{.*}}) : (!i16i, !b10i) -> ()
+    // CHECK: p4hir.call @foo    (%arg0, %{{.*}}) : (!i16i, !b10i) -> ()
     foo(arg1, 7);
     bit<10> x1 = 5;
     // CHECK: p4hir.call @foo (%arg0, %{{.*}}) : (!i16i, !b10i) -> ()    
