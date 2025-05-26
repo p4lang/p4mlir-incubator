@@ -2,7 +2,7 @@
 #define P4MLIR_DIALECT_P4HIR_P4HIR_PARSEROPS_TD
 
 def ParserOp : P4HIR_Op<"parser",
-    [Symbol, SymbolTable,
+    [Symbol, SymbolTable, Annotated,
      FunctionOpInterface, AutomaticAllocationScope,
      SingleBlockImplicitTerminator<"ParserTransitionOp">]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
@@ -55,7 +55,7 @@ def ParserOp : P4HIR_Op<"parser",
 }
 
 def ParserStateOp : P4HIR_Op<"state",
-   [Symbol, AutomaticAllocationScope,
+   [Symbol, AutomaticAllocationScope, Annotated,
     HasParent<"ParserOp">]> {
  let arguments = (ins SymbolNameAttr:$sym_name,
                       OptionalAttr<DictionaryAttr>:$annotations);
