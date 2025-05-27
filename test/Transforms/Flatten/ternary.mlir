@@ -5,7 +5,7 @@ module {
   // CHECK-NOT: p4hir.ternary
   p4hir.func @ternary.bool() {
     // CHECK: %[[false:.*]] = p4hir.const #false
-    // CHECK: p4hir.brcond %[[false]] ^[[bb1:.*]], ^[[bb2:.*]]
+    // CHECK: p4hir.cond_br %[[false]] ^[[bb1:.*]], ^[[bb2:.*]]
     // CHECK: ^[[bb1]]:
     // CHECK:   %[[true:.*]] = p4hir.const #true
     // CHECK:   p4hir.br ^[[bb3:.*]](%[[true]] : !p4hir.bool)
@@ -30,7 +30,7 @@ module {
 
   p4hir.func @ternary.int() {
     // CHECKL %[[false:.*]] = p4hir.const #false
-    // CHECK: p4hir.brcond %[[false]] ^[[bb1:.*]], ^[[bb2:.*]]
+    // CHECK: p4hir.cond_br %[[false]] ^[[bb1:.*]], ^[[bb2:.*]]
     // CHECK: ^[[bb1]]:
     // CHECK:   %[[truec:.*]] = p4hir.const #int42_i32i
     // CHECK:   p4hir.br ^[[bb3:.*]](%[[truec]] : !i32i)

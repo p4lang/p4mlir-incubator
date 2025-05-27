@@ -56,7 +56,7 @@ struct IfOpFlattening : public OpRewritePattern<P4HIR::IfOp> {
         }
 
         rewriter.setInsertionPointToEnd(currentBlock);
-        rewriter.create<P4HIR::BrCondOp>(loc, ifOp.getCondition(), thenBeforeBody, elseBeforeBody);
+        rewriter.create<P4HIR::CondBrOp>(loc, ifOp.getCondition(), thenBeforeBody, elseBeforeBody);
 
         if (!emptyElse) {
             rewriter.setInsertionPointToEnd(elseAfterBody);
@@ -152,7 +152,7 @@ class TernaryOpFlattening : public mlir::OpRewritePattern<P4HIR::TernaryOp> {
         rewriter.inlineRegionBefore(falseRegion, continueBlock);
 
         rewriter.setInsertionPointToEnd(condBlock);
-        rewriter.create<P4HIR::BrCondOp>(loc, op.getCond(), trueBlock, falseBlock);
+        rewriter.create<P4HIR::CondBrOp>(loc, op.getCond(), trueBlock, falseBlock);
 
         rewriter.replaceOp(op, continueBlock->getArguments());
 

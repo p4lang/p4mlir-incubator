@@ -1726,7 +1726,7 @@ def BrOp : P4HIR_Op<"br",
   }];
 }
 
-def BrCondOp : P4HIR_Op<"brcond",
+def CondBrOp : P4HIR_Op<"cond_br",
     [DeclareOpInterfaceMethods<BranchOpInterface, ["getSuccessorForOperands"]>,
      Pure, Terminator, AttrSizedOperandSegments]> {
   let summary = "Conditional branch";
@@ -1739,7 +1739,7 @@ def BrCondOp : P4HIR_Op<"brcond",
 
     ```mlir
       ...
-        p4hir.brcond %a, ^bb3, ^bb4
+        p4hir.cond_br %a, ^bb3, ^bb4
       ^bb3:
         p4hir.return
       ^bb4:
