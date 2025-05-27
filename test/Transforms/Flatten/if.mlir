@@ -5,7 +5,7 @@ module {
   // CHECK-NOT: p4hir.if
   p4hir.func @ifthen() {
     // CHECK: %[[false:.*]] = p4hir.const #false
-    // CHECK: p4hir.brcond %[[false]] ^[[bb1:.*]], ^[[bb2:.*]]
+    // CHECK: p4hir.cond_br %[[false]] ^[[bb1:.*]], ^[[bb2:.*]]
     // CHECK:  ^[[bb1]]:
     // CHECK:   p4hir.const #true
     // CHECK:   p4hir.br ^[[bb2]]
@@ -22,7 +22,7 @@ module {
   // CHECK-NOT: p4hir.if
   p4hir.func @ifthenelse() {
     // CHECK: %[[false:.*]] = p4hir.const #false
-    // CHECK: p4hir.brcond %[[false]] ^[[bb1:.*]], ^[[bb2:.*]]
+    // CHECK: p4hir.cond_br %[[false]] ^[[bb1:.*]], ^[[bb2:.*]]
     // CHECK:  ^[[bb1]]:
     // CHECK:   p4hir.const #true
     // CHECK:   p4hir.br ^[[bb3:.*]]

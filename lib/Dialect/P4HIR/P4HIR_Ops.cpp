@@ -2925,16 +2925,16 @@ mlir::SuccessorOperands P4HIR::BrOp::getSuccessorOperands(unsigned index) {
 Block *P4HIR::BrOp::getSuccessorForOperands(ArrayRef<Attribute>) { return getDest(); }
 
 //===----------------------------------------------------------------------===//
-// BrCondOp
+// CondBrOp
 //===----------------------------------------------------------------------===//
 
-mlir::SuccessorOperands P4HIR::BrCondOp::getSuccessorOperands(unsigned index) {
+mlir::SuccessorOperands P4HIR::CondBrOp::getSuccessorOperands(unsigned index) {
     assert(index < getNumSuccessors() && "invalid successor index");
     return SuccessorOperands(index == 0 ? getDestOperandsTrueMutable()
                                         : getDestOperandsFalseMutable());
 }
 
-Block *P4HIR::BrCondOp::getSuccessorForOperands(ArrayRef<Attribute> operands) {
+Block *P4HIR::CondBrOp::getSuccessorForOperands(ArrayRef<Attribute> operands) {
     if (IntegerAttr condAttr = dyn_cast_if_present<IntegerAttr>(operands.front()))
         return condAttr.getValue().isOne() ? getDestTrue() : getDestFalse();
     return nullptr;
