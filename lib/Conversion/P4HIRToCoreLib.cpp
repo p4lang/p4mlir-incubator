@@ -1,5 +1,6 @@
 #include "p4mlir/Conversion/P4HIRToCoreLib.h"
 
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -61,24 +62,24 @@ void LowerToP4CoreLib::runOnOperation() {
 
     ConversionTarget target(context);
     RewritePatternSet patterns(&context);
+    SymbolTableCollection symTables;
 
     target.addLegalDialect<P4CoreLib::P4CoreLibDialect>();
+
     target.addDynamicallyLegalOp<P4HIR::FuncOp>([](P4HIR::FuncOp func) {
-        if (auto ann = func.getAnnotations()) return !ann->contains("corelib");
-        return true;
+        // All corelib-annotated functions should be converted
+        return !func.hasAnnotation("corelib");
     });
     target.addDynamicallyLegalOp<P4HIR::CallOp>([&](P4HIR::CallOp call) {
-        auto callee = call.getCallee();
-        if (callee != "verify") return true;
-
+        // All calls to corelib-annotated callees should be converted
         // Check the callee, must be a corelib extern
-        auto calleeOp = SymbolTable::lookupSymbolIn(module, callee);
+        auto *calleeOp = call.resolveCallableInTable(&symTables);
         if (auto opFunc = dyn_cast_or_null<P4HIR::FuncOp>(calleeOp)) {
             if (!opFunc.isDeclaration()) return true;
-            if (auto ann = opFunc.getAnnotations()) return !ann->contains("corelib");
+            return !opFunc.hasAnnotation("corelib");
         }
 
-        assert(isa<FunctionOpInterface>(calleeOp));
+        assert(calleeOp && isa<FunctionOpInterface>(calleeOp));
         return true;
     });
 
