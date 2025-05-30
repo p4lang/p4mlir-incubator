@@ -1,11 +1,9 @@
-get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
-get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
-
 set(LIBS
-  ${dialect_libs}
-  ${conversion_libs}
-
   P4MLIR_P4HIR
+  P4MLIR_P4CoreLib
+  P4MLIRConversion
+  P4MLIRTransforms
+  P4MLIRConversion
 
   MLIRFuncDialect
   MLIROptLib

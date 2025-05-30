@@ -11,6 +11,7 @@ include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/MemorySlotInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
+include "p4mlir/Dialect/P4HIR/P4HIR_OpInterfaces.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_Types.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.td"
@@ -28,6 +29,7 @@ class P4HIR_Op<string mnemonic, list<Trait> traits = []> :
 
 def ConstOp : P4HIR_Op<"const",
     [ConstantLike, Pure, AllTypesMatch<["value", "res"]>,
+     Annotated,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
     let summary = "Defines a P4 constant";
     let description = [{
@@ -84,6 +86,7 @@ def ConstOp : P4HIR_Op<"const",
 
 def VariableOp : P4HIR_Op<"variable", [
                  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+                 Annotated
 /*,
                  DeclareOpInterfaceMethods<PromotableAllocationOpInterface>,
                  DeclareOpInterfaceMethods<DestructurableAllocationOpInterface>*/]> {
@@ -505,7 +508,7 @@ def CmpOp : P4HIR_Op<"cmp",
 def ScopeOp : P4HIR_Op<"scope", [
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursivelySpeculatable, AutomaticAllocationScope,
-       NoRegionArguments]> {
+       NoRegionArguments, Annotated]> {
   let summary = "Represents a P4 scope";
   let description = [{
     `p4hir.scope` contains one region and defines a strict "scope" for all new
@@ -782,6 +785,7 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
 
 def FuncOp : P4HIR_Op<"func", [
   AutomaticAllocationScope, CallableOpInterface, FunctionOpInterface,
+  Annotated
   // IsolatedFromAbove
 ]> {
   let summary = "Define a function-like object (action, function)";
@@ -1195,7 +1199,7 @@ def SliceRefOp : P4HIR_Op<"slice_ref",
 }
 
 def InstantiateOp : P4HIR_Op<"instantiate",
-  [NoRegionArguments, CallOpInterface,
+  [NoRegionArguments, CallOpInterface, Annotated,
    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "constructor call operation";
@@ -1291,7 +1295,7 @@ def ApplyOp : P4HIR_Op<"apply",
 }
 
 def ExternOp : P4HIR_Op<"extern",
-  [Symbol, SymbolTable, NoTerminator]> {
+  [Symbol, SymbolTable, Annotated, NoTerminator]> {
   let summary = "P4 extern declaration";
   let description = [{
     Declares P4 extern
@@ -1416,7 +1420,7 @@ def OverloadSetOp : P4HIR_Op<"overload_set",
 }
 
 def PackageOp : P4HIR_Op<"package",
-  [Symbol]> {
+  [Symbol, Annotated]> {
   let summary = "P4 package declaration";
   let description = [{
     Declares P4 package
@@ -1515,7 +1519,7 @@ def SwitchOp : P4HIR_Op<"switch",
 }
 
 def ForOp : P4HIR_Op<"for",
-      [AutomaticAllocationScope,
+      [AutomaticAllocationScope, Annotated,
        DeclareOpInterfaceMethods<LoopLikeOpInterface>,
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursiveMemoryEffects, NoRegionArguments,
@@ -1575,7 +1579,7 @@ def ForOp : P4HIR_Op<"for",
 }
 
 def ForInOp : P4HIR_Op<"foreach",
-      [AutomaticAllocationScope,
+      [AutomaticAllocationScope, Annotated,
        DeclareOpInterfaceMethods<LoopLikeOpInterface>,
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursiveMemoryEffects,
