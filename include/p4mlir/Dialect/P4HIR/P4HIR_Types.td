@@ -263,7 +263,7 @@ def FuncType : P4HIR_Type<"Func", "func"> {
 //===----------------------------------------------------------------------===//
 // ParserType
 //===----------------------------------------------------------------------===//
-def ParserType : P4HIR_Type<"Parser", "parser"> {
+def ParserType : P4HIR_Type<"Parser", "parser", [AnnotatedType]> {
   let parameters = (ins StringRefParameter<"parser type name">:$name,
                         ArrayRefParameter<"mlir::Type">:$inputs,
                         OptionalArrayRefParameter<"mlir::Type">:$type_arguments,
@@ -291,7 +291,7 @@ def ParserType : P4HIR_Type<"Parser", "parser"> {
 //===----------------------------------------------------------------------===//
 // ControlType
 //===----------------------------------------------------------------------===//
-def ControlType : P4HIR_Type<"Control", "control"> {
+def ControlType : P4HIR_Type<"Control", "control", [AnnotatedType]> {
   let parameters = (ins StringRefParameter<"control type name">:$name,
                         ArrayRefParameter<"mlir::Type">:$inputs,
                         OptionalArrayRefParameter<"mlir::Type">:$type_arguments,
@@ -355,7 +355,8 @@ class StructLikeType<string name, string typeMnemonic>
   : P4HIR_Type<name, typeMnemonic,  [
   StructLikeTypeInterface,
   DestructurableTypeInterface,
-  FieldIDTypeInterface
+  FieldIDTypeInterface,
+  AnnotatedType
 ]> {
   let hasCustomAssemblyFormat = 1;
   let genVerifyDecl = 1;
@@ -559,7 +560,7 @@ def HeaderUnionType : StructLikeType<"HeaderUnion", "header_union"> {
 //===----------------------------------------------------------------------===//
 // EnumType, ErrorType  & SerEnumType
 //===----------------------------------------------------------------------===//
-def EnumType : P4HIR_Type<"Enum", "enum", []> {
+def EnumType : P4HIR_Type<"Enum", "enum", [AnnotatedType]> {
   let summary = "enum type";
   let description = [{
     Represents an enumeration of values
@@ -632,7 +633,7 @@ def ErrorType : P4HIR_Type<"Error", "error", []> {
   }];
 }
 
-def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", []> {
+def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", [AnnotatedType]> {
   let summary = "serializable enum type";
   let description = [{
     Represents an enumeration of values backed by some integer value
@@ -721,7 +722,7 @@ def TypeVarType : P4HIR_Type<"TypeVar", "type_var", []> {
 //===----------------------------------------------------------------------===//
 // ExternType
 //===----------------------------------------------------------------------===//
-def ExternType : P4HIR_Type<"Extern", "extern", []> {
+def ExternType : P4HIR_Type<"Extern", "extern", [AnnotatedType]> {
   let summary = "extern type";
   let description = [{
     Represents a P4 extern:
@@ -752,7 +753,7 @@ def ExternType : P4HIR_Type<"Extern", "extern", []> {
 //===----------------------------------------------------------------------===//
 // PackageType
 //===----------------------------------------------------------------------===//
-def PackageType : P4HIR_Type<"Package", "package", []> {
+def PackageType : P4HIR_Type<"Package", "package", [AnnotatedType]> {
   let summary = "package type";
   let description = [{
     Represents a P4 package:
@@ -780,7 +781,7 @@ def PackageType : P4HIR_Type<"Package", "package", []> {
 //===----------------------------------------------------------------------===//
 // AliasType
 //===----------------------------------------------------------------------===//
-def AliasType : P4HIR_Type<"Alias", "alias", []> {
+def AliasType : P4HIR_Type<"Alias", "alias", [AnnotatedType]> {
   let summary = "alias type";
   let description = [{
     Represents a P4 "new type" that is an alias to the existing one:

@@ -100,4 +100,63 @@ def FieldIDTypeInterface : TypeInterface<"FieldIDTypeInterface"> {
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
 
+def AnnotatedType : TypeInterface<"AnnotatedType"> {
+  let description = [{
+    Common methods for for all operations that might have annotations attached to them
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/        "Checks if the op has the annotation given the name",
+      /*returnType=*/  "bool",
+      /*methodName=*/  "hasAnnotation",
+      /*args=*/        (ins "mlir::StringRef":$name),
+      /*methodBody=*/  [{}],
+      /*defaultImpl=*/ [{
+        if (auto annotations = $_type.getAnnotationsAttr())
+           return bool(annotations.get(name));
+
+        return false;
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/        "Get the annotation given the name, null if it is not present",
+      /*returnType=*/  "mlir::Attribute",
+      /*methodName=*/  "getAnnotation",
+      /*args=*/        (ins "mlir::StringRef":$name),
+      /*methodBody=*/  [{}],
+      /*defaultImpl=*/ [{
+        if (auto annotations = $_type.getAnnotationsAttr())
+           return annotations.get(name);
+
+        return nullptr;
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/        "Get annotations as DictionaryAttr. Returns nullptr if there are no annotations set",
+      /*returnType=*/  "mlir::DictionaryAttr",
+      /*methodName=*/  "getAnnotationsAttr",
+      /*args=*/        (ins),
+      /*methodBody=*/  [{}],
+      /*defaultImpl=*/ [{
+        return $_type.getAnnotations();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/        "Get annotations",
+      /*returnType=*/  "mlir::ArrayRef<mlir::NamedAttribute>",
+      /*methodName=*/  "annotations",
+      /*args=*/        (ins),
+      /*methodBody=*/  [{}],
+      /*defaultImpl=*/ [{
+        if (auto attrs = $_type.getAnnotations())
+          return attrs.getValue();
+        return {};
+      }]
+    >
+  ];
+
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+}
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPEINTERFACES_TD
