@@ -4,6 +4,7 @@
 include "mlir/IR/OpBase.td"
 
 include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.td"
+include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Types.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_Types.td"
 
 //===----------------------------------------------------------------------===//
@@ -20,7 +21,7 @@ class P4CoreLib_Op<string mnemonic, list<Trait> traits = []> :
 
 def VerifyOp : P4CoreLib_Op<"verify",
     [ParentOneOf<["P4::P4MLIR::P4HIR::ParserStateOp"]>]> {
-    let summary = "Defines a P4 constant";
+    let summary = "Check given predicate in the parser";
     let description = [{
         Check a predicate @check in the parser; if the predicate is true do nothing,
         otherwise set the parser error to @toSignal, and transition to the `reject` state.
@@ -29,6 +30,21 @@ def VerifyOp : P4CoreLib_Op<"verify",
     let arguments = (ins BooleanType:$check, ErrorType:$toSignal);
     let assemblyFormat = [{
       $check `signalling` $toSignal `:` type($toSignal) attr-dict
+    }];
+}
+
+def PacketEmitOp : P4CoreLib_Op<"emit",
+    [ParentOneOf<["P4::P4MLIR::P4HIR::ControlApplyOp"]>]> {
+    let summary = "Write header-like object to output packet";
+    let description = [{
+        Write @hdr into the output packet, advancing cursor.
+        @hdr can be of a header type, a header stack, a header_union, or a struct
+        containing fields with such types.
+    }];
+
+    let arguments = (ins PacketOutType:$packet_out, StructLikeType:$hdr);
+    let assemblyFormat = [{
+      $hdr `:` type($hdr) `to` $packet_out `:` type($packet_out) attr-dict
     }];
 }
 
