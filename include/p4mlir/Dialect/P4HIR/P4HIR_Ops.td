@@ -1383,6 +1383,10 @@ def CallMethodOp : P4HIR_Op<"call_method",
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
       getBaseMutable().assign(callee.get<mlir::Value>());
     }
+
+    mlir::Operation *resolveCallableInTable(mlir::SymbolTableCollection *symbolTable);
+
+    P4HIR::ExternOp getExtern();
   }];
 }
 
