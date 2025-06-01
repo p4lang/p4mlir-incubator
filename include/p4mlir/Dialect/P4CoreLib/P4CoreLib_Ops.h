@@ -8,6 +8,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
+#include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Types.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 
 #define GET_OP_CLASSES
