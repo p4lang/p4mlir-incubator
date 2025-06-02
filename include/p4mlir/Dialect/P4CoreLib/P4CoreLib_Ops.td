@@ -20,8 +20,7 @@ class P4CoreLib_Op<string mnemonic, list<Trait> traits = []> :
 // P4CoreLib operation definitions.
 //===----------------------------------------------------------------------===//
 
-def VerifyOp : P4CoreLib_Op<"verify",
-    [ParentOneOf<["P4::P4MLIR::P4HIR::ParserStateOp"]>]> {
+def VerifyOp : P4CoreLib_Op<"verify"> {
     let summary = "Check given predicate in the parser";
     let description = [{
         Check a predicate @check in the parser; if the predicate is true do nothing,
@@ -34,8 +33,7 @@ def VerifyOp : P4CoreLib_Op<"verify",
     }];
 }
 
-def PacketEmitOp : P4CoreLib_Op<"emit",
-    [ParentOneOf<["P4::P4MLIR::P4HIR::ControlApplyOp"]>]> {
+def PacketEmitOp : P4CoreLib_Op<"emit"> {
     let summary = "Write header-like object to output packet";
     let description = [{
         Write @hdr into the output packet, advancing cursor.
@@ -50,8 +48,7 @@ def PacketEmitOp : P4CoreLib_Op<"emit",
 }
 
 def PacketLengthOp : P4CoreLib_Op<"packet_length",
-    [ParentOneOf<["P4::P4MLIR::P4HIR::ParserStateOp"]>,
-     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+    [DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
 
     let arguments = (ins PacketInType:$packet_in);
     let results = (outs Bit<32>:$length);
@@ -61,8 +58,7 @@ def PacketLengthOp : P4CoreLib_Op<"packet_length",
 }
 
 def PacketLookAheadOp : P4CoreLib_Op<"packet_lookahead",
-    [ParentOneOf<["P4::P4MLIR::P4HIR::ParserStateOp"]>,
-     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+    [DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
 
     let arguments = (ins PacketInType:$packet_in);
     let results = (outs AnyType:$value);
@@ -71,27 +67,21 @@ def PacketLookAheadOp : P4CoreLib_Op<"packet_lookahead",
     }];
 }
 
-def PacketAdvanceOp : P4CoreLib_Op<"packet_advance",
-    [ParentOneOf<["P4::P4MLIR::P4HIR::ParserStateOp"]>]> {
-
+def PacketAdvanceOp : P4CoreLib_Op<"packet_advance"> {
     let arguments = (ins PacketInType:$packet_in, Bit<32>:$bits);
     let assemblyFormat = [{
       $packet_in `:` type($packet_in) `by` $bits attr-dict
     }];
 }
 
-def PacketExtractOp : P4CoreLib_Op<"extract_header",
-    [ParentOneOf<["P4::P4MLIR::P4HIR::ParserStateOp"]>]> {
-
+def PacketExtractOp : P4CoreLib_Op<"extract_header"> {
     let arguments = (ins PacketInType:$packet_in, HeaderRefType:$hdr);
     let assemblyFormat = [{
       $hdr `:` type($hdr) `from` $packet_in `:` type($packet_in) attr-dict
     }];
 }
 
-def PacketExtractVariableOp : P4CoreLib_Op<"extract_header_variable",
-    [ParentOneOf<["P4::P4MLIR::P4HIR::ParserStateOp"]>]> {
-
+def PacketExtractVariableOp : P4CoreLib_Op<"extract_header_variable"> {
     let arguments = (ins PacketInType:$packet_in, HeaderRefType:$hdr, Bit<32>:$variableFieldSizeInBits);
     let assemblyFormat = [{
       $hdr`<`$variableFieldSizeInBits`>`  `:` type($hdr) `from` $packet_in `:` type($packet_in) attr-dict
