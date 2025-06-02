@@ -94,10 +94,36 @@ struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMet
     LogicalResult matchAndRewrite(P4HIR::CallMethodOp op, OpAdaptor operands,
                                   ConversionPatternRewriter &rewriter) const override {
         auto sym = op.getCallee();
-        if (sym.getRootReference() == "packet_out" && sym.getLeafReference() == "emit") {
+        auto extSym = sym.getRootReference(), methodSym = sym.getLeafReference();
+        if (extSym == "packet_out" && methodSym == "emit") {
             rewriter.replaceOpWithNewOp<P4CoreLib::PacketEmitOp>(op, mlir::TypeRange(),
                                                                  operands.getOperands());
             return success();
+        } else if (extSym == "packet_in") {
+            if (methodSym == "extract") {
+                size_t sz = op.getArgOperands().size();
+                if (sz == 1) {
+                    rewriter.replaceOpWithNewOp<P4CoreLib::PacketExtractOp>(op, op.getResultTypes(),
+                                                                            operands.getOperands());
+                    return success();
+                } else if (sz == 2) {
+                    rewriter.replaceOpWithNewOp<P4CoreLib::PacketExtractVariableOp>(
+                        op, op.getResultTypes(), operands.getOperands());
+                    return success();
+                }
+            } else if (methodSym == "length") {
+                rewriter.replaceOpWithNewOp<P4CoreLib::PacketLengthOp>(op, op.getResultTypes(),
+                                                                       operands.getOperands());
+                return success();
+            } else if (methodSym == "lookahead") {
+                rewriter.replaceOpWithNewOp<P4CoreLib::PacketLookAheadOp>(op, op.getResultTypes(),
+                                                                          operands.getOperands());
+                return success();
+            } else if (methodSym == "advance") {
+                rewriter.replaceOpWithNewOp<P4CoreLib::PacketAdvanceOp>(op, op.getResultTypes(),
+                                                                        operands.getOperands());
+                return success();
+            }
         }
 
         return failure();
@@ -156,6 +182,7 @@ void LowerToP4CoreLib::runOnOperation() {
 
         if (auto extType = mlir::dyn_cast<P4HIR::ExternType>(t)) {
             return llvm::StringSwitch<mlir::Type>(extType.getName())
+                .Case("packet_in", P4CoreLib::PacketInType::get(&context))
                 .Case("packet_out", P4CoreLib::PacketOutType::get(&context))
                 .Default(t);
         }
@@ -195,6 +222,12 @@ void LowerToP4CoreLib::runOnOperation() {
 
     target.addDynamicallyLegalOp<P4HIR::ControlOp>([&](P4HIR::ControlOp ctrl) {
         auto fnType = ctrl.getFunctionType();
+        return typeConverter.isLegal(fnType.getInputs()) &&
+               typeConverter.isLegal(fnType.getReturnTypes());
+    });
+
+    target.addDynamicallyLegalOp<P4HIR::ParserOp>([&](P4HIR::ParserOp parser) {
+        auto fnType = parser.getFunctionType();
         return typeConverter.isLegal(fnType.getInputs()) &&
                typeConverter.isLegal(fnType.getReturnTypes());
     });

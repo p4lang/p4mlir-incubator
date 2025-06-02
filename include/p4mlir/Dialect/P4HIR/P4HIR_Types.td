@@ -54,12 +54,12 @@ def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits"> {
 // Unsigned integer type of a specific width (bits<width>).
 class Bit<int width>
   : Type<And<[
-        CPred<"::mlir::isa<::p4hir::BitsType>($_self)">,
-        CPred<"::mlir::cast<::p4hir::BitsType>($_self).isUnsigned()">,
-        CPred<"::mlir::cast<::p4hir::BitsType>($_self).getWidth() == " # width>
-        ]>, width # "-bit unsigned integer", "::p4hir::BitsType">,
+        CPred<"::mlir::isa<P4HIR::BitsType>($_self)">,
+        CPred<"::mlir::cast<P4HIR::BitsType>($_self).isUnsigned()">,
+        CPred<"::mlir::cast<P4HIR::BitsType>($_self).getWidth() == " # width>
+        ]>, width # "-bit unsigned integer", "P4HIR::BitsType">,
     BuildableType<
-      "p4hir::BitsType::get($_builder.getContext(), "
+      "P4HIR::BitsType::get($_builder.getContext(), "
       # width # ", /*isSigned=*/false)"> {
   int bitwidth = width;
 }
@@ -67,10 +67,10 @@ class Bit<int width>
 // Signed integer type of a specific width (int<width>).
 class Int<int width>
   : Type<And<[
-        CPred<"::mlir::isa<::p4hir::IntType>($_self)">,
-        CPred<"::mlir::cast<::p4hir::IntType>($_self).isSigned()">,
-        CPred<"::mlir::cast<::p4hir::IntType>($_self).getWidth() == " # width>
-        ]>, width # "-bit signed integer", "::p4hir::BitsType">,
+        CPred<"::mlir::isa<P4HIR::IntType>($_self)">,
+        CPred<"::mlir::cast<P4HIR::IntType>($_self).isSigned()">,
+        CPred<"::mlir::cast<P4HIR::IntType>($_self).getWidth() == " # width>
+        ]>, width # "-bit signed integer", "P4HIR::BitsType">,
     BuildableType<
       "p4hir::BitsType::get($_builder.getContext(), "
       # width # ", /*isSigned=*/true)"> {
@@ -869,5 +869,6 @@ class SpecificRefType<Type type> : ConfinedType<ReferenceType,
 def StructRefType : SpecificRefType<StructType>;
 def StructLikeRefType : SpecificRefType<StructLikeType>;
 def BitsRefType : SpecificRefType<BitsType>;
+def HeaderRefType : SpecificRefType<HeaderType>;
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD
