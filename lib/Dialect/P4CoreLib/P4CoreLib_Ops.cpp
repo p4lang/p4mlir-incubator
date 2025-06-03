@@ -6,6 +6,14 @@
 using namespace mlir;
 using namespace P4::P4MLIR;
 
+void P4CoreLib::PacketLengthOp::getAsmResultNames(mlir::OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "packet_len");
+}
+
+void P4CoreLib::PacketLookAheadOp::getAsmResultNames(mlir::OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), "lookahead");
+}
+
 void P4CoreLib::P4CoreLibDialect::initialize() {
     registerTypes();
     addOperations<
