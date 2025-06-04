@@ -1,4 +1,4 @@
-// RUN: p4mlir-opt %s | FileCheck %s
+// RUN: p4mlir-opt %s --verify-roundtrip | FileCheck %s
 
 !validity_bit = !p4hir.validity.bit
 !b32i = !p4hir.bit<32>
