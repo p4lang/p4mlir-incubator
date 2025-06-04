@@ -1676,8 +1676,14 @@ class ArrayElementTypeConstraint<string result, string input>
                    input, result,
                    "mlir::cast<ArrayType>($_self).getElementType()">;
 
+class ArrayRefElementResultTypeConstraint<string result, string input>
+  : TypesMatchWith<"Result must be reference to arrays element type",
+                   input, result,
+                   "P4HIR::ReferenceType::get($_self.getContext(), mlir::cast<ArrayType>(mlir::cast<ReferenceType>($_self).getObjectType()).getElementType())">;
+
 def ArrayGetOp : P4HIR_Op<"array_get",
-    [Pure, ArrayElementTypeConstraint<"result", "input">]> {
+    [Pure, ArrayElementTypeConstraint<"result", "input">,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Get the value in an array at the specified index";
   let arguments = (ins ArrayType:$input, AnyIntP4Type:$index);
   let results = (outs AnyP4Type:$result);
@@ -1689,13 +1695,15 @@ def ArrayGetOp : P4HIR_Op<"array_get",
   }];
 }
 
-def ArraySetOp : P4HIR_Op<"array_set",
-    [Pure, ArrayElementTypeConstraint<"value", "input">]> {
-  let summary = "Get the value in an array at the specified index";
-  let arguments = (ins ArrayType:$input, AnyIntP4Type:$index, AnyP4Type:$value);
+def ArrayElementRefOp : P4HIR_Op<"array_element_ref",
+    [Pure, ArrayRefElementResultTypeConstraint<"result", "input">,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "Project from an array reference to a reference to array element";
+  let arguments = (ins ArrayRefType:$input, AnyIntP4Type:$index);
+  let results = (outs ReferenceType:$result);
 
   let assemblyFormat = [{
-    $input `[` $index `]` `=` $value attr-dict `:` qualified(type($input)) `,` qualified(type($index))
+    $input `[` $index `]` attr-dict `:` qualified(type($input)) `,` qualified(type($index))
   }];
 }
 

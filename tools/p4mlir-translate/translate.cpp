@@ -21,6 +21,7 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -140,6 +141,7 @@ class P4TypeConverter : public P4::Inspector, P4::ResolutionContext {
     bool preorder(const P4::IR::Type_ActionEnum *e) override;
     bool preorder(const P4::IR::Type_Header *h) override;
     bool preorder(const P4::IR::Type_HeaderUnion *hu) override;
+    bool preorder(const P4::IR::Type_Stack *h) override;
     bool preorder(const P4::IR::Type_BaseList *l) override;  // covers both Type_Tuple and Type_List
     bool preorder(const P4::IR::Type_Parser *p) override;
     bool preorder(const P4::IR::P4Parser *a) override;
@@ -191,6 +193,19 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     mlir::Value getStringConstant(mlir::Location loc, llvm::Twine &bytes) {
         return builder.create<P4HIR::ConstOp>(
             loc, mlir::StringAttr::get(bytes, P4HIR::StringType::get(context())));
+    }
+    mlir::Value getIntConstant(mlir::Location loc, llvm::APInt value, mlir::Type type) {
+        return builder.create<P4HIR::ConstOp>(loc, P4HIR::IntAttr::get(context(), type, value));
+    }
+    mlir::Value getUIntConstant(mlir::Location loc, uint64_t value, unsigned bitWidth) {
+        return builder.create<P4HIR::ConstOp>(
+            loc, P4HIR::IntAttr::get(context(), P4HIR::BitsType::get(context(), bitWidth, false),
+                                     llvm::APInt(bitWidth, value)));
+    }
+    mlir::Value getSIntConstant(mlir::Location loc, uint64_t value, unsigned bitWidth) {
+        return builder.create<P4HIR::ConstOp>(
+            loc, P4HIR::IntAttr::get(context(), P4HIR::BitsType::get(context(), bitWidth, true),
+                                     llvm::APInt(bitWidth, value, true)));
     }
 
     mlir::TypedAttr getTypedConstant(mlir::Type type, mlir::Attribute constant) {
@@ -355,6 +370,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return baseType;
     }
 
+    P4HIR::BitsType getB32Type() { return P4HIR::BitsType::get(context(), 32, false); }
+
     mlir::Value materializeConstantExpr(const P4::IR::Expression *expr);
 
     // TODO: Implement proper CompileTimeValue support
@@ -403,6 +420,17 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
         if (type && val && val.getType() != type)
             val = builder.create<P4HIR::CastOp>(getLoc(builder, node), type, val);
+
+        return val;
+    }
+
+    mlir::Value getValue(mlir::Value val, mlir::Type type = {}) {
+        if (mlir::isa<P4HIR::ReferenceType>(val.getType()))
+            // Getting value out of variable involves a load.
+            val = builder.create<P4HIR::ReadOp>(val.getLoc(), val);
+
+        if (type && val.getType() != type)
+            val = builder.create<P4HIR::CastOp>(val.getLoc(), type, val);
 
         return val;
     }
@@ -651,6 +679,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     mlir::Value emitInvalidHeaderUnionCmpOp(const P4::IR::Operation_Relation *p4RelationOp);
     mlir::Value emitHeaderBuiltInMethod(mlir::Location loc, const P4::BuiltInMethod *builtInMethod);
     mlir::Value emitHeaderUnionBuiltInMethod(mlir::Location loc,
+                                             const P4::BuiltInMethod *builtInMethod);
+    mlir::Value emitHeaderStackBuiltInMethod(mlir::Location loc,
                                              const P4::BuiltInMethod *builtInMethod);
     mlir::Type getObjectType(mlir::Value &value) {
         if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(value.getType()))
@@ -1021,6 +1051,19 @@ bool P4TypeConverter::preorder(const P4::IR::Type_HeaderUnion *type) {
     return setType(type, mlirType);
 }
 
+bool P4TypeConverter::preorder(const P4::IR::Type_Stack *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+    llvm::SmallVector<P4HIR::FieldInfo, 4> fields;
+
+    auto elementType = mlir::cast<P4HIR::StructLikeTypeInterface>(convert(type->elementType));
+    auto sz = mlir::cast<P4HIR::IntAttr>(converter.getOrCreateConstantExpr(type->size)).getUInt();
+    auto mlirType = P4HIR::HeaderStackType::get(converter.context(), sz, elementType);
+
+    return setType(type, mlirType);
+}
+
 bool P4TypeConverter::preorder(const P4::IR::Type_Enum *type) {
     if ((this->type = converter.findType(type))) return false;
 
@@ -1249,22 +1292,52 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
     if (ref) return ref;
 
     ConversionTracer trace("Resolving reference ", node);
+    auto loc = getLoc(builder, node);
     // Check if this is a reference to a member of something we can recognize
     if (const auto *m = node->to<P4::IR::Member>()) {
-        auto base = resolveReference(m->expr, unchecked);
         mlir::Value fieldRef;
-        if (mlir::isa<P4HIR::ReferenceType>(base.getType()))
-            fieldRef = builder
-                           .create<P4HIR::StructExtractRefOp>(getLoc(builder, m), base,
-                                                              m->member.string_view())
-                           .getResult();
-        else
-            fieldRef = builder
-                           .create<P4HIR::StructExtractOp>(getLoc(builder, m), base,
-                                                           m->member.string_view())
-                           .getResult();
+        auto base = resolveReference(m->expr, unchecked);
+        if (m->expr->type->is<P4::IR::Type_Stack>()) {
+            auto arrayRef = builder.create<P4HIR::StructExtractRefOp>(
+                loc, base, P4HIR::HeaderStackType::dataFieldName);
+            auto nextIndexRef = builder.create<P4HIR::StructExtractRefOp>(
+                loc, base, P4HIR::HeaderStackType::nextIndexFieldName);
+            auto nextIndexVal = getValue(nextIndexRef);
+            if (m->member == P4::IR::Type_Stack::next) {
+                // TODO: Insert verify() call
+                fieldRef = builder.create<P4HIR::ArrayElementRefOp>(loc, arrayRef, nextIndexVal);
+            } else if (m->member == P4::IR::Type_Stack::last) {
+                auto last = builder.create<P4HIR::BinOp>(loc, P4HIR::BinOpKind::Sub, nextIndexVal,
+                                                         getUIntConstant(loc, 1, 32));
+                // TODO: Insert verify() call
+                fieldRef = builder.create<P4HIR::ArrayElementRefOp>(loc, arrayRef, last);
+            } else
+                BUG("unknown header stack member %1% (aka %2%)", m, dbp(m));
+        } else {
+            if (mlir::isa<P4HIR::ReferenceType>(base.getType()))
+                fieldRef =
+                    builder.create<P4HIR::StructExtractRefOp>(loc, base, m->member.string_view())
+                        .getResult();
+            else
+                fieldRef =
+                    builder.create<P4HIR::StructExtractOp>(loc, base, m->member.string_view())
+                        .getResult();
+        }
 
         return setValue(m, fieldRef);
+    } else if (const auto *a = node->to<P4::IR::ArrayIndex>()) {
+        auto base = resolveReference(a->left, unchecked);
+        if (a->left->type->is<P4::IR::Type_Stack>()) {
+            visit(a->right);
+            auto arrayRef = builder
+                                .create<P4HIR::StructExtractRefOp>(
+                                    loc, base, P4HIR::HeaderStackType::dataFieldName)
+                                .getResult();
+            auto eltRef = builder.create<P4HIR::ArrayElementRefOp>(
+                loc, arrayRef, getValue(a->right, getB32Type()));
+            return setValue(a, eltRef);
+        } else
+            BUG("unsupported array index reference");
     }
 
     // If this is a PathExpression, resolve it to the actual declaration, usualy this
@@ -2160,6 +2233,13 @@ mlir::Value P4HIRConverter::emitHeaderUnionBuiltInMethod(mlir::Location loc,
     BUG("Unsupported Header Union builtin method: %1%", builtInMethod->name);
 }
 
+mlir::Value P4HIRConverter::emitHeaderStackBuiltInMethod(mlir::Location loc,
+                                                         const P4::BuiltInMethod *builtInMethod) {
+    // Implement push_front
+    // Implement pop_front
+    BUG("Unsupported header stack builtin method: %1%", builtInMethod->name);
+}
+
 bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
     ConversionTracer trace("Converting ", mce);
     const auto *instance =
@@ -2187,6 +2267,11 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                     setValue(mce, emitHeaderUnionBuiltInMethod(loc, bCall));
                 } else if (member->expr->type->to<P4::IR::Type_Header>()) {
                     setValue(mce, emitHeaderBuiltInMethod(loc, bCall));
+                } else if (member->expr->type->to<P4::IR::Type_Stack>()) {
+                    setValue(mce, emitHeaderStackBuiltInMethod(loc, bCall));
+                } else {
+                    BUG("cannot handle this builtin method yet: %1% (aka %2%)", member,
+                        dbp(member));
                 }
             }
             return;
@@ -2532,12 +2617,48 @@ void P4HIRConverter::postorder(const P4::IR::Member *m) {
     // TODO: Likely we can do similar things for the majority of struct-like
     // types
     auto parentType = getOrCreateType(m->expr);
+    auto loc = getLoc(builder, m);
     if (mlir::isa<P4HIR::StructType, P4HIR::HeaderType, P4HIR::HeaderUnionType>(parentType)) {
         // We can access to parent using struct operations
         auto parent = getValue(m->expr);
-        auto field = builder.create<P4HIR::StructExtractOp>(getLoc(builder, m), parent,
-                                                            m->member.string_view());
-        setValue(m, field.getResult());
+        auto field = builder.create<P4HIR::StructExtractOp>(loc, parent, m->member.string_view());
+        setValue(m, field);
+    } else if (auto hsType = mlir::dyn_cast<P4HIR::HeaderStackType>(parentType)) {
+        if (m->member == P4::IR::Type_Stack::arraySize) {
+            size_t sz = hsType.getArraySize();
+            setValue(m, getUIntConstant(getLoc(builder, m), sz, 32));
+        } else if (m->member == P4::IR::Type_Stack::lastIndex) {
+            auto parent = getValue(m->expr);
+            auto last = builder.create<P4HIR::BinOp>(
+                loc, P4HIR::BinOpKind::Sub,
+                builder.create<P4HIR::StructExtractOp>(loc, parent,
+                                                       P4HIR::HeaderStackType::nextIndexFieldName),
+                getUIntConstant(loc, 1, 32));
+            // TODO: Insert verify() call inside parser
+            setValue(m, last);
+        } else if (m->member == P4::IR::Type_Stack::next) {
+            auto parent = getValue(m->expr);
+            auto array = builder.create<P4HIR::StructExtractOp>(
+                loc, parent, P4HIR::HeaderStackType::dataFieldName);
+            auto next = builder.create<P4HIR::StructExtractOp>(
+                loc, parent, P4HIR::HeaderStackType::nextIndexFieldName);
+            // TODO: Insert verify() call
+            auto field = builder.create<P4HIR::ArrayGetOp>(loc, array, next);
+            setValue(m, field);
+        } else if (m->member == P4::IR::Type_Stack::last) {
+            auto parent = getValue(m->expr);
+            auto array = builder.create<P4HIR::StructExtractOp>(
+                loc, parent, P4HIR::HeaderStackType::dataFieldName);
+            auto last = builder.create<P4HIR::BinOp>(
+                loc, P4HIR::BinOpKind::Sub,
+                builder.create<P4HIR::StructExtractOp>(loc, parent,
+                                                       P4HIR::HeaderStackType::nextIndexFieldName),
+                getUIntConstant(loc, 1, 32));
+            // TODO: Insert verify() call
+            auto field = builder.create<P4HIR::ArrayGetOp>(loc, array, last);
+            setValue(m, field);
+        } else
+            BUG("unknown header stack member %1% (aka %2%)", m, dbp(m));
     } else {
         BUG("cannot convert this member reference %1% (aka %2%) yet", m, dbp(m));
     }
@@ -2587,6 +2708,12 @@ void P4HIRConverter::postorder(const P4::IR::ArrayIndex *arr) {
     if (mlir::isa<mlir::TupleType>(lhs.getType())) {
         auto idx = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(arr->right));
         setValue(arr, builder.create<P4HIR::TupleExtractOp>(loc, lhs, idx).getResult());
+        return;
+    } else if (mlir::isa<P4HIR::HeaderStackType>(lhs.getType())) {
+        auto idx = getValue(arr->right, getB32Type());
+        auto dataField =
+            builder.create<P4HIR::StructExtractOp>(loc, lhs, P4HIR::HeaderStackType::dataFieldName);
+        setValue(arr, builder.create<P4HIR::ArrayGetOp>(loc, dataField, idx).getResult());
         return;
     }
 
