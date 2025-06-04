@@ -3055,6 +3055,14 @@ OpFoldResult P4HIR::ArrayGetOp::fold(FoldAdaptor adaptor) {
     return {};
 }
 
+void P4HIR::ArrayGetOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    setNameFn(getResult(), "array_elt");
+}
+
+void P4HIR::ArrayElementRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+    setNameFn(getResult(), "elt_ref");
+}
+
 //===----------------------------------------------------------------------===//
 // BrOp
 //===----------------------------------------------------------------------===//
@@ -3198,6 +3206,12 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
         if (auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(type)) {
             os << "arr_" << arrayType.getSize() << "x";
             getAlias(arrayType.getElementType(), os);
+            return AliasResult::OverridableAlias;
+        }
+
+        if (auto hsType = mlir::dyn_cast<P4HIR::HeaderStackType>(type)) {
+            os << "hs_" << hsType.getArraySize() << "x";
+            getAlias(hsType.getArrayElementType(), os);
             return AliasResult::OverridableAlias;
         }
 

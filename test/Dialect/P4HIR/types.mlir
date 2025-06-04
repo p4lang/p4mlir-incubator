@@ -41,6 +41,12 @@
 
 !array = !p4hir.array<42 x !bit42>
 
+!arr_4xh = !p4hir.array<4x!header>
+!hs_4xh = !p4hir.header_stack<4x!header>
+!hu = !p4hir.header_union<"hu", h1: !header, h2: !header>
+!arr_2xhu = !p4hir.array<2x!hu>
+!hs_2xhu = !p4hir.header_stack<2x!hu>
+
 // No need to check stuff. If it parses, it's fine.
 // CHECK: module
 module {

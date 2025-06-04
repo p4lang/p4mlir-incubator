@@ -38,6 +38,10 @@ unsigned getIndexForFieldID(::mlir::Type type, unsigned fieldID);
 }  // namespace FieldIdImpl
 }  // namespace P4::P4MLIR::P4HIR
 
+// We explicitly do not use push / pop for diagnostic in
+// order to propagate pragma further on
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h.inc"
 
 #endif  // P4MLIR_DIALECT_P4HIR_P4HIR_TYPEINTERFACES_H

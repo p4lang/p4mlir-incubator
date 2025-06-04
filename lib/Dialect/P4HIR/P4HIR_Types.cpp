@@ -13,6 +13,7 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 
 using namespace mlir;
 using namespace P4::P4MLIR::P4HIR;
@@ -26,11 +27,27 @@ static mlir::ParseResult parseCtorType(
     mlir::AsmParser &p, llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>> &params,
     mlir::Type &resultType);
 
+static mlir::ParseResult parseFieldInfo(mlir::AsmParser &p, FailureOr<FieldInfo> &fi);
+
+static mlir::ParseResult parseArray(mlir::AsmParser &p, size_t &size, mlir::Type &elementType);
+
 static void printFuncType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params,
                           mlir::Type optionalResultType = {});
 static void printCtorType(mlir::AsmPrinter &p,
                           mlir::ArrayRef<std::pair<mlir::StringAttr, mlir::Type>> params,
                           mlir::Type resultType);
+static void printFieldInfo(mlir::AsmPrinter &p, const FieldInfo &fi);
+static void printArray(mlir::AsmPrinter &p, size_t size, mlir::Type elementType);
+static void printArray(mlir::AsmPrinter &p, ArrayType arrayType);
+
+namespace P4::P4MLIR::P4HIR {
+bool operator==(const FieldInfo &a, const FieldInfo &b) {
+    return a.name == b.name && a.type == b.type;
+}
+llvm::hash_code hash_value(const FieldInfo &fi) {
+    return llvm::hash_combine(fi.name, fi.type, fi.annotations);
+}
+}  // namespace P4::P4MLIR::P4HIR
 
 #define GET_TYPEDEF_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.cpp.inc"
@@ -192,12 +209,21 @@ bool FuncType::isVoid() const {
     return !rt;
 }
 
-namespace P4::P4MLIR::P4HIR {
-bool operator==(const FieldInfo &a, const FieldInfo &b) {
-    return a.name == b.name && a.type == b.type;
+static ParseResult parseFieldInfo(AsmParser &p, FailureOr<FieldInfo> &field) {
+    // Parse fields
+    std::string fieldName;
+    Type fieldType;
+    mlir::NamedAttrList fieldAnnotations;
+
+    if (p.parseKeywordOrString(&fieldName) || p.parseColon() || p.parseType(fieldType) ||
+        p.parseOptionalAttrDict(fieldAnnotations))
+        return failure();
+
+    field.emplace(StringAttr::get(p.getContext(), fieldName), fieldType,
+                  fieldAnnotations.getDictionary(p.getContext()));
+
+    return success();
 }
-llvm::hash_code hash_value(const FieldInfo &fi) { return llvm::hash_combine(fi.name, fi.type); }
-}  // namespace P4::P4MLIR::P4HIR
 
 /// Parse a list of unique field names and types within <> plus name. E.g.:
 /// <name, foo: i7, bar: i8>
@@ -220,29 +246,32 @@ static ParseResult parseFields(AsmParser &p, std::string &name,
             }
 
             // Parse fields
-            std::string fieldName;
-            Type fieldType;
-            mlir::NamedAttrList fieldAnnotations;
-
+            FailureOr<FieldInfo> field;
             auto fieldLoc = p.getCurrentLocation();
-            if (p.parseKeywordOrString(&fieldName) || p.parseColon() || p.parseType(fieldType) ||
-                p.parseOptionalAttrDict(fieldAnnotations))
-                return failure();
+            if (parseFieldInfo(p, field)) return failure();
 
-            if (!nameSet.insert(fieldName).second) {
+            if (!nameSet.insert(field->name).second) {
                 p.emitError(fieldLoc, "duplicate field name \'" + name + "\'");
                 // Continue parsing to print all duplicates, but make sure to error
                 // eventually
                 hasDuplicateName = true;
             }
 
-            parameters.emplace_back(StringAttr::get(p.getContext(), fieldName), fieldType,
-                                    fieldAnnotations.getDictionary(p.getContext()));
+            parameters.emplace_back(*field);
             return success();
         });
 
     if (hasDuplicateName) return failure();
     return parseResult;
+}
+
+static void printFieldInfo(AsmPrinter &p, const FieldInfo &field) {
+    p.printKeywordOrString(field.name.getValue());
+    p << ": " << field.type;
+    if (field.annotations && !field.annotations.empty()) {
+        p << " ";
+        p.printAttributeWithoutType(field.annotations);
+    }
 }
 
 /// Print out a list of named fields surrounded by <>.
@@ -255,14 +284,7 @@ static void printFields(AsmPrinter &p, StringRef name, ArrayRef<FieldInfo> field
         p.printAttributeWithoutType(annotations);
     }
     if (!fields.empty()) p << ", ";
-    llvm::interleaveComma(fields, p, [&](const FieldInfo &field) {
-        p.printKeywordOrString(field.name.getValue());
-        p << ": " << field.type;
-        if (field.annotations && !field.annotations.empty()) {
-            p << " ";
-            p.printAttributeWithoutType(field.annotations);
-        }
-    });
+    llvm::interleaveComma(fields, p, [&](const FieldInfo &field) { printFieldInfo(p, field); });
     p << ">";
 }
 
@@ -290,6 +312,27 @@ Type HeaderUnionType::parse(AsmParser &p) {
     mlir::DictionaryAttr annotations;
     if (parseFields(p, name, parameters, annotations)) return {};
     return get(p.getContext(), name, parameters, mlir::DictionaryAttr());
+}
+
+Type HeaderStackType::parse(AsmParser &p) {
+    size_t sz;
+    mlir::Type elementType;
+
+    if (p.parseLess() || parseArray(p, sz, elementType) || p.parseGreater()) return nullptr;
+
+    if (!mlir::isa<P4HIR::HeaderType, P4HIR::HeaderUnionType>(elementType)) {
+        p.emitError(p.getCurrentLocation(), "header stack should be made out of headers");
+        return nullptr;
+    }
+
+    return get(p.getContext(), sz, mlir::cast<P4HIR::StructLikeTypeInterface>(elementType));
+}
+
+void HeaderStackType::print(AsmPrinter &p) const {
+    p << '<';
+    FieldInfo dataField = getElements().front();
+    printArray(p, mlir::cast<P4HIR::ArrayType>(dataField.type));
+    p << '>';
 }
 
 LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
@@ -414,6 +457,60 @@ LogicalResult HeaderUnionType::verify(function_ref<InFlightDiagnostic()> emitErr
     }
 
     return result;
+}
+
+LogicalResult HeaderStackType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
+                                      ArrayRef<FieldInfo> elements, DictionaryAttr) {
+    if (elements.size() != 2) {
+        emitError() << "invalid struct size for header stack";
+        return failure();
+    }
+
+    FieldInfo dataField = elements.front();
+    FieldInfo nextIndexField = elements.back();
+
+    auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(dataField.type);
+    if (!arrayType ||
+        !mlir::isa<P4HIR::HeaderType, P4HIR::HeaderUnionType>(arrayType.getElementType())) {
+        emitError() << "header stack data must be an array of headers";
+        return failure();
+    }
+
+    // Basically, check name and type
+    if (nextIndexField.name != nextIndexFieldName) {
+        emitError() << "header stack nextIndex field should be named " << nextIndexFieldName
+                    << ", got " << nextIndexField.name;
+        return failure();
+    }
+
+    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(nextIndexField.type)) {
+        if (bitsType.getIsSigned() || bitsType.getWidth() != 32) {
+            emitError() << "header stack nextIndex field must be of bit<32> type";
+            return failure();
+        }
+    }
+
+    return success();
+}
+
+HeaderStackType HeaderStackType::get(mlir::MLIRContext *context, size_t sz,
+                                     P4HIR::StructLikeTypeInterface elementType) {
+    assert((mlir::isa<P4HIR::HeaderType, P4HIR::HeaderUnionType>(elementType)) &&
+           "expected header or header union type for stack element");
+    auto dataType = P4HIR::ArrayType::get(context, sz, elementType);
+    FieldInfo dataField(mlir::StringAttr::get(context, dataFieldName), dataType);
+    FieldInfo nextIndexField(mlir::StringAttr::get(context, nextIndexFieldName),
+                             P4HIR::BitsType::get(context, 32, false));
+
+    return Base::get(context, "hs", ArrayRef{dataField, nextIndexField}, nullptr);
+}
+
+ArrayType HeaderStackType::getDataType() {
+    return mlir::cast<ArrayType>(getElements().front().type);
+}
+size_t HeaderStackType::getArraySize() { return getDataType().getSize(); }
+StructLikeTypeInterface HeaderStackType::getArrayElementType() {
+    return mlir::cast<StructLikeTypeInterface>(getDataType().getElementType());
 }
 
 void StructType::print(AsmPrinter &p) const {
@@ -571,6 +668,22 @@ Type SerEnumType::parse(AsmParser &p) {
 Type ValidBitType::parse(mlir::AsmParser &parser) { return get(parser.getContext()); }
 
 void ValidBitType::print(mlir::AsmPrinter &printer) const {}
+
+static mlir::ParseResult parseArray(mlir::AsmParser &p, size_t &size, mlir::Type &elementType) {
+    if (p.parseInteger(size) || p.parseXInDimensionList() || p.parseType(elementType))
+        return failure();
+
+    return success();
+}
+
+void printArray(mlir::AsmPrinter &p, size_t size, mlir::Type elementType) {
+    p << size << 'x';
+    p.printType(elementType);
+}
+
+void printArray(mlir::AsmPrinter &p, ArrayType arrayType) {
+    printArray(p, arrayType.getSize(), arrayType.getElementType());
+}
 
 LogicalResult ArrayType::verify(function_ref<InFlightDiagnostic()> emitError, size_t size,
                                 Type elementType) {

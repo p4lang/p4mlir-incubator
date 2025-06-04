@@ -558,6 +558,38 @@ def HeaderUnionType : StructLikeType<"HeaderUnion", "header_union"> {
 }
 
 //===----------------------------------------------------------------------===//
+// HeaderStackType
+//===----------------------------------------------------------------------===//
+def HeaderStackType : StructLikeType<"HeaderStack", "header_stack"> {
+  let summary = "header stack type";
+  let description = [{
+    A header stack is a fixed-size array of headers with the same type.
+    The valid elements of a header stack need not be contiguous.
+    !p4hir.header_stack<n x hdr, __nextIndex : !p4hir.bit<32>>
+
+    We model header stack as an struct containing "data" field of array
+    type and a field "__nextIndex" of type !p4hir.bit<32> that is used
+    to represent next valid index.
+  }];
+
+  let genVerifyDecl = 1;
+
+  let builders = [
+    TypeBuilder<(ins "size_t":$size, "P4HIR::StructLikeTypeInterface":$elementType)>
+  ];
+
+  let extra2ClassDeclaration = [{
+    static constexpr llvm::StringRef dataFieldName = "data";
+    static constexpr llvm::StringRef nextIndexFieldName = "nextIndex";
+
+    ArrayType getDataType();
+    size_t getArraySize();
+    StructLikeTypeInterface getArrayElementType();
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // EnumType, ErrorType  & SerEnumType
 //===----------------------------------------------------------------------===//
 def EnumType : P4HIR_Type<"Enum", "enum", [AnnotatedType]> {
@@ -830,7 +862,7 @@ def ArrayType : P4HIR_Type<"Array", "array", [
   ];
 
   let assemblyFormat = [{
-    `<` $size `x` $elementType `>`
+    `<` custom<Array>($size, $elementType) `>`
   }];
 }
 
@@ -839,7 +871,7 @@ def ArrayType : P4HIR_Type<"Array", "array", [
 //===----------------------------------------------------------------------===//
 
 def AnyP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType, StringType,
-                           StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
+                           StructType, HeaderType, HeaderUnionType, HeaderStackType, Builtin_Tuple,
                            EnumType, SerEnumType,
                            ValidBitType,
                            DontcareType, ErrorType, UnknownType, AliasType,
@@ -849,12 +881,12 @@ def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType,
                                   StructType, HeaderType, Builtin_Tuple,
                                   EnumType, SerEnumType, AliasType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType,
-                                StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
+                                StructType, HeaderType, HeaderUnionType, HeaderStackType, Builtin_Tuple,
                                 EnumType, SerEnumType, ErrorType,
                                 ValidBitType, AliasType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def SwitchCondType : AnyTypeOf<[AnyIntP4Type, AnyEnumType, ErrorType]>;
-def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType]>;
+def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType, HeaderStackType]>;
 def P4ObjectType : AnyTypeOf<[ParserType, ControlType, ExternType, PackageType]>;
 
 /// A ref type with the specified constraints on the nested type.
@@ -870,5 +902,6 @@ def StructRefType : SpecificRefType<StructType>;
 def StructLikeRefType : SpecificRefType<StructLikeType>;
 def BitsRefType : SpecificRefType<BitsType>;
 def HeaderRefType : SpecificRefType<HeaderType>;
+def ArrayRefType : SpecificRefType<ArrayType>;
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD
