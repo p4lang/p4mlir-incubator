@@ -20,8 +20,8 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -181,8 +181,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     using P4Symbol =
         std::variant<const P4::IR::P4Action *, const P4::IR::Function *, const P4::IR::Method *,
                      const P4::IR::P4Parser *, const P4::IR::P4Control *, const P4::IR::P4Table *>;
-    // TODO: Implement better scoped symbol table
-    llvm::DenseMap<P4Symbol, mlir::SymbolRefAttr> p4Symbols;
+    using SymbolScope = llvm::ScopedHashTableScope<P4Symbol, mlir::SymbolRefAttr>;
+    llvm::ScopedHashTable<P4Symbol, mlir::SymbolRefAttr> p4Symbols;
 
     mlir::TypedAttr resolveConstant(const P4::IR::CompileTimeValue *ctv);
     mlir::Value resolveReference(const P4::IR::Node *node, bool unchecked = false);
@@ -456,6 +456,22 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return getValue(node);
     }
 
+    mlir::SymbolRefAttr setSymbol(P4Symbol symb, mlir::SymbolRefAttr value) {
+        if (!value) return value;
+
+        if (LOGGING(4)) {
+            std::string s;
+            llvm::raw_string_ostream os(s);
+            value.print(os);
+            LOG4("Bind symbol " << s);
+        }
+
+        BUG_CHECK(!p4Symbols.count(symb), "duplicate conversion of %1%");
+
+        p4Symbols.insert(symb, value);
+        return value;
+    }
+
     mlir::Attribute convertAnnotationExpr(const P4::IR::Expression *ann);
     mlir::Attribute convert(const P4::IR::Annotation *anns);
     mlir::DictionaryAttr convert(const P4::IR::Vector<P4::IR::Annotation> &ann);
@@ -478,6 +494,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     bool preorder(const P4::IR::P4Program *p) override {
         ValueScope scope(p4Values);
+        SymbolScope symbols(p4Symbols);
 
         // Explicitly visit child nodes to create top-level value scope
         visit(p->objects);
@@ -2062,9 +2079,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
         }
     }
 
-    auto [it, inserted] = p4Symbols.try_emplace(f, mlir::SymbolRefAttr::get(origSymName));
-    BUG_CHECK(inserted, "duplicate translation of %1%", f);
-
+    setSymbol(f, mlir::SymbolRefAttr::get(origSymName));
     return false;
 }
 
@@ -2127,9 +2142,7 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
     builder.create<P4HIR::FuncOp>(loc, symName, funcType,
                                   /* isExternal */ true, argAttrs, annotations);
 
-    auto [it, inserted] = p4Symbols.try_emplace(m, mlir::SymbolRefAttr::get(origSymName));
-    BUG_CHECK(inserted, "duplicate translation of %1%", m);
-
+    setSymbol(m, mlir::SymbolRefAttr::get(origSymName));
     return false;
 }
 
@@ -2171,8 +2184,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
         }
     }
 
-    auto [it, inserted] = p4Symbols.try_emplace(act, mlir::SymbolRefAttr::get(action));
-    BUG_CHECK(inserted, "duplicate translation of %1%", act);
+    setSymbol(act, mlir::SymbolRefAttr::get(action));
 
     return false;
 }
@@ -2779,22 +2791,24 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
         setValue(param, val);
     }
 
-    // Materialize locals
-    visit(parser->parserLocals);
+    {
+        SymbolScope symbols(p4Symbols);
 
-    // Walk over all states, materializing the bodies
-    visit(parser->states);
+        // Materialize locals
+        visit(parser->parserLocals);
 
-    // Create default transition (to start state)
-    auto startStateSymbol =
-        mlir::SymbolRefAttr::get(builder.getContext(), P4::IR::ParserState::start.string_view());
+        // Walk over all states, materializing the bodies
+        visit(parser->states);
 
-    builder.create<P4HIR::ParserTransitionOp>(
-        getEndLoc(builder, parser), mlir::SymbolRefAttr::get(parserSymbol, {startStateSymbol}));
+        // Create default transition (to start state)
+        auto startStateSymbol = mlir::SymbolRefAttr::get(builder.getContext(),
+                                                         P4::IR::ParserState::start.string_view());
 
-    auto [it, inserted] = p4Symbols.try_emplace(parser, mlir::SymbolRefAttr::get(parserOp));
-    BUG_CHECK(inserted, "duplicate translation of %1%", parser);
+        builder.create<P4HIR::ParserTransitionOp>(
+            getEndLoc(builder, parser), mlir::SymbolRefAttr::get(parserSymbol, {startStateSymbol}));
+    }
 
+    setSymbol(parser, mlir::SymbolRefAttr::get(parserOp));
     return false;
 }
 
@@ -3164,23 +3178,25 @@ bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
     }
 
     // Materialize locals
-    visit(control->controlLocals);
-
     {
-        ValueScope scope(p4Values);
+        SymbolScope symbols(p4Symbols);
+        visit(control->controlLocals);
 
-        auto applyOp = builder.create<P4HIR::ControlApplyOp>(getLoc(builder, control->body));
-        mlir::Block &first = applyOp.getBody().emplaceBlock();
+        {
+            ValueScope scope(p4Values);
 
-        mlir::OpBuilder::InsertionGuard guard(builder);
-        builder.setInsertionPointToStart(&first);
+            auto applyOp = builder.create<P4HIR::ControlApplyOp>(getLoc(builder, control->body));
+            mlir::Block &first = applyOp.getBody().emplaceBlock();
 
-        // Materialize body
-        visit(control->body);
+            mlir::OpBuilder::InsertionGuard guard(builder);
+            builder.setInsertionPointToStart(&first);
+
+            // Materialize body
+            visit(control->body);
+        }
     }
 
-    auto [it, inserted] = p4Symbols.try_emplace(control, mlir::SymbolRefAttr::get(controlOp));
-    BUG_CHECK(inserted, "duplicate translation of %1%", control);
+    setSymbol(control, mlir::SymbolRefAttr::get(controlOp));
 
     return false;
 }
@@ -3197,9 +3213,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Table *table) {
             for (const auto *prop : table->properties->properties) visit(prop);
         });
 
-    auto [it, inserted] = p4Symbols.try_emplace(table, mlir::SymbolRefAttr::get(tableOp));
-    BUG_CHECK(inserted, "duplicate translation of %1%", table);
-
+    setSymbol(table, mlir::SymbolRefAttr::get(tableOp));
     return false;
 }
 
