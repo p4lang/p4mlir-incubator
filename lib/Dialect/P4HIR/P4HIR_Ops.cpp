@@ -11,6 +11,7 @@
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -981,11 +982,11 @@ static mlir::ModuleOp getParentModule(Operation *from) {
 }
 
 static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs,
-                                 std::optional<mlir::ArrayAttr> typeOperands) {
+                                 mlir::TypeRange typeOperands) {
     if (auto typeVar = llvm::dyn_cast<P4HIR::TypeVarType>(type)) {
         size_t pos = llvm::find(calleeTypeArgs, typeVar) - calleeTypeArgs.begin();
         if (pos == calleeTypeArgs.size()) return {};
-        return llvm::cast<mlir::TypeAttr>(typeOperands->getValue()[pos]).getValue();
+        return typeOperands[pos];
     } else if (auto refType = llvm::dyn_cast<P4HIR::ReferenceType>(type)) {
         return P4HIR::ReferenceType::get(
             substituteType(refType.getObjectType(), calleeTypeArgs, typeOperands));
@@ -1010,12 +1011,12 @@ mlir::Operation *P4HIR::CallOp::resolveCallableInTable(mlir::SymbolTableCollecti
 
     // First, check for actions defined at control level
     if (auto controlOp = (*this)->getParentOfType<P4HIR::ControlOp>()) {
-        if (auto fn = symbolTable->lookupNearestSymbolFrom<P4HIR::FuncOp>(controlOp, sym))
+        if (auto fn = symbolTable->lookupSymbolIn<P4HIR::FuncOp>(controlOp, sym))
             return fn.getAction() ? fn : nullptr;
     }
 
     // Now, resolve to functions / actions defined at top level
-    if (auto *decl = symbolTable->lookupNearestSymbolFrom(getParentModule(*this), sym)) {
+    if (auto *decl = symbolTable->lookupSymbolIn(getParentModule(*this), sym)) {
         if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
             return fn;
         } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
@@ -1041,13 +1042,13 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
     //  - Actions defined at control level. Check for them first.
     P4HIR::FuncOp fn;
     if (auto controlOp = (*this)->getParentOfType<P4HIR::ControlOp>()) {
-        fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(controlOp, sym);
+        fn = symbolTable.lookupSymbolIn<FuncOp>(controlOp, sym);
         if (fn && !fn.getAction())
             return emitOpError() << "'" << sym << "' does not reference a valid action";
     }
 
     if (!fn) {
-        if (auto *decl = symbolTable.lookupNearestSymbolFrom(getParentModule(*this), sym)) {
+        if (auto *decl = symbolTable.lookupSymbolIn(getParentModule(*this), sym)) {
             if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
                 // We good here
             } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
@@ -1073,13 +1074,11 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
         return emitOpError("incorrect number of operands for callee");
 
     auto calleeTypeArgs = fnType.getTypeArguments();
-    auto typeOperands = getTypeOperands();
-    if (!calleeTypeArgs.empty()) {
-        if (!typeOperands)
-            return emitOpError("expected type operands to be specifid for generic callee type");
-        if (calleeTypeArgs.size() != getTypeOperands()->size())
-            return emitOpError("incorrect number of type operands for callee");
-    }
+    SmallVector<mlir::Type, 1> typeOperands;
+    if (getTypeOperands())
+        llvm::append_range(typeOperands, getTypeOperands()->getAsValueRange<mlir::TypeAttr>());
+    if (calleeTypeArgs.size() != typeOperands.size())
+        return emitOpError("incorrect number of type operands for callee");
 
     for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i) {
         mlir::Type expectedType = substituteType(fnType.getInput(i), calleeTypeArgs, typeOperands);
@@ -1542,8 +1541,7 @@ LogicalResult P4HIR::AssignSliceOp::verify() {
 
 // Parser states use fully-qualified names so we lookup from the top-level moduleOp
 static P4HIR::ParserStateOp lookupParserState(Operation *op, mlir::SymbolRefAttr stateName) {
-    auto res = mlir::SymbolTable::lookupNearestSymbolFrom<P4HIR::ParserStateOp>(getParentModule(op),
-                                                                                stateName);
+    auto res = getParentModule(op).lookupSymbol<P4HIR::ParserStateOp>(stateName);
     assert(res && "expected valid parser state lookup");
     return res;
 }
@@ -1742,7 +1740,7 @@ static mlir::LogicalResult verifyStateTarget(mlir::Operation *op, mlir::SymbolRe
                                              mlir::SymbolTableCollection &symbolTable) {
     // We are using fully-qualified names to reference to parser states, this
     // allows not to rename states during inlining, so we need to lookup wrt top-level ModuleOp
-    if (!symbolTable.lookupNearestSymbolFrom<P4HIR::ParserStateOp>(getParentModule(op), stateName))
+    if (!symbolTable.lookupSymbolIn<P4HIR::ParserStateOp>(getParentModule(op), stateName))
         return op->emitOpError() << "'" << stateName << "' does not reference a valid state";
 
     return mlir::success();
@@ -2079,17 +2077,17 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
     auto getCtorType =
         [&](mlir::FlatSymbolRefAttr ctorAttr) -> std::pair<CtorType, mlir::Operation *> {
         if (ParserOp parser =
-                symbolTable.lookupNearestSymbolFrom<ParserOp>(getParentModule(*this), ctorAttr)) {
+                symbolTable.lookupSymbolIn<ParserOp>(getParentModule(*this), ctorAttr)) {
             return {parser.getCtorType(), parser.getOperation()};
-        } else if (ControlOp control = symbolTable.lookupNearestSymbolFrom<ControlOp>(
-                       getParentModule(*this), ctorAttr)) {
+        } else if (ControlOp control =
+                       symbolTable.lookupSymbolIn<ControlOp>(getParentModule(*this), ctorAttr)) {
             return {control.getCtorType(), control.getOperation()};
-        } else if (ExternOp ext = symbolTable.lookupNearestSymbolFrom<ExternOp>(
-                       getParentModule(*this), ctorAttr)) {
+        } else if (ExternOp ext =
+                       symbolTable.lookupSymbolIn<ExternOp>(getParentModule(*this), ctorAttr)) {
             // TBD
             return {};
-        } else if (PackageOp pkg = symbolTable.lookupNearestSymbolFrom<PackageOp>(
-                       getParentModule(*this), ctorAttr)) {
+        } else if (PackageOp pkg =
+                       symbolTable.lookupSymbolIn<PackageOp>(getParentModule(*this), ctorAttr)) {
             return {pkg.getCtorType(), pkg.getOperation()};
         }
 
@@ -2148,8 +2146,152 @@ mlir::Block &P4HIR::ExternOp::createEntryBlock() {
 // CallMethodOp
 //===----------------------------------------------------------------------===//
 LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-    // TBD
+    // Check that the callee attribute was specified.
+    auto sym = (*this)->getAttrOfType<SymbolRefAttr>("callee");
+    if (!sym) return emitOpError("requires a 'callee' symbol reference attribute");
+
+    // Symbol ref should be pair of extern + method name
+    auto extSymAttr = sym.getRootReference(), methodSymAttr = sym.getLeafReference();
+
+    // Grab the extern
+    P4HIR::FuncOp fn;
+    P4HIR::ExternOp ext;
+    if ((ext = symbolTable.lookupSymbolIn<P4HIR::ExternOp>(getParentModule(*this), extSymAttr))) {
+        // Now, perform a method lookup
+        auto *decl = ext.lookupSymbol(methodSymAttr);
+        if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
+            // We good here
+        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
+            // Find the FuncOp with the correct # of operands
+            for (Operation &nestedOp : ovl.getBody().front()) {
+                auto f = llvm::cast<FuncOp>(nestedOp);
+                if (f.getNumArguments() == getArgOperands().size()) {
+                    fn = f;
+                    break;
+                }
+            }
+            if (!fn)
+                return emitOpError() << "'" << methodSymAttr << "' failed to resolve overload set";
+        } else
+            return emitOpError() << "'" << methodSymAttr << "' does not reference a valid function";
+    } else
+        return emitOpError() << "'" << extSymAttr << "' does not reference a valid extern";
+
+    // First operand must be extern
+    if (getNumOperands() == 0 || !mlir::isa<P4HIR::ExternType>(getOperand(0).getType()))
+        return emitOpError(
+            "invalid number of operands of method call: should always have extern operand");
+
+    auto fnType = fn.getFunctionType();
+    auto arguments = getArgOperands();
+
+    // Verify that the operand and result types match the callee.
+    if (fnType.getNumInputs() != arguments.size())
+        return emitOpError("incorrect number of operands for callee");
+
+    // Methods are never actions
+    if (fn.getAction()) return emitOpError("methods cannot be actions");
+
+    // Extern methods are always declarations
+    if (!fn.isDeclaration()) return emitOpError("extern methods must be declarations");
+
+    // Substitute type parameters:
+    //   - From top-level extern
+    //   - From function itself
+    SmallVector<mlir::Type, 1> calleeTypeParams(fnType.getTypeArguments()), typeOperands;
+    if (getTypeOperands())
+        llvm::append_range(typeOperands, getTypeOperands()->getAsValueRange<mlir::TypeAttr>());
+    if (calleeTypeParams.size() != typeOperands.size())
+        return emitOpError() << "incorrect number of type operands for callee, expected "
+                             << calleeTypeParams.size() << ", got" << typeOperands.size();
+
+    auto extTypeParams = ext.getTypeParameters();
+    auto baseTypeOperands = getBase().getType().getTypeArguments();
+    if (extTypeParams) {
+        if (baseTypeOperands.empty())
+            return emitOpError("expected type operands to be specified for generic extern type");
+        if (extTypeParams->size() != baseTypeOperands.size())
+            return emitOpError() << "incorrect number of type operands for extern, expected "
+                                 << extTypeParams->size() << ", got" << baseTypeOperands.size();
+        auto extTypes = extTypeParams->getAsValueRange<mlir::TypeAttr>();
+        llvm::append_range(calleeTypeParams, extTypes);
+    }
+    llvm::append_range(typeOperands, baseTypeOperands);
+
+    for (auto idxAndArg : llvm::enumerate(arguments)) {
+        size_t index = idxAndArg.index();
+        mlir::Type expectedType =
+            substituteType(fnType.getInput(index), calleeTypeParams, typeOperands);
+        if (!expectedType)
+            return emitOpError("cannot resolve type operand for argument number ") << index;
+        mlir::Type providedType = idxAndArg.value().getType();
+        if (providedType != expectedType)
+            return emitOpError("operand type mismatch: expected argument type ")
+                   << expectedType << ", but provided " << providedType << " for argument number "
+                   << index;
+    }
+
+    // Void function must not return any results.
+    if (fnType.isVoid() && getNumResults() != 0)
+        return emitOpError("callee returns void but call has results");
+
+    // Non-void function calls must return exactly one result.
+    if (!fnType.isVoid()) {
+        auto resultType = substituteType(fnType.getReturnType(), calleeTypeParams, typeOperands);
+        if (!resultType) return emitOpError("cannot resolve type operand for result type");
+
+        // Result type after substitution really could be void
+        if (mlir::isa<P4HIR::VoidType>(resultType)) {
+            if (getNumResults() != 0)
+                return emitOpError("callee returns void but call has results");
+        } else {
+            if (getNumResults() != 1) return emitOpError("incorrect number of results for callee");
+
+            // Parent function and return value types must match.
+            if (getResultTypes().front() != resultType)
+                return emitOpError("result type mismatch: expected ")
+                       << resultType << ", but provided " << getResult().getType();
+        }
+    }
+
     return success();
+}
+
+// Callee might be:
+//  - Overload set, then we need to look for a particular overload
+//  - Normal methods
+mlir::Operation *P4HIR::CallMethodOp::resolveCallableInTable(
+    mlir::SymbolTableCollection *symbolTable) {
+    auto sym = (*this)->getAttrOfType<SymbolRefAttr>("callee");
+    if (!sym) return nullptr;
+
+    // Symbol ref should be pair of extern + method name
+    auto extSymAttr = sym.getRootReference(), methodSymAttr = sym.getLeafReference();
+
+    // Grab the extern
+    if (auto ext =
+            symbolTable->lookupSymbolIn<P4HIR::ExternOp>(getParentModule(*this), extSymAttr)) {
+        // Now, perform a method lookup
+        auto *decl = ext.lookupSymbol(methodSymAttr);
+        if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
+            return fn;
+        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
+            // Find the FuncOp with the correct # of operands
+            for (Operation &nestedOp : ovl.getBody().front()) {
+                auto f = llvm::cast<FuncOp>(nestedOp);
+                if (f.getNumArguments() == getArgOperands().size()) return f;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+P4HIR::ExternOp P4HIR::CallMethodOp::getExtern() {
+    auto sym = getCallee();
+    auto res = getParentModule(*this).lookupSymbol<P4HIR::ExternOp>(sym.getRootReference());
+    assert(res && "expected valid parser state lookup");
+    return res;
 }
 
 //===----------------------------------------------------------------------===//

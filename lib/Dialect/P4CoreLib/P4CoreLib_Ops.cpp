@@ -7,6 +7,7 @@ using namespace mlir;
 using namespace P4::P4MLIR;
 
 void P4CoreLib::P4CoreLibDialect::initialize() {
+    registerTypes();
     addOperations<
 #define GET_OP_LIST
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Ops.cpp.inc"  // NOLINT

@@ -18,6 +18,12 @@ def P4CoreLib_Dialect : Dialect {
     let dependentDialects = [
       "::P4::P4MLIR::P4HIR::P4HIRDialect",
     ];
+
+    let useDefaultTypePrinterParser = 1;
+
+    let extraClassDeclaration = [{
+        void registerTypes();
+    }];
 }
 
 #endif // P4MLIR_DIALECT_P4CORELIB_P4CORELIB_DIALECT_TD
