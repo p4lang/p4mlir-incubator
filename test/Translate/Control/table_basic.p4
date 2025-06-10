@@ -25,14 +25,14 @@ control c(in bit<32> arg) {
     table t1 {
     // CHECK: p4hir.table_actions {
     // CHECK:    p4hir.table_action @a(%arg1: !b32i {p4hir.param_name = "carg"}) {
-    // CHECK:      p4hir.call @a (%arg1) : (!b32i) -> ()
+    // CHECK:      p4hir.call @c::@a (%arg1) : (!b32i) -> ()
     // CHECK:    }
     // CHECK:    p4hir.table_action @b() {
-    // CHECK:      p4hir.call @b () : () -> ()
+    // CHECK:      p4hir.call @c::@b () : () -> ()
     // CHECK:    }
     // CHECK:  }
     // CHECK:  p4hir.table_default_action {
-    // CHECK:    p4hir.call @b () : () -> ()
+    // CHECK:    p4hir.call @c::@b () : () -> ()
     // CHECK:  }
         actions = { a; b; }
         default_action = b;

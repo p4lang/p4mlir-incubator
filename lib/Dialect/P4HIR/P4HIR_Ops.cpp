@@ -1012,16 +1012,9 @@ static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs
 //  - Actions defined at control level. Check for them first.
 // This largely duplicates verifySymbolUses() below, though the latter emits diagnostics
 mlir::Operation *P4HIR::CallOp::resolveCallableInTable(mlir::SymbolTableCollection *symbolTable) {
-    auto sym = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
+    auto sym = (*this)->getAttrOfType<SymbolRefAttr>("callee");
     if (!sym) return nullptr;
 
-    // First, check for actions defined at control level
-    if (auto controlOp = (*this)->getParentOfType<P4HIR::ControlOp>()) {
-        if (auto fn = symbolTable->lookupSymbolIn<P4HIR::FuncOp>(controlOp, sym))
-            return fn.getAction() ? fn : nullptr;
-    }
-
-    // Now, resolve to functions / actions defined at top level
     if (auto *decl = symbolTable->lookupSymbolIn(getParentModule(*this), sym)) {
         if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
             return fn;
@@ -1039,37 +1032,31 @@ mlir::Operation *P4HIR::CallOp::resolveCallableInTable(mlir::SymbolTableCollecti
 
 LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
-    auto sym = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
+    auto sym = (*this)->getAttrOfType<SymbolRefAttr>("callee");
     if (!sym) return emitOpError("requires a 'callee' symbol reference attribute");
 
     // Callee might be:
     //  - Overload set, then we need to look for a particular overload
     //  - Normal functions. They are defined at top-level only. Top-level actions are also here.
-    //  - Actions defined at control level. Check for them first.
+    //  - Actions defined at control level. References to them should be fully qualified
     P4HIR::FuncOp fn;
-    if (auto controlOp = (*this)->getParentOfType<P4HIR::ControlOp>()) {
-        fn = symbolTable.lookupSymbolIn<FuncOp>(controlOp, sym);
-        if (fn && !fn.getAction())
-            return emitOpError() << "'" << sym << "' does not reference a valid action";
-    }
-
-    if (!fn) {
-        if (auto *decl = symbolTable.lookupSymbolIn(getParentModule(*this), sym)) {
-            if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
-                // We good here
-            } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
-                // Find the FuncOp with the correct # of operands
-                for (Operation &nestedOp : ovl.getBody().front()) {
-                    auto f = llvm::cast<FuncOp>(nestedOp);
-                    if (f.getNumArguments() == getNumOperands()) {
-                        fn = f;
-                        break;
-                    }
+    if (auto *decl = symbolTable.lookupSymbolIn(getParentModule(*this), sym)) {
+        if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
+            // Action nested in control
+            if (fn->getParentOfType<P4HIR::ControlOp>() && !fn.getAction())
+                return emitOpError() << "'" << sym << "' does not reference a valid action";
+        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
+            // Find the FuncOp with the correct # of operands
+            for (Operation &nestedOp : ovl.getBody().front()) {
+                auto f = llvm::cast<FuncOp>(nestedOp);
+                if (f.getNumArguments() == getNumOperands()) {
+                    fn = f;
+                    break;
                 }
-                if (!fn) return emitOpError() << "'" << sym << "' failed to resolve overload set";
-            } else
-                return emitOpError() << "'" << sym << "' does not reference a valid function";
-        }
+            }
+            if (!fn) return emitOpError() << "'" << sym << "' failed to resolve overload set";
+        } else
+            return emitOpError() << "'" << sym << "' does not reference a valid function";
     }
 
     if (!fn) return emitOpError() << "'" << sym << "' does not reference a valid function";
@@ -2631,7 +2618,7 @@ LogicalResult P4HIR::TableApplyOp::verifySymbolUses(SymbolTableCollection &symbo
 }
 
 void P4HIR::TableApplyOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
-    llvm::SmallString<32> result(getCallee().getRootReference().getValue());
+    llvm::SmallString<32> result(getCallee());
     result += "_apply_result";
     setNameFn(getResult(), result);
 }
@@ -2727,7 +2714,7 @@ void P4HIR::TableKeyOp::build(
 //===----------------------------------------------------------------------===//
 
 void P4HIR::TableActionOp::build(
-    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::SymbolRefAttr action,
+    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::FlatSymbolRefAttr action,
     P4HIR::FuncType cplaneType, ArrayRef<mlir::DictionaryAttr> argAttrs,
     mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Block::BlockArgListType, mlir::Location)>
