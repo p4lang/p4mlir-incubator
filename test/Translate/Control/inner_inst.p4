@@ -13,8 +13,8 @@ control InnerPipe(bit<10> arg1, in int<16> arg2, out int<16> arg3)(bool flag) {
 control Pipe(bit<10> arg1, in int<16> arg2, out int<16> arg3, inout int<16> arg4)(int<16> ctr_arg1, MyHeader hdr_arg) {
     InnerPipe(true) inner1;
     InnerPipe(false) inner2;
-    // CHECK: %[[inner1:.*]] = p4hir.instantiate @InnerPipe(%true) as "inner1" : (!p4hir.bool) -> !InnerPipe
-    // CHECK: %[[inner2:.*]] = p4hir.instantiate @InnerPipe(%false) as "inner2" : (!p4hir.bool) -> !InnerPipe
+    // CHECK: p4hir.instantiate @InnerPipe (%true : !p4hir.bool) as @inner1
+    // CHECK: p4hir.instantiate @InnerPipe (%false : !p4hir.bool) as @inner2
     
     action bar() {
         int<16> x1;
@@ -24,7 +24,7 @@ control Pipe(bit<10> arg1, in int<16> arg2, out int<16> arg3, inout int<16> arg4
     apply {
         bar();
         int<16> x1;
-        // CHECK: p4hir.apply %[[inner1]](%{{.*}}, %{{.*}}, %{{.*}}) : !InnerPipe
+        // CHECK: p4hir.apply @inner1(%{{.*}}, %{{.*}}, %{{.*}})
         inner1.apply(1, ctr_arg1, x1);
     }
 }

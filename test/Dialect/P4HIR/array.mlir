@@ -10,9 +10,8 @@
 
 // CHECK: module
 module {
-  %c = p4hir.const ["t"] #p4hir.aggregate<[#int10_i32i, #int20_i32i]> : !C
-
   p4hir.func action @test() {
+    %c = p4hir.const ["t"] #p4hir.aggregate<[#int10_i32i, #int20_i32i]> : !C  
     %vv = p4hir.variable ["vv"] : <!i32i>
     %val = p4hir.read %vv : <!i32i>
     %a = p4hir.array [%val, %val] : !C

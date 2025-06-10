@@ -306,10 +306,12 @@ void LowerToP4CoreLib::runOnOperation() {
                typeConverter.isLegal(fnType.getReturnTypes());
     });
 
-    target.addDynamicallyLegalOp<P4HIR::InstantiateOp>([&](P4HIR::InstantiateOp inst) {
-        bool res = typeConverter.isLegal(inst.getOperandTypes()) &&
-                   typeConverter.isLegal(inst.getResult().getType());
-        return res;
+    target.addDynamicallyLegalOp<P4HIR::InstantiateOp>(
+        [&](P4HIR::InstantiateOp inst) { return typeConverter.isLegal(inst.getOperandTypes()); });
+
+    target.addDynamicallyLegalOp<P4HIR::ConstructOp>([&](P4HIR::ConstructOp inst) {
+        return typeConverter.isLegal(inst.getOperandTypes()) &&
+               typeConverter.isLegal(inst.getResult().getType());
     });
 
     target.addDynamicallyLegalOp<P4HIR::ApplyOp>(

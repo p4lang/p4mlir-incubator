@@ -995,6 +995,12 @@ static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs
         for (auto elTy : tupleType.getTypes())
             substituted.push_back(substituteType(elTy, calleeTypeArgs, typeOperands));
         return mlir::TupleType::get(type.getContext(), substituted);
+    } else if (auto extType = llvm::dyn_cast<P4HIR::ExternType>(type)) {
+        llvm::SmallVector<mlir::Type> substituted;
+        for (auto typeArg : extType.getTypeArguments())
+            substituted.push_back(substituteType(typeArg, calleeTypeArgs, typeOperands));
+        return P4HIR::ExternType::get(type.getContext(), extType.getName(), substituted,
+                                      extType.getAnnotations());
     }
 
     return type;
@@ -2062,16 +2068,12 @@ void P4HIR::PackageOp::build(mlir::OpBuilder &builder, mlir::OperationState &res
 }
 
 //===----------------------------------------------------------------------===//
-// InstantiateOp
+// InstantiateOp, ConstructOp, SymToValueOp
 //===----------------------------------------------------------------------===//
-
-void P4HIR::InstantiateOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
-    setNameFn(getResult(), getName());
-}
 
 LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
-    auto ctorAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
+    auto ctorAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>(getCalleeAttrName());
     if (!ctorAttr) return emitOpError("requires a 'callee' symbol reference attribute");
 
     auto getCtorType =
@@ -2115,12 +2117,66 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
                        << " for operand number " << i;
         }
 
-        // Object itself and return value types must match.
-        if (auto pkg = mlir::dyn_cast<PackageOp>(definingOp)) {
-            // TBD: Check
-        } else if (getResult().getType() != ctorType.getReturnType())
-            return emitOpError("result type mismatch: expected ")
-                   << ctorType.getReturnType() << ", but provided " << getResult().getType();
+        return mlir::success();
+    }
+
+    return mlir::success();
+
+    // TBD: Handle extern ctors and turn empty ctors into error
+    /* return emitOpError()
+           << "'" << ctorAttr.getValue()
+           << "' does not reference a valid P4 object (parser, extern, control or package)"; */
+}
+
+void P4HIR::ConstructOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), getCallee());
+}
+
+LogicalResult P4HIR::ConstructOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+    // Check that the callee attribute was specified.
+    auto ctorAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>(getCalleeAttrName());
+    if (!ctorAttr) return emitOpError("requires a 'callee' symbol reference attribute");
+
+    auto getCtorType =
+        [&](mlir::FlatSymbolRefAttr ctorAttr) -> std::pair<CtorType, mlir::Operation *> {
+        if (ParserOp parser =
+                symbolTable.lookupSymbolIn<ParserOp>(getParentModule(*this), ctorAttr)) {
+            return {parser.getCtorType(), parser.getOperation()};
+        } else if (ControlOp control =
+                       symbolTable.lookupSymbolIn<ControlOp>(getParentModule(*this), ctorAttr)) {
+            return {control.getCtorType(), control.getOperation()};
+        } else if (ExternOp ext =
+                       symbolTable.lookupSymbolIn<ExternOp>(getParentModule(*this), ctorAttr)) {
+            // TBD
+            return {};
+        } else if (PackageOp pkg =
+                       symbolTable.lookupSymbolIn<PackageOp>(getParentModule(*this), ctorAttr)) {
+            return {pkg.getCtorType(), pkg.getOperation()};
+        }
+
+        return {};
+    };
+
+    // Verify that the operand and result types match the callee.
+    auto [ctorType, definingOp] = getCtorType(ctorAttr);
+    if (ctorType) {
+        if (ctorType.getNumInputs() != getNumOperands())
+            return emitOpError("incorrect number of operands for callee");
+
+        for (unsigned i = 0, e = ctorType.getNumInputs(); i != e; ++i) {
+            // Packages are a bit special and nasty: they could have mismatched
+            // declaration and instantiation types as name of object is a part of type, e.g.:
+            // control e();
+            // package top(e _e);
+            // top(c())
+            // So we need to be a bit more relaxed here
+            if (auto pkg = mlir::dyn_cast<PackageOp>(definingOp)) {
+                // TBD: Check
+            } else if (getOperand(i).getType() != ctorType.getInput(i))
+                return emitOpError("operand type mismatch: expected operand type ")
+                       << ctorType.getInput(i) << ", but provided " << getOperand(i).getType()
+                       << " for operand number " << i;
+        }
 
         return mlir::success();
     }
@@ -2131,6 +2187,68 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
     /* return emitOpError()
            << "'" << ctorAttr.getValue()
            << "' does not reference a valid P4 object (parser, extern, control or package)"; */
+}
+
+LogicalResult P4HIR::SymToValueOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+    // TODO
+    return mlir::success();
+}
+
+void P4HIR::SymToValueOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), getDecl().getRootReference());
+}
+
+//===----------------------------------------------------------------------===//
+// ApplyOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult P4HIR::ApplyOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+    // Check that the callee attribute was specified.
+    auto calleeAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>(getCalleeAttrName());
+    if (!calleeAttr) return emitOpError("requires a 'callee' symbol reference attribute");
+
+    // Check that callee type corresponds to argument operands
+    auto inst = symbolTable.lookupNearestSymbolFrom<P4HIR::InstantiateOp>(*this, calleeAttr);
+    // No luck, try module scope. This is safe as we cannot have e.g. control nested in the
+    // control or parser inside parser.
+    if (!inst)
+        inst = symbolTable.lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this), calleeAttr);
+    if (!inst)
+        return emitOpError() << "'" << calleeAttr << "' does not reference a valid instantiation";
+
+    // Lookup parser / control. Note that these never have type parameters per
+    // P4 spec.
+    if (inst.getTypeParameters())
+        return emitOpError() << "parser or control instantiation never has type parameters";
+
+    auto op = symbolTable.lookupSymbolIn(getParentModule(*this), inst.getCalleeAttr());
+    if (!op)
+        return emitOpError() << "'" << inst.getCalleeAttr()
+                             << "' does not reference a valid parser or control";
+
+    P4HIR::FuncType applyType;
+    if (auto parser = mlir::dyn_cast<P4HIR::ParserOp>(op)) {
+        applyType = parser.getApplyType();
+    } else if (auto control = mlir::dyn_cast<P4HIR::ControlOp>(op)) {
+        applyType = control.getApplyType();
+    } else
+        return emitOpError("invalid symbol definition, expected parser or control, but got ") << op;
+
+    if (applyType.getNumInputs() != getArgOperands().size())
+        return emitOpError("expected ")
+               << getArgOperands().size() << " operands, but got " << applyType.getNumInputs();
+
+    for (auto typeAndIdx : llvm::enumerate(applyType.getInputs())) {
+        mlir::Type providedType = getArgOperands()[typeAndIdx.index()].getType();
+        mlir::Type expectedType = typeAndIdx.value();
+
+        if (providedType != expectedType)
+            return emitOpError("operand type mismatch: expected operand type ")
+                   << expectedType << ", but provided " << providedType << " for operand number "
+                   << typeAndIdx.index();
+    }
+
+    return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2145,13 +2263,43 @@ mlir::Block &P4HIR::ExternOp::createEntryBlock() {
 //===----------------------------------------------------------------------===//
 // CallMethodOp
 //===----------------------------------------------------------------------===//
+bool P4HIR::CallMethodOp::isIndirect() { return (bool)getObj(); }
+
+mlir::Value P4HIR::CallMethodOp::getIndirectCallee() { return getObj(); }
+
 LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
-    auto sym = (*this)->getAttrOfType<SymbolRefAttr>("callee");
+    auto sym = (*this)->getAttrOfType<SymbolRefAttr>(getCalleeAttrName());
     if (!sym) return emitOpError("requires a 'callee' symbol reference attribute");
 
     // Symbol ref should be pair of extern + method name
     auto extSymAttr = sym.getRootReference(), methodSymAttr = sym.getLeafReference();
+
+    // Extern symbol refers to instantiation here. We need to resolve it first.
+    SmallVector<mlir::Type> baseTypeOperands;
+    if (!isIndirect()) {
+        // Check local scope first
+        auto inst = symbolTable.lookupNearestSymbolFrom<P4HIR::InstantiateOp>(*this, extSymAttr);
+        // No luck, try module scope. This is safe as we cannot have e.g. control nested in the
+        // control
+        if (!inst)
+            inst = symbolTable.lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this),
+                                                                    extSymAttr);
+        if (!inst)
+            return emitOpError() << "'" << extSymAttr
+                                 << "' does not reference a valid instantiation";
+        extSymAttr = inst.getCalleeAttr().getRootReference();
+        if (auto typeOps = inst.getTypeParameters())
+            llvm::append_range(baseTypeOperands, typeOps->getAsValueRange<mlir::TypeAttr>());
+    } else {
+        // First operand of indirect calls must be extern
+        auto extType = mlir::dyn_cast<P4HIR::ExternType>(getObj().getType());
+        if (!extType)
+            return emitOpError(
+                "invalid number of operands of indirect method call: should always have extern "
+                "operand");
+        llvm::append_range(baseTypeOperands, extType.getTypeArguments());
+    }
 
     // Grab the extern
     P4HIR::FuncOp fn;
@@ -2172,15 +2320,12 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
             }
             if (!fn)
                 return emitOpError() << "'" << methodSymAttr << "' failed to resolve overload set";
-        } else
-            return emitOpError() << "'" << methodSymAttr << "' does not reference a valid function";
-    } else
-        return emitOpError() << "'" << extSymAttr << "' does not reference a valid extern";
+        }
+    }
 
-    // First operand must be extern
-    if (getNumOperands() == 0 || !mlir::isa<P4HIR::ExternType>(getOperand(0).getType()))
-        return emitOpError(
-            "invalid number of operands of method call: should always have extern operand");
+    if (!ext) return emitOpError() << "'" << extSymAttr << "' does not reference a valid extern";
+    if (!fn)
+        return emitOpError() << "'" << methodSymAttr << "' does not reference a valid function";
 
     auto fnType = fn.getFunctionType();
     auto arguments = getArgOperands();
@@ -2206,17 +2351,15 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
                              << calleeTypeParams.size() << ", got" << typeOperands.size();
 
     auto extTypeParams = ext.getTypeParameters();
-    auto baseTypeOperands = getBase().getType().getTypeArguments();
     if (extTypeParams) {
         if (baseTypeOperands.empty())
             return emitOpError("expected type operands to be specified for generic extern type");
         if (extTypeParams->size() != baseTypeOperands.size())
             return emitOpError() << "incorrect number of type operands for extern, expected "
                                  << extTypeParams->size() << ", got" << baseTypeOperands.size();
-        auto extTypes = extTypeParams->getAsValueRange<mlir::TypeAttr>();
-        llvm::append_range(calleeTypeParams, extTypes);
+        llvm::append_range(calleeTypeParams, extTypeParams->getAsValueRange<mlir::TypeAttr>());
+        llvm::append_range(typeOperands, baseTypeOperands);
     }
-    llvm::append_range(typeOperands, baseTypeOperands);
 
     for (auto idxAndArg : llvm::enumerate(arguments)) {
         size_t index = idxAndArg.index();
@@ -2262,16 +2405,13 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
 //  - Normal methods
 mlir::Operation *P4HIR::CallMethodOp::resolveCallableInTable(
     mlir::SymbolTableCollection *symbolTable) {
-    auto sym = (*this)->getAttrOfType<SymbolRefAttr>("callee");
+    auto sym = getCallee();
     if (!sym) return nullptr;
 
-    // Symbol ref should be pair of extern + method name
-    auto extSymAttr = sym.getRootReference(), methodSymAttr = sym.getLeafReference();
-
     // Grab the extern
-    if (auto ext =
-            symbolTable->lookupSymbolIn<P4HIR::ExternOp>(getParentModule(*this), extSymAttr)) {
-        // Now, perform a method lookup
+    if (auto ext = getExtern()) {
+        // Now perform a method lookup
+        auto methodSymAttr = sym.getLeafReference();
         auto *decl = ext.lookupSymbol(methodSymAttr);
         if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
             return fn;
@@ -2289,8 +2429,17 @@ mlir::Operation *P4HIR::CallMethodOp::resolveCallableInTable(
 
 P4HIR::ExternOp P4HIR::CallMethodOp::getExtern() {
     auto sym = getCallee();
-    auto res = getParentModule(*this).lookupSymbol<P4HIR::ExternOp>(sym.getRootReference());
-    assert(res && "expected valid parser state lookup");
+    auto extSymAttr = sym.getRootReference();
+
+    if (!isIndirect()) {
+        auto inst = SymbolTable::lookupNearestSymbolFrom<P4HIR::InstantiateOp>(*this, extSymAttr);
+        if (!inst) inst = getParentModule(*this).lookupSymbol<P4HIR::InstantiateOp>(extSymAttr);
+        assert(inst && "expected a valid instantiation");
+        extSymAttr = inst.getCalleeAttr().getRootReference();
+    }
+
+    auto res = getParentModule(*this).lookupSymbol<P4HIR::ExternOp>(extSymAttr);
+    assert(res && "expected valid extern reference");
     return res;
 }
 

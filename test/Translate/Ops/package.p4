@@ -51,6 +51,6 @@ control e();
 package top(e _e);
 
 // CHECK:  p4hir.package @top("_e" : !e {p4hir.dir = #undir, p4hir.param_name = "_e"})
-// CHECK:  %[[c:.*]] = p4hir.instantiate @c() as "c" : () -> !c
-// CHECK:  p4hir.instantiate @top(%[[c]]) as "main" : (!c) -> !top
+// CHECK:  %[[c:.*]] = p4hir.construct @c () : !c
+// CHECK:  p4hir.instantiate @top (%[[c]] : !c) as @main
 top(c()) main;
