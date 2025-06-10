@@ -88,4 +88,44 @@ def FlattenCFG : Pass<"p4hir-flatten-cfg"> {
   let constructor = "P4MLIR::createFlattenCFGPass()";
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
+
+//===----------------------------------------------------------------------===//
+// RemoveParserControlFlow
+//===----------------------------------------------------------------------===//
+
+def RemoveParserControlFlow : Pass<"p4hir-remove-parser-control-flow"> {
+  let summary = "Removes the control flow";
+  let description = [{
+    The pass transforms the if ops into switch ops.
+    for example, the following code:
+    ```mlir
+      %0 = p4hir.const #p4hir.bool<false> : !p4hir.bool
+      p4hir.if %0 {
+        %29 = p4hir.const #p4hir.bool<true> : !p4hir.bool
+      } else {
+        %29 = p4hir.const #p4hir.bool<false> : !p4hir.bool
+      }
+    ```
+    is transformed into:
+    ```mlir
+      %cond = p4hir.const #p4hir.bool<false> : !p4hir.bool
+      %int_cond = p4hir.sext %cond : !p4hir.bool to !b32i
+      #true_val = #p4hir.int<1> : !b32i
+      #false_val = #p4hir.int<0> : !b32i
+      p4hir.switch (%int_cond : !b32i) {
+        p4hir.case(equal, [#true_val]) {
+          %29 = p4hir.const #p4hir.bool<true> : !p4hir.bool
+          p4hir.yield
+        }
+        p4hir.case(equal, [#false_val]) {
+          %29 = p4hir.const #p4hir.bool<false> : !p4hir.bool
+          p4hir.yield
+        }
+        p4hir.yield
+      }
+    ```
+  }];
+  let constructor = "P4MLIR::createRemoveParserControlFlowPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
 #endif // P4MLIR_TRANSFORMS_PASSES_TD
