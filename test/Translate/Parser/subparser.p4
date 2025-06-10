@@ -26,24 +26,24 @@ parser p(in empty e, in int<10> sinit) {
     subparser() sp;
     subparser2(false) sp2;
     subparser3() sp3;
-// CHECK: %[[sp:.*]] = p4hir.instantiate @subparser() as "sp" : () -> !subparser
+// CHECK: p4hir.instantiate @subparser () as @sp
 // CHECK: %[[false:.*]] = p4hir.const #false
-// CHECK: %[[sp2:.*]] = p4hir.instantiate @subparser2(%[[false]]) as "sp2" : (!p4hir.bool) -> !subparser2
-// CHECK: %[[sp3:.*]] = p4hir.instantiate @subparser3() as "sp3" : () -> !subparser3
+// CHECK: p4hir.instantiate @subparser2 (%[[false]] : !p4hir.bool) as @sp2
+// CHECK: p4hir.instantiate @subparser3 () as @sp3
 
     state start {
         s = 1;
         sp.apply(e);
-// CHECK: p4hir.apply %[[sp]](%arg0) : !subparser
+// CHECK: p4hir.apply @sp(%arg0) : (!empty) -> ()
         transition next;
     }
 
     state next {
         s = 2;
         sp2.apply(e);
-// CHECK: p4hir.apply %[[sp2]](%arg0) : !subparser2
+// CHECK: p4hir.apply @sp2(%arg0) : (!empty) -> ()
 // CHECK: p4hir.scope
-// CHECK: p4hir.apply %[[sp3]](%s_inout_arg, %matched_out_arg) : !subparser3
+// CHECK: p4hir.apply @sp3(%s_inout_arg, %matched_out_arg) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
         bool matched = false;
         sp3.apply(s, matched);
 

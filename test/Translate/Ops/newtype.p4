@@ -19,6 +19,7 @@ action c(out bool b) {
         Wide x = (Wide)3;
         Narrow y = (Narrow)(Narrow_t)(Wide_t)x;
 // CHECK: %[[y:.*]] = p4hir.variable ["y", init] : <!Narrow>
+// CHECK: %[[PSA_CPU_PORT:.*]] = p4hir.const ["PSA_CPU_PORT"] #int192_Narrow
 // CHECK: p4hir.assign %[[PSA_CPU_PORT]], %[[y]] : <!Narrow>
         y = PSA_CPU_PORT;
         b = y == (Narrow)10;

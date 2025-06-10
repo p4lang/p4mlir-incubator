@@ -24,6 +24,6 @@ top(_e = c(),
 // CHECK: !ce = !p4hir.control<"ce", (!p4hir.ref<!p4hir.bool>)>
 // CHECK: !par = !p4hir.parser<"par", (!p4hir.ref<!p4hir.bool>)>
 // CHECK: !pe = !p4hir.parser<"pe", (!p4hir.ref<!p4hir.bool>)>
-// CHECK: !top = !p4hir.package<"top">
+// CHECK: p4hir.package @top
 // CHECK:  %[[uninitialized:.*]] = p4hir.uninitialized : !ce
-// CHECK:  p4hir.instantiate @top(%{{.*}}, %{{.}}, %[[uninitialized]]) as "main" : (!par, !c, !ce) -> !top
+// CHECK:  p4hir.instantiate @top (%{{.*}}, %{{.}}, %[[uninitialized]] : !par, !c, !ce) as @main
