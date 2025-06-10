@@ -2258,7 +2258,14 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
         }
     }
 
-    setSymbol(act, mlir::SymbolRefAttr::get(action));
+    // Make actions nested inside controls fully qualified, so we can resolve
+    // properly even in the presence of name shadow
+    auto actionSymbol = mlir::SymbolRefAttr::get(action);
+    if (const auto *ctrl = findContext<P4::IR::P4Control>()) {
+        auto controlSymbol = builder.getStringAttr(ctrl->name.string_view());
+        setSymbol(act, mlir::SymbolRefAttr::get(controlSymbol, {actionSymbol}));
+    } else
+        setSymbol(act, actionSymbol);
     p4Values = savedValues;
 
     return false;
@@ -2509,7 +2516,9 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 auto tSym = p4Symbols.lookup(table);
                 BUG_CHECK(tSym, "expected applied table to be converted: %1%", table);
                 auto applyResultType = getOrCreateType(instance->actualMethodType->returnType);
-                callResult = b.create<P4HIR::TableApplyOp>(loc, applyResultType, tSym).getResult();
+                callResult =
+                    b.create<P4HIR::TableApplyOp>(loc, applyResultType, tSym.getRootReference())
+                        .getResult();
             } else
                 BUG("Unsuported apply: %1% (aka %2%)", aCall->object, dbp(aCall->object));
         } else if (const auto *fCall = instance->to<P4::ExternMethod>()) {
@@ -3410,8 +3419,10 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
                     auto actSym = p4Symbols.lookup(action);
                     BUG_CHECK(actSym, "expected reference action to be converted: %1%", action);
 
+                    auto localActSym = mlir::SymbolRefAttr::get(actSym.getLeafReference());
+
                     b.create<P4HIR::TableActionOp>(
-                        getLoc(builder, expr), actSym, funcType, controlPlaneParamAttrs,
+                        getLoc(builder, expr), localActSym, funcType, controlPlaneParamAttrs,
                         aAnnotations,
                         [&](mlir::OpBuilder &, mlir::Block::BlockArgListType args, mlir::Location) {
                             for (const auto arg : args) {

@@ -85,7 +85,7 @@ def TableApplyOp : P4HIR_Op<"table_apply",
   }];
 
   let results = (outs StructType:$apply_result);
-  let arguments = (ins SymbolRefAttr:$callee);
+  let arguments = (ins FlatSymbolRefAttr:$callee);
 
   // TODO: Add verifier
   let hasVerifier = 0;
@@ -171,7 +171,7 @@ def TableActionOp : P4HIR_Op<"table_action",
     [AutomaticAllocationScope, NoTerminator, Annotated,
      // DeclareOpInterfaceMethods<SymbolUserOpInterface>
     ]> {
-  let arguments = (ins TypeAttrOf<FuncType>:$cplaneType, SymbolRefAttr:$action,
+  let arguments = (ins TypeAttrOf<FuncType>:$cplaneType, FlatSymbolRefAttr:$action,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
@@ -180,7 +180,7 @@ def TableActionOp : P4HIR_Op<"table_action",
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::SymbolRefAttr":$action, "P4HIR::FuncType":$cplaneType,
+    OpBuilder<(ins "mlir::FlatSymbolRefAttr":$action, "P4HIR::FuncType":$cplaneType,
                    "llvm::ArrayRef<mlir::DictionaryAttr>":$argAttrs,
                    "mlir::DictionaryAttr":$annotations,
                    "llvm::function_ref<void(mlir::OpBuilder &, mlir::Block::BlockArgListType, mlir::Location)>":$entryBuilder)>

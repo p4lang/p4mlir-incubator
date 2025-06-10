@@ -19,7 +19,7 @@ module {
       p4hir.return
     }
     p4hir.control_apply {
-      p4hir.call @bar () : () -> ()
+      p4hir.call @Pipe::@bar () : () -> ()
       %x1 = p4hir.variable ["x1"] : <!i16i>
       p4hir.scope {
         %c1_b10i = p4hir.const #int1_b10i
