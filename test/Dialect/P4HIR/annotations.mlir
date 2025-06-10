@@ -91,17 +91,17 @@ module {
       }
       p4hir.table_actions {
         p4hir.table_action @a() {
-          p4hir.call @a () : () -> ()
+          p4hir.call @c::@a () : () -> ()
         }
         p4hir.table_action @b() annotations {tableonly} {
-          p4hir.call @b () : () -> ()
+          p4hir.call @c::@b () : () -> ()
         }
         p4hir.table_action @cc() annotations {defaultonly} {
-          p4hir.call @cc () : () -> ()
+          p4hir.call @c::@cc () : () -> ()
         }
       }
       p4hir.table_default_action annotations {name = "bar"} {
-        p4hir.call @cc () : () -> ()
+        p4hir.call @c::@cc () : () -> ()
       }
       %implementation = p4hir.table_entry "implementation" annotations {name = "foo"} {
         %Annotated = p4hir.construct @Annotated() : !Annotated

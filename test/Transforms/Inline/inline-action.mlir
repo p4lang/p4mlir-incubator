@@ -28,7 +28,7 @@ module {
         %y0_inout_arg = p4hir.variable ["y0_inout_arg", init] : <!b1i>
         %val = p4hir.read %arg0_1 : <!b1i>
         p4hir.assign %val, %y0_inout_arg : <!b1i>
-        p4hir.call @a (%y0_inout_arg) : (!p4hir.ref<!b1i>) -> ()
+        p4hir.call @p::@a (%y0_inout_arg) : (!p4hir.ref<!b1i>) -> ()
         %val_0 = p4hir.read %y0_inout_arg : <!b1i>
         p4hir.assign %val_0, %arg0_1 : <!b1i>
       }
@@ -37,7 +37,7 @@ module {
         %y0_inout_arg = p4hir.variable ["y0_inout_arg", init] : <!b1i>
         %val = p4hir.read %arg0_1 : <!b1i>
         p4hir.assign %val, %y0_inout_arg : <!b1i>
-        p4hir.call @a (%y0_inout_arg) : (!p4hir.ref<!b1i>) -> ()
+        p4hir.call @p::@a (%y0_inout_arg) : (!p4hir.ref<!b1i>) -> ()
         %val_0 = p4hir.read %y0_inout_arg : <!b1i>
         p4hir.assign %val_0, %arg0_1 : <!b1i>
       }
@@ -46,11 +46,11 @@ module {
     p4hir.table @t {
       p4hir.table_actions {
         p4hir.table_action @b() {
-          p4hir.call @b () : () -> ()
+          p4hir.call @p::@b () : () -> ()
         }
       }
       p4hir.table_default_action {
-        p4hir.call @b () : () -> ()
+        p4hir.call @p::@b () : () -> ()
       }
     }
     p4hir.control_apply {

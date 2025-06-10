@@ -78,7 +78,7 @@ struct CallOpConversionPattern : public OpConversionPattern<P4HIR::CallOp> {
     LogicalResult matchAndRewrite(P4HIR::CallOp op, OpAdaptor operands,
                                   ConversionPatternRewriter &rewriter) const override {
         auto callee = op.getCallee();
-        if (callee == "verify") {
+        if (callee.getLeafReference() == "verify") {
             rewriter.replaceOpWithNewOp<P4CoreLib::VerifyOp>(op, mlir::TypeRange(),
                                                              operands.getArgOperands());
             return success();

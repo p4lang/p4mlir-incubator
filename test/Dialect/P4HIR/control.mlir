@@ -83,12 +83,12 @@ module {
       %x2 = p4hir.variable ["x2", init] : <!i16i>
       p4hir.assign %cast_0, %x2 : <!i16i>
       p4hir.assign %arg1, %x2 : <!i16i>
-      p4hir.call @bar () : () -> ()
+      p4hir.call @Pipe1::@bar () : () -> ()
       %c3 = p4hir.const #int3_infint
       %cast_1 = p4hir.cast(%c3 : !infint) : !i16i
       %eq = p4hir.cmp(eq, %arg1, %cast_1) : !i16i, !p4hir.bool
       p4hir.if %eq {
-        p4hir.call @foo () : () -> ()
+        p4hir.call @Pipe1::@foo () : () -> ()
         %c3_i16i = p4hir.const #int3_i16i
         %cast_2 = p4hir.cast(%c3_i16i : !i16i) : !i16i
         p4hir.assign %cast_2, %x2 : <!i16i>

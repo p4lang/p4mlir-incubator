@@ -958,7 +958,7 @@ def CallOp : P4HIR_Op<"call",
 
   // TODO: Refine result types, refine parameter type
   let results = (outs Optional<CallResultP4Type>:$result);
-  let arguments = (ins FlatSymbolRefAttr:$callee,
+  let arguments = (ins SymbolRefAttr:$callee,
                        OptionalAttr<TypeArrayAttr>:$type_operands,
                        Variadic<AnyType>:$arg_operands);
 
@@ -1003,7 +1003,10 @@ def CallOp : P4HIR_Op<"call",
   let extraClassDeclaration = [{
     /// Return the callee of this operation.
     mlir::CallInterfaceCallable getCallableForCallee() {
-      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+      // Unfortunately, inliner does not handle nested references, so we "cheat"
+      // here and return only leaf one.
+      auto leafRef = (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee").getLeafReference();
+      return mlir::SymbolRefAttr::get(getContext(), leafRef);
     }
 
     /// Set the callee for this operation.
