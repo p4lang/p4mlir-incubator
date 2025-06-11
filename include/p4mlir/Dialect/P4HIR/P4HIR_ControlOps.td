@@ -3,7 +3,8 @@
 
 def ControlOp : P4HIR_Op<"control",
     [Symbol, SymbolTable, Annotated,
-     FunctionOpInterface, AutomaticAllocationScope]> {
+     FunctionOpInterface, AutomaticAllocationScope,
+     IsolatedFromAbove]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FuncType>:$applyType,
                        TypeAttrOf<CtorType>:$ctorType,
