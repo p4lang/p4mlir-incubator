@@ -2073,7 +2073,9 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     if (!f->type->typeParameters->empty()) return false;
 
     ConversionTracer trace("Converting ", f);
-    ValueScope scope(*p4Values);
+    ValueTable functionValues, *savedValues = p4Values;
+    p4Values = &functionValues;
+    ValueScope scope(functionValues);
 
     auto annotations = convert(f->annotations);
 
@@ -2152,6 +2154,8 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     }
 
     setSymbol(f, mlir::SymbolRefAttr::get(origSymName));
+    p4Values = savedValues;
+
     return false;
 }
 
