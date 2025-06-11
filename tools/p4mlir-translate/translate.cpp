@@ -508,6 +508,29 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return value;
     }
 
+    // Returns fully qualified symbols, if we're nested inside parser or control
+    mlir::SymbolRefAttr getSymbolRef(mlir::Operation *op) {
+        auto symName = op->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName());
+        assert(symName && "value does not have a valid symbol name");
+        return getSymbolRef(symName);
+    }
+
+    mlir::SymbolRefAttr getSymbolRef(llvm::StringRef value) {
+        return getSymbolRef(builder.getStringAttr(value));
+    }
+
+    mlir::SymbolRefAttr getSymbolRef(mlir::StringAttr attr) {
+        auto leafSymbol = mlir::SymbolRefAttr::get(attr);
+        if (const auto *ctrl = findContext<P4::IR::P4Control>()) {
+            auto controlSymbol = builder.getStringAttr(ctrl->name.string_view());
+            return mlir::SymbolRefAttr::get(controlSymbol, {leafSymbol});
+        } else if (const auto *parser = findContext<P4::IR::P4Parser>()) {
+            auto parserSymbol = builder.getStringAttr(parser->name.string_view());
+            return mlir::SymbolRefAttr::get(parserSymbol, {leafSymbol});
+        }
+        return leafSymbol;
+    }
+
     mlir::Attribute convertAnnotationExpr(const P4::IR::Expression *ann);
     mlir::Attribute convert(const P4::IR::Annotation *anns);
     mlir::DictionaryAttr convert(const P4::IR::Vector<P4::IR::Annotation> &ann);
@@ -2264,12 +2287,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
 
     // Make actions nested inside controls fully qualified, so we can resolve
     // properly even in the presence of name shadow
-    auto actionSymbol = mlir::SymbolRefAttr::get(action);
-    if (const auto *ctrl = findContext<P4::IR::P4Control>()) {
-        auto controlSymbol = builder.getStringAttr(ctrl->name.string_view());
-        setSymbol(act, mlir::SymbolRefAttr::get(controlSymbol, {actionSymbol}));
-    } else
-        setSymbol(act, actionSymbol);
+    setSymbol(act, getSymbolRef(action));
     p4Values = savedValues;
 
     return false;
@@ -2889,7 +2907,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     auto parserOp = builder.create<P4HIR::ParserOp>(loc, parser->name.string_view(), applyType,
                                                     ctorType, argAttrs, annotations);
     parserOp.createEntryBlock();
-    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
+    auto parserSymbol = builder.getStringAttr(parser->name.string_view());
 
     mlir::OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&parserOp.getBody().front());
@@ -2924,7 +2942,6 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
         // Create default transition (to start state)
         auto startStateSymbol = mlir::SymbolRefAttr::get(builder.getContext(),
                                                          P4::IR::ParserState::start.string_view());
-
         builder.create<P4HIR::ParserTransitionOp>(
             getEndLoc(builder, parser), mlir::SymbolRefAttr::get(parserSymbol, {startStateSymbol}));
     }
@@ -2950,9 +2967,6 @@ bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
     // Materialize all state components
     visit(state->components);
 
-    const auto *parser = findContext<P4::IR::P4Parser>();
-    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
-
     // accept / reject states are special, their bodies contain only accept / reject ops
     if (state->name == P4::IR::ParserState::accept) {
         builder.create<P4HIR::ParserAcceptOp>(getLoc(builder, state));
@@ -2969,10 +2983,9 @@ bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
         LOG4("Resolving direct transition: " << pe);
         auto loc = getLoc(builder, pe);
         const auto *nextState = resolvePath(pe->path, false)->checkedTo<P4::IR::ParserState>();
-        auto nextStateSymbol =
-            mlir::SymbolRefAttr::get(builder.getContext(), nextState->name.string_view());
-        builder.create<P4HIR::ParserTransitionOp>(
-            loc, mlir::SymbolRefAttr::get(parserSymbol, {nextStateSymbol}));
+        // next state might not exist yet, so we do not use p4symbols here and
+        // build symbol reference by hand
+        builder.create<P4HIR::ParserTransitionOp>(loc, getSymbolRef(nextState->name.string_view()));
     } else {
         LOG4("Resolving select transition: " << state->selectExpression);
         visit(state->selectExpression);
@@ -2983,9 +2996,6 @@ bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
 
 bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
     ConversionTracer trace("Converting ", select);
-
-    const auto *parser = findContext<P4::IR::P4Parser>();
-    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
 
     // Materialize value to select over. Select is always a ListExpression,
     // even if it contains a single value. Lists ae lowered to tuples,
@@ -3006,8 +3016,6 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
     for (const auto *selectCase : select->selectCases) {
         const auto *nextState =
             resolvePath(selectCase->state->path, false)->checkedTo<P4::IR::ParserState>();
-        auto nextStateSymbol =
-            mlir::SymbolRefAttr::get(builder.getContext(), nextState->name.string_view());
         builder.create<P4HIR::ParserSelectCaseOp>(
             getLoc(builder, selectCase),
             [&](mlir::OpBuilder &b, mlir::Location) {
@@ -3044,15 +3052,12 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                 }
                 b.create<P4HIR::YieldOp>(endLoc, keyVal);
             },
-            mlir::SymbolRefAttr::get(parserSymbol, {nextStateSymbol}));
+            getSymbolRef(nextState->name.string_view()));
     }
 
     // If there is no default case, then synthesize one explicitly
     // FIXME: signal `error.NoMatch` error.
     if (!hasDefaultCase) {
-        auto rejectStateSymbol = mlir::SymbolRefAttr::get(
-            builder.getContext(), P4::IR::ParserState::reject.string_view());
-
         auto endLoc = getEndLoc(builder, select);
         builder.create<P4HIR::ParserSelectCaseOp>(
             endLoc,
@@ -3060,7 +3065,7 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                 b.create<P4HIR::YieldOp>(endLoc,
                                          builder.create<P4HIR::UniversalSetOp>(endLoc).getResult());
             },
-            mlir::SymbolRefAttr::get(parserSymbol, {rejectStateSymbol}));
+            getSymbolRef(P4::IR::ParserState::reject.string_view()));
     }
 
     return false;
