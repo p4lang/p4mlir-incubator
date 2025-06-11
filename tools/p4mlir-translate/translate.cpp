@@ -2389,7 +2389,7 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             switch (auto dir = param->direction) {
                 case P4::IR::Direction::None:
                 case P4::IR::Direction::In: {
-                    auto paramType = getOrCreateType(param->type);
+                    auto paramType = getOrCreateType(param);
 
                     // Nothing to do special, just pass things direct
                     visit(arg->expression);
@@ -2451,8 +2451,8 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 // Grab a suitable placeholder for it.
                 mlir::Value placeholder;
                 if (param->isOptional()) {
-                    placeholder = builder.create<P4HIR::UninitializedOp>(
-                        getLoc(builder, mce), getOrCreateType(param->type));
+                    placeholder = builder.create<P4HIR::UninitializedOp>(getLoc(builder, mce),
+                                                                         getOrCreateType(param));
                 } else {
                     BUG_CHECK(param->direction == P4::IR::Direction::None,
                               "control plane values should be directionless");
@@ -2648,7 +2648,7 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
             // Create a placeholder for @optional arguments
             if (!argVal && param->isOptional())
                 argVal = builder.create<P4HIR::UninitializedOp>(getLoc(builder, cce),
-                                                                getOrCreateType(param->type));
+                                                                getOrCreateType(param));
             BUG_CHECK(argVal, "unconverted argument for parameter %1%", param);
             operands.push_back(argVal);
         }
@@ -3250,7 +3250,9 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Package *pkg) {
 
 bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
     ConversionTracer trace("Converting ", control);
-    ValueScope scope(*p4Values);
+    ValueTable controlValues, *savedValues = p4Values;
+    p4Values = &controlValues;
+    ValueScope scope(controlValues);
 
     auto annotations = convert(control->getAnnotations());
 
@@ -3340,6 +3342,8 @@ bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
     }
 
     setSymbol(control, mlir::SymbolRefAttr::get(controlOp));
+
+    p4Values = savedValues;
 
     return false;
 }
