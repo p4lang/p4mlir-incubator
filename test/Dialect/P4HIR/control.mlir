@@ -45,7 +45,7 @@ module {
     %c42 = p4hir.const #int42_infint
     p4hir.func action @foo() {
       %c3_i16i = p4hir.const #int3_i16i
-      %arg2_0 = p4hir.symbol_ref @arg2 : !i16i
+      %arg2_0 = p4hir.symbol_ref @Pipe1::@arg2 : !i16i
       %add = p4hir.binop(add, %c3_i16i, %arg2_0) : !i16i
       %c42_i16i = p4hir.const #int42_i16i
       %add_1 = p4hir.binop(add, %add, %c42_i16i) : !i16i
@@ -58,19 +58,19 @@ module {
     }
     p4hir.func action @bar() {
       %c2_b10i = p4hir.const #int2_b10i
-      %topV_0 = p4hir.symbol_ref @topV : !p4hir.ref<!b10i>
+      %topV_0 = p4hir.symbol_ref @Pipe1::@topV : !p4hir.ref<!b10i>
       %val = p4hir.read %topV_0 : <!b10i>
       %add = p4hir.binop(add, %c2_b10i, %val) : !b10i
       %x1 = p4hir.variable ["x1", init] : <!b10i>
       p4hir.assign %add, %x1 : <!b10i>
       %val_1 = p4hir.read %x1 : <!b10i>
-      %arg1_2 = p4hir.symbol_ref @arg1 : !b10i
+      %arg1_2 = p4hir.symbol_ref @Pipe1::@arg1 : !b10i
       %sub = p4hir.binop(sub, %val_1, %arg1_2) : !b10i
       p4hir.assign %sub, %x1 : <!b10i>
-      %oarg2 = p4hir.symbol_ref @oarg2 : !p4hir.ref<!b10i>
+      %oarg2 = p4hir.symbol_ref @Pipe1::@oarg2 : !p4hir.ref<!b10i>
       %val_3 = p4hir.read %x1 : <!b10i>
       p4hir.assign %val_3, %oarg2 : <!b10i>
-      %topV_4 = p4hir.symbol_ref @topV : !p4hir.ref<!b10i>
+      %topV_4 = p4hir.symbol_ref @Pipe1::@topV : !p4hir.ref<!b10i>
       %val_5 = p4hir.read %x1 : <!b10i>
       p4hir.assign %val_5, %topV_4 : <!b10i>
       p4hir.return

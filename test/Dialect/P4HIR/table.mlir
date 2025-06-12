@@ -83,10 +83,10 @@ module {
       } : !ActionProfile
     }
     p4hir.control_apply {
-      %t1_apply_result = p4hir.table_apply @t1 : !t1_
+      %t1_apply_result = p4hir.table_apply @c::@t1 : !t1_
       %hit = p4hir.struct_extract %t1_apply_result["hit"] : !t1_
       p4hir.if %hit {
-        %t2_apply_result = p4hir.table_apply @t2 : !t2_
+        %t2_apply_result = p4hir.table_apply @c::@t2 : !t2_
       }
     }
   }
