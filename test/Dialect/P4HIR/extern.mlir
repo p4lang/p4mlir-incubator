@@ -62,16 +62,16 @@ module {
     p4hir.instantiate @ext2<[!b16i, !void]> (%c0_b16i_0 : !b16i) as @ey
     p4hir.state @start {
       %c0_i32i_1 = p4hir.const #int0_i32i
-      %0 = p4hir.call_method @x::@method(%c0_i32i_1) : (!i32i) -> !i32i
+      %0 = p4hir.call_method @p::@x::@method(%c0_i32i_1) : (!i32i) -> !i32i
       %c0_b8i = p4hir.const #int0_b8i
-      p4hir.call_method @y::@method<[!b8i]>(%c0_b8i) : (!b8i) -> ()
+      p4hir.call_method @p::@y::@method<[!b8i]>(%c0_b8i) : (!b8i) -> ()
       %c0_b16i_2 = p4hir.const #int0_b16i
       %c0_b8i_3 = p4hir.const #int0_b8i
-      p4hir.call_method @ex::@method<[!b8i]>(%c0_b16i_2, %c0_b8i_3) : (!b16i, !b8i) -> ()
+      p4hir.call_method @p::@ex::@method<[!b8i]>(%c0_b16i_2, %c0_b8i_3) : (!b16i, !b8i) -> ()
       %c1_b12i = p4hir.const #int1_b12i
-      %1 = p4hir.call_method @ey::@method<[!b12i]>(%c1_b12i) : (!b12i) -> !b16i
+      %1 = p4hir.call_method @p::@ey::@method<[!b12i]>(%c1_b12i) : (!b12i) -> !b16i
       %c0_b8i_4 = p4hir.const #int0_b8i
-      p4hir.call_method @ey::@method<[!b8i]>(%1, %c0_b8i_4) : (!b16i, !b8i) -> ()
+      p4hir.call_method @p::@ey::@method<[!b8i]>(%1, %c0_b8i_4) : (!b16i, !b8i) -> ()
       p4hir.transition to @p::@accept
     }
     p4hir.state @accept {
@@ -102,8 +102,8 @@ module {
     p4hir.instantiate @MyCounter<[!b10i]> (%cast : !b32i) as @counter_set
     p4hir.instantiate @Inner () as @inner
     p4hir.state @start {
-      %counter_set = p4hir.symbol_ref @counter_set : !MyCounter_b10i
-      p4hir.apply @inner(%counter_set) : (!MyCounter_b10i) -> ()
+      %counter_set = p4hir.symbol_ref @Test::@counter_set : !MyCounter_b10i
+      p4hir.apply @Test::@inner(%counter_set) : (!MyCounter_b10i) -> ()
       p4hir.transition to @Test::@accept
     }
     p4hir.state @accept {
@@ -127,8 +127,8 @@ module {
     p4hir.instantiate @MyCounter<[!b10i]> (%cast : !b32i) as @counter_set
     p4hir.instantiate @Inner () as @inner
     p4hir.control_apply {
-      %counter_set = p4hir.symbol_ref @counter_set : !MyCounter_b10i
-      p4hir.apply @inner(%counter_set) : (!MyCounter_b10i) -> ()
+      %counter_set = p4hir.symbol_ref @Test2::@counter_set : !MyCounter_b10i
+      p4hir.apply @Test2::@inner(%counter_set) : (!MyCounter_b10i) -> ()
     }
   }
 }

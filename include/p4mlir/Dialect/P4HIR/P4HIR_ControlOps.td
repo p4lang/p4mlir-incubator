@@ -85,7 +85,7 @@ def TableApplyOp : P4HIR_Op<"table_apply",
   }];
 
   let results = (outs StructType:$apply_result);
-  let arguments = (ins FlatSymbolRefAttr:$callee);
+  let arguments = (ins SymbolRefAttr:$callee);
 
   // TODO: Add verifier
   let hasVerifier = 0;

@@ -1497,6 +1497,7 @@ def CallMethodOp : P4HIR_Op<"call_method",
     mlir::Operation *resolveCallableInTable(mlir::SymbolTableCollection *symbolTable);
 
     P4HIR::ExternOp getExtern();
+    mlir::StringAttr getMethodName();
   }];
 }
 
