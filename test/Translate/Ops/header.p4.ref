@@ -1,0 +1,119 @@
+header H {
+    bit<32> x;
+    bit<32> y;
+}
+enum bit<16> EthTypes {
+    ARP = 16w2054,
+    EtherTalk = 16w32923,
+    IPX = 16w33079,
+    IPv4 = 16w2048,
+    IPv6 = 16w34525,
+    RARP = 16w32821,
+    VLAN = 16w33024
+}
+struct Internal {
+    bit<32> x;
+    int<32> y;
+}
+header Ethernet {
+    bit<48> src;
+    bit<48> dest;
+    EthTypes type;
+    bool b;
+    Internal s;
+    varbit<32> v;
+}
+struct Headers {
+    Ethernet eth;
+}
+header E {
+}
+header Hwvb {
+    bit<32> x;
+    bit<32> y;
+    varbit<32> v;
+}
+action test2() {
+    H h;
+
+    h = (H) {x = 32w10, y = 32w12};
+    h = (H) {x = 32w12, y = 32w10};
+    h.setInvalid();
+    if (!h.isValid()) {
+        h.x = (bit<32>)(32w42);
+    }
+     else {
+        h.y = (bit<32>)(32w36);
+    }
+    return;
+}
+
+action test3() {
+    H h1;
+    H h2 = (H) {x = 32w5, y = 32w0};
+    H h3 = (H) {x = 32w0, y = 32w0};
+
+    h1.setInvalid();
+    return;
+}
+
+action test1(inout Headers h) {
+    bool hasReturned = false;
+
+    if ((!h.eth.isValid())) {
+        hasReturned = true;
+    }
+     else {
+        if ((h.eth.type == EthTypes.IPv4)) {
+        }
+         else {
+            h.eth.type = (EthTypes)(16w0);
+            h.eth.setValid();
+        }
+    }
+    if ((!hasReturned)) {
+    }
+    return;
+}
+
+action test4(inout H h, inout E e) {
+    bit<32> x = h.x;
+
+    h.setInvalid();
+    e.setInvalid();
+    if (e.isValid()) {
+        h.setValid();
+        h.x = x;
+    }
+    return;
+}
+
+action assign_header() {
+    Ethernet e1;
+    Ethernet e2;
+
+    e1 = e2;
+    return;
+}
+
+action assign_invalid_header() {
+    Ethernet e;
+
+    e.setInvalid();
+    return;
+}
+
+action compare_varbits(inout Hwvb h) {
+    bool hasReturned_0 = false;
+    Hwvb h1;
+
+    if ((h1.v == h.v)) {
+        {
+            hasReturned_0 = true;
+        }
+    }
+    if ((!hasReturned_0)) {
+    }
+    return;
+}
+
