@@ -11,8 +11,6 @@ header Header {
     bit<32> data;
 }
 
-// CHECK: ![[P:.*]] = !p4hir.package<"P"<!p4hir.dontcare, !p4hir.dontcare>>
-
 extern packet_in {
     void extract<T>(out T hdr);
     void extract<T>(out T variableSizeHeader,
@@ -51,5 +49,6 @@ parser p0(packet_in p, out Header h) {
  struct hdr_t { }
  struct meta_t { }
 
-// CHECK: p4hir.instantiate @P(%nothing) as "main" : (!nothing) -> ![[P]]
+// CHECK: %[[nothing:.*]] = p4hir.construct @nothing () : !nothing
+// CHECK: p4hir.instantiate @P<[!p4hir.dontcare, !p4hir.dontcare]> (%[[nothing]] : !nothing) as @main
  P<_, _>() main;

@@ -15,8 +15,6 @@
 #int2_b8i = #p4hir.int<2> : !b8i
 #int3_b8i = #p4hir.int<3> : !b8i
 !headers = !p4hir.struct<"headers", h1: !h1_t, h2: !h2_t, h3: !h3_t>
-// CHECK: !subParserImpl = !p4hir.parser<"subParserImpl", (!p4corelib.packet_in, !p4hir.ref<!headers>, !p4hir.ref<!b8i>)>
-!subParserImpl = !p4hir.parser<"subParserImpl", (!packet_in, !p4hir.ref<!headers>, !p4hir.ref<!b8i>)>
 module {
   p4hir.extern @packet_in annotations {corelib} {
     p4hir.overload_set @extract {
@@ -42,7 +40,7 @@ module {
       p4hir.scope {
         %h2_field_ref = p4hir.struct_extract_ref %arg1["h2"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h2_t>
-        p4hir.call_method @packet_in::@extract<[!h2_t]> (%arg0, %hdr_out_arg) : !packet_in, (!p4hir.ref<!h2_t>) -> ()
+        p4hir.call_method @packet_in::@extract<[!h2_t]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!h2_t>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!h2_t>
         p4hir.assign %val_0, %h2_field_ref : <!h2_t>
       }
@@ -63,13 +61,13 @@ module {
   // CHECK-LABEL: parserI
   // CHECK-SAME: !p4corelib.packet_in
   p4hir.parser @parserI(%arg0: !packet_in {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !p4hir.ref<!headers> {p4hir.dir = #out, p4hir.param_name = "hdr"})() {
-    %subp = p4hir.instantiate @subParserImpl() as "subp" : () -> !subParserImpl
+    p4hir.instantiate @subParserImpl() as @subp
     %my_next_hdr_type = p4hir.variable ["my_next_hdr_type"] : <!b8i>
     p4hir.state @start {
       p4hir.scope {
         %h1_field_ref = p4hir.struct_extract_ref %arg1["h1"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h1_t>
-        p4hir.call_method @packet_in::@extract<[!h1_t]> (%arg0, %hdr_out_arg) : !packet_in, (!p4hir.ref<!h1_t>) -> ()
+        p4hir.call_method @packet_in::@extract<[!h1_t]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!h1_t>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!h1_t>
         p4hir.assign %val_0, %h1_field_ref : <!h1_t>
       }
@@ -99,7 +97,7 @@ module {
         %val_0 = p4hir.read %arg1 : <!headers>
         p4hir.assign %val_0, %hdr_inout_arg : <!headers>
         %ret_next_hdr_type_out_arg = p4hir.variable ["ret_next_hdr_type_out_arg"] : <!b8i>
-        p4hir.apply %subp(%arg0, %hdr_inout_arg, %ret_next_hdr_type_out_arg) : !subParserImpl
+        p4hir.apply @subp(%arg0, %hdr_inout_arg, %ret_next_hdr_type_out_arg) : (!packet_in, !p4hir.ref<!headers>, !p4hir.ref<!b8i>) -> ()
         %val_1 = p4hir.read %hdr_inout_arg : <!headers>
         p4hir.assign %val_1, %arg1 : <!headers>
         %val_2 = p4hir.read %ret_next_hdr_type_out_arg : <!b8i>
@@ -122,7 +120,7 @@ module {
       p4hir.scope {
         %h3_field_ref = p4hir.struct_extract_ref %arg1["h3"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h3_t>
-        p4hir.call_method @packet_in::@extract<[!h3_t]> (%arg0, %hdr_out_arg) : !packet_in, (!p4hir.ref<!h3_t>) -> ()
+        p4hir.call_method @packet_in::@extract<[!h3_t]> of %arg0: !packet_in (%hdr_out_arg) : (!p4hir.ref<!h3_t>) -> ()
         %val = p4hir.read %hdr_out_arg : <!h3_t>
         p4hir.assign %val, %h3_field_ref : <!h3_t>
       }

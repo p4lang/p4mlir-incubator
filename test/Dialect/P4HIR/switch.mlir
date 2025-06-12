@@ -38,6 +38,6 @@ module {
     }
   }
   p4hir.package @top("_c" : !ct {p4hir.dir = #undir, p4hir.param_name = "_c"})
-  %c = p4hir.instantiate @c() as "c" : () -> !c
-  %main = p4hir.instantiate @top(%c) as "main" : (!c) -> !top
+  %c = p4hir.construct @c () : !c
+  p4hir.instantiate @top (%c : !c) as @main
 }

@@ -104,7 +104,7 @@ module {
         p4hir.call @cc () : () -> ()
       }
       %implementation = p4hir.table_entry "implementation" annotations {name = "foo"} {
-        %Annotated = p4hir.instantiate @Annotated() as "Annotated" : () -> !Annotated
+        %Annotated = p4hir.construct @Annotated() : !Annotated
         p4hir.yield %Annotated : !Annotated
       } : !Annotated
       %size = p4hir.table_size #int42_infint annotations {name = "dummy.size"}

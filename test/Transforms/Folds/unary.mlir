@@ -11,22 +11,22 @@
 
 // CHECK-LABEL: module
 module {
-  // CHECK-DAG: %[[true:.*]] = p4hir.const #true
-  // CHECK-DAG: %[[false:.*]] = p4hir.const #false
-  // CHECK-DAG: %[[cminus6_b8i:.*]] = p4hir.const #int-6_b8i
-  // CHECK-DAG: %[[cminus5_b8i:.*]] = p4hir.const #int-5_b8i
-  // CHECK-DAG: %[[c5:.*]] = p4hir.const #int5_b8i
-  %true = p4hir.const #true
-  %false = p4hir.const #false
-  %c-6_b8i = p4hir.const #int-6_b8i
-  %c-5_b8i = p4hir.const #int-5_b8i
-  %c5_b8i = p4hir.const #int5_b8i
-
   p4hir.func @blackhole(!b8i)
   p4hir.func @blackhole_bool(!b)
 
   // CHECK-LABEL: p4hir.func @test_unary_const
   p4hir.func @test_unary_const() {
+    // CHECK-DAG: %[[true:.*]] = p4hir.const #true
+    // CHECK-DAG: %[[false:.*]] = p4hir.const #false
+    // CHECK-DAG: %[[cminus6_b8i:.*]] = p4hir.const #int-6_b8i
+    // CHECK-DAG: %[[cminus5_b8i:.*]] = p4hir.const #int-5_b8i
+    // CHECK-DAG: %[[c5:.*]] = p4hir.const #int5_b8i
+    %true = p4hir.const #true
+    %false = p4hir.const #false
+    %c-6_b8i = p4hir.const #int-6_b8i
+    %c-5_b8i = p4hir.const #int-5_b8i
+    %c5_b8i = p4hir.const #int5_b8i
+  
     // CHECK: p4hir.call @blackhole (%[[cminus5_b8i]]) : (!b8i) -> ()
     %r1 = p4hir.unary(minus, %c5_b8i) : !b8i
     p4hir.call @blackhole(%r1) : (!b8i) -> ()
@@ -53,6 +53,12 @@ module {
 
   // CHECK-LABEL: p4hir.func @test_unary(%arg0: !b8i, %arg1: !p4hir.bool)
   p4hir.func @test_unary(%arg_b8i : !b8i, %arg_b : !b) {
+    %true = p4hir.const #true
+    %false = p4hir.const #false
+    %c-6_b8i = p4hir.const #int-6_b8i
+    %c-5_b8i = p4hir.const #int-5_b8i
+    %c5_b8i = p4hir.const #int5_b8i
+  
     // CHECK: p4hir.call @blackhole (%arg0)
     %m1 = p4hir.unary(minus, %arg_b8i) : !b8i
     %m2 = p4hir.unary(minus, %m1) : !b8i
