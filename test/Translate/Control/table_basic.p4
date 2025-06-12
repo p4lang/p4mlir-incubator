@@ -25,14 +25,14 @@ control c(in bit<32> arg) {
     table t1 {
     // CHECK: p4hir.table_actions {
     // CHECK:    p4hir.table_action @a(%arg1: !b32i {p4hir.param_name = "carg"}) {
-    // CHECK:      p4hir.call @a (%arg1) : (!b32i) -> ()
+    // CHECK:      p4hir.call @c::@a (%arg1) : (!b32i) -> ()
     // CHECK:    }
     // CHECK:    p4hir.table_action @b() {
-    // CHECK:      p4hir.call @b () : () -> ()
+    // CHECK:      p4hir.call @c::@b () : () -> ()
     // CHECK:    }
     // CHECK:  }
     // CHECK:  p4hir.table_default_action {
-    // CHECK:    p4hir.call @b () : () -> ()
+    // CHECK:    p4hir.call @c::@b () : () -> ()
     // CHECK:  }
         actions = { a; b; }
         default_action = b;
@@ -68,9 +68,9 @@ control c(in bit<32> arg) {
         }
     }
     // CHECK: p4hir.control_apply {
-    // CHECK:   %[[t1_apply_result:.*]] = p4hir.table_apply @t1 : !t1_
+    // CHECK:   %[[t1_apply_result:.*]] = p4hir.table_apply @c::@t1 : !t1_
     // CHECK:   %[[hit:.*]] = p4hir.struct_extract %[[t1_apply_result]]["hit"] : !t1_
     // CHECK:   p4hir.if %[[hit]] {
-    // CHECK:     %{{.*}}= p4hir.table_apply @t2 : !t2_
+    // CHECK:     %{{.*}}= p4hir.table_apply @c::@t2 : !t2_
     // CHECK:   }
 }

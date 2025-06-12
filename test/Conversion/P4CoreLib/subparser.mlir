@@ -97,7 +97,7 @@ module {
         %val_0 = p4hir.read %arg1 : <!headers>
         p4hir.assign %val_0, %hdr_inout_arg : <!headers>
         %ret_next_hdr_type_out_arg = p4hir.variable ["ret_next_hdr_type_out_arg"] : <!b8i>
-        p4hir.apply @subp(%arg0, %hdr_inout_arg, %ret_next_hdr_type_out_arg) : (!packet_in, !p4hir.ref<!headers>, !p4hir.ref<!b8i>) -> ()
+        p4hir.apply @parserI::@subp(%arg0, %hdr_inout_arg, %ret_next_hdr_type_out_arg) : (!packet_in, !p4hir.ref<!headers>, !p4hir.ref<!b8i>) -> ()
         %val_1 = p4hir.read %hdr_inout_arg : <!headers>
         p4hir.assign %val_1, %arg1 : <!headers>
         %val_2 = p4hir.read %ret_next_hdr_type_out_arg : <!b8i>

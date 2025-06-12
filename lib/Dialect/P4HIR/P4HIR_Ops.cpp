@@ -1012,16 +1012,9 @@ static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs
 //  - Actions defined at control level. Check for them first.
 // This largely duplicates verifySymbolUses() below, though the latter emits diagnostics
 mlir::Operation *P4HIR::CallOp::resolveCallableInTable(mlir::SymbolTableCollection *symbolTable) {
-    auto sym = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
+    auto sym = (*this)->getAttrOfType<SymbolRefAttr>("callee");
     if (!sym) return nullptr;
 
-    // First, check for actions defined at control level
-    if (auto controlOp = (*this)->getParentOfType<P4HIR::ControlOp>()) {
-        if (auto fn = symbolTable->lookupSymbolIn<P4HIR::FuncOp>(controlOp, sym))
-            return fn.getAction() ? fn : nullptr;
-    }
-
-    // Now, resolve to functions / actions defined at top level
     if (auto *decl = symbolTable->lookupSymbolIn(getParentModule(*this), sym)) {
         if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
             return fn;
@@ -1039,37 +1032,31 @@ mlir::Operation *P4HIR::CallOp::resolveCallableInTable(mlir::SymbolTableCollecti
 
 LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
-    auto sym = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
+    auto sym = (*this)->getAttrOfType<SymbolRefAttr>("callee");
     if (!sym) return emitOpError("requires a 'callee' symbol reference attribute");
 
     // Callee might be:
     //  - Overload set, then we need to look for a particular overload
     //  - Normal functions. They are defined at top-level only. Top-level actions are also here.
-    //  - Actions defined at control level. Check for them first.
+    //  - Actions defined at control level. References to them should be fully qualified
     P4HIR::FuncOp fn;
-    if (auto controlOp = (*this)->getParentOfType<P4HIR::ControlOp>()) {
-        fn = symbolTable.lookupSymbolIn<FuncOp>(controlOp, sym);
-        if (fn && !fn.getAction())
-            return emitOpError() << "'" << sym << "' does not reference a valid action";
-    }
-
-    if (!fn) {
-        if (auto *decl = symbolTable.lookupSymbolIn(getParentModule(*this), sym)) {
-            if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
-                // We good here
-            } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
-                // Find the FuncOp with the correct # of operands
-                for (Operation &nestedOp : ovl.getBody().front()) {
-                    auto f = llvm::cast<FuncOp>(nestedOp);
-                    if (f.getNumArguments() == getNumOperands()) {
-                        fn = f;
-                        break;
-                    }
+    if (auto *decl = symbolTable.lookupSymbolIn(getParentModule(*this), sym)) {
+        if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
+            // Action nested in control
+            if (fn->getParentOfType<P4HIR::ControlOp>() && !fn.getAction())
+                return emitOpError() << "'" << sym << "' does not reference a valid action";
+        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
+            // Find the FuncOp with the correct # of operands
+            for (Operation &nestedOp : ovl.getBody().front()) {
+                auto f = llvm::cast<FuncOp>(nestedOp);
+                if (f.getNumArguments() == getNumOperands()) {
+                    fn = f;
+                    break;
                 }
-                if (!fn) return emitOpError() << "'" << sym << "' failed to resolve overload set";
-            } else
-                return emitOpError() << "'" << sym << "' does not reference a valid function";
-        }
+            }
+            if (!fn) return emitOpError() << "'" << sym << "' failed to resolve overload set";
+        } else
+            return emitOpError() << "'" << sym << "' does not reference a valid function";
     }
 
     if (!fn) return emitOpError() << "'" << sym << "' does not reference a valid function";
@@ -2190,12 +2177,18 @@ LogicalResult P4HIR::ConstructOp::verifySymbolUses(SymbolTableCollection &symbol
 }
 
 LogicalResult P4HIR::SymToValueOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-    // TODO
+    // Check that the decl attribute was specified.
+    auto declAttr = (*this)->getAttrOfType<SymbolRefAttr>(getDeclAttrName());
+    if (!declAttr) return emitOpError("requires a 'decl' symbol reference attribute");
+
+    auto decl = symbolTable.lookupSymbolIn(getParentModule(*this), declAttr);
+    if (!decl) return emitOpError("cannot resolve symbol '") << declAttr << "' to declaration";
+
     return mlir::success();
 }
 
 void P4HIR::SymToValueOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
-    setNameFn(getResult(), getDecl().getRootReference());
+    setNameFn(getResult(), getDecl().getLeafReference());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2204,15 +2197,12 @@ void P4HIR::SymToValueOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 
 LogicalResult P4HIR::ApplyOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
-    auto calleeAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>(getCalleeAttrName());
+    auto calleeAttr = (*this)->getAttrOfType<SymbolRefAttr>(getCalleeAttrName());
     if (!calleeAttr) return emitOpError("requires a 'callee' symbol reference attribute");
 
     // Check that callee type corresponds to argument operands
-    auto inst = symbolTable.lookupNearestSymbolFrom<P4HIR::InstantiateOp>(*this, calleeAttr);
-    // No luck, try module scope. This is safe as we cannot have e.g. control nested in the
-    // control or parser inside parser.
-    if (!inst)
-        inst = symbolTable.lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this), calleeAttr);
+    auto inst =
+        symbolTable.lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this), calleeAttr);
     if (!inst)
         return emitOpError() << "'" << calleeAttr << "' does not reference a valid instantiation";
 
@@ -2273,22 +2263,20 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
     if (!sym) return emitOpError("requires a 'callee' symbol reference attribute");
 
     // Symbol ref should be pair of extern + method name
-    auto extSymAttr = sym.getRootReference(), methodSymAttr = sym.getLeafReference();
+    auto nestedRefs = sym.getNestedReferences();
+    if (nestedRefs.empty()) return emitOpError("requires a nested method name in '") << sym << "'";
+    auto methodSymAttr = nestedRefs.back();
+    auto extSymAttr = mlir::SymbolRefAttr::get(sym.getRootReference(), nestedRefs.drop_back());
 
     // Extern symbol refers to instantiation here. We need to resolve it first.
     SmallVector<mlir::Type> baseTypeOperands;
     if (!isIndirect()) {
-        // Check local scope first
-        auto inst = symbolTable.lookupNearestSymbolFrom<P4HIR::InstantiateOp>(*this, extSymAttr);
-        // No luck, try module scope. This is safe as we cannot have e.g. control nested in the
-        // control
-        if (!inst)
-            inst = symbolTable.lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this),
-                                                                    extSymAttr);
+        auto inst =
+            symbolTable.lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this), extSymAttr);
         if (!inst)
             return emitOpError() << "'" << extSymAttr
                                  << "' does not reference a valid instantiation";
-        extSymAttr = inst.getCalleeAttr().getRootReference();
+        extSymAttr = mlir::SymbolRefAttr::get(inst.getCalleeAttr().getRootReference());
         if (auto typeOps = inst.getTypeParameters())
             llvm::append_range(baseTypeOperands, typeOps->getAsValueRange<mlir::TypeAttr>());
     } else {
@@ -2400,6 +2388,8 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
     return success();
 }
 
+mlir::StringAttr P4HIR::CallMethodOp::getMethodName() { return getCallee().getLeafReference(); }
+
 // Callee might be:
 //  - Overload set, then we need to look for a particular overload
 //  - Normal methods
@@ -2411,8 +2401,7 @@ mlir::Operation *P4HIR::CallMethodOp::resolveCallableInTable(
     // Grab the extern
     if (auto ext = getExtern()) {
         // Now perform a method lookup
-        auto methodSymAttr = sym.getLeafReference();
-        auto *decl = ext.lookupSymbol(methodSymAttr);
+        auto *decl = ext.lookupSymbol(getMethodName());
         if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
             return fn;
         } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
@@ -2429,13 +2418,16 @@ mlir::Operation *P4HIR::CallMethodOp::resolveCallableInTable(
 
 P4HIR::ExternOp P4HIR::CallMethodOp::getExtern() {
     auto sym = getCallee();
-    auto extSymAttr = sym.getRootReference();
+
+    // Symbol ref should be pair of extern + method name
+    auto nestedRefs = sym.getNestedReferences();
+    assert(!nestedRefs.empty() && "requires a nested method name");
+    auto extSymAttr = mlir::SymbolRefAttr::get(sym.getRootReference(), nestedRefs.drop_back());
 
     if (!isIndirect()) {
-        auto inst = SymbolTable::lookupNearestSymbolFrom<P4HIR::InstantiateOp>(*this, extSymAttr);
-        if (!inst) inst = getParentModule(*this).lookupSymbol<P4HIR::InstantiateOp>(extSymAttr);
+        auto inst = getParentModule(*this).lookupSymbol<P4HIR::InstantiateOp>(extSymAttr);
         assert(inst && "expected a valid instantiation");
-        extSymAttr = inst.getCalleeAttr().getRootReference();
+        extSymAttr = mlir::SymbolRefAttr::get(inst.getCalleeAttr().getRootReference());
     }
 
     auto res = getParentModule(*this).lookupSymbol<P4HIR::ExternOp>(extSymAttr);
@@ -2626,12 +2618,18 @@ void P4HIR::TableOp::build(
 // TableApplyOp
 //===----------------------------------------------------------------------===//
 LogicalResult P4HIR::TableApplyOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-    // TBD
-    return success();
+    // Check that the callee attribute was specified.
+    auto calleeAttr = (*this)->getAttrOfType<SymbolRefAttr>(getCalleeAttrName());
+    if (!calleeAttr) return emitOpError("requires a 'decl' symbol reference attribute");
+
+    auto table = symbolTable.lookupSymbolIn<P4HIR::TableOp>(getParentModule(*this), calleeAttr);
+    if (!table) return emitOpError("cannot resolve symbol '") << calleeAttr << "' to a valid table";
+
+    return mlir::success();
 }
 
 void P4HIR::TableApplyOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
-    llvm::SmallString<32> result(getCallee().getRootReference().getValue());
+    llvm::SmallString<32> result(getCallee().getLeafReference());
     result += "_apply_result";
     setNameFn(getResult(), result);
 }
@@ -2727,7 +2725,7 @@ void P4HIR::TableKeyOp::build(
 //===----------------------------------------------------------------------===//
 
 void P4HIR::TableActionOp::build(
-    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::SymbolRefAttr action,
+    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::FlatSymbolRefAttr action,
     P4HIR::FuncType cplaneType, ArrayRef<mlir::DictionaryAttr> argAttrs,
     mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Block::BlockArgListType, mlir::Location)>

@@ -508,6 +508,37 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return value;
     }
 
+    /// Returns fully qualified symbols, if we're nested inside parser or control
+    mlir::SymbolRefAttr getQualifiedSymbolRef(mlir::Operation *op) {
+        auto symName = op->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName());
+        assert(symName && "value does not have a valid symbol name");
+        return getQualifiedSymbolRef(symName);
+    }
+
+    mlir::SymbolRefAttr getQualifiedSymbolRef(llvm::StringRef value) {
+        return getQualifiedSymbolRef(builder.getStringAttr(value));
+    }
+
+    mlir::SymbolRefAttr getQualifiedSymbolRef(mlir::StringAttr attr) {
+        auto leafSymbol = mlir::SymbolRefAttr::get(attr);
+
+        const auto *ctrl = getCurrentNode<P4::IR::P4Control>();
+        if (!ctrl) ctrl = findContext<P4::IR::P4Control>();
+        if (ctrl) {
+            auto controlSymbol = builder.getStringAttr(ctrl->name.string_view());
+            return mlir::SymbolRefAttr::get(controlSymbol, {leafSymbol});
+        }
+
+        const auto *parser = getCurrentNode<P4::IR::P4Parser>();
+        if (!parser) parser = findContext<P4::IR::P4Parser>();
+        if (parser) {
+            auto parserSymbol = builder.getStringAttr(parser->name.string_view());
+            return mlir::SymbolRefAttr::get(parserSymbol, {leafSymbol});
+        }
+
+        return leafSymbol;
+    }
+
     mlir::Attribute convertAnnotationExpr(const P4::IR::Expression *ann);
     mlir::Attribute convert(const P4::IR::Annotation *anns);
     mlir::DictionaryAttr convert(const P4::IR::Vector<P4::IR::Annotation> &ann);
@@ -2056,7 +2087,9 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     if (!f->type->typeParameters->empty()) return false;
 
     ConversionTracer trace("Converting ", f);
-    ValueScope scope(*p4Values);
+    ValueTable functionValues, *savedValues = p4Values;
+    p4Values = &functionValues;
+    ValueScope scope(functionValues);
 
     auto annotations = convert(f->annotations);
 
@@ -2135,6 +2168,8 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     }
 
     setSymbol(f, mlir::SymbolRefAttr::get(origSymName));
+    p4Values = savedValues;
+
     return false;
 }
 
@@ -2241,7 +2276,9 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
         }
     }
 
-    setSymbol(act, mlir::SymbolRefAttr::get(action));
+    // Make actions nested inside controls fully qualified, so we can resolve
+    // properly even in the presence of name shadow
+    setSymbol(act, getQualifiedSymbolRef(action));
     p4Values = savedValues;
 
     return false;
@@ -2501,6 +2538,7 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             // We need to do some weird dance to resolve method call, as fCall->method will not
             // resolve to a known symbol.
             const auto *member = mce->method->checkedTo<P4::IR::Member>();
+
             auto callResultType = getOrCreateType(instance->actualMethodType->returnType);
             auto methodName =
                 mlir::SymbolRefAttr::get(builder.getContext(), member->member.string_view());
@@ -2519,8 +2557,11 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 auto dSym = p4Symbols.lookup(decl);
                 BUG_CHECK(dSym, "expected applied declaration to be converted: %1%", decl);
 
-                auto fullMethodName = mlir::SymbolRefAttr::get(
-                    builder.getContext(), dSym.getRootReference(), {methodName});
+                llvm::SmallVector<mlir::FlatSymbolRefAttr> nestedRefs(dSym.getNestedReferences());
+                nestedRefs.push_back(methodName);
+
+                auto fullMethodName = mlir::SymbolRefAttr::get(builder.getContext(),
+                                                               dSym.getRootReference(), nestedRefs);
 
                 callResult = b.create<P4HIR::CallMethodOp>(loc, callResultType, fullMethodName,
                                                            typeArguments, operands)
@@ -2859,7 +2900,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     auto parserOp = builder.create<P4HIR::ParserOp>(loc, parser->name.string_view(), applyType,
                                                     ctorType, argAttrs, annotations);
     parserOp.createEntryBlock();
-    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
+    auto parserSymbol = mlir::SymbolRefAttr::get(parserOp);
 
     mlir::OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&parserOp.getBody().front());
@@ -2876,8 +2917,8 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     for (const auto *param : parser->getConstructorParameters()->parameters) {
         llvm::StringRef paramName = param->name.string_view();
         auto paramType = getOrCreateType(param->type);
-        auto placeholder = P4HIR::CtorParamAttr::get(
-            paramType, mlir::SymbolRefAttr::get(parserSymbol), builder.getStringAttr(paramName));
+        auto placeholder =
+            P4HIR::CtorParamAttr::get(paramType, parserSymbol, builder.getStringAttr(paramName));
         auto val = builder.create<P4HIR::ConstOp>(getLoc(builder, param), placeholder, paramName);
         setValue(param, val);
     }
@@ -2892,14 +2933,12 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
         visit(parser->states);
 
         // Create default transition (to start state)
-        auto startStateSymbol = mlir::SymbolRefAttr::get(builder.getContext(),
-                                                         P4::IR::ParserState::start.string_view());
-
         builder.create<P4HIR::ParserTransitionOp>(
-            getEndLoc(builder, parser), mlir::SymbolRefAttr::get(parserSymbol, {startStateSymbol}));
+            getEndLoc(builder, parser),
+            getQualifiedSymbolRef(P4::IR::ParserState::start.string_view()));
     }
 
-    setSymbol(parser, mlir::SymbolRefAttr::get(parserOp));
+    setSymbol(parser, parserSymbol);
     return false;
 }
 
@@ -2920,9 +2959,6 @@ bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
     // Materialize all state components
     visit(state->components);
 
-    const auto *parser = findContext<P4::IR::P4Parser>();
-    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
-
     // accept / reject states are special, their bodies contain only accept / reject ops
     if (state->name == P4::IR::ParserState::accept) {
         builder.create<P4HIR::ParserAcceptOp>(getLoc(builder, state));
@@ -2939,10 +2975,10 @@ bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
         LOG4("Resolving direct transition: " << pe);
         auto loc = getLoc(builder, pe);
         const auto *nextState = resolvePath(pe->path, false)->checkedTo<P4::IR::ParserState>();
-        auto nextStateSymbol =
-            mlir::SymbolRefAttr::get(builder.getContext(), nextState->name.string_view());
+        // next state might not exist yet, so we do not use p4symbols here and
+        // build symbol reference by hand
         builder.create<P4HIR::ParserTransitionOp>(
-            loc, mlir::SymbolRefAttr::get(parserSymbol, {nextStateSymbol}));
+            loc, getQualifiedSymbolRef(nextState->name.string_view()));
     } else {
         LOG4("Resolving select transition: " << state->selectExpression);
         visit(state->selectExpression);
@@ -2953,9 +2989,6 @@ bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
 
 bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
     ConversionTracer trace("Converting ", select);
-
-    const auto *parser = findContext<P4::IR::P4Parser>();
-    auto parserSymbol = mlir::StringAttr::get(builder.getContext(), parser->name.string_view());
 
     // Materialize value to select over. Select is always a ListExpression,
     // even if it contains a single value. Lists ae lowered to tuples,
@@ -2976,8 +3009,6 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
     for (const auto *selectCase : select->selectCases) {
         const auto *nextState =
             resolvePath(selectCase->state->path, false)->checkedTo<P4::IR::ParserState>();
-        auto nextStateSymbol =
-            mlir::SymbolRefAttr::get(builder.getContext(), nextState->name.string_view());
         builder.create<P4HIR::ParserSelectCaseOp>(
             getLoc(builder, selectCase),
             [&](mlir::OpBuilder &b, mlir::Location) {
@@ -3014,15 +3045,12 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                 }
                 b.create<P4HIR::YieldOp>(endLoc, keyVal);
             },
-            mlir::SymbolRefAttr::get(parserSymbol, {nextStateSymbol}));
+            getQualifiedSymbolRef(nextState->name.string_view()));
     }
 
     // If there is no default case, then synthesize one explicitly
     // FIXME: signal `error.NoMatch` error.
     if (!hasDefaultCase) {
-        auto rejectStateSymbol = mlir::SymbolRefAttr::get(
-            builder.getContext(), P4::IR::ParserState::reject.string_view());
-
         auto endLoc = getEndLoc(builder, select);
         builder.create<P4HIR::ParserSelectCaseOp>(
             endLoc,
@@ -3030,7 +3058,7 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                 b.create<P4HIR::YieldOp>(endLoc,
                                          builder.create<P4HIR::UniversalSetOp>(endLoc).getResult());
             },
-            mlir::SymbolRefAttr::get(parserSymbol, {rejectStateSymbol}));
+            getQualifiedSymbolRef(P4::IR::ParserState::reject.string_view()));
     }
 
     return false;
@@ -3104,7 +3132,7 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         auto instance = builder.create<P4HIR::InstantiateOp>(
             getLoc(builder, decl), parserSym.getRootReference(), operands, nameAttr,
             mlir::ArrayAttr(), annotations);
-        setSymbol(decl, mlir::SymbolRefAttr::get(instance));
+        setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
         LOG4("resolved as extern instantiation");
         auto externName = builder.getStringAttr(ext->name.string_view());
@@ -3113,7 +3141,7 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
             getLoc(builder, decl), externName, operands, nameAttr,
             typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters),
             annotations);
-        setSymbol(decl, mlir::SymbolRefAttr::get(instance));
+        setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *control = type->to<P4::IR::P4Control>()) {
         LOG4("resolved as control instantiation");
         auto controlSym = p4Symbols.lookup(control);
@@ -3122,7 +3150,7 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         auto instance = builder.create<P4HIR::InstantiateOp>(
             getLoc(builder, decl), controlSym.getRootReference(), operands, nameAttr,
             mlir::ArrayAttr(), annotations);
-        setSymbol(decl, mlir::SymbolRefAttr::get(instance));
+        setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *pkg = type->to<P4::IR::Type_Package>()) {
         LOG4("resolved as package instantiation");
         auto packageName = builder.getStringAttr(pkg->name.string_view());
@@ -3130,7 +3158,7 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
             getLoc(builder, decl), packageName, operands, nameAttr,
             typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters),
             annotations);
-        setSymbol(decl, mlir::SymbolRefAttr::get(instance));
+        setSymbol(decl, getQualifiedSymbolRef(instance));
     } else {
         BUG("unsupported instance: %1% (of type %2%)", decl, dbp(type));
     }
@@ -3250,7 +3278,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
     auto controlOp = builder.create<P4HIR::ControlOp>(loc, control->name.string_view(), applyType,
                                                       ctorType, argAttrs, annotations);
     controlOp.createEntryBlock();
-    auto controlSymbol = mlir::StringAttr::get(builder.getContext(), control->name.string_view());
+    auto controlSymbol = mlir::SymbolRefAttr::get(controlOp);
 
     mlir::OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&controlOp.getBody().front());
@@ -3267,8 +3295,8 @@ bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
     for (const auto *param : control->getConstructorParameters()->parameters) {
         llvm::StringRef paramName = param->name.string_view();
         auto paramType = getOrCreateType(param->type);
-        auto placeholder = P4HIR::CtorParamAttr::get(
-            paramType, mlir::SymbolRefAttr::get(controlSymbol), builder.getStringAttr(paramName));
+        auto placeholder =
+            P4HIR::CtorParamAttr::get(paramType, controlSymbol, builder.getStringAttr(paramName));
         auto val = builder.create<P4HIR::ConstOp>(getLoc(builder, param), placeholder, paramName);
         setValue(param, val);
     }
@@ -3289,11 +3317,12 @@ bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
 
         // Actions could refer to control's arguments. Materialize them as control locals
         for (auto [param, bodyArg] : llvm::zip(params, body.getArguments())) {
-            auto nameAttr = getUniqueName(
-                builder.getStringAttr(llvm::Twine("__local_") + param->name.string_view()));
+            auto nameAttr = getUniqueName(builder.getStringAttr(llvm::Twine("__local_") +
+                                                                control->name.string_view() + "_" +
+                                                                param->name.string_view()));
             auto local =
                 builder.create<P4HIR::ControlLocalOp>(getLoc(builder, param), nameAttr, bodyArg);
-            setSymbol(param, mlir::SymbolRefAttr::get(local));
+            setSymbol(param, getQualifiedSymbolRef(local));
         }
 
         for (const auto *local : control->controlLocals) {
@@ -3302,11 +3331,12 @@ bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
             // themselves, no need to do something special
             if (const auto *var = local->to<P4::IR::Declaration_Variable>()) {
                 auto val = p4Values->lookup(local);
-                auto nameAttr = getUniqueName(
-                    builder.getStringAttr(llvm::Twine("__local_") + var->name.string_view()));
+                auto nameAttr = getUniqueName(builder.getStringAttr(llvm::Twine("__local_") +
+                                                                    control->name.string_view() +
+                                                                    "_" + var->name.string_view()));
                 auto local =
                     builder.create<P4HIR::ControlLocalOp>(getLoc(builder, var), nameAttr, val);
-                setSymbol(var, mlir::SymbolRefAttr::get(local));
+                setSymbol(var, getQualifiedSymbolRef(local));
             }
         }
 
@@ -3324,7 +3354,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
         }
     }
 
-    setSymbol(control, mlir::SymbolRefAttr::get(controlOp));
+    setSymbol(control, controlSymbol);
 
     p4Values = savedValues;
 
@@ -3343,7 +3373,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Table *table) {
             for (const auto *prop : table->properties->properties) visit(prop);
         });
 
-    setSymbol(table, mlir::SymbolRefAttr::get(tableOp));
+    setSymbol(table, getQualifiedSymbolRef(tableOp));
     return false;
 }
 
@@ -3393,8 +3423,10 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
                     auto actSym = p4Symbols.lookup(action);
                     BUG_CHECK(actSym, "expected reference action to be converted: %1%", action);
 
+                    auto localActSym = mlir::SymbolRefAttr::get(actSym.getLeafReference());
+
                     b.create<P4HIR::TableActionOp>(
-                        getLoc(builder, expr), actSym, funcType, controlPlaneParamAttrs,
+                        getLoc(builder, expr), localActSym, funcType, controlPlaneParamAttrs,
                         aAnnotations,
                         [&](mlir::OpBuilder &, mlir::Block::BlockArgListType args, mlir::Location) {
                             for (const auto arg : args) {
