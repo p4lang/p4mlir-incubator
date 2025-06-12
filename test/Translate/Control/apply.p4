@@ -18,7 +18,7 @@ control Pipe(bit<10> arg1, in int<16> arg2, out int<16> arg3, inout int<16> arg4
     apply {
         bar();
         int<16> x1;
-// CHECK:         p4hir.apply @inner(%{{.*}}, %{{.*}}, %{{.*}}) : (!b10i, !i16i, !p4hir.ref<!i16i>) -> ()
+// CHECK:         p4hir.apply @Pipe::@inner(%{{.*}}, %{{.*}}, %{{.*}}) : (!b10i, !i16i, !p4hir.ref<!i16i>) -> ()
         inner.apply(1, 2, x1);
     }
 }

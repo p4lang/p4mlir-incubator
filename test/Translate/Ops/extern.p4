@@ -83,17 +83,17 @@ parser p() {
     ext2<bit<16>, void>(16w0) ey;
 
     state start {
-      // CHECK: p4hir.call_method @x::@method(%{{.*}}) : (!i32i) -> !i32i
+      // CHECK: p4hir.call_method @p::@x::@method(%{{.*}}) : (!i32i) -> !i32i
       x.method(0);
 
-      // CHECK: p4hir.call_method @y::@method<[!b8i]>(%{{.*}}) : (!b8i) -> ()
+      // CHECK: p4hir.call_method @p::@y::@method<[!b8i]>(%{{.*}}) : (!b8i) -> ()
       y.method(8w0);
 
-      // CHECK: p4hir.call_method @ex::@method<[!b8i]>(%{{.*}}, %{{.*}}) : (!b16i, !b8i) -> ()
+      // CHECK: p4hir.call_method @p::@ex::@method<[!b8i]>(%{{.*}}, %{{.*}}) : (!b16i, !b8i) -> ()
       ex.method(0, 8w0);
 
-      // CHECK: p4hir.call_method @ey::@method<[!b12i]>(%{{.*}}) : (!b12i) -> !b16i
-      // CHECK: p4hir.call_method @ey::@method<[!b8i]>(%{{.*}}, %{{.*}}) : (!b16i, !b8i) -> ()
+      // CHECK: p4hir.call_method @p::@ey::@method<[!b12i]>(%{{.*}}) : (!b12i) -> !b16i
+      // CHECK: p4hir.call_method @p::@ey::@method<[!b8i]>(%{{.*}}, %{{.*}}) : (!b16i, !b8i) -> ()
       ey.method(ey.method(12w1), 8w0);
 
       transition accept;
@@ -117,7 +117,8 @@ parser Test() {
     Inner() inner;
 
     state start {
-        // xHECK: p4hir.apply %[[inner]](%[[counter_set]]) : !Inner
+        // CHECK: %[[counter_set:.*]] = p4hir.symbol_ref @Test::@counter_set : !MyCounter_b10i
+        // CHECK: p4hir.apply @Test::@inner(%[[counter_set]]) : (!MyCounter_b10i) -> ()
         inner.apply(counter_set);
         transition accept;
     }

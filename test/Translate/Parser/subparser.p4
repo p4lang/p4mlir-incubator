@@ -34,16 +34,16 @@ parser p(in empty e, in int<10> sinit) {
     state start {
         s = 1;
         sp.apply(e);
-// CHECK: p4hir.apply @sp(%arg0) : (!empty) -> ()
+// CHECK: p4hir.apply @p::@sp(%arg0) : (!empty) -> ()
         transition next;
     }
 
     state next {
         s = 2;
         sp2.apply(e);
-// CHECK: p4hir.apply @sp2(%arg0) : (!empty) -> ()
+// CHECK: p4hir.apply @p::@sp2(%arg0) : (!empty) -> ()
 // CHECK: p4hir.scope
-// CHECK: p4hir.apply @sp3(%s_inout_arg, %matched_out_arg) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
+// CHECK: p4hir.apply @p::@sp3(%s_inout_arg, %matched_out_arg) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
         bool matched = false;
         sp3.apply(s, matched);
 

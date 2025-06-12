@@ -68,9 +68,9 @@ control c(in bit<32> arg) {
         }
     }
     // CHECK: p4hir.control_apply {
-    // CHECK:   %[[t1_apply_result:.*]] = p4hir.table_apply @t1 : !t1_
+    // CHECK:   %[[t1_apply_result:.*]] = p4hir.table_apply @c::@t1 : !t1_
     // CHECK:   %[[hit:.*]] = p4hir.struct_extract %[[t1_apply_result]]["hit"] : !t1_
     // CHECK:   p4hir.if %[[hit]] {
-    // CHECK:     %{{.*}}= p4hir.table_apply @t2 : !t2_
+    // CHECK:     %{{.*}}= p4hir.table_apply @c::@t2 : !t2_
     // CHECK:   }
 }
