@@ -553,11 +553,13 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return false;
     }
     bool preorder(const P4::IR::InvalidHeader *h) override {
-        // Should be resolved eslewhere
+        materializeConstantExpr(h);
+        visitAgain();
         return false;
     }
     bool preorder(const P4::IR::InvalidHeaderUnion *hu) override {
-        // Should be resolved eslewhere
+        materializeConstantExpr(hu);
+        visitAgain();
         return false;
     }
     bool preorder(const P4::IR::Declaration_MatchKind *mk) override {
@@ -1399,6 +1401,21 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
 
         return setConstantExpr(s, mlir::StringAttr::get(s->value.string_view(), type));
     }
+    if (const auto *h = expr->to<P4::IR::InvalidHeader>()) {
+        auto type = mlir::cast<P4HIR::HasDefaultValue>(getOrCreateType(h->headerType));
+        auto defValue = type.getDefaultValue();
+        BUG_CHECK(defValue, "cannot resolve default value for %1%", expr);
+
+        return setConstantExpr(h, defValue);
+    }
+    if (const auto *hu = expr->to<P4::IR::InvalidHeaderUnion>()) {
+        auto type = mlir::cast<P4HIR::HasDefaultValue>(getOrCreateType(hu->headerUnionType));
+        auto defValue = type.getDefaultValue();
+        BUG_CHECK(defValue, "cannot resolve default value for %1%", expr);
+
+        return setConstantExpr(hu, defValue);
+    }
+
     if (const auto *cast = expr->to<P4::IR::Cast>()) {
         mlir::Type destType = getOrCreateType(cast);
         mlir::Type srcType = getOrCreateType(cast->expr);

@@ -27,7 +27,7 @@ class P4HIR_TypeNoMnemonic<string name, string typeMnemonic, list<Trait> traits 
 // Integer types: signed (int<>), unsigned (bit<>) and arbitrary width (int)
 //===----------------------------------------------------------------------===//
 
-def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits"> {
+def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits", [HasDefaultValue]> {
   let summary = "fixed width integer type";
   let description = [{
     The `p4hir.bit` / `p4hir.int` type represents a P4 `bit` or `int` type.
@@ -48,6 +48,8 @@ def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits"> {
     std::string getAlias() const {
       return (isSigned() ? 'i' : 'b') + std::to_string(getWidth()) + 'i';
     };
+
+    mlir::TypedAttr getDefaultValue();
   }];
 }
 
@@ -77,7 +79,7 @@ class Int<int width>
   int bitwidth = width;
 }
 
-def InfIntType : P4HIR_Type<"InfInt", "infint"> {
+def InfIntType : P4HIR_Type<"InfInt", "infint", [HasDefaultValue]> {
   let summary = "arbitrary precision integer type";
   let description = [{
     `p4hir.infint` represents a P4 `int` type.
@@ -85,8 +87,9 @@ def InfIntType : P4HIR_Type<"InfInt", "infint"> {
 
   let extraClassDeclaration = [{
     llvm::StringRef getAlias() const { return "infint"; };
-  }];
 
+    mlir::TypedAttr getDefaultValue();
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -94,7 +97,7 @@ def InfIntType : P4HIR_Type<"InfInt", "infint"> {
 // with a fixed maximum width
 //===----------------------------------------------------------------------===//
 
-def VarBitsType : P4HIR_Type<"VarBits", "varbit"> {
+def VarBitsType : P4HIR_Type<"VarBits", "varbit", [HasDefaultValue]> {
   let summary = "bit-strings of dynamically-computed width with a fixed maximum width";
   let description = [{
     A variable-width bit-string type with a fixed maximum width.
@@ -103,6 +106,10 @@ def VarBitsType : P4HIR_Type<"VarBits", "varbit"> {
 
   let parameters = (ins "unsigned":$maxWidth);
   let assemblyFormat = "`<` $maxWidth `>`";
+
+  let extraClassDeclaration = [{
+    mlir::TypedAttr getDefaultValue();
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -110,7 +117,7 @@ def VarBitsType : P4HIR_Type<"VarBits", "varbit"> {
 // let's be more generic, it could be lowered later on
 //===----------------------------------------------------------------------===//
 
-def BooleanType : P4HIR_Type<"Bool", "bool"> {
+def BooleanType : P4HIR_Type<"Bool", "bool", [HasDefaultValue]> {
   let summary = "boolean type";
   let description = [{
     `p4hir.bool` represents a P4 `bool` type.
@@ -119,8 +126,8 @@ def BooleanType : P4HIR_Type<"Bool", "bool"> {
   let hasCustomAssemblyFormat = 1;
   let extraClassDeclaration = [{
     llvm::StringRef getAlias() const { return "bool"; };
+    mlir::TypedAttr getDefaultValue();
   }];
-
 }
 
 //===----------------------------------------------------------------------===//
@@ -356,7 +363,8 @@ class StructLikeType<string name, string typeMnemonic>
   StructLikeTypeInterface,
   DestructurableTypeInterface,
   FieldIDTypeInterface,
-  AnnotatedType
+  AnnotatedType,
+  HasDefaultValue
 ]> {
   let hasCustomAssemblyFormat = 1;
   let genVerifyDecl = 1;
@@ -484,6 +492,8 @@ class StructLikeType<string name, string typeMnemonic>
           destructured.try_emplace(mlir::IntegerAttr::get(mlir::IndexType::get(getContext()), i), field.type);
       return destructured;
     }
+
+    mlir::TypedAttr getDefaultValue() { return getStructLikeDefaultValue(*this); }
   }], "\n", extra2ClassDeclaration);
 }
 
@@ -502,7 +512,7 @@ def StructType : StructLikeType<"Struct", "struct"> {
 // by the type.
 //===----------------------------------------------------------------------===//
 
-def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit"> {
+def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit", [HasDefaultValue]> {
   let summary = "Valid bit type";
   let description = [{
     `p4hir.valid.bit` represents valid bit in headers.
@@ -511,6 +521,7 @@ def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit"> {
   let hasCustomAssemblyFormat = 1;
   let extraClassDeclaration = [{
     llvm::StringRef getAlias() const { return "validity_bit"; };
+    mlir::TypedAttr getDefaultValue();
   }];
 }
 
@@ -592,7 +603,7 @@ def HeaderStackType : StructLikeType<"HeaderStack", "header_stack"> {
 //===----------------------------------------------------------------------===//
 // EnumType, ErrorType  & SerEnumType
 //===----------------------------------------------------------------------===//
-def EnumType : P4HIR_Type<"Enum", "enum", [AnnotatedType]> {
+def EnumType : P4HIR_Type<"Enum", "enum", [AnnotatedType, HasDefaultValue]> {
   let summary = "enum type";
   let description = [{
     Represents an enumeration of values
@@ -639,6 +650,8 @@ def EnumType : P4HIR_Type<"Enum", "enum", [AnnotatedType]> {
     /// Returns the index of the requested field, or a nullopt if the field is
     /// not part of this enum.
     std::optional<size_t> indexOf(mlir::StringRef field);
+
+    mlir::TypedAttr getDefaultValue();
   }];
 }
 
@@ -665,7 +678,7 @@ def ErrorType : P4HIR_Type<"Error", "error", []> {
   }];
 }
 
-def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", [AnnotatedType]> {
+def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", [AnnotatedType, HasDefaultValue]> {
   let summary = "serializable enum type";
   let description = [{
     Represents an enumeration of values backed by some integer value
@@ -701,6 +714,8 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", [AnnotatedType]> {
 
     /// Returns the underlying value of the requested field. Must be BitsAttr.
     mlir::Attribute valueOf(mlir::StringRef field) { return getFields().get(field); }
+
+    mlir::TypedAttr getDefaultValue();
   }];
 }
 
@@ -842,7 +857,8 @@ def AliasType : P4HIR_Type<"Alias", "alias", [AnnotatedType]> {
 //===----------------------------------------------------------------------===//
 def ArrayType : P4HIR_Type<"Array", "array", [
   DeclareTypeInterfaceMethods<DestructurableTypeInterface>,
-  DeclareTypeInterfaceMethods<FieldIDTypeInterface>
+  DeclareTypeInterfaceMethods<FieldIDTypeInterface>,
+  HasDefaultValue
 ]> {
   let summary = "fixed-sized array";
   let description = [{
@@ -863,6 +879,10 @@ def ArrayType : P4HIR_Type<"Array", "array", [
 
   let assemblyFormat = [{
     `<` custom<Array>($size, $elementType) `>`
+  }];
+
+  let extraClassDeclaration = [{
+    mlir::TypedAttr getDefaultValue();
   }];
 }
 
