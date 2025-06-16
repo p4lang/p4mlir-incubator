@@ -5,6 +5,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/MLIRContext.h"
@@ -47,6 +48,19 @@ bool operator==(const FieldInfo &a, const FieldInfo &b) {
 llvm::hash_code hash_value(const FieldInfo &fi) {
     return llvm::hash_combine(fi.name, fi.type, fi.annotations);
 }
+
+mlir::TypedAttr getStructLikeDefaultValue(StructLikeTypeInterface type) {
+    llvm::SmallVector<mlir::Attribute> fieldDefaults;
+    for (auto field : type.getFields()) {
+        auto hasDef = mlir::dyn_cast<HasDefaultValue>(field.type);
+        if (!hasDef) return nullptr;
+        auto defValue = hasDef.getDefaultValue();
+        if (!defValue) return nullptr;
+        fieldDefaults.push_back(defValue);
+    }
+
+    return AggAttr::get(type, mlir::ArrayAttr::get(type.getContext(), fieldDefaults));
+}
 }  // namespace P4::P4MLIR::P4HIR
 
 #define GET_TYPEDEF_CLASSES
@@ -70,9 +84,21 @@ Type BitsType::parse(mlir::AsmParser &parser, bool isSigned) {
     return BitsType::get(context, width, isSigned);
 }
 
+mlir::TypedAttr BitsType::getDefaultValue() {
+    return P4HIR::IntAttr::get(*this, APInt::getZero(getWidth()));
+}
+
+mlir::TypedAttr InfIntType::getDefaultValue() { return P4HIR::IntAttr::get(*this, 0); }
+
+mlir::TypedAttr VarBitsType::getDefaultValue() {
+    return P4HIR::IntAttr::get(*this, APInt::getZero(getMaxWidth()));
+}
+
 Type BoolType::parse(mlir::AsmParser &parser) { return get(parser.getContext()); }
 
 void BoolType::print(mlir::AsmPrinter &printer) const {}
+
+mlir::TypedAttr BoolType::getDefaultValue() { return P4HIR::BoolAttr::get(getContext(), false); }
 
 Type P4HIRDialect::parseType(mlir::DialectAsmParser &parser) const {
     SMLoc typeLoc = parser.getCurrentLocation();
@@ -295,6 +321,10 @@ Type StructType::parse(AsmParser &p) {
     if (parseFields(p, name, parameters, annotations)) return {};
     return get(p.getContext(), name, parameters, annotations);
 }
+
+mlir::TypedAttr ValidBitType::getDefaultValue() {
+    return P4HIR::ValidityBitAttr::get(getContext(), ValidityBit::Invalid);
+};
 
 Type HeaderType::parse(AsmParser &p) {
     llvm::SmallVector<FieldInfo, 4> parameters;
@@ -588,6 +618,13 @@ std::optional<size_t> EnumType::indexOf(mlir::StringRef field) {
     return {};
 }
 
+mlir::TypedAttr EnumType::getDefaultValue() {
+    auto fields = getFields();
+    if (fields.empty()) return nullptr;
+
+    return P4HIR::EnumFieldAttr::get(*this, mlir::cast<mlir::StringAttr>(fields[0]));
+}
+
 Type ErrorType::parse(AsmParser &p) {
     llvm::SmallVector<Attribute> fields;
     if (p.parseCommaSeparatedList(AsmParser::Delimiter::LessGreater, [&]() {
@@ -665,6 +702,18 @@ Type SerEnumType::parse(AsmParser &p) {
     return get(name, type, fields, annotations.getDictionary(p.getContext()));
 }
 
+// The spec says that the default value is zero even if there is no zero field.
+// This looks like a terrible idea as this is non-representable w/o casting to
+// underlying type. We return null instead here.
+mlir::TypedAttr SerEnumType::getDefaultValue() {
+    for (auto field : getFields()) {
+        auto val = mlir::cast<P4HIR::IntAttr>(field.getValue());
+        if (val.getValue().isZero()) return P4HIR::EnumFieldAttr::get(*this, field.getName());
+    }
+
+    return nullptr;
+}
+
 Type ValidBitType::parse(mlir::AsmParser &parser) { return get(parser.getContext()); }
 
 void ValidBitType::print(mlir::AsmPrinter &printer) const {}
@@ -731,6 +780,16 @@ std::optional<DenseMap<Attribute, Type>> ArrayType::getSubelementIndexMap() cons
 }
 
 Type ArrayType::getTypeAtIndex(Attribute) const { return getElementType(); }
+
+mlir::TypedAttr ArrayType::getDefaultValue() {
+    auto hasDef = mlir::dyn_cast<HasDefaultValue>(getElementType());
+    if (!hasDef) return nullptr;
+    auto defValue = hasDef.getDefaultValue();
+    if (!defValue) return nullptr;
+
+    llvm::SmallVector<Attribute> defVals(getSize(), defValue);
+    return P4HIR::AggAttr::get(*this, mlir::ArrayAttr::get(getContext(), defVals));
+}
 
 void P4HIRDialect::registerTypes() {
     addTypes<

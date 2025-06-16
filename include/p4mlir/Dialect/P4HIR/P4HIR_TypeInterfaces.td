@@ -159,4 +159,21 @@ def AnnotatedType : TypeInterface<"AnnotatedType"> {
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
 
+
+def HasDefaultValue : TypeInterface<"HasDefaultValue"> {
+  let description = [{
+    Implemented by the types having a default value
+    Definition: https://p4.org/p4-spec/docs/P4-16-working-spec.html#sec-default-values
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/        "Provides the \"default\" value for a given type",
+      /*returnType=*/  "mlir::TypedAttr",
+      /*methodName=*/  "getDefaultValue"
+    >
+  ];
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+}
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPEINTERFACES_TD
