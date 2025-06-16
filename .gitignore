@@ -4,4 +4,5 @@ install/
 .vscode/
 .cursor/
 .idea/
+.DS_Store
 compile_commands.json
