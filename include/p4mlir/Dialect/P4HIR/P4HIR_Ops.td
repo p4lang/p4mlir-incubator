@@ -344,6 +344,7 @@ def BinOp : P4HIR_Op<"binop", [Pure,
                        AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
 
   let hasVerifier = 1;
+  let hasFolder = 1;
   let hasCanonicalizer = 1;
 
   let assemblyFormat = [{
