@@ -1877,8 +1877,7 @@ void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
     }
 
     printer << ' ';
-    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
-                        /*printBlockTerminators=*/true);
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
 }
 
 mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
@@ -2595,8 +2594,7 @@ void P4HIR::ControlOp::print(mlir::OpAsmPrinter &printer) {
     }
 
     printer << ' ';
-    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
-                        /*printBlockTerminators=*/true);
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
 }
 
 mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
@@ -2863,8 +2861,7 @@ void P4HIR::TableActionOp::print(mlir::OpAsmPrinter &printer) {
     }
 
     printer << ' ';
-    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
-                        /*printBlockTerminators=*/true);
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
 }
 
 mlir::ParseResult P4HIR::TableActionOp::parse(mlir::OpAsmParser &parser,
