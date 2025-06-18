@@ -377,8 +377,13 @@ OpFoldResult foldSingleConstant(P4HIR::BinOp op, P4HIR::BinOp::FoldAdaptor adapt
         }
         switch (op.getKind()) {
             case P4HIR::BinOpKind::Div:
-            case P4HIR::BinOpKind::Mod:
+                if (lhsVal.isNegative()) op.emitOpError("Division is not defined for negative numbers");
                 // binop(div, 0, %x) ==> 0
+                if (lhsVal.isZero())
+                    return P4HIR::IntAttr::get(op.getType(), APInt::getZero(lhsVal.getBitWidth()));
+                break;
+            case P4HIR::BinOpKind::Mod:
+                if (lhsVal.isNegative()) op.emitOpError("Modulo is not defined for negative numbers");
                 // binop(mod, 0, %x) ==> 0
                 if (lhsVal.isZero())
                     return P4HIR::IntAttr::get(op.getType(), APInt::getZero(lhsVal.getBitWidth()));
@@ -398,11 +403,14 @@ OpFoldResult foldSingleConstant(P4HIR::BinOp op, P4HIR::BinOp::FoldAdaptor adapt
             return fold;
         }
         switch (op.getKind()) {
-            // TODO: Make sure to check if / 0 and % 0 are handled in the frontend
             case P4HIR::BinOpKind::Div:
+                if (rhsVal.isNegative()) op.emitOpError("Division is not defined for negative numbers");
+                if (rhsVal.isZero()) op.emitOpError("Division by zero");
                 if (rhsVal.isOne()) return op.getLhs();
                 break;
             case P4HIR::BinOpKind::Mod:
+                if (rhsVal.isNegative()) op.emitOpError("Modulo is not defined for negative numbers");
+                if (rhsVal.isZero()) op.emitOpError("Modulo by zero");
                 if (rhsVal.isOne())
                     return P4HIR::IntAttr::get(op.getType(), APInt::getZero(rhsVal.getBitWidth()));
                 break;
