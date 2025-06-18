@@ -54,12 +54,12 @@ def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits"> {
 // Unsigned integer type of a specific width (bits<width>).
 class Bit<int width>
   : Type<And<[
-        CPred<"::mlir::isa<::p4hir::BitsType>($_self)">,
-        CPred<"::mlir::cast<::p4hir::BitsType>($_self).isUnsigned()">,
-        CPred<"::mlir::cast<::p4hir::BitsType>($_self).getWidth() == " # width>
-        ]>, width # "-bit unsigned integer", "::p4hir::BitsType">,
+        CPred<"::mlir::isa<P4HIR::BitsType>($_self)">,
+        CPred<"::mlir::cast<P4HIR::BitsType>($_self).isUnsigned()">,
+        CPred<"::mlir::cast<P4HIR::BitsType>($_self).getWidth() == " # width>
+        ]>, width # "-bit unsigned integer", "P4HIR::BitsType">,
     BuildableType<
-      "p4hir::BitsType::get($_builder.getContext(), "
+      "P4HIR::BitsType::get($_builder.getContext(), "
       # width # ", /*isSigned=*/false)"> {
   int bitwidth = width;
 }
@@ -67,10 +67,10 @@ class Bit<int width>
 // Signed integer type of a specific width (int<width>).
 class Int<int width>
   : Type<And<[
-        CPred<"::mlir::isa<::p4hir::IntType>($_self)">,
-        CPred<"::mlir::cast<::p4hir::IntType>($_self).isSigned()">,
-        CPred<"::mlir::cast<::p4hir::IntType>($_self).getWidth() == " # width>
-        ]>, width # "-bit signed integer", "::p4hir::BitsType">,
+        CPred<"::mlir::isa<P4HIR::IntType>($_self)">,
+        CPred<"::mlir::cast<P4HIR::IntType>($_self).isSigned()">,
+        CPred<"::mlir::cast<P4HIR::IntType>($_self).getWidth() == " # width>
+        ]>, width # "-bit signed integer", "P4HIR::BitsType">,
     BuildableType<
       "p4hir::BitsType::get($_builder.getContext(), "
       # width # ", /*isSigned=*/true)"> {
@@ -263,7 +263,7 @@ def FuncType : P4HIR_Type<"Func", "func"> {
 //===----------------------------------------------------------------------===//
 // ParserType
 //===----------------------------------------------------------------------===//
-def ParserType : P4HIR_Type<"Parser", "parser"> {
+def ParserType : P4HIR_Type<"Parser", "parser", [AnnotatedType]> {
   let parameters = (ins StringRefParameter<"parser type name">:$name,
                         ArrayRefParameter<"mlir::Type">:$inputs,
                         OptionalArrayRefParameter<"mlir::Type">:$type_arguments,
@@ -291,7 +291,7 @@ def ParserType : P4HIR_Type<"Parser", "parser"> {
 //===----------------------------------------------------------------------===//
 // ControlType
 //===----------------------------------------------------------------------===//
-def ControlType : P4HIR_Type<"Control", "control"> {
+def ControlType : P4HIR_Type<"Control", "control", [AnnotatedType]> {
   let parameters = (ins StringRefParameter<"control type name">:$name,
                         ArrayRefParameter<"mlir::Type">:$inputs,
                         OptionalArrayRefParameter<"mlir::Type">:$type_arguments,
@@ -355,7 +355,8 @@ class StructLikeType<string name, string typeMnemonic>
   : P4HIR_Type<name, typeMnemonic,  [
   StructLikeTypeInterface,
   DestructurableTypeInterface,
-  FieldIDTypeInterface
+  FieldIDTypeInterface,
+  AnnotatedType
 ]> {
   let hasCustomAssemblyFormat = 1;
   let genVerifyDecl = 1;
@@ -557,9 +558,41 @@ def HeaderUnionType : StructLikeType<"HeaderUnion", "header_union"> {
 }
 
 //===----------------------------------------------------------------------===//
+// HeaderStackType
+//===----------------------------------------------------------------------===//
+def HeaderStackType : StructLikeType<"HeaderStack", "header_stack"> {
+  let summary = "header stack type";
+  let description = [{
+    A header stack is a fixed-size array of headers with the same type.
+    The valid elements of a header stack need not be contiguous.
+    !p4hir.header_stack<n x hdr, __nextIndex : !p4hir.bit<32>>
+
+    We model header stack as an struct containing "data" field of array
+    type and a field "__nextIndex" of type !p4hir.bit<32> that is used
+    to represent next valid index.
+  }];
+
+  let genVerifyDecl = 1;
+
+  let builders = [
+    TypeBuilder<(ins "size_t":$size, "P4HIR::StructLikeTypeInterface":$elementType)>
+  ];
+
+  let extra2ClassDeclaration = [{
+    static constexpr llvm::StringRef dataFieldName = "data";
+    static constexpr llvm::StringRef nextIndexFieldName = "nextIndex";
+
+    ArrayType getDataType();
+    size_t getArraySize();
+    StructLikeTypeInterface getArrayElementType();
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // EnumType, ErrorType  & SerEnumType
 //===----------------------------------------------------------------------===//
-def EnumType : P4HIR_Type<"Enum", "enum", []> {
+def EnumType : P4HIR_Type<"Enum", "enum", [AnnotatedType]> {
   let summary = "enum type";
   let description = [{
     Represents an enumeration of values
@@ -580,9 +613,21 @@ def EnumType : P4HIR_Type<"Enum", "enum", []> {
                    annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
     }]>,
 
+     TypeBuilder<(ins "llvm::ArrayRef<mlir::Attribute>":$fields,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, "", mlir::ArrayAttr::get($_ctxt, fields),
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>,
+
     TypeBuilder<(ins "llvm::StringRef":$name, "mlir::ArrayAttr":$fields,
                      CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
       return $_get($_ctxt, name, fields,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>,
+
+    TypeBuilder<(ins "mlir::ArrayAttr":$fields,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get($_ctxt, "", fields,
                    annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
     }]>,
   ];
@@ -620,7 +665,7 @@ def ErrorType : P4HIR_Type<"Error", "error", []> {
   }];
 }
 
-def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", []> {
+def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", [AnnotatedType]> {
   let summary = "serializable enum type";
   let description = [{
     Represents an enumeration of values backed by some integer value
@@ -709,7 +754,7 @@ def TypeVarType : P4HIR_Type<"TypeVar", "type_var", []> {
 //===----------------------------------------------------------------------===//
 // ExternType
 //===----------------------------------------------------------------------===//
-def ExternType : P4HIR_Type<"Extern", "extern", []> {
+def ExternType : P4HIR_Type<"Extern", "extern", [AnnotatedType]> {
   let summary = "extern type";
   let description = [{
     Represents a P4 extern:
@@ -740,7 +785,7 @@ def ExternType : P4HIR_Type<"Extern", "extern", []> {
 //===----------------------------------------------------------------------===//
 // PackageType
 //===----------------------------------------------------------------------===//
-def PackageType : P4HIR_Type<"Package", "package", []> {
+def PackageType : P4HIR_Type<"Package", "package", [AnnotatedType]> {
   let summary = "package type";
   let description = [{
     Represents a P4 package:
@@ -768,7 +813,7 @@ def PackageType : P4HIR_Type<"Package", "package", []> {
 //===----------------------------------------------------------------------===//
 // AliasType
 //===----------------------------------------------------------------------===//
-def AliasType : P4HIR_Type<"Alias", "alias", []> {
+def AliasType : P4HIR_Type<"Alias", "alias", [AnnotatedType]> {
   let summary = "alias type";
   let description = [{
     Represents a P4 "new type" that is an alias to the existing one:
@@ -817,7 +862,7 @@ def ArrayType : P4HIR_Type<"Array", "array", [
   ];
 
   let assemblyFormat = [{
-    `<` $size `x` $elementType `>`
+    `<` custom<Array>($size, $elementType) `>`
   }];
 }
 
@@ -826,7 +871,7 @@ def ArrayType : P4HIR_Type<"Array", "array", [
 //===----------------------------------------------------------------------===//
 
 def AnyP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType, StringType,
-                           StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
+                           StructType, HeaderType, HeaderUnionType, HeaderStackType, Builtin_Tuple,
                            EnumType, SerEnumType,
                            ValidBitType,
                            DontcareType, ErrorType, UnknownType, AliasType,
@@ -836,12 +881,12 @@ def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType,
                                   StructType, HeaderType, Builtin_Tuple,
                                   EnumType, SerEnumType, AliasType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType,
-                                StructType, HeaderType, HeaderUnionType, Builtin_Tuple,
+                                StructType, HeaderType, HeaderUnionType, HeaderStackType, Builtin_Tuple,
                                 EnumType, SerEnumType, ErrorType,
                                 ValidBitType, AliasType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def SwitchCondType : AnyTypeOf<[AnyIntP4Type, AnyEnumType, ErrorType]>;
-def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType]>;
+def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType, HeaderStackType]>;
 def P4ObjectType : AnyTypeOf<[ParserType, ControlType, ExternType, PackageType]>;
 
 /// A ref type with the specified constraints on the nested type.
@@ -856,5 +901,7 @@ class SpecificRefType<Type type> : ConfinedType<ReferenceType,
 def StructRefType : SpecificRefType<StructType>;
 def StructLikeRefType : SpecificRefType<StructLikeType>;
 def BitsRefType : SpecificRefType<BitsType>;
+def HeaderRefType : SpecificRefType<HeaderType>;
+def ArrayRefType : SpecificRefType<ArrayType>;
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD

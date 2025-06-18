@@ -11,6 +11,7 @@ include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/MemorySlotInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
+include "p4mlir/Dialect/P4HIR/P4HIR_OpInterfaces.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_Types.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.td"
@@ -28,6 +29,7 @@ class P4HIR_Op<string mnemonic, list<Trait> traits = []> :
 
 def ConstOp : P4HIR_Op<"const",
     [ConstantLike, Pure, AllTypesMatch<["value", "res"]>,
+     Annotated,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
     let summary = "Defines a P4 constant";
     let description = [{
@@ -84,6 +86,7 @@ def ConstOp : P4HIR_Op<"const",
 
 def VariableOp : P4HIR_Op<"variable", [
                  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+                 Annotated
 /*,
                  DeclareOpInterfaceMethods<PromotableAllocationOpInterface>,
                  DeclareOpInterfaceMethods<DestructurableAllocationOpInterface>*/]> {
@@ -509,7 +512,7 @@ def CmpOp : P4HIR_Op<"cmp",
 def ScopeOp : P4HIR_Op<"scope", [
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursivelySpeculatable, AutomaticAllocationScope,
-       NoRegionArguments]> {
+       NoRegionArguments, Annotated]> {
   let summary = "Represents a P4 scope";
   let description = [{
     `p4hir.scope` contains one region and defines a strict "scope" for all new
@@ -786,6 +789,7 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
 
 def FuncOp : P4HIR_Op<"func", [
   AutomaticAllocationScope, CallableOpInterface, FunctionOpInterface,
+  Annotated
   // IsolatedFromAbove
 ]> {
   let summary = "Define a function-like object (action, function)";
@@ -1199,7 +1203,7 @@ def SliceRefOp : P4HIR_Op<"slice_ref",
 }
 
 def InstantiateOp : P4HIR_Op<"instantiate",
-  [NoRegionArguments, CallOpInterface,
+  [NoRegionArguments, CallOpInterface, Annotated,
    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "constructor call operation";
@@ -1295,7 +1299,7 @@ def ApplyOp : P4HIR_Op<"apply",
 }
 
 def ExternOp : P4HIR_Op<"extern",
-  [Symbol, SymbolTable, NoTerminator]> {
+  [Symbol, SymbolTable, Annotated, NoTerminator]> {
   let summary = "P4 extern declaration";
   let description = [{
     Declares P4 extern
@@ -1383,6 +1387,10 @@ def CallMethodOp : P4HIR_Op<"call_method",
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
       getBaseMutable().assign(callee.get<mlir::Value>());
     }
+
+    mlir::Operation *resolveCallableInTable(mlir::SymbolTableCollection *symbolTable);
+
+    P4HIR::ExternOp getExtern();
   }];
 }
 
@@ -1420,7 +1428,7 @@ def OverloadSetOp : P4HIR_Op<"overload_set",
 }
 
 def PackageOp : P4HIR_Op<"package",
-  [Symbol]> {
+  [Symbol, Annotated]> {
   let summary = "P4 package declaration";
   let description = [{
     Declares P4 package
@@ -1519,7 +1527,7 @@ def SwitchOp : P4HIR_Op<"switch",
 }
 
 def ForOp : P4HIR_Op<"for",
-      [AutomaticAllocationScope,
+      [AutomaticAllocationScope, Annotated,
        DeclareOpInterfaceMethods<LoopLikeOpInterface>,
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursiveMemoryEffects, NoRegionArguments,
@@ -1579,7 +1587,7 @@ def ForOp : P4HIR_Op<"for",
 }
 
 def ForInOp : P4HIR_Op<"foreach",
-      [AutomaticAllocationScope,
+      [AutomaticAllocationScope, Annotated,
        DeclareOpInterfaceMethods<LoopLikeOpInterface>,
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursiveMemoryEffects,
@@ -1672,8 +1680,14 @@ class ArrayElementTypeConstraint<string result, string input>
                    input, result,
                    "mlir::cast<ArrayType>($_self).getElementType()">;
 
+class ArrayRefElementResultTypeConstraint<string result, string input>
+  : TypesMatchWith<"Result must be reference to arrays element type",
+                   input, result,
+                   "P4HIR::ReferenceType::get($_self.getContext(), mlir::cast<ArrayType>(mlir::cast<ReferenceType>($_self).getObjectType()).getElementType())">;
+
 def ArrayGetOp : P4HIR_Op<"array_get",
-    [Pure, ArrayElementTypeConstraint<"result", "input">]> {
+    [Pure, ArrayElementTypeConstraint<"result", "input">,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Get the value in an array at the specified index";
   let arguments = (ins ArrayType:$input, AnyIntP4Type:$index);
   let results = (outs AnyP4Type:$result);
@@ -1685,17 +1699,94 @@ def ArrayGetOp : P4HIR_Op<"array_get",
   }];
 }
 
-def ArraySetOp : P4HIR_Op<"array_set",
-    [Pure, ArrayElementTypeConstraint<"value", "input">]> {
-  let summary = "Get the value in an array at the specified index";
-  let arguments = (ins ArrayType:$input, AnyIntP4Type:$index, AnyP4Type:$value);
+def ArrayElementRefOp : P4HIR_Op<"array_element_ref",
+    [Pure, ArrayRefElementResultTypeConstraint<"result", "input">,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "Project from an array reference to a reference to array element";
+  let arguments = (ins ArrayRefType:$input, AnyIntP4Type:$index);
+  let results = (outs ReferenceType:$result);
 
   let assemblyFormat = [{
-    $input `[` $index `]` `=` $value attr-dict `:` qualified(type($input)) `,` qualified(type($index))
+    $input `[` $index `]` attr-dict `:` qualified(type($input)) `,` qualified(type($index))
   }];
 }
 
 include "p4mlir/Dialect/P4HIR/P4HIR_ParserOps.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_ControlOps.td"
+
+def BrOp : P4HIR_Op<"br",
+    [DeclareOpInterfaceMethods<BranchOpInterface, ["getSuccessorForOperands"]>,
+     Pure, Terminator]> {
+  let summary = "Unconditional branch";
+  let description = [{
+    The `p4hir.br` branches unconditionally to a block.
+
+    Example:
+
+    ```mlir
+      ...
+        p4hir.br ^bb3
+      ^bb3:
+        p4hir.return
+    ```
+  }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::Block *":$dest,
+              CArg<"mlir::ValueRange", "{}">:$destOperands), [{
+      $_state.addSuccessors(dest);
+      $_state.addOperands(destOperands);
+    }]>
+  ];
+
+  let arguments = (ins Variadic<AnyP4Type>:$destOperands);
+  let successors = (successor AnySuccessor:$dest);
+  let assemblyFormat = [{
+    $dest (`(` $destOperands^ `:` type($destOperands) `)`)? attr-dict
+  }];
+}
+
+def CondBrOp : P4HIR_Op<"cond_br",
+    [DeclareOpInterfaceMethods<BranchOpInterface, ["getSuccessorForOperands"]>,
+     Pure, Terminator, AttrSizedOperandSegments]> {
+  let summary = "Conditional branch";
+  let description = [{
+    The `p4hir.brcond %cond, ^bb0, ^bb1` branches to 'bb0' block in case
+    %cond (which must be a !p4hir.bool type) evaluates to true, otherwise
+    it branches to 'bb1'.
+
+    Example:
+
+    ```mlir
+      ...
+        p4hir.cond_br %a, ^bb3, ^bb4
+      ^bb3:
+        p4hir.return
+      ^bb4:
+        p4hir.yield
+    ```
+  }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$cond, "mlir::Block *":$destTrue, "mlir::Block *":$destFalse,
+               CArg<"mlir::ValueRange", "{}">:$destOperandsTrue,
+               CArg<"mlir::ValueRange", "{}">:$destOperandsFalse), [{
+      build($_builder, $_state, cond, destOperandsTrue,
+            destOperandsFalse, destTrue, destFalse);
+    }]>
+  ];
+
+  let arguments = (ins BooleanType:$cond,
+                       Variadic<AnyP4Type>:$destOperandsTrue,
+                       Variadic<AnyP4Type>:$destOperandsFalse);
+  let successors = (successor AnySuccessor:$destTrue, AnySuccessor:$destFalse);
+  let assemblyFormat = [{
+    $cond
+    $destTrue (`(` $destOperandsTrue^ `:` type($destOperandsTrue) `)`)?
+    `,`
+    $destFalse (`(` $destOperandsFalse^ `:` type($destOperandsFalse) `)`)?
+    attr-dict
+  }];
+}
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD

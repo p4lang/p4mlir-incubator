@@ -22,6 +22,8 @@
 #int42_infint = #p4hir.int<42> : !infint
 !Foo = !p4hir.struct<"Foo", bar: !b32i {match = #ternary}>
 !SomeEnum = !p4hir.enum<"SomeEnum" {p4runtime_translation = ["p4.org/psa/v1/bar", ",", "enum"]}, Field, Field2>
+!AnonEnum = !p4hir.enum<{p4runtime_translation = ["p4.org/psa/v1/bar", ",", "enum"]}, Field, Field2>
+#AnonEnum_Field = #p4hir.enum_field<Field, !AnonEnum> : !AnonEnum
 !b9i = !p4hir.bit<9>
 !validity_bit = !p4hir.validity.bit
 !PortId_32_t = !p4hir.alias<"PortId_32_t" annotations {p4runtime_translation = ["p4.org/psa/v1/PortId_32_t", ",", "32"]}, !b9i>
@@ -128,7 +130,7 @@ module {
     }
   }
 
-  p4hir.func action @foo(%arg0: !Meta {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "m"}, %arg1: !packet_in_header_t {p4hir.annotations = {optional}, p4hir.dir = #p4hir<dir in>, p4hir.param_name = "hdr"}, %arg2: !SomeEnum {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "e"}) {
+  p4hir.func action @foo(%arg0: !Meta {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "m"}, %arg1: !packet_in_header_t {p4hir.annotations = {optional}, p4hir.dir = #p4hir<dir in>, p4hir.param_name = "hdr"}, %arg2: !SomeEnum {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "e"}, %arg3: !AnonEnum {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "f"}) {
     p4hir.return
   }
 }

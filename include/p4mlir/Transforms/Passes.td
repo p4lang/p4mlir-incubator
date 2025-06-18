@@ -52,4 +52,40 @@ def SimplifyParsers : Pass<"p4hir-simplify-parsers"> {
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
+//===----------------------------------------------------------------------===//
+// FlattenCFG
+//===----------------------------------------------------------------------===//
+
+def FlattenCFG : Pass<"p4hir-flatten-cfg"> {
+  let summary = "Produces flatten CFG";
+  let description = [{
+    This pass transforms P4HIR and inline all the nested regions. Thus,
+    the next post condtions are met after the pass applied:
+    - there is no any nested region in a function / action / parser body (same for control.apply region)
+    - all the blocks in a function belong to the parent region
+    In other words, this pass removes such P4HIR operations like IfOp, ForOp,
+    ForInOp, ScopeOp and etc. and produces a flat P4HIR.
+
+    For example, the following code:
+    ```mlir
+      %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+      p4hir.if %false {
+        %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+      }
+      p4hir.return
+    ```
+    is transformed into:
+    ```mlir
+      %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+       p4hir.cond_br %false ^bb1, ^bb2
+       ^bb1:
+         %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+         p4hir.br ^bb2
+       ^bb2:
+         p4hir.return
+    ```
+  }];
+  let constructor = "P4MLIR::createFlattenCFGPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
 #endif // P4MLIR_TRANSFORMS_PASSES_TD

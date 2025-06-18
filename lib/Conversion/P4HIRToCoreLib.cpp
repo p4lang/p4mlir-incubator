@@ -1,0 +1,330 @@
+#include "p4mlir/Conversion/P4HIRToCoreLib.h"
+
+#include <optional>
+
+#include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/LogicalResult.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
+#include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Ops.h"
+#include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Types.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
+
+#define DEBUG_TYPE "p4hir-convert-to-corelib"
+
+using namespace mlir;
+
+namespace P4::P4MLIR {
+#define GEN_PASS_DEF_LOWERTOP4CORELIB
+#include "p4mlir/Conversion/Passes.cpp.inc"
+}  // namespace P4::P4MLIR
+
+using namespace P4::P4MLIR;
+
+namespace {
+struct LowerToP4CoreLib : public P4::P4MLIR::impl::LowerToP4CoreLibBase<LowerToP4CoreLib> {
+    void runOnOperation() override;
+};
+
+// TODO: Patterns here are very straightforward, switch to PDLL
+
+struct FuncOpConversionPattern : public OpConversionPattern<P4HIR::FuncOp> {
+    using OpConversionPattern<P4HIR::FuncOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::FuncOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        if (!op.isDeclaration()) return failure();
+
+        // Just remove the op, all calls to it should already be legalized
+        rewriter.eraseOp(op);
+
+        return success();
+    }
+};
+
+struct OverloadSetOpConversionPattern : public OpConversionPattern<P4HIR::OverloadSetOp> {
+    using OpConversionPattern<P4HIR::OverloadSetOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::OverloadSetOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        // Just remove the op, all calls to it should already be legalized
+        rewriter.eraseOp(op);
+
+        return success();
+    }
+};
+
+struct ExternOpConversionPattern : public OpConversionPattern<P4HIR::ExternOp> {
+    using OpConversionPattern<P4HIR::ExternOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ExternOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        // Just remove the op, all calls to it should already be legalized
+        rewriter.eraseOp(op);
+
+        return success();
+    }
+};
+
+struct CallOpConversionPattern : public OpConversionPattern<P4HIR::CallOp> {
+    using OpConversionPattern<P4HIR::CallOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CallOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto callee = op.getCallee();
+        if (callee == "verify") {
+            rewriter.replaceOpWithNewOp<P4CoreLib::VerifyOp>(op, mlir::TypeRange(),
+                                                             operands.getArgOperands());
+            return success();
+        }
+
+        return failure();
+    }
+};
+
+struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMethodOp> {
+    using OpConversionPattern<P4HIR::CallMethodOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CallMethodOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto sym = op.getCallee();
+        auto extSym = sym.getRootReference(), methodSym = sym.getLeafReference();
+        if (extSym == "packet_out" && methodSym == "emit") {
+            rewriter.replaceOpWithNewOp<P4CoreLib::PacketEmitOp>(op, mlir::TypeRange(),
+                                                                 operands.getOperands());
+            return success();
+        } else if (extSym == "packet_in") {
+            if (methodSym == "extract") {
+                size_t sz = op.getArgOperands().size();
+                if (sz == 1) {
+                    rewriter.replaceOpWithNewOp<P4CoreLib::PacketExtractOp>(op, op.getResultTypes(),
+                                                                            operands.getOperands());
+                    return success();
+                } else if (sz == 2) {
+                    rewriter.replaceOpWithNewOp<P4CoreLib::PacketExtractVariableOp>(
+                        op, op.getResultTypes(), operands.getOperands());
+                    return success();
+                }
+            } else if (methodSym == "length") {
+                rewriter.replaceOpWithNewOp<P4CoreLib::PacketLengthOp>(op, op.getResultTypes(),
+                                                                       operands.getOperands());
+                return success();
+            } else if (methodSym == "lookahead") {
+                rewriter.replaceOpWithNewOp<P4CoreLib::PacketLookAheadOp>(op, op.getResultTypes(),
+                                                                          operands.getOperands());
+                return success();
+            } else if (methodSym == "advance") {
+                rewriter.replaceOpWithNewOp<P4CoreLib::PacketAdvanceOp>(op, op.getResultTypes(),
+                                                                        operands.getOperands());
+                return success();
+            }
+        }
+
+        return failure();
+    }
+};
+
+static LogicalResult convertFuncOpTypes(FunctionOpInterface funcOp,
+                                        const TypeConverter &typeConverter,
+                                        ConversionPatternRewriter &rewriter) {
+    auto fnType = mlir::dyn_cast<P4HIR::FuncType>(funcOp.getFunctionType());
+    if (!fnType) return failure();
+
+    TypeConverter::SignatureConversion result(fnType.getNumInputs());
+    SmallVector<Type, 1> newResults;
+    if (failed(typeConverter.convertSignatureArgs(fnType.getInputs(), result)) ||
+        failed(typeConverter.convertTypes(fnType.getReturnTypes(), newResults)) ||
+        failed(rewriter.convertRegionTypes(&funcOp.getFunctionBody(), typeConverter, &result)))
+        return failure();
+
+    // Update the function signature in-place.
+    auto newType = P4HIR::FuncType::get(rewriter.getContext(), result.getConvertedTypes(),
+                                        newResults.empty() ? mlir::Type() : newResults.front(),
+                                        fnType.getTypeArguments());
+    rewriter.modifyOpInPlace(funcOp, [&] { funcOp.setType(newType); });
+
+    return success();
+}
+
+struct ParserOpConversionPattern : public OpConversionPattern<P4HIR::ParserOp> {
+    using OpConversionPattern<P4HIR::ParserOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ParserOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        if (failed(convertFuncOpTypes(op, *typeConverter, rewriter))) return failure();
+
+        auto ctorType = op.getCtorType();
+        if (!typeConverter->isLegal(ctorType.getReturnType())) {
+            // Expect empty ctor args
+            if (ctorType.getNumInputs())
+                return rewriter.notifyMatchFailure(op, "non-empty inputs for ctor types");
+            auto newType =
+                P4HIR::CtorType::get(rewriter.getContext(), ctorType.getInputs(),
+                                     typeConverter->convertType(ctorType.getReturnType()));
+            rewriter.modifyOpInPlace(op, [&] { op.setCtorType(newType); });
+        }
+
+        return success();
+    }
+};
+
+struct ControlOpConversionPattern : public OpConversionPattern<P4HIR::ControlOp> {
+    using OpConversionPattern<P4HIR::ControlOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ControlOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        if (failed(convertFuncOpTypes(op, *typeConverter, rewriter))) return failure();
+
+        auto ctorType = op.getCtorType();
+        if (!typeConverter->isLegal(ctorType.getReturnType())) {
+            // Expect empty ctor args
+            if (ctorType.getNumInputs())
+                return rewriter.notifyMatchFailure(op, "non-empty inputs for ctor types");
+            auto newType =
+                P4HIR::CtorType::get(rewriter.getContext(), ctorType.getInputs(),
+                                     typeConverter->convertType(ctorType.getReturnType()));
+            rewriter.modifyOpInPlace(op, [&] { op.setCtorType(newType); });
+        }
+
+        return success();
+    }
+};
+
+struct FunctionOpInterfaceConversionPattern
+    : public OpInterfaceConversionPattern<FunctionOpInterface> {
+    using OpInterfaceConversionPattern<FunctionOpInterface>::OpInterfaceConversionPattern;
+
+    LogicalResult matchAndRewrite(FunctionOpInterface funcOp, ArrayRef<Value> operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        // Parsers and controls require conversion of ctor types
+        if (mlir::isa<P4HIR::ParserOp, P4HIR::ControlOp>(funcOp)) return failure();
+
+        if (failed(convertFuncOpTypes(funcOp, *typeConverter, rewriter))) return failure();
+
+        return success();
+    }
+};
+
+struct CallOpInterfaceConversionPattern : public OpInterfaceConversionPattern<CallOpInterface> {
+    using OpInterfaceConversionPattern<CallOpInterface>::OpInterfaceConversionPattern;
+
+    LogicalResult matchAndRewrite(CallOpInterface callOp, ArrayRef<Value> operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        // Do not convert call_method, there are precise patterns for it
+        if (mlir::isa<P4HIR::CallMethodOp>(callOp)) return failure();
+
+        FailureOr<Operation *> newOp =
+            convertOpResultTypes(callOp, operands, *getTypeConverter(), rewriter);
+        if (failed(newOp)) return failure();
+
+        rewriter.replaceOp(callOp, (*newOp)->getResults());
+        return success();
+    }
+};
+
+}  // end anonymous namespace
+
+void LowerToP4CoreLib::runOnOperation() {
+    MLIRContext &context = getContext();
+    mlir::ModuleOp module = getOperation();
+
+    ConversionTarget target(context);
+    RewritePatternSet patterns(&context);
+    SymbolTableCollection symTables;
+
+    TypeConverter typeConverter;
+    typeConverter.addConversion([&](Type t) -> std::optional<Type> {
+        if (auto parserType = mlir::dyn_cast<P4HIR::ParserType>(t)) {
+            if (typeConverter.isLegal(parserType.getInputs())) return parserType;
+            SmallVector<mlir::Type> newInputs;
+            if (failed(typeConverter.convertTypes(parserType.getInputs(), newInputs)))
+                return std::nullopt;
+            assert(newInputs.size() == parserType.getInputs().size());
+            return P4HIR::ParserType::get(&context, parserType.getName(), newInputs,
+                                          parserType.getTypeArguments(),
+                                          parserType.getAnnotations());
+        }
+
+        if (auto annotatedType = mlir::dyn_cast<P4HIR::AnnotatedType>(t))
+            if (!annotatedType.hasAnnotation("corelib")) return t;
+
+        if (auto extType = mlir::dyn_cast<P4HIR::ExternType>(t)) {
+            return llvm::StringSwitch<mlir::Type>(extType.getName())
+                .Case("packet_in", P4CoreLib::PacketInType::get(&context))
+                .Case("packet_out", P4CoreLib::PacketOutType::get(&context))
+                .Default(t);
+        }
+
+        return t;
+    });
+
+    target.addLegalDialect<P4CoreLib::P4CoreLibDialect>();
+
+    target.addDynamicallyLegalOp<P4HIR::FuncOp>([&](P4HIR::FuncOp func) {
+        auto fnType = func.getFunctionType();
+
+        // All corelib-annotated functions should be converted
+        return !func.hasAnnotation("corelib") && typeConverter.isLegal(fnType.getInputs()) &&
+               typeConverter.isLegal(fnType.getReturnTypes());
+    });
+    target.addDynamicallyLegalOp<P4HIR::ExternOp>([](P4HIR::ExternOp ext) {
+        // All corelib-annotated externs should be converted
+        return !ext.hasAnnotation("corelib");
+    });
+
+    target.addDynamicallyLegalOp<P4HIR::CallOp>([&](P4HIR::CallOp call) {
+        // All calls to corelib-annotated callees should be converted
+        // Check the callee, must be a corelib extern
+        auto *calleeOp = call.resolveCallableInTable(&symTables);
+        if (auto opFunc = dyn_cast_or_null<P4HIR::FuncOp>(calleeOp))
+            return !target.isIllegal(opFunc);
+
+        assert(calleeOp && isa<FunctionOpInterface>(calleeOp));
+        return true;
+    });
+
+    target.addDynamicallyLegalOp<P4HIR::OverloadSetOp>([&](P4HIR::OverloadSetOp ovl) {
+        for (auto opFunc : ovl.getOps<P4HIR::FuncOp>()) return !target.isIllegal(opFunc);
+        return true;
+    });
+
+    target.addDynamicallyLegalOp<P4HIR::ControlOp>([&](P4HIR::ControlOp ctrl) {
+        auto fnType = ctrl.getFunctionType();
+        return typeConverter.isLegal(fnType.getInputs()) &&
+               typeConverter.isLegal(fnType.getReturnTypes());
+    });
+
+    target.addDynamicallyLegalOp<P4HIR::ParserOp>([&](P4HIR::ParserOp parser) {
+        auto fnType = parser.getFunctionType();
+        return typeConverter.isLegal(fnType.getInputs()) &&
+               typeConverter.isLegal(fnType.getReturnTypes());
+    });
+
+    target.addDynamicallyLegalOp<P4HIR::InstantiateOp>([&](P4HIR::InstantiateOp inst) {
+        bool res = typeConverter.isLegal(inst.getOperandTypes()) &&
+                   typeConverter.isLegal(inst.getResult().getType());
+        return res;
+    });
+
+    target.addDynamicallyLegalOp<P4HIR::ApplyOp>(
+        [&](P4HIR::ApplyOp apply) { return typeConverter.isLegal(apply.getOperandTypes()); });
+
+    target.addDynamicallyLegalOp<P4HIR::CallMethodOp>([&](P4HIR::CallMethodOp call) {
+        // All calls to methods of corelib-annotated externs should be converted
+        return !call.getExtern().hasAnnotation("corelib");
+    });
+
+    patterns.add<FuncOpConversionPattern, ExternOpConversionPattern, CallOpConversionPattern,
+                 CallMethodOpConversionPattern, OverloadSetOpConversionPattern,
+                 ParserOpConversionPattern, ControlOpConversionPattern,
+                 FunctionOpInterfaceConversionPattern, CallOpInterfaceConversionPattern>(
+        typeConverter, &context);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
+}
