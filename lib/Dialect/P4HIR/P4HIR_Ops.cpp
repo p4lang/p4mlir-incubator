@@ -403,13 +403,15 @@ static OpFoldResult foldConstantBinOp(P4HIR::BinOp op, const APInt &lhsVal, cons
 }
 
 OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
-    // Constant folding
     auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs());
     auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs());
+
+    // Constant folding
     if (lhsAttr && rhsAttr) {
         return foldConstantBinOp(*this, lhsAttr.getValue(), rhsAttr.getValue());
     }
 
+    // Handle cases with single constant (canonical form of commutative binary operations)
     if (rhsAttr) {
         auto rhsVal = rhsAttr.getValue();
         switch (getKind()) {
@@ -493,6 +495,8 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
                 break;
         }
     }
+
+    // Handle non-commutative single constant cases
     if (lhsAttr) {
         switch (getKind()) {
             case P4HIR::BinOpKind::Div:
