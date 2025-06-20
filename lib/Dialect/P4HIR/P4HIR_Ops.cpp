@@ -417,13 +417,10 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
         switch (getKind()) {
             case P4HIR::BinOpKind::Mul:
                 // binop(mul, %x, 0) ==> 0
-                if (rhsVal.isZero()) {
+                if (rhsVal.isZero())
                     return P4HIR::IntAttr::get(getType(), APInt::getZero(rhsVal.getBitWidth()));
-                }
                 // binop(mul, %x, 1) ==> %x
-                if (rhsVal.isOne()) {
-                    return getLhs();
-                }
+                if (rhsVal.isOne()) return getLhs();
                 break;
             case P4HIR::BinOpKind::Div:
                 if (rhsVal.isNegative()) {
@@ -434,9 +431,7 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
                     emitOpError("Division by zero");
                     return {};
                 }
-                if (rhsVal.isOne()) {
-                    return getLhs();
-                }
+                if (rhsVal.isOne()) return getLhs();
                 break;
             case P4HIR::BinOpKind::Mod:
                 if (rhsVal.isNegative()) {
@@ -447,51 +442,39 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
                     emitOpError("Modulo by zero");
                     return {};
                 }
-                if (rhsVal.isOne()) {
+                if (rhsVal.isOne())
                     return P4HIR::IntAttr::get(getType(), APInt::getZero(rhsVal.getBitWidth()));
-                }
                 break;
             case P4HIR::BinOpKind::Add:
             case P4HIR::BinOpKind::AddSat:
                 // binop(add, %x, 0) ==> %x
                 // binop(sadd, %x, 0) ==> %x
-                if (rhsVal.isZero()) {
-                    return getLhs();
-                }
+                if (rhsVal.isZero()) return getLhs();
                 break;
             case P4HIR::BinOpKind::Sub:
             case P4HIR::BinOpKind::SubSat:
                 // binop(sub, %x, 0) ==> %x
                 // binop(ssub, %x, 0) ==> %x
-                if (rhsVal.isZero()) {
-                    return getLhs();
-                }
+                if (rhsVal.isZero()) return getLhs();
                 break;
             case P4HIR::BinOpKind::Or:
                 // binop(or, %x, 0) ==> %x
-                if (rhsVal.isZero()) {
+                if (rhsVal.isZero())
                     return P4HIR::IntAttr::get(getType(), APInt::getZero(rhsVal.getBitWidth()));
-                }
                 // binop(or, %x, all_ones) ==> all_ones
-                if (rhsVal.isAllOnes()) {
+                if (rhsVal.isAllOnes())
                     return P4HIR::IntAttr::get(getType(), APInt::getAllOnes(rhsVal.getBitWidth()));
-                }
                 break;
             case P4HIR::BinOpKind::Xor:
                 // binop(xor, %x, 0) ==> %x
-                if (rhsVal.isZero()) {
-                    return getLhs();
-                }
+                if (rhsVal.isZero()) return getLhs();
                 break;
             case P4HIR::BinOpKind::And:
                 // binop(and, %x, 0) ==> 0
-                if (rhsVal.isZero()) {
+                if (rhsVal.isZero())
                     return P4HIR::IntAttr::get(getType(), APInt::getZero(rhsVal.getBitWidth()));
-                }
                 // binop(and, %x, 0) ==> %x
-                if (rhsVal.isAllOnes()) {
-                    return getLhs();
-                }
+                if (rhsVal.isAllOnes()) return getLhs();
                 break;
         }
     }
