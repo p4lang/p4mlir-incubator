@@ -15,6 +15,7 @@
 !Egress_type_H_type_M = !p4hir.control<"Egress"<!type_H, !type_M>, (!p4hir.ref<!type_H>, !p4hir.ref<!type_M>, !p4hir.ref<!standard_metadata_t>)>
 !Ingress_type_H_type_M = !p4hir.control<"Ingress"<!type_H, !type_M>, (!p4hir.ref<!type_H>, !p4hir.ref<!type_M>, !p4hir.ref<!standard_metadata_t>)>
 !Parser_type_H_type_M = !p4hir.parser<"Parser"<!type_H, !type_M>, (!packet_in, !p4hir.ref<!type_H>, !p4hir.ref<!type_M>, !p4hir.ref<!standard_metadata_t>)>
+#undir = #p4hir<dir undir>
 
 module {
   // CHECK: module
@@ -24,7 +25,7 @@ module {
     }
   }
   p4hir.package @V1Switch<[!type_H, !type_M]>("p" : !Parser_type_H_type_M, "vr" : !VerifyChecksum_type_H_type_M, "ig" : !Ingress_type_H_type_M, "eg" : !Egress_type_H_type_M, "ck" : !ComputeChecksum_type_H_type_M, "dep" : !Deparser_type_H)
-  p4hir.package @top("_e" : !e)
-  %c = p4hir.instantiate @c() as "c" : () -> !c
-  %main = p4hir.instantiate @top(%c) as "main" : (!c) -> !top
+  p4hir.package @top("_e" : !e {p4hir.dir = #undir, p4hir.param_name = "_e"})
+  %c = p4hir.construct @c () : !c
+  p4hir.instantiate @top (%c : !c) as @main
 }

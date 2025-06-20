@@ -11,6 +11,7 @@
 !simple_type_T = !p4hir.control<"simple"<!type_T>, (!p4hir.ref<!type_T>)>
 module {
   p4hir.control @p(%arg0: !p4hir.ref<!b1i> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "bt"})() {
+    p4hir.control_local @arg1 = %arg0 : !p4hir.ref<!b1i>
     // CHECK-LABEL: p4hir.func action @a
     p4hir.func action @a(%arg1: !p4hir.ref<!b1i> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "y0"}) {
       %c-1_b1i = p4hir.const #int-1_b1i
@@ -23,20 +24,22 @@ module {
     // CHECK-NOT: p4hir.call
     p4hir.func action @b() {
       p4hir.scope {
+        %arg0_1 = p4hir.symbol_ref @arg0 : !p4hir.ref<!b1i>
         %y0_inout_arg = p4hir.variable ["y0_inout_arg", init] : <!b1i>
-        %val = p4hir.read %arg0 : <!b1i>
+        %val = p4hir.read %arg0_1 : <!b1i>
         p4hir.assign %val, %y0_inout_arg : <!b1i>
         p4hir.call @a (%y0_inout_arg) : (!p4hir.ref<!b1i>) -> ()
         %val_0 = p4hir.read %y0_inout_arg : <!b1i>
-        p4hir.assign %val_0, %arg0 : <!b1i>
+        p4hir.assign %val_0, %arg0_1 : <!b1i>
       }
       p4hir.scope {
+        %arg0_1 = p4hir.symbol_ref @arg0 : !p4hir.ref<!b1i>
         %y0_inout_arg = p4hir.variable ["y0_inout_arg", init] : <!b1i>
-        %val = p4hir.read %arg0 : <!b1i>
+        %val = p4hir.read %arg0_1 : <!b1i>
         p4hir.assign %val, %y0_inout_arg : <!b1i>
         p4hir.call @a (%y0_inout_arg) : (!p4hir.ref<!b1i>) -> ()
         %val_0 = p4hir.read %y0_inout_arg : <!b1i>
-        p4hir.assign %val_0, %arg0 : <!b1i>
+        p4hir.assign %val_0, %arg0_1 : <!b1i>
       }
       p4hir.return
     }
@@ -55,6 +58,6 @@ module {
     }
   }
   p4hir.package @m<[!type_T]>("pipe" : !simple_type_T {p4hir.dir = #undir, p4hir.param_name = "pipe"})
-  %p = p4hir.instantiate @p() as "p" : () -> !p
-  %main = p4hir.instantiate @m(%p) as "main" : (!p) -> !m_b1i
+  %p = p4hir.construct @p() : !p
+  p4hir.instantiate @m(%p : !p) as @main
 }

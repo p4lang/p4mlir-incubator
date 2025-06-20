@@ -13,7 +13,7 @@ module {
     }
   }
   p4hir.control @Pipe(%arg0: !b10i, %arg1: !i16i, %arg2: !p4hir.ref<!i16i>, %arg3: !p4hir.ref<!i16i>)() {
-    %inner = p4hir.instantiate @InnerPipe() as "inner" : () -> !InnerPipe
+    p4hir.instantiate @InnerPipe() as @inner
     p4hir.func action @bar() {
       %x1 = p4hir.variable ["x1"] : <!i16i>
       p4hir.return
@@ -26,7 +26,7 @@ module {
         %c2 = p4hir.const #int2_infint
         %cast = p4hir.cast(%c2 : !infint) : !i16i
         %arg3_out_arg = p4hir.variable ["arg3_out_arg"] : <!i16i>
-        p4hir.apply %inner(%c1_b10i, %cast, %arg3_out_arg) : !InnerPipe
+        p4hir.apply @inner(%c1_b10i, %cast, %arg3_out_arg) : (!b10i, !i16i, !p4hir.ref<!i16i>) -> ()
         %val = p4hir.read %arg3_out_arg : <!i16i>
         p4hir.assign %val, %x1 : <!i16i>
       }

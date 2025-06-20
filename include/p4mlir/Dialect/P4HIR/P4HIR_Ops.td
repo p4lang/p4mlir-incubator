@@ -785,8 +785,8 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
 
 def FuncOp : P4HIR_Op<"func", [
   AutomaticAllocationScope, CallableOpInterface, FunctionOpInterface,
-  Annotated
-  // IsolatedFromAbove
+  Annotated,
+  IsolatedFromAbove
 ]> {
   let summary = "Define a function-like object (action, function)";
   let description = [{
@@ -1200,9 +1200,10 @@ def SliceRefOp : P4HIR_Op<"slice_ref",
 
 def InstantiateOp : P4HIR_Op<"instantiate",
   [NoRegionArguments, CallOpInterface, Annotated,
-   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
-  let summary = "constructor call operation";
+   Symbol,
+   DeclareOpInterfaceMethods<SymbolUserOpInterface>
+  ]> {
+  let summary = "declaration instance operation";
   let description = [{
     Instantiate P4 object: extern, parser, control, extern or package.
 
@@ -1210,18 +1211,18 @@ def InstantiateOp : P4HIR_Op<"instantiate",
 
     ```mlir
     // Instantiate a subparser
-    %sp = p4hir.instantiate @subparser() as "sp" : () -> !p4hir.parser<"subparser", (!empty)>
+    p4hir.instantiate @subparser() as @sp
     // Instantiate a subparser with ctor parameters
     %false = p4hir.const #false
-    %sp2 = p4hir.instantiate @subparser2(%false) as "sp2" : (!p4hir.bool) -> !p4hir.parser<"subparser2", (!empty)>
+    p4hir.instantiate @subparser2(%false : !p4hir.bool) as @sp2
     ...
     ```
   }];
 
-  // TODO: Refine result types, refine parameter type (must be constants!)
-  let results = (outs P4ObjectType:$result);
+  // TODO: refine parameter type (must be constants!)
   let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
-                       StrAttr:$name, OptionalAttr<DictionaryAttr>:$annotations);
+                       SymbolNameAttr:$sym_name, OptionalAttr<ArrayAttr>:$type_parameters,
+                       OptionalAttr<DictionaryAttr>:$annotations);
 
   // TODO: Add verifier
   let hasVerifier = 0;
@@ -1229,12 +1230,12 @@ def InstantiateOp : P4HIR_Op<"instantiate",
   let extraClassDeclaration = [{
     /// Return the callee of this operation.
     mlir::CallInterfaceCallable getCallableForCallee() {
-      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>(getCalleeAttrName());
     }
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+      (*this)->setAttr(getCalleeAttrName(), callee.get<mlir::SymbolRefAttr>());
     }
 
     void setArg(unsigned index, mlir::Value value) {
@@ -1243,18 +1244,97 @@ def InstantiateOp : P4HIR_Op<"instantiate",
   }];
 
   let assemblyFormat = [{
-    $callee `(` $arg_operands `)` `as` $name (`annotations` $annotations^)? attr-dict `:` functional-type($arg_operands, results)
+    $callee(`<` $type_parameters^ `>`)? `(` ($arg_operands^ `:` type($arg_operands))? `)` `as` $sym_name (`annotations` $annotations^)? attr-dict
+  }];
+}
+
+def ConstructOp : P4HIR_Op<"construct",
+  [NoRegionArguments, CallOpInterface,
+   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
+  let summary = "constructor call operation";
+  let description = [{
+    Instantiate P4 object: extern, parser, control, extern or package.
+
+    Example:
+
+    ```mlir
+    // Construct control
+    %c = p4hir.construct @c () : !c
+    // Instantiate package
+    p4hir.instantiate @top (%c : !c) as @main
+    ...
+    ```
+  }];
+
+  // TODO: Refine result types, refine parameter type (must be constants!)
+  let results = (outs P4ObjectType:$result);
+  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
+                       OptionalAttr<ArrayAttr>:$type_parameters);
+
+  // TODO: Add verifier
+  let hasVerifier = 0;
+
+  let extraClassDeclaration = [{
+    /// Return the callee of this operation.
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>(getCalleeAttrName());
+    }
+
+    /// Set the callee for this operation.
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      (*this)->setAttr(getCalleeAttrName(), callee.get<mlir::SymbolRefAttr>());
+    }
+
+    void setArg(unsigned index, mlir::Value value) {
+      setOperand(index, value);
+    }
+  }];
+
+  let assemblyFormat = [{
+    $callee(`<` $type_parameters^ `>`)? `(` ($arg_operands^ `:` type($arg_operands))? `)` attr-dict `:` type($result)
+  }];
+}
+
+
+def SymToValueOp : P4HIR_Op<"symbol_ref",
+  [NoRegionArguments,
+   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
+
+  let results = (outs AnyType:$result);
+  let arguments = (ins SymbolRefAttr:$decl);
+
+  // TODO: Add verifier
+  let hasVerifier = 0;
+
+  let assemblyFormat = [{
+    $decl attr-dict `:` type($result)
+  }];
+}
+
+def ControlLocalOp : P4HIR_Op<"control_local",
+  [Pure, NoRegionArguments, Symbol]> {
+  let arguments = (ins SymbolNameAttr:$sym_name, AnyType:$val);
+
+  // TODO: Add verifier
+  let hasVerifier = 0;
+
+  let assemblyFormat = [{
+    $sym_name `=` $val `:` type($val) attr-dict
   }];
 }
 
 def ApplyOp : P4HIR_Op<"apply",
   [NoRegionArguments, CallOpInterface,
-   //DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
-    TypesMatchWith<
-       "the apply type of the object matches the types of operands",
-       "callee", "arg_operands",
-       "(isa<P4HIR::ParserType>($_self) ? cast<P4HIR::ParserType>($_self).getInputs() :"
-                                         "cast<P4HIR::ControlType>($_self).getInputs())">,
+   DeclareOpInterfaceMethods<SymbolUserOpInterface>
+    //TypesMatchWith<
+    //   "the apply type of the object matches the types of operands",
+    //   "callee", "arg_operands",
+    //   "(isa<P4HIR::ParserType>($_self) ? cast<P4HIR::ParserType>($_self).getInputs() :"
+    //                                     "cast<P4HIR::ControlType>($_self).getInputs())">,
    ]> {
   let summary = "apply operation";
   let description = [{
@@ -1264,15 +1344,15 @@ def ApplyOp : P4HIR_Op<"apply",
 
     ```mlir
     // Application of a subparser
-    %sp = p4hir.instantiate @subparser() as "sp" : () -> !p4hir.parser<"subparser", ()>
-    p4hir.apply %sp() : !p4hir.parser<"subparser", ()>
+    p4hir.instantiate @subparser() as @sp
+    p4hir.apply @sp() : () -> ()
     ...
     ```
   }];
 
   // TODO: Refine result types, refine parameter type (must be constants!)
   let results = (outs);
-  let arguments = (ins P4ObjectType:$callee, Variadic<AnyType>:$arg_operands);
+  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands);
 
   // TODO: Add verifier
   let hasVerifier = 0;
@@ -1285,12 +1365,12 @@ def ApplyOp : P4HIR_Op<"apply",
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      getCalleeMutable().assign(callee.get<mlir::Value>());
+      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
     }
   }];
 
   let assemblyFormat = [{
-    $callee `(` $arg_operands `)` attr-dict `:` type($callee)
+    $callee `(` $arg_operands `)` attr-dict `:` functional-type($arg_operands, results)
   }];
 }
 
@@ -1329,7 +1409,9 @@ def ExternOp : P4HIR_Op<"extern",
 }
 
 def CallMethodOp : P4HIR_Op<"call_method",
-  [NoRegionArguments, CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+  [NoRegionArguments, AttrSizedOperandSegments,
+   CallOpInterface,
+   DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call method of an P4 extern";
   let description = [{
     Calls named method of a given P4 extern.
@@ -1348,40 +1430,65 @@ def CallMethodOp : P4HIR_Op<"call_method",
 
   // TODO: Refine result types, refine parameter type
   let results = (outs Optional<CallResultP4Type>:$result);
-  let arguments = (ins ExternType:$base, SymbolRefAttr:$callee,
+  let arguments = (ins SymbolRefAttr:$callee,
+                       Optional<P4ObjectType>:$obj,
                        OptionalAttr<TypeArrayAttr>:$type_operands,
                        Variadic<AnyType>:$arg_operands);
 
   // let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-      $callee  (`<` $type_operands^ `>`)? `(`$base (`,` $arg_operands^)? `)` `:` qualified(type($base)) `,` functional-type($arg_operands, results) attr-dict
+      $callee  (`<` $type_operands^ `>`)? (`of` $obj^ `:` type($obj) ` `)? `(` $arg_operands `)` `:` functional-type($arg_operands, results) attr-dict
   }];
 
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::Type":$resultType, "mlir::Value":$base, "mlir::SymbolRefAttr":$callee,
+    OpBuilder<(ins "mlir::Type":$resultType, "mlir::SymbolRefAttr":$callee,
                    "mlir::TypeRange":$type_operands, "mlir::ValueRange":$arg_operands), [{
-      $_state.addOperands(base);
       $_state.addOperands(arg_operands);
-      $_state.addAttribute("callee", callee);
+      $_state.addAttribute(getCalleeAttrName($_state.name), callee);
       if (resultType && !isa<VoidType>(resultType))
         $_state.addTypes(resultType);
       if (!type_operands.empty())
-        $_state.addAttribute("type_operands", $_builder.getTypeArrayAttr(type_operands));
+        $_state.addAttribute(getTypeOperandsAttrName($_state.name), $_builder.getTypeArrayAttr(type_operands));
+      $_state.addAttribute(getOperandSegmentSizesAttrName($_state.name),
+                      $_builder.getDenseI32ArrayAttr(
+                          {0,
+                           static_cast<int32_t>(arg_operands.size())}));
+    }]>,
+
+    OpBuilder<(ins "mlir::Type":$resultType, "mlir::Value":$obj, "mlir::SymbolRefAttr":$method,
+                   "mlir::TypeRange":$type_operands, "mlir::ValueRange":$arg_operands), [{
+      $_state.addOperands(obj);
+      $_state.addOperands(arg_operands);
+      $_state.addAttribute(getCalleeAttrName($_state.name), method);
+      if (resultType && !isa<VoidType>(resultType))
+        $_state.addTypes(resultType);
+      if (!type_operands.empty())
+        $_state.addAttribute(getTypeOperandsAttrName($_state.name), $_builder.getTypeArrayAttr(type_operands));
+      $_state.addAttribute(getOperandSegmentSizesAttrName($_state.name),
+                      $_builder.getDenseI32ArrayAttr(
+                          {1,
+                           static_cast<int32_t>(arg_operands.size())}));
     }]>,
   ];
 
   let extraClassDeclaration = [{
+    bool isIndirect();
+    mlir::Value getIndirectCallee();
+
     /// Return the callee of this operation.
     mlir::CallInterfaceCallable getCallableForCallee() {
-      return getBase();
+       if (isIndirect())
+         return getIndirectCallee();
+       return getCallee();
     }
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      getBaseMutable().assign(callee.get<mlir::Value>());
+       // TODO: Implement all kinds of logic of turning direct into indirect calls and vice-versa
+       llvm_unreachable("not yet implemented");
     }
 
     mlir::Operation *resolveCallableInTable(mlir::SymbolTableCollection *symbolTable);

@@ -36,9 +36,9 @@ module {
   p4hir.parser @p(%arg0: !empty, %arg1: !i10i)() {
     %s = p4hir.variable ["s", init] : <!i10i>
     p4hir.assign %arg1, %s : <!i10i>
-    %sp = p4hir.instantiate @subparser() as "sp" : () -> !p4hir.parser<"subparser", (!empty)>
+    p4hir.instantiate @subparser() as @sp
     %false = p4hir.const #false
-    %sp2 = p4hir.instantiate @subparser2(%false) as "sp2" : (!p4hir.bool) -> !p4hir.parser<"subparser2", (!empty)>
+    p4hir.instantiate @subparser2(%false : !p4hir.bool) as @sp2
     p4hir.state @start {
       %c1_i10i = p4hir.const #int1_i10i
       %cast = p4hir.cast(%c1_i10i : !i10i) : !i10i
