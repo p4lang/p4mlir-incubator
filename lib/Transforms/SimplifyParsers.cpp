@@ -1,5 +1,3 @@
-#include <llvm/Support/ErrorHandling.h>
-
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
