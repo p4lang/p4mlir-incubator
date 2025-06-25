@@ -78,6 +78,20 @@ def ConstOp : P4HIR_Op<"const",
 
     let extraClassDeclaration = [{
       template<class T> T getValueAs() { return mlir::cast<T>(getValue()); }
+
+      bool isZero() {
+        if (auto intAttr = mlir::dyn_cast<P4HIR::IntAttr>(getValue())) {
+          return intAttr.getValue().isZero();
+        }
+        return false;
+      }
+
+      bool isOne() {
+        if (auto intAttr = mlir::dyn_cast<P4HIR::IntAttr>(getValue())) {
+          return intAttr.getValue().isOne();
+        }
+        return false;
+      }
     }];
 
     let hasVerifier = 1;
@@ -349,6 +363,32 @@ def BinOp : P4HIR_Op<"binop", [Pure,
 
   let assemblyFormat = [{
     `(` $kind `,` $lhs `,` $rhs  `)` `:` type($lhs) attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    bool isCommutative() {
+      return P4HIR::BinOp::isCommutative(getKind());
+    }
+
+    // Static helper to check if a binary operation kind is commutative.
+    // Is used for a declarative canonicalization pattern because it's
+    // difficult to call an instance method on the op itself.
+    static bool isCommutative(P4HIR::BinOpKind kind) {
+      switch (kind) {
+          case P4HIR::BinOpKind::Mul:
+          case P4HIR::BinOpKind::Add:
+          case P4HIR::BinOpKind::AddSat:
+          case P4HIR::BinOpKind::Or:
+          case P4HIR::BinOpKind::Xor:
+          case P4HIR::BinOpKind::And:
+              return true;
+          case P4HIR::BinOpKind::Div:
+          case P4HIR::BinOpKind::Mod:
+          case P4HIR::BinOpKind::Sub:
+          case P4HIR::BinOpKind::SubSat:
+              return false;
+      }
+    }
   }];
 }
 

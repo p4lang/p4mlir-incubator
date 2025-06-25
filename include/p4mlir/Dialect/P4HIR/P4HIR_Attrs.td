@@ -56,9 +56,20 @@ def P4HIR_IntAttr : P4HIR_Attr<"Int", "int", [TypedAttrInterface]> {
     }]>,
   ];
   let extraClassDeclaration = [{
+    bool isZero() const { return getValue() == 0; }
+    bool isOne() const { return getValue() == 1; }
+    bool isNegative() const { return getValue().isNegative(); }
+    bool isAllOnes() const { return getValue().isAllOnes(); }
     int64_t getSInt() const { return getValue().getSExtValue(); }
     uint64_t getUInt() const { return getValue().getZExtValue(); }
-    bool isNullValue() const { return getValue() == 0; }
+    unsigned int getBitWidth() const { return getValue().getBitWidth(); }
+
+    static IntAttr getZero(mlir::Type type, unsigned width) {
+      return get(type, llvm::APInt::getZero(width));
+    }
+    static IntAttr getAllOnes(mlir::Type type, unsigned width) {
+      return get(type, llvm::APInt::getAllOnes(width));
+    }
   }];
 
   let genVerifyDecl = 1;

@@ -16,36 +16,35 @@ def IsNotConst : Constraint<CPred<[{
 }]>>;
 
 def IsZeroConst : Constraint<CPred<[{
-  [&]() {
-    if (auto constOp = mlir::cast_if_present<::P4::P4MLIR::P4HIR::ConstOp>($0.getDefiningOp())) {
-      if (auto intAttr = mlir::dyn_cast<::P4::P4MLIR::P4HIR::IntAttr>(constOp.getValue())) {
-        return intAttr.getValue().isZero();
-      }
-    }
-    return false;
-  }()
+  isZeroConst($0)
 }]>>;
 
 def IsOneConst : Constraint<CPred<[{
-  [&]() {
-    if (auto constOp = mlir::cast_if_present<::P4::P4MLIR::P4HIR::ConstOp>($0.getDefiningOp())) {
-      if (auto intAttr = mlir::dyn_cast<::P4::P4MLIR::P4HIR::IntAttr>(constOp.getValue())) {
-        return intAttr.getValue().isOne();
-      }
-    }
-    return false;
-  }()
+  isOneConst($0)
 }]>>;
 
+// binop(commutative, c, %x) ==> binop(commutative, %x, c)
+def IsCommutative : Constraint<CPred<[{
+  ::P4::P4MLIR::P4HIR::BinOp::isCommutative(
+    mlir::cast<::P4::P4MLIR::P4HIR::BinOpKindAttr>($0).getValue()
+  )
+}]>>;
+
+def BinOpCommutativeCanonicalization : Pat<
+  (BinOp $kind, $lhs, $rhs),
+  (BinOp $kind, $rhs, $lhs),
+  [(IsCommutative $kind), (IsConst $lhs), (IsNotConst $rhs)]
+>;
+
 // binop(sub, 0, %rhs) ==> neg(%rhs)
-def P4HIR_BinOp_SubZero : Pat<
+def BinOpSubZero : Pat<
   (BinOp BinOpKind_Sub, $lhs, $rhs),
   (UnaryOp UnaryOpKind_Neg, $rhs),
   [(IsZeroConst $lhs)]
 >;
 
 // binop(ssub, 0, %x) ==> neg(%x)
-def P4HIR_BinOp_SubSatZero : Pat<
+def BinOpSubSatZero : Pat<
   (BinOp BinOpKind_SubSat, $lhs, $rhs),
   (UnaryOp UnaryOpKind_Neg, $rhs),
   [(IsZeroConst $lhs)]
