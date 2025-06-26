@@ -1,6 +1,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Transforms/Passes.h"
 
@@ -30,10 +31,9 @@ class EnumTypeConverter : public TypeConverter {
 
         // Converts EnumType to SerEnumType
         addConversion([ctx](P4HIR::EnumType enumType) -> Type {
-            // TODO: Use external model/policy to define underlying type instead of always bit<32>
-            auto underlyingType = P4HIR::BitsType::get(ctx, 32, false);
+            auto underlyingType = mlir::cast<P4HIR::BitsType>(
+                mlir::cast<P4HIR::EnumRepresentationInterface>(enumType).getUnderlyingType());
 
-            // Create field mappings (for bit<32> is index but this should be externally defined)
             llvm::SmallVector<mlir::NamedAttribute> fields;
             for (auto const &[index, field] : llvm::enumerate(enumType.getFields())) {
                 auto name = mlir::cast<StringAttr>(field);

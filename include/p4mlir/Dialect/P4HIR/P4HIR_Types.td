@@ -603,7 +603,10 @@ def HeaderStackType : StructLikeType<"HeaderStack", "header_stack"> {
 //===----------------------------------------------------------------------===//
 // EnumType, ErrorType  & SerEnumType
 //===----------------------------------------------------------------------===//
-def EnumType : P4HIR_Type<"Enum", "enum", [AnnotatedType, HasDefaultValue]> {
+def EnumType : P4HIR_Type<"Enum", "enum", [
+  AnnotatedType, HasDefaultValue,
+  DeclareTypeInterfaceMethods<EnumRepresentationInterface>,
+]> {
   let summary = "enum type";
   let description = [{
     Represents an enumeration of values
