@@ -36,14 +36,14 @@
 namespace {
 
 bool isZeroConst(mlir::Value val) {
-    if (auto constOp = mlir::cast_if_present<::P4::P4MLIR::P4HIR::ConstOp>(val.getDefiningOp())) {
+    if (auto constOp = val.getDefiningOp<::P4::P4MLIR::P4HIR::ConstOp>()) {
         return constOp.isZero();
     }
     return false;
 }
 
 bool isOneConst(mlir::Value val) {
-    if (auto constOp = mlir::cast_if_present<::P4::P4MLIR::P4HIR::ConstOp>(val.getDefiningOp())) {
+    if (auto constOp = val.getDefiningOp<::P4::P4MLIR::P4HIR::ConstOp>()) {
         return constOp.isOne();
     }
     return false;
@@ -472,6 +472,8 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
                 // binop(and, %x, all_ones) ==> %x
                 if (rhsAttr.isAllOnes()) return getLhs();
                 break;
+            default:
+                break;
         }
     }
 
@@ -496,6 +498,7 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
                 if (lhsAttr.isZero())
                     return P4HIR::IntAttr::getZero(getType(), lhsAttr.getBitWidth());
                 break;
+            default:break;
         }
     }
     return {};

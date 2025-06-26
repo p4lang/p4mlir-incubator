@@ -56,8 +56,8 @@ def P4HIR_IntAttr : P4HIR_Attr<"Int", "int", [TypedAttrInterface]> {
     }]>,
   ];
   let extraClassDeclaration = [{
-    bool isZero() const { return getValue() == 0; }
-    bool isOne() const { return getValue() == 1; }
+    bool isZero() const { return getValue().isZero(); }
+    bool isOne() const { return getValue().isOne(); }
     bool isNegative() const { return getValue().isNegative(); }
     bool isAllOnes() const { return getValue().isAllOnes(); }
     int64_t getSInt() const { return getValue().getSExtValue(); }
