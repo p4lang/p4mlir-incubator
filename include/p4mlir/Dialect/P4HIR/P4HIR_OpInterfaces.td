@@ -87,5 +87,4 @@ def Annotated : OpInterface<"Annotated"> {
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
 
-
 #endif  // P4HIR_OPS_INTERFACES
