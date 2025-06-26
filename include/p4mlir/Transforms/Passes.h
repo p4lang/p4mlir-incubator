@@ -7,15 +7,9 @@
 
 #include <memory>
 
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Dialect.h"
-#include "mlir/IR/OpDefinition.h"
 #include "mlir/Pass/Pass.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 namespace P4::P4MLIR {
 

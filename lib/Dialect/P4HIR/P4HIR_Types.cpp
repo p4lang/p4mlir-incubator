@@ -625,6 +625,10 @@ mlir::TypedAttr EnumType::getDefaultValue() {
     return P4HIR::EnumFieldAttr::get(*this, mlir::cast<mlir::StringAttr>(fields[0]));
 }
 
+mlir::Type EnumType::getUnderlyingType() const {
+    return P4HIR::BitsType::get(getContext(), 32, /*isSigned=*/false);
+}
+
 Type ErrorType::parse(AsmParser &p) {
     llvm::SmallVector<Attribute> fields;
     if (p.parseCommaSeparatedList(AsmParser::Delimiter::LessGreater, [&]() {
