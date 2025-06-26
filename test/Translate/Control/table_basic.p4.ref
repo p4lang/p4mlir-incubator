@@ -1,0 +1,55 @@
+struct t1 {
+    bool hit;
+    bool miss;
+    action_enum action_run;
+}
+struct t2 {
+    bool hit;
+    bool miss;
+    action_enum action_run;
+}
+extern ActionProfile {
+    ActionProfile(bit<32> size);
+}
+
+control c(in bit<32> arg) {
+    action a(bit<32> carg) {
+        return;
+    }
+    action aa(in bit<32> arg, int<8> carg) {
+        return;
+    }
+    action b() {
+        return;
+    }
+    table t1 {
+        actions = {
+            a;
+            b;
+        }
+        default_action = b();
+    }
+    table t2 {
+        key = {
+            arg : exact @name("arg.key") ;
+            false : lpm @name("false.key") ;
+        }
+        actions = {
+            a;
+            b;
+            aa;
+        }
+        default_action = b();
+        const size = 42;
+        largest_priority_wins = false;
+        priority_delta = 10;
+        some_entry = 10;
+        implementation = ActionProfile((bit<32>)(32));
+    }
+    apply {
+        t1.apply();
+        if (t1.apply().hit) {
+            t2.apply();
+        }
+    }
+}
