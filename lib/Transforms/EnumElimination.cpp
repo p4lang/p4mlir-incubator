@@ -1,6 +1,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "p4mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "p4hir-enum-elimination"
@@ -24,6 +25,9 @@ struct EnumEliminationPass : public P4::P4MLIR::impl::EnumEliminationBase<EnumEl
 class EnumTypeConverter : public TypeConverter {
  public:
     explicit EnumTypeConverter(MLIRContext *ctx) {
+        // Fallback for other types.
+        addConversion([](Type type) -> Type { return type; });
+
         // Converts EnumType to SerEnumType
         addConversion([ctx](P4HIR::EnumType enumType) -> Type {
             // TODO: Use external model/policy to define underlying type instead of always bit<32>
@@ -39,14 +43,6 @@ class EnumTypeConverter : public TypeConverter {
             }
             return P4HIR::SerEnumType::get(enumType.getName(), underlyingType, fields,
                                            enumType.getAnnotations());
-        });
-
-        // Fallback for other types.
-        addConversion([](Type type) -> std::optional<Type> {
-            if (isa<P4HIR::EnumType>(type)) {
-                return std::nullopt;
-            }
-            return type;
         });
     }
 };
@@ -69,56 +65,36 @@ class EnumFieldConversionPattern : public OpConversionPattern<P4HIR::ConstOp> {
 
         auto newAttr = P4HIR::EnumFieldAttr::get(targetType, oldAttr.getField());
         rewriter.replaceOpWithNewOp<P4HIR::ConstOp>(op, newAttr);
+
         return mlir::success();
     }
 };
-
-class CallOpConversionPattern : public OpConversionPattern<P4HIR::CallOp> {
- public:
-    using OpConversionPattern<P4HIR::CallOp>::OpConversionPattern;
-
-    LogicalResult matchAndRewrite(P4HIR::CallOp op, OpAdaptor adaptor,
-                                  ConversionPatternRewriter &rewriter) const override {
-        SmallVector<Type> typeOperands;
-        if (auto typeOperandsAttr = op.getTypeOperandsAttr()) {
-            for (Attribute typeAttr : typeOperandsAttr.getValue()) {
-                typeOperands.push_back(cast<TypeAttr>(typeAttr).getValue());
-            }
-        }
-
-        P4HIR::CallOp newCall;
-        if (op.getResult()) {
-            Type resultType = getTypeConverter()->convertType(op.getResult().getType());
-            if (!resultType) {
-                return mlir::failure();
-            }
-            newCall = rewriter.create<P4HIR::CallOp>(op.getLoc(), op.getCalleeAttr(), resultType,
-                                                     typeOperands, adaptor.getOperands());
-        } else {
-            newCall = rewriter.create<P4HIR::CallOp>(op.getLoc(), op.getCalleeAttr(), typeOperands,
-                                                     adaptor.getOperands());
-        }
-
-        rewriter.replaceOp(op, newCall.getResults());
-        return mlir::success();
-    }
-};
-
-// TODO: Implement FuncOpConversionPattern
 
 void EnumEliminationPass::runOnOperation() {
     mlir::ModuleOp module = getOperation();
     MLIRContext &context = getContext();
 
-    EnumTypeConverter converter(&context);
+    EnumTypeConverter typeConverter(&context);
     ConversionTarget target(context);
 
+    target.addDynamicallyLegalOp<P4HIR::FuncOp>([&](P4HIR::FuncOp func) {
+        auto fnType = func.getFunctionType();
+        return typeConverter.isLegal(fnType.getInputs()) &&
+               typeConverter.isLegal(fnType.getReturnTypes());
+    });
+
     target.markUnknownOpDynamicallyLegal([&](Operation *op) {
-        return converter.isLegal(op->getOperandTypes()) && converter.isLegal(op->getResultTypes());
+        return typeConverter.isLegal(op->getOperandTypes()) &&
+               typeConverter.isLegal(op->getResultTypes());
     });
 
     RewritePatternSet patterns(&context);
-    patterns.add<EnumFieldConversionPattern, CallOpConversionPattern>(converter, &context);
+    patterns.add<EnumFieldConversionPattern>(typeConverter, &context);
+    P4::P4MLIR::populateFunctionOpInterfaceTypeConversionPattern<P4HIR::FuncOp>(patterns,
+                                                                                typeConverter);
+    P4::P4MLIR::populateCallOpInterfaceTypeConversionPattern<P4HIR::CallOp, P4HIR::InstantiateOp,
+                                                             P4HIR::ApplyOp>(patterns,
+                                                                             typeConverter);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
         signalPassFailure();
