@@ -36,68 +36,18 @@ def BinOpCommutativeCanonicalization : Pat<
   [(IsCommutative $kind), (IsConst $lhs), (IsNotConst $rhs)]
 >;
 
-// binop(mul, %x, 1) ==> %x
-def BinOpMulOne : Pat<
-  (BinOp BinOpKind_Mul, $lhs, $rhs),
-  (replaceWithValue $lhs),
-  [(IsOneConst $rhs)]
->;
-
-
-// binop(div, %x, 1) ==> %x
-def BinOpDivOneRHS : Pat<
-  (BinOp BinOpKind_Div, $lhs, $rhs),
-  (replaceWithValue $lhs),
-  [(IsOneConst $rhs)]
->;
-
-// binop(add, %x, 0) ==> %x
-def BinOpAddZero : Pat<
-  (BinOp BinOpKind_Add, $lhs, $rhs),
-  (replaceWithValue $lhs),
-  [(IsZeroConst $rhs)]
->;
-
-// binop(sadd, %x, 0) ==> %x
-def BinOpAddSatZero : Pat<
-  (BinOp BinOpKind_AddSat, $lhs, $rhs),
-  (replaceWithValue $lhs),
-  [(IsZeroConst $rhs)]
->;
-
 // binop(sub, 0, %rhs) ==> neg(%rhs)
-def BinOpSubZeroLHS : Pat<
+def BinOpSubZero : Pat<
   (BinOp BinOpKind_Sub, $lhs, $rhs),
   (UnaryOp UnaryOpKind_Neg, $rhs),
   [(IsZeroConst $lhs)]
->;
-
-// binop(sub, %x, 0) ==> %x
-def BinOpSubZeroRHS : Pat<
-  (BinOp BinOpKind_Sub, $lhs, $rhs),
-  (replaceWithValue $lhs),
-  [(IsZeroConst $rhs)]
 >;
 
 // binop(ssub, 0, %x) ==> neg(%x)
-def BinOpSubSatZeroLHS : Pat<
+def BinOpSubSatZero : Pat<
   (BinOp BinOpKind_SubSat, $lhs, $rhs),
   (UnaryOp UnaryOpKind_Neg, $rhs),
   [(IsZeroConst $lhs)]
->;
-
-// binop(ssub, %x, 0) ==> %x
-def BinOpSubSatZeroRHS : Pat<
-  (BinOp BinOpKind_SubSat, $lhs, $rhs),
-  (replaceWithValue $lhs),
-  [(IsZeroConst $rhs)]
->;
-
-// binop(xor, %x, 0) ==> %x
-def BinOpBXorZero : Pat<
-  (BinOp BinOpKind_BXor, $lhs, $rhs),
-  (replaceWithValue $lhs),
-  [(IsZeroConst $rhs)]
 >;
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_PATTERNS_TD
