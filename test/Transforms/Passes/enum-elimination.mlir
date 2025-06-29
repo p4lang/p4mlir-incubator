@@ -13,10 +13,23 @@ module {
     p4hir.return
   }
 
+  // CHECK: %[[var:.*]] = p4hir.variable ["suit"] : <![[suits]]>
+  %var = p4hir.variable ["suit"] : <!Suits>
+
   // CHECK: %[[const:.*]] = p4hir.const #[[diamond]]
   %c = p4hir.const #Suits_Diamonds
 
+  // CHECK: p4hir.assign %[[const]], %[[var]] : <![[suits]]>
+  p4hir.assign %c, %var : <!Suits>
+
+  // CHECK: %[[val:.*]] = p4hir.read %[[var]] : <![[suits]]>
+  %val = p4hir.read %var : <!Suits>
+
+  // CHECK: %[[eq:.*]] = p4hir.cmp(eq, %[[val]], %[[const]]) : ![[suits]], !p4hir.bool
+  %eq = p4hir.cmp(eq, %val, %c) : !Suits, !p4hir.bool
+
   // CHECK p4hir.call @process_suit(%[[const]]) : (![[suits]]) -> ()
-  p4hir.call @process_suit(%c) : (!Suits) -> ()
+  p4hir.call @process_suit(%val) : (!Suits) -> ()
+
 }
 
