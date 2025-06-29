@@ -8,10 +8,6 @@ using namespace mlir;
 
 namespace P4::P4MLIR {
 
-//===----------------------------------------------------------------------===//
-// FunctionOpInterface Conversions
-//===----------------------------------------------------------------------===//
-
 LogicalResult convertFuncOpTypes(FunctionOpInterface funcOp, const TypeConverter &typeConverter,
                                  ConversionPatternRewriter &rewriter) {
     auto fnType = mlir::dyn_cast<P4HIR::FuncType>(funcOp.getFunctionType());
@@ -35,8 +31,8 @@ LogicalResult convertFuncOpTypes(FunctionOpInterface funcOp, const TypeConverter
     return success();
 }
 
-struct FunctionOpInterfaceConversionPattern : public ConversionPattern {
-    FunctionOpInterfaceConversionPattern(StringRef functionLikeOpName, MLIRContext *ctx,
+struct FunctionOpInterfaceTypeConversionPattern : public ConversionPattern {
+    FunctionOpInterfaceTypeConversionPattern(StringRef functionLikeOpName, MLIRContext *ctx,
                                          const TypeConverter &converter)
         : ConversionPattern(converter, functionLikeOpName, /*benefit=*/1, ctx) {}
 
@@ -50,41 +46,8 @@ struct FunctionOpInterfaceConversionPattern : public ConversionPattern {
 void populateFunctionOpInterfaceTypeConversionPattern(StringRef functionLikeOpName,
                                                       RewritePatternSet &patterns,
                                                       const TypeConverter &converter) {
-    patterns.add<FunctionOpInterfaceConversionPattern>(functionLikeOpName, patterns.getContext(),
+    patterns.add<FunctionOpInterfaceTypeConversionPattern>(functionLikeOpName, patterns.getContext(),
                                                        converter);
-}
-
-//===----------------------------------------------------------------------===//
-// CallOpInterface Conversions
-//===----------------------------------------------------------------------===//
-
-LogicalResult convertCallOpTypes(CallOpInterface callOp, ArrayRef<Value> operands,
-                                 const TypeConverter &typeConverter,
-                                 ConversionPatternRewriter &rewriter) {
-    FailureOr<Operation *> newOp = convertOpResultTypes(callOp, operands, typeConverter, rewriter);
-    if (failed(newOp)) return failure();
-
-    rewriter.replaceOp(callOp, (*newOp)->getResults());
-    return success();
-}
-
-struct CallOpInterfaceConversionPattern : public ConversionPattern {
-    CallOpInterfaceConversionPattern(StringRef callLikeOpName, MLIRContext *ctx,
-                                     const TypeConverter &converter)
-        : ConversionPattern(converter, callLikeOpName, /*benefit=*/1, ctx) {}
-
-    LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        CallOpInterface callOp = cast<CallOpInterface>(op);
-        return convertCallOpTypes(callOp, operands, *typeConverter, rewriter);
-    }
-};
-
-void populateCallOpInterfaceTypeConversionPattern(StringRef callLikeOpName,
-                                                  RewritePatternSet &patterns,
-                                                  const TypeConverter &converter) {
-    patterns.add<CallOpInterfaceConversionPattern>(callLikeOpName, patterns.getContext(),
-                                                   converter);
 }
 
 }  // namespace P4::P4MLIR

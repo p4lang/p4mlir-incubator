@@ -44,10 +44,16 @@ class EnumTypeConverter : public TypeConverter {
             return P4HIR::SerEnumType::get(enumType.getName(), underlyingType, fields,
                                            enumType.getAnnotations());
         });
+
+        addConversion([this](P4HIR::ReferenceType refType) -> std::optional<Type> {
+            auto newType = convertType(refType.getObjectType());
+            if (!newType) return std::nullopt;
+
+            return P4HIR::ReferenceType::get(newType);
+        });
     }
 };
 
-// Converts enum field references to use the new SerEnumType
 class EnumFieldConversionPattern : public OpConversionPattern<P4HIR::ConstOp> {
  public:
     using OpConversionPattern<P4HIR::ConstOp>::OpConversionPattern;
@@ -88,17 +94,17 @@ void EnumEliminationPass::runOnOperation() {
                typeConverter.isLegal(op->getResultTypes());
     });
 
+    target.addLegalOp<P4HIR::CaseOp>();
+
     RewritePatternSet patterns(&context);
     patterns.add<EnumFieldConversionPattern>(typeConverter, &context);
     P4::P4MLIR::populateFunctionOpInterfaceTypeConversionPattern<P4HIR::FuncOp>(patterns,
                                                                                 typeConverter);
-    P4::P4MLIR::populateCallOpInterfaceTypeConversionPattern<P4HIR::CallOp, P4HIR::InstantiateOp,
-                                                             P4HIR::ApplyOp>(patterns,
-                                                                             typeConverter);
+    populateGenericOpTypeConversionPattern<P4HIR::CallOp, P4HIR::InstantiateOp, P4HIR::ApplyOp,
+                                           P4HIR::VariableOp, P4HIR::AssignOp, P4HIR::ReadOp,
+                                           P4HIR::CmpOp>(patterns, typeConverter);
 
-    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
 
 std::unique_ptr<Pass> P4::P4MLIR::createEnumEliminationPass() {
