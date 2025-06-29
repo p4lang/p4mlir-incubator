@@ -175,23 +175,6 @@ struct ControlOpConversionPattern : public OpConversionPattern<P4HIR::ControlOp>
     }
 };
 
-struct CallOpInterfaceConversionPattern : public OpInterfaceConversionPattern<CallOpInterface> {
-    using OpInterfaceConversionPattern<CallOpInterface>::OpInterfaceConversionPattern;
-
-    LogicalResult matchAndRewrite(CallOpInterface callOp, ArrayRef<Value> operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        // Do not convert call_method, there are precise patterns for it
-        if (mlir::isa<P4HIR::CallMethodOp>(callOp)) return failure();
-
-        FailureOr<Operation *> newOp =
-            convertOpResultTypes(callOp, operands, *getTypeConverter(), rewriter);
-        if (failed(newOp)) return failure();
-
-        rewriter.replaceOp(callOp, (*newOp)->getResults());
-        return success();
-    }
-};
-
 }  // end anonymous namespace
 
 void LowerToP4CoreLib::runOnOperation() {
@@ -291,9 +274,8 @@ void LowerToP4CoreLib::runOnOperation() {
                  ParserOpConversionPattern, ControlOpConversionPattern>(typeConverter, &context);
     P4::P4MLIR::populateFunctionOpInterfaceTypeConversionPattern<P4HIR::FuncOp>(patterns,
                                                                                 typeConverter);
-    P4::P4MLIR::populateCallOpInterfaceTypeConversionPattern<P4HIR::CallOp, P4HIR::InstantiateOp,
-                                                              P4HIR::ApplyOp>(patterns,
-                                                                              typeConverter);
+    populateGenericOpTypeConversionPattern<P4HIR::CallOp, P4HIR::InstantiateOp,
+                                                       P4HIR::ApplyOp>(patterns, typeConverter);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
