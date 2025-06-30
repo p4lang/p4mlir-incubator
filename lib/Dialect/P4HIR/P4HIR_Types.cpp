@@ -629,6 +629,13 @@ mlir::Type EnumType::getUnderlyingType() const {
     return P4HIR::BitsType::get(getContext(), 32, /*isSigned=*/false);
 }
 
+bool EnumType::shouldConvert() const { return true; }
+
+llvm::APInt EnumType::getEncodingForField(StringRef fieldName, unsigned fieldIndex) const {
+    auto underlyingType = mlir::cast<P4HIR::BitsType>(getUnderlyingType());
+    return llvm::APInt(underlyingType.getWidth(), fieldIndex);
+}
+
 Type ErrorType::parse(AsmParser &p) {
     llvm::SmallVector<Attribute> fields;
     if (p.parseCommaSeparatedList(AsmParser::Delimiter::LessGreater, [&]() {
