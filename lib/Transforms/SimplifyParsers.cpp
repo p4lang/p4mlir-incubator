@@ -1,5 +1,3 @@
-#include <llvm/Support/ErrorHandling.h>
-
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -22,7 +20,6 @@ struct SimplifyParsers : public impl::SimplifyParsersBase<SimplifyParsers> {
     /// Collapses linear sequences of states without branches or annotations.
     void collapseChains(P4HIR::ParserOp parser);
 };
-}  // end anonymous namespace
 
 void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
     // TODO: Revisit this to use ParserCallGraph instead
@@ -77,6 +74,8 @@ void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
         }
     }
 }
+
+}  // end namespace
 
 void SimplifyParsers::runOnOperation() {
     getOperation()->walk([&](P4HIR::ParserOp parser) {

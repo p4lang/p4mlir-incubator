@@ -1,6 +1,10 @@
+add_subdirectory(Utils)
+
 add_mlir_dialect_library(P4MLIRTransforms
+  EnumElimination.cpp
   FlattenCFG.cpp
   PrintParsersGraph.cpp
+  SerEnumElimination.cpp
   SimplifyParsers.cpp
 
   ADDITIONAL_HEADER_DIRS
@@ -13,4 +17,5 @@ add_mlir_dialect_library(P4MLIRTransforms
   MLIRIR
   MLIRSupport
   MLIRTransforms
+  P4MLIRTransformsUtils
 )

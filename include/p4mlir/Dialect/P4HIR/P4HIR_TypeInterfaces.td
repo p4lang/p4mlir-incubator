@@ -100,6 +100,38 @@ def FieldIDTypeInterface : TypeInterface<"FieldIDTypeInterface"> {
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
 
+// TODO: Can we add a default implementation in TableGen?
+def EnumRepresentationInterface : TypeInterface<"EnumRepresentationInterface"> {
+  let description = [{
+    Interface to specify the underlying representation of an enum type when it is
+    lowered to serialized form. This allows downstream users to provide a policy
+    for the bit-width of enums.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/        "Get the underlying type for of the enum",
+      /*returnType=*/  "mlir::Type",
+      /*methodName=*/  "getUnderlyingType",
+      /*args=*/        (ins)
+    >,
+    InterfaceMethod<
+      /*desc=*/        "Whether this enum should be converted to serializable form",
+      /*returnType=*/  "bool",
+      /*methodName=*/  "shouldConvert",
+      /*args=*/        (ins)
+    >,
+    InterfaceMethod<
+      /*desc=*/        "Get the numeric encoding for a specific enum field",
+      /*returnType=*/  "llvm::APInt",
+      /*methodName=*/  "getEncodingForField",
+      /*args=*/        (ins "llvm::StringRef":$fieldName, "unsigned":$fieldIndex)
+    >
+  ];
+
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+}
+
 def AnnotatedType : TypeInterface<"AnnotatedType"> {
   let description = [{
     Common methods for for all operations that might have annotations attached to them

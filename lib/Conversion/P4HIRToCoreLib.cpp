@@ -15,6 +15,7 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
+#include "p4mlir/Transforms/DialectConversion.h"
 
 #define DEBUG_TYPE "p4hir-convert-to-corelib"
 
@@ -130,28 +131,6 @@ struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMet
     }
 };
 
-static LogicalResult convertFuncOpTypes(FunctionOpInterface funcOp,
-                                        const TypeConverter &typeConverter,
-                                        ConversionPatternRewriter &rewriter) {
-    auto fnType = mlir::dyn_cast<P4HIR::FuncType>(funcOp.getFunctionType());
-    if (!fnType) return failure();
-
-    TypeConverter::SignatureConversion result(fnType.getNumInputs());
-    SmallVector<Type, 1> newResults;
-    if (failed(typeConverter.convertSignatureArgs(fnType.getInputs(), result)) ||
-        failed(typeConverter.convertTypes(fnType.getReturnTypes(), newResults)) ||
-        failed(rewriter.convertRegionTypes(&funcOp.getFunctionBody(), typeConverter, &result)))
-        return failure();
-
-    // Update the function signature in-place.
-    auto newType = P4HIR::FuncType::get(rewriter.getContext(), result.getConvertedTypes(),
-                                        newResults.empty() ? mlir::Type() : newResults.front(),
-                                        fnType.getTypeArguments());
-    rewriter.modifyOpInPlace(funcOp, [&] { funcOp.setType(newType); });
-
-    return success();
-}
-
 struct ParserOpConversionPattern : public OpConversionPattern<P4HIR::ParserOp> {
     using OpConversionPattern<P4HIR::ParserOp>::OpConversionPattern;
 
@@ -192,38 +171,6 @@ struct ControlOpConversionPattern : public OpConversionPattern<P4HIR::ControlOp>
             rewriter.modifyOpInPlace(op, [&] { op.setCtorType(newType); });
         }
 
-        return success();
-    }
-};
-
-struct FunctionOpInterfaceConversionPattern
-    : public OpInterfaceConversionPattern<FunctionOpInterface> {
-    using OpInterfaceConversionPattern<FunctionOpInterface>::OpInterfaceConversionPattern;
-
-    LogicalResult matchAndRewrite(FunctionOpInterface funcOp, ArrayRef<Value> operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        // Parsers and controls require conversion of ctor types
-        if (mlir::isa<P4HIR::ParserOp, P4HIR::ControlOp>(funcOp)) return failure();
-
-        if (failed(convertFuncOpTypes(funcOp, *typeConverter, rewriter))) return failure();
-
-        return success();
-    }
-};
-
-struct CallOpInterfaceConversionPattern : public OpInterfaceConversionPattern<CallOpInterface> {
-    using OpInterfaceConversionPattern<CallOpInterface>::OpInterfaceConversionPattern;
-
-    LogicalResult matchAndRewrite(CallOpInterface callOp, ArrayRef<Value> operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        // Do not convert call_method, there are precise patterns for it
-        if (mlir::isa<P4HIR::CallMethodOp>(callOp)) return failure();
-
-        FailureOr<Operation *> newOp =
-            convertOpResultTypes(callOp, operands, *getTypeConverter(), rewriter);
-        if (failed(newOp)) return failure();
-
-        rewriter.replaceOp(callOp, (*newOp)->getResults());
         return success();
     }
 };
@@ -324,9 +271,11 @@ void LowerToP4CoreLib::runOnOperation() {
 
     patterns.add<FuncOpConversionPattern, ExternOpConversionPattern, CallOpConversionPattern,
                  CallMethodOpConversionPattern, OverloadSetOpConversionPattern,
-                 ParserOpConversionPattern, ControlOpConversionPattern,
-                 FunctionOpInterfaceConversionPattern, CallOpInterfaceConversionPattern>(
-        typeConverter, &context);
+                 ParserOpConversionPattern, ControlOpConversionPattern>(typeConverter, &context);
+    P4::P4MLIR::populateFunctionOpInterfaceTypeConversionPattern<P4HIR::FuncOp>(patterns,
+                                                                                typeConverter);
+    populateGenericOpTypeConversionPattern<P4HIR::CallOp, P4HIR::InstantiateOp,
+                                                       P4HIR::ApplyOp>(patterns, typeConverter);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
