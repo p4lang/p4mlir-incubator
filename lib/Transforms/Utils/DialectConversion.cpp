@@ -12,7 +12,7 @@ LogicalResult convertFuncOpTypes(FunctionOpInterface funcOp, const TypeConverter
                                  ConversionPatternRewriter &rewriter) {
     auto fnType = mlir::dyn_cast<P4HIR::FuncType>(funcOp.getFunctionType());
     if (!fnType) {
-        return failure();
+        return mlir::failure();
     }
 
     TypeConverter::SignatureConversion result(fnType.getNumInputs());
@@ -20,7 +20,7 @@ LogicalResult convertFuncOpTypes(FunctionOpInterface funcOp, const TypeConverter
     if (failed(typeConverter.convertSignatureArgs(fnType.getInputs(), result)) ||
         failed(typeConverter.convertTypes(fnType.getReturnTypes(), newResults)) ||
         failed(rewriter.convertRegionTypes(&funcOp.getFunctionBody(), typeConverter, &result)))
-        return failure();
+        return mlir::failure();
 
     // Update the function signature in-place.
     auto newType = P4HIR::FuncType::get(rewriter.getContext(), result.getConvertedTypes(),
@@ -28,7 +28,7 @@ LogicalResult convertFuncOpTypes(FunctionOpInterface funcOp, const TypeConverter
                                         fnType.getTypeArguments());
     rewriter.modifyOpInPlace(funcOp, [&] { funcOp.setType(newType); });
 
-    return success();
+    return mlir::success();
 }
 
 struct FunctionOpInterfaceTypeConversionPattern : public ConversionPattern {

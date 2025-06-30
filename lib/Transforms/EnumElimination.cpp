@@ -26,7 +26,7 @@ struct EnumEliminationPass : public P4::P4MLIR::impl::EnumEliminationBase<EnumEl
 class EnumTypeConverter : public TypeConverter {
  public:
     explicit EnumTypeConverter(MLIRContext *ctx) {
-        // Fallback for other types.
+        // Fallback for other types
         addConversion([](Type type) -> Type { return type; });
 
         // Converts EnumType to SerEnumType
@@ -45,6 +45,7 @@ class EnumTypeConverter : public TypeConverter {
                                            enumType.getAnnotations());
         });
 
+        // Convert reference types by converting their object type
         addConversion([this](P4HIR::ReferenceType refType) -> std::optional<Type> {
             auto newType = convertType(refType.getObjectType());
             if (!newType) return std::nullopt;
@@ -76,6 +77,58 @@ class EnumFieldConversionPattern : public OpConversionPattern<P4HIR::ConstOp> {
     }
 };
 
+class SwitchConversionPattern : public OpConversionPattern<P4HIR::SwitchOp> {
+ public:
+    using OpConversionPattern<P4HIR::SwitchOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::SwitchOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        TypeConverter typeConverter = *getTypeConverter();
+
+        TypeConverter::SignatureConversion result(1);
+        if (failed(typeConverter.convertSignatureArgs(TypeRange(op.getCondition()), result)) ||
+            failed(rewriter.convertRegionTypes(&op.getBody(), typeConverter, &result))) {
+            return mlir::failure();
+        }
+
+        rewriter.modifyOpInPlace(
+            op, [&]() { op.getConditionMutable().assign(adaptor.getCondition()); });
+
+        return mlir::success();
+    }
+};
+
+class CaseConversionPattern : public OpConversionPattern<P4HIR::CaseOp> {
+ public:
+    using OpConversionPattern<P4HIR::CaseOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CaseOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        TypeConverter typeConverter = *getTypeConverter();
+
+        TypeConverter::SignatureConversion result(op.getValue().size());
+        if (failed(rewriter.convertRegionTypes(&op.getCaseRegion(), typeConverter, &result))) {
+            return mlir::failure();
+        }
+
+        SmallVector<Attribute> newValues;
+        for (Attribute val : op.getValue()) {
+            auto oldEnumAttr = dyn_cast<P4HIR::EnumFieldAttr>(val);
+            if (!oldEnumAttr) {
+                newValues.push_back(val);
+                continue;
+            }
+
+            Type newType = getTypeConverter()->convertType(oldEnumAttr.getType());
+            newValues.push_back(P4HIR::EnumFieldAttr::get(newType, oldEnumAttr.getField()));
+        }
+
+        rewriter.modifyOpInPlace(op, [&]() { op.setValueAttr(rewriter.getArrayAttr(newValues)); });
+
+        return mlir::success();
+    }
+};
+
 void EnumEliminationPass::runOnOperation() {
     mlir::ModuleOp module = getOperation();
     MLIRContext &context = getContext();
@@ -89,15 +142,23 @@ void EnumEliminationPass::runOnOperation() {
                typeConverter.isLegal(fnType.getReturnTypes());
     });
 
+    target.addDynamicallyLegalOp<P4HIR::CaseOp>([&](P4HIR::CaseOp caseOp) {
+        return llvm::all_of(caseOp.getValue(), [&](Attribute val) {
+            if (auto typedAttr = mlir::dyn_cast<mlir::TypedAttr>(val)) {
+                return typeConverter.isLegal(typedAttr.getType());
+            }
+            return true;
+        });
+    });
+
     target.markUnknownOpDynamicallyLegal([&](Operation *op) {
         return typeConverter.isLegal(op->getOperandTypes()) &&
                typeConverter.isLegal(op->getResultTypes());
     });
 
-    target.addLegalOp<P4HIR::CaseOp>();
-
     RewritePatternSet patterns(&context);
-    patterns.add<EnumFieldConversionPattern>(typeConverter, &context);
+    patterns.add<EnumFieldConversionPattern, SwitchConversionPattern, CaseConversionPattern>(
+        typeConverter, &context);
     P4::P4MLIR::populateFunctionOpInterfaceTypeConversionPattern<P4HIR::FuncOp>(patterns,
                                                                                 typeConverter);
     populateGenericOpTypeConversionPattern<P4HIR::CallOp, P4HIR::InstantiateOp, P4HIR::ApplyOp,
