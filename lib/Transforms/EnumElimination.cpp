@@ -31,14 +31,17 @@ class EnumTypeConverter : public TypeConverter {
 
         // Converts EnumType to SerEnumType
         addConversion([ctx](P4HIR::EnumType enumType) -> Type {
-            auto underlyingType = mlir::cast<P4HIR::BitsType>(
-                mlir::cast<P4HIR::EnumRepresentationInterface>(enumType).getUnderlyingType());
+            if (!enumType.shouldConvert()) {
+                return enumType;
+            }
+
+            auto underlyingType = mlir::cast<P4HIR::BitsType>(enumType.getUnderlyingType());
 
             llvm::SmallVector<mlir::NamedAttribute> fields;
             for (auto const &[index, field] : llvm::enumerate(enumType.getFields())) {
                 auto name = mlir::cast<StringAttr>(field);
                 auto value = P4HIR::IntAttr::get(ctx, underlyingType,
-                                                 APInt(underlyingType.getWidth(), index));
+                                                 enumType.getEncodingForField(name, index));
                 fields.emplace_back(name, value);
             }
             return P4HIR::SerEnumType::get(enumType.getName(), underlyingType, fields,
@@ -113,14 +116,11 @@ class CaseConversionPattern : public OpConversionPattern<P4HIR::CaseOp> {
 
         SmallVector<Attribute> newValues;
         for (Attribute val : op.getValue()) {
-            auto oldEnumAttr = dyn_cast<P4HIR::EnumFieldAttr>(val);
-            if (!oldEnumAttr) {
-                newValues.push_back(val);
-                continue;
-            }
+            auto enumFieldAttr = dyn_cast<P4HIR::EnumFieldAttr>(val);
+            if (!enumFieldAttr) return mlir::failure();
 
-            Type newType = getTypeConverter()->convertType(oldEnumAttr.getType());
-            newValues.push_back(P4HIR::EnumFieldAttr::get(newType, oldEnumAttr.getField()));
+            Type newType = getTypeConverter()->convertType(enumFieldAttr.getType());
+            newValues.push_back(P4HIR::EnumFieldAttr::get(newType, enumFieldAttr.getField()));
         }
 
         rewriter.modifyOpInPlace(op, [&]() { op.setValueAttr(rewriter.getArrayAttr(newValues)); });

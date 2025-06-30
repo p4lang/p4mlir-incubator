@@ -114,6 +114,18 @@ def EnumRepresentationInterface : TypeInterface<"EnumRepresentationInterface"> {
       /*returnType=*/  "mlir::Type",
       /*methodName=*/  "getUnderlyingType",
       /*args=*/        (ins)
+    >,
+    InterfaceMethod<
+      /*desc=*/        "Whether this enum should be converted to serializable form",
+      /*returnType=*/  "bool",
+      /*methodName=*/  "shouldConvert",
+      /*args=*/        (ins)
+    >,
+    InterfaceMethod<
+      /*desc=*/        "Get the numeric encoding for a specific enum field",
+      /*returnType=*/  "llvm::APInt",
+      /*methodName=*/  "getEncodingForField",
+      /*args=*/        (ins "llvm::StringRef":$fieldName, "unsigned":$fieldIndex)
     >
   ];
 
