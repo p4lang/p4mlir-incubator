@@ -7,15 +7,9 @@
 
 #include <memory>
 
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Dialect.h"
-#include "mlir/IR/OpDefinition.h"
 #include "mlir/Pass/Pass.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 namespace P4::P4MLIR {
 
@@ -24,12 +18,15 @@ namespace P4::P4MLIR {
 //===----------------------------------------------------------------------===//
 
 #define GEN_PASS_DECL_SIMPLIFYPARSERS
+#define GEN_PASS_DECL_ENUMELIMINATION
 #include "p4mlir/Transforms/Passes.h.inc"
 
 std::unique_ptr<mlir::Pass> createPrintParsersGraphPass();
 std::unique_ptr<mlir::Pass> createSimplifyParsersPass();
 std::unique_ptr<mlir::Pass> createFlattenCFGPass();
+std::unique_ptr<mlir::Pass> createEnumEliminationPass();
 
+/// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"
 

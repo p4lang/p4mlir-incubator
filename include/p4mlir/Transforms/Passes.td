@@ -88,4 +88,21 @@ def FlattenCFG : Pass<"p4hir-flatten-cfg"> {
   let constructor = "P4MLIR::createFlattenCFGPass()";
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
+
+//===----------------------------------------------------------------------===//
+// EnumElimination
+//===----------------------------------------------------------------------===//
+
+def EnumElimination : Pass<"p4hir-enum-elimination", "mlir::ModuleOp"> {
+  let summary = "Lower enum types to serializable enums";
+  let description = [{
+    This pass converts all instances of `!p4hir.enum` to `!p4hir.ser_enum`.
+    The underlying integer type for the `!p4hir.ser_enum` is defined by the
+    `EnumRepresentationInterface`, which defaults to a bit<32>.
+  }];
+
+  let constructor = "P4MLIR::createEnumEliminationPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
 #endif // P4MLIR_TRANSFORMS_PASSES_TD
