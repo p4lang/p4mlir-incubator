@@ -21,7 +21,6 @@ struct EnumEliminationPass : public P4::P4MLIR::impl::EnumEliminationBase<EnumEl
     EnumEliminationPass() = default;
     void runOnOperation() override;
 };
-}  // namespace
 
 class EnumTypeConverter : public TypeConverter {
  public:
@@ -128,6 +127,8 @@ class CaseConversionPattern : public OpConversionPattern<P4HIR::CaseOp> {
         return mlir::success();
     }
 };
+
+}  // namespace
 
 void EnumEliminationPass::runOnOperation() {
     mlir::ModuleOp module = getOperation();
