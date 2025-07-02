@@ -4,23 +4,23 @@
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-namespace P4::P4MLIR {
+namespace P4::P4MLIR::utils {
 
 llvm::LogicalResult convertFuncOpTypes(mlir::FunctionOpInterface funcOp,
                                        const mlir::TypeConverter &typeConverter,
                                        mlir::ConversionPatternRewriter &rewriter);
 
-void populateFunctionOpInterfaceTypeConversionPattern(mlir::StringRef functionLikeOpName,
-                                                      mlir::RewritePatternSet &patterns,
-                                                      const mlir::TypeConverter &converter);
+llvm::LogicalResult convertCtorTypes(mlir::Operation* op,
+                                     const mlir::TypeConverter &typeConverter,
+                                     mlir::ConversionPatternRewriter &rewriter);
 
-template <typename... FuncOpTs>
-void populateFunctionOpInterfaceTypeConversionPattern(mlir::RewritePatternSet &patterns,
-                                                      const mlir::TypeConverter &converter) {
-    (P4::P4MLIR::populateFunctionOpInterfaceTypeConversionPattern(FuncOpTs::getOperationName(),
-                                                                  patterns, converter),
-     ...);
-}
+struct FunctionOpInterfaceConversionPattern
+    : public mlir::OpInterfaceConversionPattern<mlir::FunctionOpInterface> {
+    using OpInterfaceConversionPattern<mlir::FunctionOpInterface>::OpInterfaceConversionPattern;
+    llvm::LogicalResult matchAndRewrite(mlir::FunctionOpInterface funcOp,
+                                        llvm::ArrayRef<mlir::Value> operands,
+                                        mlir::ConversionPatternRewriter &rewriter) const override;
+};
 
 template <typename OpTy>
 class GenericOpTypeConversionPattern : public mlir::OpConversionPattern<OpTy> {
@@ -40,11 +40,11 @@ class GenericOpTypeConversionPattern : public mlir::OpConversionPattern<OpTy> {
 template <typename... OpTypes>
 void populateGenericOpTypeConversionPattern(mlir::RewritePatternSet &patterns,
                                             const mlir::TypeConverter &converter) {
-    (patterns.add<P4::P4MLIR::GenericOpTypeConversionPattern<OpTypes>>(converter,
-                                                                       patterns.getContext()),
+    (patterns.add<P4::P4MLIR::utils::GenericOpTypeConversionPattern<OpTypes>>(
+         converter, patterns.getContext()),
      ...);
 }
 
-}  // namespace P4::P4MLIR
+}  // namespace P4::P4MLIR::utils
 
 #endif  // P4MLIR_TRANSFORMS_DIALECTCONVERSION_H

@@ -2,6 +2,7 @@
 #define P4HIR_OPS_INTERFACES
 
 include "mlir/IR/OpBase.td"
+include "p4mlir/Dialect/P4HIR/P4HIR_Types.td"
 
 def Annotated : OpInterface<"Annotated"> {
   let description = [{
