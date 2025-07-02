@@ -109,7 +109,7 @@ def VariableOp : P4HIR_Op<"variable", [
     ```
   }];
 
-  let arguments = (ins StrAttr:$name, UnitAttr:$init,
+  let arguments = (ins OptionalAttr<StrAttr>:$name, UnitAttr:$init,
                        OptionalAttr<DictionaryAttr>:$annotations);
 
   let results = (outs Res<ReferenceType, ""/*,

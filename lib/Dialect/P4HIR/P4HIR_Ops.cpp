@@ -445,7 +445,7 @@ void P4HIR::CmpOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 //===----------------------------------------------------------------------===//
 
 void P4HIR::VariableOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
-    setNameFn(getResult(), getName());
+    if (getName() && !getName()->empty()) setNameFn(getResult(), *getName());
 }
 
 LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewriter &rewriter) {

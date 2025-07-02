@@ -15,13 +15,13 @@ module {
   // CHECK: p4hir.func @process_suit(%[[arg:.*]]: ![[suits]])
   // CHECK: p4hir.switch (%[[arg]] : ![[suits]])
   // CHECK: p4hir.case(anyof, [#[[clubs]], #[[spades]]])
-  // CHECK: %[[c1:.*]] = p4hir.const #[[diamonds]]
+  // CHECK: %[[c1:.*]] = p4hir.const ["suit"] #[[diamonds]] annotations {hidden}
   // CHECK: p4hir.call @process_suit (%[[c1]]) : (![[suits]]) -> ()
   // CHECK: p4hir.case(equal, [#[[diamonds]]])
   p4hir.func @process_suit(%arg0: !Suits) {
     p4hir.switch (%arg0 : !Suits) {
       p4hir.case(anyof, [#Suits_Clubs, #Suits_Spades]) {
-        %c1 = p4hir.const #Suits_Diamonds
+        %c1 = p4hir.const ["suit"] #Suits_Diamonds annotations {hidden}
         p4hir.call @process_suit(%c1) : (!Suits) -> ()
         p4hir.yield
       }
