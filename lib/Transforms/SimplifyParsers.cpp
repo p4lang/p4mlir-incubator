@@ -22,7 +22,6 @@ struct SimplifyParsers : public impl::SimplifyParsersBase<SimplifyParsers> {
     /// Collapses linear sequences of states without branches or annotations.
     void collapseChains(P4HIR::ParserOp parser);
 };
-}  // end anonymous namespace
 
 void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
     // TODO: Revisit this to use ParserCallGraph instead
@@ -77,6 +76,8 @@ void SimplifyParsers::collapseChains(P4HIR::ParserOp parser) {
         }
     }
 }
+
+}  // end namespace
 
 void SimplifyParsers::runOnOperation() {
     getOperation()->walk([&](P4HIR::ParserOp parser) {

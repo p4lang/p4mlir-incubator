@@ -1,6 +1,7 @@
 add_mlir_dialect_library(P4MLIRTransforms
   FlattenCFG.cpp
   PrintParsersGraph.cpp
+  SerEnumElimination.cpp
   SimplifyParsers.cpp
 
   ADDITIONAL_HEADER_DIRS
