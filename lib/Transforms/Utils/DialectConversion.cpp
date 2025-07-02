@@ -6,7 +6,20 @@
 
 using namespace mlir;
 
-namespace P4::P4MLIR {
+using namespace P4::P4MLIR;
+
+namespace P4::P4MLIR::utils {
+
+llvm::LogicalResult FunctionOpInterfaceConversionPattern::matchAndRewrite(
+    mlir::FunctionOpInterface funcOp, llvm::ArrayRef<mlir::Value> operands,
+    mlir::ConversionPatternRewriter &rewriter) const {
+    if (failed(convertFuncOpTypes(funcOp, *typeConverter, rewriter))) return mlir::failure();
+
+    if (failed(convertCtorTypes(funcOp.getOperation(), *typeConverter, rewriter)))
+        return mlir::failure();
+
+    return mlir::success();
+}
 
 LogicalResult convertFuncOpTypes(FunctionOpInterface funcOp, const TypeConverter &typeConverter,
                                  ConversionPatternRewriter &rewriter) {
@@ -31,23 +44,38 @@ LogicalResult convertFuncOpTypes(FunctionOpInterface funcOp, const TypeConverter
     return mlir::success();
 }
 
-struct FunctionOpInterfaceTypeConversionPattern : public ConversionPattern {
-    FunctionOpInterfaceTypeConversionPattern(StringRef functionLikeOpName, MLIRContext *ctx,
-                                         const TypeConverter &converter)
-        : ConversionPattern(converter, functionLikeOpName, /*benefit=*/1, ctx) {}
-
-    LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        FunctionOpInterface funcOp = cast<FunctionOpInterface>(op);
-        return convertFuncOpTypes(funcOp, *typeConverter, rewriter);
+llvm::LogicalResult convertCtorTypes(mlir::Operation *op, const mlir::TypeConverter &typeConverter,
+                                     mlir::ConversionPatternRewriter &rewriter) {
+    if (auto parserOp = mlir::dyn_cast<P4HIR::ParserOp>(op)) {
+        auto ctorType = parserOp.getCtorType();
+        if (!typeConverter.isLegal(ctorType.getReturnType())) {
+            // Expect empty ctor args
+            if (ctorType.getNumInputs())
+                return rewriter.notifyMatchFailure(parserOp, "non-empty inputs for ctor types");
+            auto newType =
+                P4HIR::CtorType::get(rewriter.getContext(), ctorType.getInputs(),
+                                     typeConverter.convertType(ctorType.getReturnType()));
+            rewriter.modifyOpInPlace(parserOp, [&] { parserOp.setCtorType(newType); });
+        }
+        return mlir::success();
     }
-};
 
-void populateFunctionOpInterfaceTypeConversionPattern(StringRef functionLikeOpName,
-                                                      RewritePatternSet &patterns,
-                                                      const TypeConverter &converter) {
-    patterns.add<FunctionOpInterfaceTypeConversionPattern>(functionLikeOpName, patterns.getContext(),
-                                                       converter);
+    if (auto controlOp = mlir::dyn_cast<P4HIR::ControlOp>(op)) {
+        auto ctorType = controlOp.getCtorType();
+        if (!typeConverter.isLegal(ctorType.getReturnType())) {
+            // Expect empty ctor args
+            if (ctorType.getNumInputs())
+                return rewriter.notifyMatchFailure(controlOp, "non-empty inputs for ctor types");
+            auto newType =
+                P4HIR::CtorType::get(rewriter.getContext(), ctorType.getInputs(),
+                                     typeConverter.convertType(ctorType.getReturnType()));
+            rewriter.modifyOpInPlace(controlOp, [&] { controlOp.setCtorType(newType); });
+        }
+        return mlir::success();
+    }
+
+    // Not a ctor type op, nothing to do
+    return mlir::success();
 }
 
-}  // namespace P4::P4MLIR
+}  // namespace P4::P4MLIR::utils

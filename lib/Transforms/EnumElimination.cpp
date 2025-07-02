@@ -24,12 +24,12 @@ struct EnumEliminationPass : public P4::P4MLIR::impl::EnumEliminationBase<EnumEl
 
 class EnumTypeConverter : public TypeConverter {
  public:
-    explicit EnumTypeConverter(MLIRContext *ctx) {
+    explicit EnumTypeConverter() {
         // Fallback for other types
         addConversion([](Type type) -> Type { return type; });
 
         // Converts EnumType to SerEnumType
-        addConversion([ctx](P4HIR::EnumType enumType) -> Type {
+        addConversion([](P4HIR::EnumType enumType) -> Type {
             if (!enumType.shouldConvert()) {
                 return enumType;
             }
@@ -39,8 +39,8 @@ class EnumTypeConverter : public TypeConverter {
             llvm::SmallVector<mlir::NamedAttribute> fields;
             for (auto const &[index, field] : llvm::enumerate(enumType.getFields())) {
                 auto name = mlir::cast<StringAttr>(field);
-                auto value = P4HIR::IntAttr::get(ctx, underlyingType,
-                                                 enumType.getEncodingForField(name, index));
+                auto value =
+                    P4HIR::IntAttr::get(underlyingType, enumType.getEncodingForField(name, index));
                 fields.emplace_back(name, value);
             }
             return P4HIR::SerEnumType::get(enumType.getName(), underlyingType, fields,
@@ -73,7 +73,8 @@ class EnumFieldConversionPattern : public OpConversionPattern<P4HIR::ConstOp> {
         if (!serEnumType) return mlir::failure();
 
         auto newAttr = P4HIR::EnumFieldAttr::get(serEnumType, enumFieldAttr.getField());
-        rewriter.replaceOpWithNewOp<P4HIR::ConstOp>(op, newAttr, op.getNameAttr(), op.getAnnotationsAttr());
+        rewriter.replaceOpWithNewOp<P4HIR::ConstOp>(op, newAttr, op.getNameAttr(),
+                                                    op.getAnnotationsAttr());
 
         return mlir::success();
     }
@@ -134,7 +135,7 @@ void EnumEliminationPass::runOnOperation() {
     mlir::ModuleOp module = getOperation();
     MLIRContext &context = getContext();
 
-    EnumTypeConverter typeConverter(&context);
+    EnumTypeConverter typeConverter;
     ConversionTarget target(context);
 
     target.addDynamicallyLegalOp<P4HIR::FuncOp>([&](P4HIR::FuncOp func) {
@@ -152,19 +153,29 @@ void EnumEliminationPass::runOnOperation() {
         });
     });
 
+    target.addDynamicallyLegalOp<P4HIR::ControlOp>([&](P4HIR::ControlOp ctrl) {
+        auto fnType = ctrl.getFunctionType();
+        return typeConverter.isLegal(fnType.getInputs()) &&
+               typeConverter.isLegal(fnType.getReturnTypes());
+    });
+
+    target.addDynamicallyLegalOp<P4HIR::ParserOp>([&](P4HIR::ParserOp parser) {
+        auto fnType = parser.getFunctionType();
+        return typeConverter.isLegal(fnType.getInputs()) &&
+               typeConverter.isLegal(fnType.getReturnTypes());
+    });
+
     target.markUnknownOpDynamicallyLegal([&](Operation *op) {
         return typeConverter.isLegal(op->getOperandTypes()) &&
                typeConverter.isLegal(op->getResultTypes());
     });
 
     RewritePatternSet patterns(&context);
-    patterns.add<EnumFieldConversionPattern, SwitchConversionPattern, CaseConversionPattern>(
-        typeConverter, &context);
-    P4::P4MLIR::populateFunctionOpInterfaceTypeConversionPattern<P4HIR::FuncOp>(patterns,
-                                                                                typeConverter);
-    populateGenericOpTypeConversionPattern<P4HIR::CallOp, P4HIR::InstantiateOp, P4HIR::ApplyOp,
-                                           P4HIR::VariableOp, P4HIR::AssignOp, P4HIR::ReadOp,
-                                           P4HIR::CmpOp>(patterns, typeConverter);
+    patterns.add<EnumFieldConversionPattern, SwitchConversionPattern, CaseConversionPattern,
+                 utils::FunctionOpInterfaceConversionPattern>(typeConverter, &context);
+    utils::populateGenericOpTypeConversionPattern<
+        P4HIR::CallOp, P4HIR::InstantiateOp, P4HIR::ApplyOp, P4HIR::VariableOp, P4HIR::AssignOp,
+        P4HIR::ReadOp, P4HIR::CmpOp, P4HIR::ReturnOp>(patterns, typeConverter);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
