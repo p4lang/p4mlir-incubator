@@ -9,6 +9,7 @@
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "p4mlir/Conversion/ConversionPatterns.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Ops.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Types.h"
@@ -130,105 +131,23 @@ struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMet
     }
 };
 
-static LogicalResult convertFuncOpTypes(FunctionOpInterface funcOp,
-                                        const TypeConverter &typeConverter,
-                                        ConversionPatternRewriter &rewriter) {
-    auto fnType = mlir::dyn_cast<P4HIR::FuncType>(funcOp.getFunctionType());
-    if (!fnType) return failure();
-
-    TypeConverter::SignatureConversion result(fnType.getNumInputs());
-    SmallVector<Type, 1> newResults;
-    if (failed(typeConverter.convertSignatureArgs(fnType.getInputs(), result)) ||
-        failed(typeConverter.convertTypes(fnType.getReturnTypes(), newResults)) ||
-        failed(rewriter.convertRegionTypes(&funcOp.getFunctionBody(), typeConverter, &result)))
-        return failure();
-
-    // Update the function signature in-place.
-    auto newType = P4HIR::FuncType::get(rewriter.getContext(), result.getConvertedTypes(),
-                                        newResults.empty() ? mlir::Type() : newResults.front(),
-                                        fnType.getTypeArguments());
-    rewriter.modifyOpInPlace(funcOp, [&] { funcOp.setType(newType); });
-
-    return success();
-}
-
-struct ParserOpConversionPattern : public OpConversionPattern<P4HIR::ParserOp> {
-    using OpConversionPattern<P4HIR::ParserOp>::OpConversionPattern;
-
-    LogicalResult matchAndRewrite(P4HIR::ParserOp op, OpAdaptor operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        if (failed(convertFuncOpTypes(op, *typeConverter, rewriter))) return failure();
-
-        auto ctorType = op.getCtorType();
-        if (!typeConverter->isLegal(ctorType.getReturnType())) {
-            // Expect empty ctor args
-            if (ctorType.getNumInputs())
-                return rewriter.notifyMatchFailure(op, "non-empty inputs for ctor types");
-            auto newType =
-                P4HIR::CtorType::get(rewriter.getContext(), ctorType.getInputs(),
-                                     typeConverter->convertType(ctorType.getReturnType()));
-            rewriter.modifyOpInPlace(op, [&] { op.setCtorType(newType); });
-        }
-
-        return success();
-    }
-};
-
-struct ControlOpConversionPattern : public OpConversionPattern<P4HIR::ControlOp> {
-    using OpConversionPattern<P4HIR::ControlOp>::OpConversionPattern;
-
-    LogicalResult matchAndRewrite(P4HIR::ControlOp op, OpAdaptor operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        if (failed(convertFuncOpTypes(op, *typeConverter, rewriter))) return failure();
-
-        auto ctorType = op.getCtorType();
-        if (!typeConverter->isLegal(ctorType.getReturnType())) {
-            // Expect empty ctor args
-            if (ctorType.getNumInputs())
-                return rewriter.notifyMatchFailure(op, "non-empty inputs for ctor types");
-            auto newType =
-                P4HIR::CtorType::get(rewriter.getContext(), ctorType.getInputs(),
-                                     typeConverter->convertType(ctorType.getReturnType()));
-            rewriter.modifyOpInPlace(op, [&] { op.setCtorType(newType); });
-        }
-
-        return success();
-    }
-};
-
-struct FunctionOpInterfaceConversionPattern
-    : public OpInterfaceConversionPattern<FunctionOpInterface> {
-    using OpInterfaceConversionPattern<FunctionOpInterface>::OpInterfaceConversionPattern;
-
-    LogicalResult matchAndRewrite(FunctionOpInterface funcOp, ArrayRef<Value> operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        // Parsers and controls require conversion of ctor types
-        if (mlir::isa<P4HIR::ParserOp, P4HIR::ControlOp>(funcOp)) return failure();
-
-        if (failed(convertFuncOpTypes(funcOp, *typeConverter, rewriter))) return failure();
-
-        return success();
-    }
-};
-
-struct CallOpInterfaceConversionPattern : public OpInterfaceConversionPattern<CallOpInterface> {
-    using OpInterfaceConversionPattern<CallOpInterface>::OpInterfaceConversionPattern;
-
-    LogicalResult matchAndRewrite(CallOpInterface callOp, ArrayRef<Value> operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        // Do not convert call_method, there are precise patterns for it
-        if (mlir::isa<P4HIR::CallMethodOp>(callOp)) return failure();
-
-        FailureOr<Operation *> newOp =
-            convertOpResultTypes(callOp, operands, *getTypeConverter(), rewriter);
-        if (failed(newOp)) return failure();
-
-        rewriter.replaceOp(callOp, (*newOp)->getResults());
-        return success();
-    }
-};
-
 }  // end anonymous namespace
+
+class P4CoreLibTypeConverter : public P4HIRTypeConverter {
+ public:
+    P4CoreLibTypeConverter() {
+        addConversion([&](P4HIR::ExternType extType) -> std::optional<Type> {
+            if (!extType.hasAnnotation("corelib")) return std::nullopt;
+
+            if (extType.getName() == "packet_in")
+                return P4CoreLib::PacketInType::get(extType.getContext());
+            else if (extType.getName() == "packet_out")
+                return P4CoreLib::PacketOutType::get(extType.getContext());
+
+            return std::nullopt;
+        });
+    }
+};
 
 void LowerToP4CoreLib::runOnOperation() {
     MLIRContext &context = getContext();
@@ -238,40 +157,14 @@ void LowerToP4CoreLib::runOnOperation() {
     RewritePatternSet patterns(&context);
     SymbolTableCollection symTables;
 
-    TypeConverter typeConverter;
-    typeConverter.addConversion([&](Type t) -> std::optional<Type> {
-        if (auto parserType = mlir::dyn_cast<P4HIR::ParserType>(t)) {
-            if (typeConverter.isLegal(parserType.getInputs())) return parserType;
-            SmallVector<mlir::Type> newInputs;
-            if (failed(typeConverter.convertTypes(parserType.getInputs(), newInputs)))
-                return std::nullopt;
-            assert(newInputs.size() == parserType.getInputs().size());
-            return P4HIR::ParserType::get(&context, parserType.getName(), newInputs,
-                                          parserType.getTypeArguments(),
-                                          parserType.getAnnotations());
-        }
-
-        if (auto annotatedType = mlir::dyn_cast<P4HIR::AnnotatedType>(t))
-            if (!annotatedType.hasAnnotation("corelib")) return t;
-
-        if (auto extType = mlir::dyn_cast<P4HIR::ExternType>(t)) {
-            return llvm::StringSwitch<mlir::Type>(extType.getName())
-                .Case("packet_in", P4CoreLib::PacketInType::get(&context))
-                .Case("packet_out", P4CoreLib::PacketOutType::get(&context))
-                .Default(t);
-        }
-
-        return t;
-    });
-
+    P4CoreLibTypeConverter typeConverter;
     target.addLegalDialect<P4CoreLib::P4CoreLibDialect>();
 
     target.addDynamicallyLegalOp<P4HIR::FuncOp>([&](P4HIR::FuncOp func) {
         auto fnType = func.getFunctionType();
 
         // All corelib-annotated functions should be converted
-        return !func.hasAnnotation("corelib") && typeConverter.isLegal(fnType.getInputs()) &&
-               typeConverter.isLegal(fnType.getReturnTypes());
+        return !func.hasAnnotation("corelib") && typeConverter.isLegal(fnType);
     });
     target.addDynamicallyLegalOp<P4HIR::ExternOp>([](P4HIR::ExternOp ext) {
         // All corelib-annotated externs should be converted
@@ -294,17 +187,11 @@ void LowerToP4CoreLib::runOnOperation() {
         return true;
     });
 
-    target.addDynamicallyLegalOp<P4HIR::ControlOp>([&](P4HIR::ControlOp ctrl) {
-        auto fnType = ctrl.getFunctionType();
-        return typeConverter.isLegal(fnType.getInputs()) &&
-               typeConverter.isLegal(fnType.getReturnTypes());
-    });
+    target.addDynamicallyLegalOp<P4HIR::ControlOp>(
+        [&](P4HIR::ControlOp ctrl) { return typeConverter.isLegal(ctrl.getFunctionType()); });
 
-    target.addDynamicallyLegalOp<P4HIR::ParserOp>([&](P4HIR::ParserOp parser) {
-        auto fnType = parser.getFunctionType();
-        return typeConverter.isLegal(fnType.getInputs()) &&
-               typeConverter.isLegal(fnType.getReturnTypes());
-    });
+    target.addDynamicallyLegalOp<P4HIR::ParserOp>(
+        [&](P4HIR::ParserOp parser) { return typeConverter.isLegal(parser.getFunctionType()); });
 
     target.addDynamicallyLegalOp<P4HIR::InstantiateOp>(
         [&](P4HIR::InstantiateOp inst) { return typeConverter.isLegal(inst.getOperandTypes()); });
@@ -323,10 +210,14 @@ void LowerToP4CoreLib::runOnOperation() {
     });
 
     patterns.add<FuncOpConversionPattern, ExternOpConversionPattern, CallOpConversionPattern,
-                 CallMethodOpConversionPattern, OverloadSetOpConversionPattern,
-                 ParserOpConversionPattern, ControlOpConversionPattern,
-                 FunctionOpInterfaceConversionPattern, CallOpInterfaceConversionPattern>(
-        typeConverter, &context);
+                 CallMethodOpConversionPattern, OverloadSetOpConversionPattern>(typeConverter,
+                                                                                &context);
+
+    // Translate call operands and results via type converter
+    populateP4HIRAnyCallOpTypeConversionPattern(patterns, typeConverter);
+    // Translate function-like ops signatures and types
+    populateP4HIRFunctionOpTypeConversionPattern<P4HIR::FuncOp, P4HIR::ParserOp, P4HIR::ControlOp>(
+        patterns, typeConverter);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
