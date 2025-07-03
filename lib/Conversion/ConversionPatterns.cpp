@@ -1,5 +1,7 @@
 #include "p4mlir/Conversion/ConversionPatterns.h"
 
+#include "llvm/ADT/TypeSwitch.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
@@ -28,6 +30,20 @@ struct AnyCallOpInterfaceConversionPattern : public OpInterfaceConversionPattern
 
 P4HIRTypeConverter::P4HIRTypeConverter() {
     addConversion([&](mlir::Type t) { return t; });
+
+    addTypeAttributeConversion([](mlir::Type, Attribute attr) { return attr; });
+
+    addTypeAttributeConversion([&](mlir::Type type, P4HIR::AggAttr attr) {
+        if (isLegal(type)) return attr;
+
+        SmallVector<Attribute> newAttrs;
+        llvm::transform(attr.getFields().getAsRange<mlir::TypedAttr>(),
+                        std::back_inserter(newAttrs), [&](auto attr) {
+                            return convertTypeAttribute(attr.getType(), attr).value_or(nullptr);
+                        });
+
+        return P4HIR::AggAttr::get(convertType(type), ArrayAttr::get(attr.getContext(), newAttrs));
+    });
 
     addConversion([&](P4HIR::CtorType ctorType) {
         // Expect empty ctor args
@@ -131,19 +147,55 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
     });
 }
 
+static FailureOr<mlir::Attribute> convertAttribute(mlir::Attribute attr,
+                                                   const TypeConverter *typeConverter) {
+    return llvm::TypeSwitch<mlir::Attribute, FailureOr<mlir::Attribute>>(attr)
+        .Case<mlir::TypeAttr>([&](auto typeAttr) -> FailureOr<mlir::Attribute> {
+            auto newType = typeConverter->convertType(typeAttr.getValue());
+            if (!newType) return failure();
+            return TypeAttr::get(newType);
+        })
+        .Case<TypedAttr>([&](auto typedAttr) -> FailureOr<mlir::Attribute> {
+            if (typeConverter->isLegal(typedAttr.getType())) return attr;
+
+            auto newAttr = typeConverter->convertTypeAttribute(typedAttr.getType(), typedAttr);
+            if (!newAttr) return failure();
+            return newAttr.value();
+        })
+        .Case<ArrayAttr>([&](auto arrayAttr) -> FailureOr<mlir::Attribute> {
+            SmallVector<Attribute> newValues;
+            for (auto entry : arrayAttr) {
+                auto maybeConverted = convertAttribute(entry, typeConverter);
+                if (failed(maybeConverted)) return failure();
+                newValues.push_back(maybeConverted.value());
+            }
+            return mlir::ArrayAttr::get(arrayAttr.getContext(), newValues);
+        })
+        .Case<DictionaryAttr>([&](auto dictAttr) -> FailureOr<mlir::Attribute> {
+            SmallVector<NamedAttribute> newValues;
+            for (auto entry : dictAttr) {
+                auto maybeConverted = convertAttribute(entry.getValue(), typeConverter);
+                if (failed(maybeConverted)) return failure();
+                newValues.emplace_back(entry.getName(), maybeConverted.value());
+            }
+            return mlir::DictionaryAttr::get(dictAttr.getContext(), newValues);
+        })
+
+        .Default([](auto attr) { return attr; });
+}
+
 FailureOr<Operation *> P4::P4MLIR::doTypeConversion(Operation *op, ValueRange operands,
                                                     ConversionPatternRewriter &rewriter,
                                                     const TypeConverter *typeConverter) {
-    // Convert the TypeAttrs.
+    // Convert the attributes.
     llvm::SmallVector<NamedAttribute, 4> newAttrs;
     newAttrs.reserve(op->getAttrs().size());
     for (auto attr : op->getAttrs()) {
-        if (auto typeAttr = dyn_cast<TypeAttr>(attr.getValue())) {
-            newAttrs.emplace_back(attr.getName(),
-                                  TypeAttr::get(typeConverter->convertType(typeAttr.getValue())));
-        } else {
-            newAttrs.push_back(attr);
-        }
+        auto maybeNewAttr = convertAttribute(attr.getValue(), typeConverter);
+        if (failed(maybeNewAttr))
+            return rewriter.notifyMatchFailure(
+                op->getLoc(), "failed to convert attribute '" + attr.getName().getValue() + "'");
+        newAttrs.emplace_back(attr.getName(), maybeNewAttr.value());
     }
 
     // Convert the result types.
