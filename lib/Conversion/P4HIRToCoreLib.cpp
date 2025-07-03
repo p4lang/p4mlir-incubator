@@ -182,31 +182,24 @@ void LowerToP4CoreLib::runOnOperation() {
         return true;
     });
 
+    target.addDynamicallyLegalOp<P4HIR::CallMethodOp>([&](P4HIR::CallMethodOp call) {
+        // All calls to methods of corelib-annotated externs should be converted
+        return !call.getExtern().hasAnnotation("corelib");
+    });
+
     target.addDynamicallyLegalOp<P4HIR::OverloadSetOp>([&](P4HIR::OverloadSetOp ovl) {
         for (auto opFunc : ovl.getOps<P4HIR::FuncOp>()) return !target.isIllegal(opFunc);
         return true;
     });
 
-    target.addDynamicallyLegalOp<P4HIR::ControlOp>(
-        [&](P4HIR::ControlOp ctrl) { return typeConverter.isLegal(ctrl.getFunctionType()); });
+    target.markUnknownOpDynamicallyLegal([&](Operation *op) {
+        if (auto func = dyn_cast<FunctionOpInterface>(op)) {
+            auto fnType = func.getFunctionType();
+            return typeConverter.isLegal(fnType);
+        }
 
-    target.addDynamicallyLegalOp<P4HIR::ParserOp>(
-        [&](P4HIR::ParserOp parser) { return typeConverter.isLegal(parser.getFunctionType()); });
-
-    target.addDynamicallyLegalOp<P4HIR::InstantiateOp>(
-        [&](P4HIR::InstantiateOp inst) { return typeConverter.isLegal(inst.getOperandTypes()); });
-
-    target.addDynamicallyLegalOp<P4HIR::ConstructOp>([&](P4HIR::ConstructOp inst) {
-        return typeConverter.isLegal(inst.getOperandTypes()) &&
-               typeConverter.isLegal(inst.getResult().getType());
-    });
-
-    target.addDynamicallyLegalOp<P4HIR::ApplyOp>(
-        [&](P4HIR::ApplyOp apply) { return typeConverter.isLegal(apply.getOperandTypes()); });
-
-    target.addDynamicallyLegalOp<P4HIR::CallMethodOp>([&](P4HIR::CallMethodOp call) {
-        // All calls to methods of corelib-annotated externs should be converted
-        return !call.getExtern().hasAnnotation("corelib");
+        return typeConverter.isLegal(op->getOperandTypes()) &&
+               typeConverter.isLegal(op->getResultTypes());
     });
 
     patterns.add<FuncOpConversionPattern, ExternOpConversionPattern, CallOpConversionPattern,

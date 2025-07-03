@@ -712,8 +712,14 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", [AnnotatedType, HasDefaultVa
     /// Returns true if the requested field is part of this enum
     bool contains(mlir::StringRef field) { return getFields().contains(field); }
 
-    /// Returns the underlying value of the requested field. Must be BitsAttr.
+    /// Returns the underlying value of the requested field. Must be IntAttr.
     mlir::Attribute valueOf(mlir::StringRef field) { return getFields().get(field); }
+    mlir::Attribute valueOf(mlir::StringAttr field) { return getFields().get(field); }
+
+    template<class T>
+    T valueOf(mlir::StringRef field) { return getFields().getAs<T>(field); }
+    template<class T>
+    T valueOf(mlir::StringAttr field) { return getFields().getAs<T>(field); }
 
     mlir::TypedAttr getDefaultValue();
   }];

@@ -28,7 +28,7 @@ llvm::FailureOr<mlir::Operation *> doTypeConversion(mlir::Operation *op, mlir::V
 /// Normally TypeConverter will be either P4HIRTypeConverter or its descendant.
 struct TypeConversionPattern : public mlir::ConversionPattern {
  public:
-    TypeConversionPattern(mlir::TypeConverter &converter, mlir::MLIRContext *context)
+    TypeConversionPattern(const mlir::TypeConverter &converter, mlir::MLIRContext *context)
         : ConversionPattern(converter, MatchAnyOpTypeTag(), 1, context) {}
     using ConversionPattern::ConversionPattern;
 
@@ -54,13 +54,24 @@ struct TypeOpConversionPattern : public mlir::OpConversionPattern<OpTy> {
 template <typename... OpTypes>
 void populateTypeOpConversionPattern(mlir::RewritePatternSet &patterns,
                                      const mlir::TypeConverter &converter) {
-    (patterns.add<TypeOpConversionPattern<OpTypes>>(converter, patterns.getContext()), ...);
+    (patterns.addWithLabel<TypeOpConversionPattern<OpTypes>>(
+         {"type op conversion", OpTypes::getOperationName()}, converter, patterns.getContext()),
+     ...);
+}
+
+static inline void populateTypeConversionPattern(mlir::RewritePatternSet &patterns,
+                                                 const mlir::TypeConverter &converter) {
+    patterns.addWithLabel<TypeConversionPattern>({"generic type converter"}, converter,
+                                                 patterns.getContext());
 }
 
 template <typename... OpTypes>
 void populateP4HIRFunctionOpTypeConversionPattern(mlir::RewritePatternSet &patterns,
                                                   const mlir::TypeConverter &converter) {
-    (patterns.add<TypeOpConversionPattern<OpTypes>>(converter, patterns.getContext()), ...);
+    (patterns.addWithLabel<TypeOpConversionPattern<OpTypes>>(
+         {"function op type conversion", OpTypes::getOperationName()}, converter,
+         patterns.getContext()),
+     ...);
 }
 
 void populateP4HIRAnyCallOpTypeConversionPattern(mlir::RewritePatternSet &patterns,
