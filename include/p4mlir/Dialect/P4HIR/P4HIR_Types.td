@@ -840,6 +840,11 @@ def AliasType : P4HIR_Type<"Alias", "alias", [AnnotatedType]> {
 
   let skipDefaultBuilders = 1;
   let builders = [
+    TypeBuilderWithInferredContext<(ins "llvm::StringRef":$name, "mlir::Type":$aliased_type,
+                     CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
+      return $_get(aliased_type.getContext(), name, aliased_type,
+                   annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
+    }]>,
     TypeBuilder<(ins "llvm::StringRef":$name, "mlir::Type":$aliased_type,
                      CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
       return $_get($_ctxt, name, aliased_type,
@@ -871,7 +876,7 @@ def ArrayType : P4HIR_Type<"Array", "array", [
   let genVerifyDecl = 1;
 
   let builders = [
-    AttrBuilderWithInferredContext<
+    TypeBuilderWithInferredContext<
       (ins "size_t":$size, "mlir::Type":$elementType), [{
         return $_get(elementType.getContext(), size, elementType);
       }]>

@@ -1,4 +1,5 @@
 add_mlir_dialect_library(P4MLIRConversion
+  ConversionPatterns.cpp
   P4HIRToCoreLib.cpp
 
   ADDITIONAL_HEADER_DIRS
