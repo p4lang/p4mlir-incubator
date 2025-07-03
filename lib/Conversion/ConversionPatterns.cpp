@@ -11,53 +11,6 @@ using namespace mlir;
 using namespace P4::P4MLIR;
 
 namespace {
-struct P4HIRFunctionOpInterfaceConversion : public ConversionPattern {
-    P4HIRFunctionOpInterfaceConversion(StringRef functionLikeOpName, MLIRContext *ctx,
-                                       const TypeConverter &converter)
-        : ConversionPattern(converter, functionLikeOpName, /*benefit=*/1, ctx) {}
-
-    LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        // Note that function type is stored in TypeAttr and therefore is
-        // automagically converted in doTypeConversion()
-        auto maybeNewOp = doTypeConversion(op, operands, rewriter, typeConverter);
-        if (failed(maybeNewOp))
-            return rewriter.notifyMatchFailure(op, "failed to perform function conversion");
-
-        op = maybeNewOp.value();
-
-        // Parsers and controls require conversion of ctor types
-        if (auto parserOp = mlir::dyn_cast<P4HIR::ParserOp>(op)) {
-            auto ctorType = parserOp.getCtorType();
-            // Expect empty ctor args
-            if (ctorType.getNumInputs())
-                return rewriter.notifyMatchFailure(parserOp, "non-empty inputs for ctor types");
-
-            auto newType =
-                mlir::cast_or_null<P4HIR::CtorType>(typeConverter->convertType(ctorType));
-            if (!newType)
-                return rewriter.notifyMatchFailure(parserOp, "failed to convert ctor type");
-
-            rewriter.modifyOpInPlace(op, [&] { parserOp.setCtorType(newType); });
-        } else if (auto controlOp = mlir::dyn_cast<P4HIR::ControlOp>(op)) {
-            auto ctorType = controlOp.getCtorType();
-
-            // Expect empty ctor args
-            if (ctorType.getNumInputs())
-                return rewriter.notifyMatchFailure(controlOp, "non-empty inputs for ctor types");
-
-            auto newType =
-                mlir::cast_or_null<P4HIR::CtorType>(typeConverter->convertType(ctorType));
-            if (!newType)
-                return rewriter.notifyMatchFailure(parserOp, "failed to convert ctor type");
-
-            rewriter.modifyOpInPlace(op, [&] { controlOp.setCtorType(newType); });
-        }
-
-        return success();
-    }
-};
-
 struct AnyCallOpInterfaceConversionPattern : public OpInterfaceConversionPattern<CallOpInterface> {
     using OpInterfaceConversionPattern<CallOpInterface>::OpInterfaceConversionPattern;
 
@@ -226,13 +179,6 @@ FailureOr<Operation *> P4::P4MLIR::doTypeConversion(Operation *op, ValueRange op
 
     rewriter.replaceOp(op, newOp->getResults());
     return newOp;
-}
-
-void P4::P4MLIR::populateP4HIRFunctionOpTypeConversionPattern(StringRef functionLikeOpName,
-                                                              RewritePatternSet &patterns,
-                                                              const TypeConverter &converter) {
-    patterns.add<P4HIRFunctionOpInterfaceConversion>(functionLikeOpName, patterns.getContext(),
-                                                     converter);
 }
 
 void P4::P4MLIR::populateP4HIRAnyCallOpTypeConversionPattern(mlir::RewritePatternSet &patterns,

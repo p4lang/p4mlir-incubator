@@ -57,15 +57,10 @@ void populateTypeOpConversionPattern(mlir::RewritePatternSet &patterns,
     (patterns.add<TypeOpConversionPattern<OpTypes>>(converter, patterns.getContext()), ...);
 }
 
-void populateP4HIRFunctionOpTypeConversionPattern(llvm::StringRef functionLikeOpName,
-                                                  mlir::RewritePatternSet &patterns,
-                                                  const mlir::TypeConverter &converter);
-
-template <typename... FuncOp>
+template <typename... OpTypes>
 void populateP4HIRFunctionOpTypeConversionPattern(mlir::RewritePatternSet &patterns,
                                                   const mlir::TypeConverter &converter) {
-    (populateP4HIRFunctionOpTypeConversionPattern(FuncOp::getOperationName(), patterns, converter),
-     ...);
+    (patterns.add<TypeOpConversionPattern<OpTypes>>(converter, patterns.getContext()), ...);
 }
 
 void populateP4HIRAnyCallOpTypeConversionPattern(mlir::RewritePatternSet &patterns,
