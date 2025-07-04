@@ -37,10 +37,11 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
         if (isLegal(type)) return attr;
 
         SmallVector<Attribute> newAttrs;
-        llvm::transform(attr.getFields().getAsRange<mlir::TypedAttr>(),
-                        std::back_inserter(newAttrs), [&](auto attr) {
-                            return convertTypeAttribute(attr.getType(), attr).value_or(nullptr);
-                        });
+        llvm::transform(
+            attr.getFields().getAsRange<mlir::TypedAttr>(), std::back_inserter(newAttrs),
+            [&](auto fieldAttr) {
+                return convertTypeAttribute(fieldAttr.getType(), fieldAttr).value_or(nullptr);
+            });
 
         return P4HIR::AggAttr::get(convertType(type), ArrayAttr::get(attr.getContext(), newAttrs));
     });
