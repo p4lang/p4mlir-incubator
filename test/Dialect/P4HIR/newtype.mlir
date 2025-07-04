@@ -3,11 +3,12 @@
 !b32i = !p4hir.bit<32>
 !b9i = !p4hir.bit<9>
 !Narrow = !p4hir.alias<"Narrow", !b9i>
-!Wide = !p4hir.alias<"Wide", !b32i>
+!Wide = !p4hir.alias<"Wide", !Narrow>
 #int10_b9i = #p4hir.int<10> : !b9i
 #int3_b32i = #p4hir.int<3> : !b32i
 #int192_Narrow = #p4hir.int<192> : !Narrow
+#int2_Wide = #p4hir.int<2> : !Wide
 // CHECK: module
 module {
-  %PSA_CPU_PORT = p4hir.const ["PSA_CPU_PORT"] #int192_Narrow
+  %PSA_CPU_PORT = p4hir.const ["PSA_CPU_PORT"] #int2_Wide
 }
