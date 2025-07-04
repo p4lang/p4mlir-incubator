@@ -1,5 +1,3 @@
-add_subdirectory(Utils)
-
 add_mlir_dialect_library(P4MLIRTransforms
   EnumElimination.cpp
   FlattenCFG.cpp
@@ -18,5 +16,4 @@ add_mlir_dialect_library(P4MLIRTransforms
   MLIRIR
   MLIRSupport
   MLIRTransforms
-  P4MLIRTransformsUtils
 )

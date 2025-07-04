@@ -1,8 +1,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "p4mlir/Conversion/ConversionPatterns.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
-#include "p4mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "p4hir-enum-elimination"
@@ -22,12 +22,9 @@ struct EnumEliminationPass : public P4::P4MLIR::impl::EnumEliminationBase<EnumEl
     void runOnOperation() override;
 };
 
-class EnumTypeConverter : public TypeConverter {
+class EnumTypeConverter : public P4HIRTypeConverter {
  public:
     explicit EnumTypeConverter() {
-        // Fallback for other types
-        addConversion([](Type type) -> Type { return type; });
-
         // Converts EnumType to SerEnumType
         addConversion([](P4HIR::EnumType enumType) -> Type {
             if (!enumType.shouldConvert()) {
@@ -47,85 +44,9 @@ class EnumTypeConverter : public TypeConverter {
                                            enumType.getAnnotations());
         });
 
-        // Convert reference types by converting their object type
-        addConversion([this](P4HIR::ReferenceType refType) -> std::optional<Type> {
-            auto newType = convertType(refType.getObjectType());
-            if (!newType) return std::nullopt;
-
-            return P4HIR::ReferenceType::get(newType);
+        addTypeAttributeConversion([this](P4HIR::EnumType enumType, P4HIR::EnumFieldAttr attr) {
+            return P4HIR::EnumFieldAttr::get(convertType(enumType), attr.getField());
         });
-    }
-};
-
-class EnumFieldConversionPattern : public OpConversionPattern<P4HIR::ConstOp> {
- public:
-    using OpConversionPattern<P4HIR::ConstOp>::OpConversionPattern;
-
-    LogicalResult matchAndRewrite(P4HIR::ConstOp op, OpAdaptor /*adaptor*/,
-                                  ConversionPatternRewriter &rewriter) const override {
-        auto enumFieldAttr = mlir::dyn_cast<P4HIR::EnumFieldAttr>(op.getValue());
-        if (!enumFieldAttr) return mlir::failure();
-
-        auto enumType = mlir::dyn_cast<P4HIR::EnumType>(enumFieldAttr.getType());
-        if (!enumType) return mlir::failure();
-
-        auto serEnumType = getTypeConverter()->convertType(enumType);
-        if (!serEnumType) return mlir::failure();
-
-        auto newAttr = P4HIR::EnumFieldAttr::get(serEnumType, enumFieldAttr.getField());
-        rewriter.replaceOpWithNewOp<P4HIR::ConstOp>(op, newAttr, op.getNameAttr(),
-                                                    op.getAnnotationsAttr());
-
-        return mlir::success();
-    }
-};
-
-class SwitchConversionPattern : public OpConversionPattern<P4HIR::SwitchOp> {
- public:
-    using OpConversionPattern<P4HIR::SwitchOp>::OpConversionPattern;
-
-    LogicalResult matchAndRewrite(P4HIR::SwitchOp op, OpAdaptor adaptor,
-                                  ConversionPatternRewriter &rewriter) const override {
-        TypeConverter typeConverter = *getTypeConverter();
-
-        TypeConverter::SignatureConversion result(1);
-        if (failed(typeConverter.convertSignatureArgs(TypeRange(op.getCondition()), result)) ||
-            failed(rewriter.convertRegionTypes(&op.getBody(), typeConverter, &result))) {
-            return mlir::failure();
-        }
-
-        rewriter.modifyOpInPlace(
-            op, [&]() { op.getConditionMutable().assign(adaptor.getCondition()); });
-
-        return mlir::success();
-    }
-};
-
-class CaseConversionPattern : public OpConversionPattern<P4HIR::CaseOp> {
- public:
-    using OpConversionPattern<P4HIR::CaseOp>::OpConversionPattern;
-
-    LogicalResult matchAndRewrite(P4HIR::CaseOp op, OpAdaptor adaptor,
-                                  ConversionPatternRewriter &rewriter) const override {
-        TypeConverter typeConverter = *getTypeConverter();
-
-        TypeConverter::SignatureConversion result(op.getValue().size());
-        if (failed(rewriter.convertRegionTypes(&op.getCaseRegion(), typeConverter, &result))) {
-            return mlir::failure();
-        }
-
-        SmallVector<Attribute> newValues;
-        for (Attribute val : op.getValue()) {
-            auto enumFieldAttr = dyn_cast<P4HIR::EnumFieldAttr>(val);
-            if (!enumFieldAttr) return mlir::failure();
-
-            Type newType = getTypeConverter()->convertType(enumFieldAttr.getType());
-            newValues.push_back(P4HIR::EnumFieldAttr::get(newType, enumFieldAttr.getField()));
-        }
-
-        rewriter.modifyOpInPlace(op, [&]() { op.setValueAttr(rewriter.getArrayAttr(newValues)); });
-
-        return mlir::success();
     }
 };
 
@@ -138,10 +59,9 @@ void EnumEliminationPass::runOnOperation() {
     EnumTypeConverter typeConverter;
     ConversionTarget target(context);
 
-    target.addDynamicallyLegalOp<P4HIR::FuncOp>([&](P4HIR::FuncOp func) {
-        auto fnType = func.getFunctionType();
-        return typeConverter.isLegal(fnType.getInputs()) &&
-               typeConverter.isLegal(fnType.getReturnTypes());
+    target.addDynamicallyLegalOp<P4HIR::OverloadSetOp>([&](P4HIR::OverloadSetOp ovl) {
+        for (auto opFunc : ovl.getOps<P4HIR::FuncOp>()) return !target.isIllegal(opFunc);
+        return true;
     });
 
     target.addDynamicallyLegalOp<P4HIR::CaseOp>([&](P4HIR::CaseOp caseOp) {
@@ -153,29 +73,22 @@ void EnumEliminationPass::runOnOperation() {
         });
     });
 
-    target.addDynamicallyLegalOp<P4HIR::ControlOp>([&](P4HIR::ControlOp ctrl) {
-        auto fnType = ctrl.getFunctionType();
-        return typeConverter.isLegal(fnType.getInputs()) &&
-               typeConverter.isLegal(fnType.getReturnTypes());
-    });
-
-    target.addDynamicallyLegalOp<P4HIR::ParserOp>([&](P4HIR::ParserOp parser) {
-        auto fnType = parser.getFunctionType();
-        return typeConverter.isLegal(fnType.getInputs()) &&
-               typeConverter.isLegal(fnType.getReturnTypes());
-    });
-
     target.markUnknownOpDynamicallyLegal([&](Operation *op) {
+        if (auto func = dyn_cast<FunctionOpInterface>(op)) {
+            auto fnType = func.getFunctionType();
+            return typeConverter.isLegal(fnType);
+        }
+
         return typeConverter.isLegal(op->getOperandTypes()) &&
                typeConverter.isLegal(op->getResultTypes());
     });
 
     RewritePatternSet patterns(&context);
-    patterns.add<EnumFieldConversionPattern, SwitchConversionPattern, CaseConversionPattern,
-                 utils::FunctionOpInterfaceConversionPattern>(typeConverter, &context);
-    utils::populateGenericOpTypeConversionPattern<
-        P4HIR::CallOp, P4HIR::InstantiateOp, P4HIR::ApplyOp, P4HIR::VariableOp, P4HIR::AssignOp,
-        P4HIR::ReadOp, P4HIR::CmpOp, P4HIR::ReturnOp>(patterns, typeConverter);
+
+    populateP4HIRAnyCallOpTypeConversionPattern(patterns, typeConverter);
+    populateP4HIRFunctionOpTypeConversionPattern<P4HIR::FuncOp, P4HIR::ParserOp, P4HIR::ControlOp>(
+        patterns, typeConverter);
+    patterns.add<TypeConversionPattern>(typeConverter, &context);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }

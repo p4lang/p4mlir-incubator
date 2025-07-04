@@ -1,8 +1,12 @@
 // RUN: p4mlir-opt --p4hir-enum-elimination %s | FileCheck %s
 
+!b32i = !p4hir.bit<32>
+#int1_b32i = #p4hir.int<1> : !b32i
+
 #in = #p4hir<dir in>
 
 // CHECK: ![[suits:.*]] = !p4hir.ser_enum<"Suits", !b32i, Clubs : #int0_b32i, Diamonds : #int1_b32i, Spades : #int2_b32i>
+// CHECK-NOT: !p4hir.enum
 !Suits = !p4hir.enum<"Suits", Clubs, Diamonds, Spades>
 
 // CHECK-DAG: #[[clubs:.*]] = #p4hir.enum_field<Clubs, ![[suits]]> : ![[suits]]
@@ -12,6 +16,7 @@
 #Suits_Diamonds = #p4hir.enum_field<Diamonds, !Suits> : !Suits
 #Suits_Spades = #p4hir.enum_field<Spades, !Suits> : !Suits
 
+!T = !p4hir.struct<"T", t1: !b32i, t2: !Suits>
 
 // CHECK-LABEL: module
 module {
@@ -36,11 +41,11 @@ module {
     p4hir.return %arg0 : !Suits
   }
 
-  // CHECK: %[[var:.*]] = p4hir.variable ["suit"] : <![[suits]]>
-  %var = p4hir.variable ["suit"] : <!Suits>
-
   // CHECK: %[[c2:.*]] = p4hir.const #[[diamonds]]
   %diamond_2 = p4hir.const #Suits_Diamonds
+
+  // CHECK: %[[var:.*]] = p4hir.variable ["suit"] : <![[suits]]>
+  %var = p4hir.variable ["suit"] : <!Suits>
 
   // CHECK: p4hir.assign %[[c2]], %[[var]] : <![[suits]]>
   p4hir.assign %diamond_2, %var : <!Suits>
@@ -50,6 +55,9 @@ module {
 
   // CHECK: %{{.*}} = p4hir.call @process_suit (%[[val]]) : (![[suits]]) -> ![[suits]]
   %call_2 = p4hir.call @process_suit(%val) : (!Suits) -> (!Suits)
+
+  %t = p4hir.const ["t"] #p4hir.aggregate<[#int1_b32i, #Suits_Clubs]> : !T
+  %t2 = p4hir.struct_extract %t["t2"] : !T
 
   // CHECK: p4hir.parser @p(%[[arg:.*]]: ![[suits]] {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "test"})()
   // CHECK: %{{.*}} = p4hir.const #[[spades]]
