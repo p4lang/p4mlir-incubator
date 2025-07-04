@@ -104,4 +104,41 @@ def SerEnumElimination : Pass<"p4hir-ser-enum-elimination", "mlir::ModuleOp"> {
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
+//===----------------------------------------------------------------------===//
+// Remove Aliases
+//===----------------------------------------------------------------------===//
+
+def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
+  let summary = "Replace type aliases with their original types";
+  let description = [{
+    This pass eliminates all `!p4hir.alias` types by replacing them with their
+    underlying aliased types. It recursively resolves nested aliases to their
+    final concrete types.
+
+    For example:
+    ```mlir
+    !b32i = !p4hir.bit<32>
+    !T = !p4hir.alias<"T", !b32i>
+    !Nested = !p4hir.alias<"Nested", !T>
+    
+    p4hir.func @process(%arg0: !Nested) {
+      %var = p4hir.const #p4hir.int<10> : !Nested
+      p4hir.return
+    }
+    ```
+
+    After the pass:
+    ```mlir
+    !b32i = !p4hir.bit<32>
+    
+    p4hir.func @process(%arg0: !b32i) {
+      %var = p4hir.const #p4hir.int<10> : !b32i
+      p4hir.return
+    }
+    ```
+  }];
+  let constructor = "P4MLIR::createRemoveAliasesPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
 #endif // P4MLIR_TRANSFORMS_PASSES_TD
