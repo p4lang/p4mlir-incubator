@@ -4,6 +4,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 #define GET_ATTRDEF_CLASSES
@@ -167,6 +168,86 @@ ErrorCodeAttr ErrorCodeAttr::get(mlir::Type type, StringAttr value) {
     }
 
     return Base::get(value.getContext(), type, value);
+}
+
+LogicalResult AggAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type type,
+                              ArrayAttr value) {
+    if (!type || mlir::isa<NoneType>(type)) {
+        emitError() << "p4hir.aggregate attribute must be typed";
+        return failure();
+    }
+
+    auto checkSize = [&](size_t typeSize, size_t initializerSize) {
+        if (initializerSize != typeSize) {
+            emitError() << "expected " << typeSize
+                        << " fields in initializer, but got: " << initializerSize;
+            return failure();
+        }
+
+        return success();
+    };
+
+    return llvm::TypeSwitch<mlir::Type, mlir::LogicalResult>(type)
+        .Case<P4HIR::StructLikeTypeInterface>([&](auto structLike) {
+            if (failed(checkSize(structLike.getFields().size(), value.size()))) return failure();
+
+            for (auto [index, field] : llvm::enumerate(value.getValue())) {
+                if (auto typedField = mlir::dyn_cast<mlir::TypedAttr>(field)) {
+                    const auto &structField = structLike.getFields()[index];
+                    if (typedField.getType() != structField.type) {
+                        emitError()
+                            << "aggregate initializer type for struct field '" << structField.name
+                            << "' must match, expected: " << structField.type
+                            << ", got: " << typedField.getType();
+                        return failure();
+                    }
+                } else {
+                    emitError() << "aggregate initializer must be typed: " << field;
+                    return failure();
+                }
+            }
+            return success();
+        })
+        .Case<P4HIR::ArrayType>([&](auto array) {
+            if (failed(checkSize(array.getSize(), value.size()))) return failure();
+            auto eltType = array.getElementType();
+            for (auto field : value.getValue()) {
+                if (auto typedField = mlir::dyn_cast<mlir::TypedAttr>(field)) {
+                    if (typedField.getType() != eltType) {
+                        emitError()
+                            << "aggregate initializer type for array element must match, expected: "
+                            << eltType << ", got: " << typedField.getType();
+                        return failure();
+                    }
+                } else {
+                    emitError() << "aggregate initializer must be typed: " << field;
+                    return failure();
+                }
+            }
+            return success();
+        })
+        .Case<mlir::TupleType>([&](auto tuple) {
+            if (failed(checkSize(tuple.size(), value.size()))) return failure();
+            for (auto [index, field] : llvm::enumerate(value.getValue())) {
+                if (auto typedField = mlir::dyn_cast<mlir::TypedAttr>(field)) {
+                    const auto &tupleFieldType = tuple.getType(index);
+                    if (typedField.getType() != tupleFieldType) {
+                        emitError() << "aggregate initializer type for tuple field " << index
+                                    << " must match, expected: " << tupleFieldType
+                                    << ", got: " << typedField.getType();
+                        return failure();
+                    }
+                } else {
+                    emitError() << "aggregate initializer must be typed: " << field;
+                    return failure();
+                }
+            }
+            return success();
+        })
+        .Default([&](auto) {
+            emitError() << "expected aggregate type: " << type;
+            return failure();
+        });
 }
 
 void P4HIRDialect::registerAttributes() {

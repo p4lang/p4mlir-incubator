@@ -86,7 +86,7 @@ def P4HIR_AggAttr : P4HIR_Attr<"Agg", "aggregate", [TypedAttrInterface]> {
       return $_get(type.getContext(), type, members);
     }]>
   ];
-  // let genVerifyDecl = 1;
+  let genVerifyDecl = 1;
   let assemblyFormat = [{
     `<` $fields `>`
   }];
