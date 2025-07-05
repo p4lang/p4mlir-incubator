@@ -44,7 +44,7 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
                                         mlir::Attribute attrType) {
     if (mlir::isa<P4HIR::BoolAttr>(attrType)) {
         if (auto aliasedType = mlir::dyn_cast<P4HIR::AliasType>(opType))
-            opType = aliasedType.getAliasedType();
+            opType = aliasedType.getCanonicalType();
         if (!mlir::isa<P4HIR::BoolType>(opType))
             return op->emitOpError("result type (")
                    << opType << ") must be '!p4hir.bool' for '" << attrType << "'";
@@ -53,14 +53,12 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
 
     if (mlir::isa<P4HIR::IntAttr>(attrType)) {
         if (auto aliasedType = mlir::dyn_cast<P4HIR::AliasType>(opType))
-            opType = aliasedType.getAliasedType();
+            opType = aliasedType.getCanonicalType();
         if (!mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(opType))
             return op->emitOpError("result type (")
                    << opType << ") does not match value type (" << attrType << ")";
         return success();
     }
-
-    if (mlir::isa<P4HIR::IntAttr, P4HIR::BoolAttr>(attrType)) return success();
 
     if (mlir::isa<P4HIR::AggAttr>(attrType)) {
         if (!mlir::isa<P4HIR::StructType, P4HIR::HeaderType, P4HIR::HeaderUnionType,
