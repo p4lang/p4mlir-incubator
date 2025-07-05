@@ -122,7 +122,7 @@ def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
     !Nested = !p4hir.alias<"Nested", !T>
     
     p4hir.func @process(%arg0: !Nested) {
-      %var = p4hir.const #p4hir.int<10> : !Nested
+      %c = p4hir.const #p4hir.int<10> : !Nested
       p4hir.return
     }
     ```
@@ -132,7 +132,7 @@ def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
     !b32i = !p4hir.bit<32>
     
     p4hir.func @process(%arg0: !b32i) {
-      %var = p4hir.const #p4hir.int<10> : !b32i
+      %c = p4hir.const #p4hir.int<10> : !b32i
       p4hir.return
     }
     ```

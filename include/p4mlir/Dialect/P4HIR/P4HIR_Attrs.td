@@ -27,9 +27,6 @@ def P4HIR_BoolAttr : P4HIR_Attr<"Bool", "bool", [TypedAttrInterface]> {
     AttrBuilder<(ins "bool":$value), [{
       return $_get($_ctxt, BoolType::get($_ctxt), value);
     }]>,
-    AttrBuilderWithInferredContext<(ins "mlir::Type":$type, "bool":$value), [{
-      return $_get(type.getContext(), type, value);
-    }]>,
   ];
 
   let assemblyFormat = [{
