@@ -26,7 +26,7 @@ struct RemoveAliasesPass : public P4::P4MLIR::impl::RemoveAliasesBase<RemoveAlia
 
 class AliasTypeConverter : public P4HIRTypeConverter {
  public:
-    AliasTypeConverter() {
+    AliasTypeConverter(MLIRContext *context) {
         addConversion([&](P4HIR::AliasType aliasType) -> Type {
             return convertType(aliasType.getAliasedType());
         });
@@ -39,13 +39,7 @@ class AliasTypeConverter : public P4HIRTypeConverter {
                     return P4HIR::IntAttr::get(underlyingType, intAttr.getValue());
                 })
                 .Case<P4HIR::BoolAttr>([&](P4HIR::BoolAttr boolAttr) {
-                    return P4HIR::BoolAttr::get(underlyingType, boolAttr.getValue());
-                })
-                .Case<P4HIR::ErrorCodeAttr>([&](P4HIR::ErrorCodeAttr errorAttr) {
-                    return P4HIR::ErrorCodeAttr::get(underlyingType, errorAttr.getField());
-                })
-                .Case<P4HIR::AggAttr>([&](P4HIR::AggAttr aggAttr) {
-                    return P4HIR::AggAttr::get(underlyingType, aggAttr.getFields());
+                    return P4HIR::BoolAttr::get(context, boolAttr.getValue());
                 })
                 .Default([](Attribute) -> Attribute {
                     llvm_unreachable("Unsupported attribute type for alias conversion");
@@ -60,21 +54,12 @@ void RemoveAliasesPass::runOnOperation() {
     mlir::ModuleOp module = getOperation();
     MLIRContext &context = getContext();
 
-    AliasTypeConverter typeConverter;
+    AliasTypeConverter typeConverter(&context);
     ConversionTarget target(context);
 
     target.addDynamicallyLegalOp<P4HIR::OverloadSetOp>([&](P4HIR::OverloadSetOp ovl) {
         for (auto opFunc : ovl.getOps<P4HIR::FuncOp>()) return !target.isIllegal(opFunc);
         return true;
-    });
-
-    target.addDynamicallyLegalOp<P4HIR::CaseOp>([&](P4HIR::CaseOp caseOp) {
-        return llvm::all_of(caseOp.getValue(), [&](Attribute val) {
-            if (auto typedAttr = mlir::dyn_cast<mlir::TypedAttr>(val)) {
-                return typeConverter.isLegal(typedAttr.getType());
-            }
-            return true;
-        });
     });
 
     target.markUnknownOpDynamicallyLegal([&](Operation *op) {

@@ -861,6 +861,17 @@ def AliasType : P4HIR_Type<"Alias", "alias", [AnnotatedType]> {
   let assemblyFormat = [{
     `<` $name  (`annotations` $annotations^)? `,` $aliased_type `>`
   }];
+
+  let extraClassDeclaration = [{
+    /// Gets the fully resolved type by following the alias chain.
+    mlir::Type getCanonicalType() {
+      mlir::Type type = getAliasedType();
+      while (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(type)) {
+        type = aliasType.getAliasedType();
+      }
+      return type;
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
