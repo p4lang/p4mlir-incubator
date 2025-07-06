@@ -34,17 +34,17 @@ class EnumTypeConverter : public P4HIRTypeConverter {
             auto underlyingType = mlir::cast<P4HIR::BitsType>(enumType.getUnderlyingType());
 
             llvm::SmallVector<mlir::NamedAttribute> fields;
-            for (auto const &[index, field] : llvm::enumerate(enumType.getFields())) {
-                auto name = mlir::cast<StringAttr>(field);
+            for (const auto field : enumType.getFields()) {
+                auto fieldName = mlir::cast<StringAttr>(field);
                 auto value =
-                    P4HIR::IntAttr::get(underlyingType, enumType.getEncodingForField(name, index));
-                fields.emplace_back(name, value);
+                    P4HIR::IntAttr::get(underlyingType, enumType.getEncoding(fieldName));
+                fields.emplace_back(fieldName, value);
             }
             return P4HIR::SerEnumType::get(enumType.getName(), underlyingType, fields,
                                            enumType.getAnnotations());
         });
 
-        addTypeAttributeConversion([this](P4HIR::EnumType enumType, P4HIR::EnumFieldAttr attr) {
+        addTypeAttributeConversion([&](P4HIR::EnumType enumType, P4HIR::EnumFieldAttr attr) {
             return P4HIR::EnumFieldAttr::get(convertType(enumType), attr.getField());
         });
     }

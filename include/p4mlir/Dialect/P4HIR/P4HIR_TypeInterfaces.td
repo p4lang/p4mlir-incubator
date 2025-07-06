@@ -124,8 +124,8 @@ def EnumRepresentationInterface : TypeInterface<"EnumRepresentationInterface"> {
     InterfaceMethod<
       /*desc=*/        "Get the numeric encoding for a specific enum field",
       /*returnType=*/  "llvm::APInt",
-      /*methodName=*/  "getEncodingForField",
-      /*args=*/        (ins "llvm::StringRef":$fieldName, "unsigned":$fieldIndex)
+      /*methodName=*/  "getEncoding",
+      /*args=*/        (ins "llvm::StringRef":$fieldName)
     >
   ];
 
