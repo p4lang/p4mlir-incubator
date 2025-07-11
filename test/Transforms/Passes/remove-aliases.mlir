@@ -46,19 +46,26 @@
 // CHECK: module
 module {
   // Test functions
+  // CHECK-LABEL: p4hir.func @test(%arg0: !b32i) -> !b32i
   p4hir.func @test(%arg0: !NN32) -> (!NN32) {
+    // CHECK: p4hir.const #int1_b32i
     %c1_NN32 = p4hir.const #int1_NN32
     p4hir.return %c1_NN32 : !NN32
   }
 
+  // CHECK: %[[c0_b32i:.*]] = p4hir.const #int0_b32i
   %c0_b32i = p4hir.const #int0_b32i
+  // CHECK: %[[c2_b32i:.*]] = p4hir.const #int2_b32i
   %c2_N32 = p4hir.const #int2_N32
+  // CHECK: %[[c5_b32i:.*]] = p4hir.const #int5_b32i
   %c5_NN32 = p4hir.const #int5_NN32
 
+  // CHECK: %call = p4hir.call @test (%[[c5_b32i]]) : (!b32i) -> !b32i
   %call = p4hir.call @test(%c5_NN32) : (!NN32) -> (!NN32)
 
   // Test structs and extracts
   %var_s = p4hir.variable ["s"] : <!S>
+  // CHECK: %struct_S = p4hir.struct (%[[c0_b32i]], %[[c2_b32i]]) : !S
   %struct_S = p4hir.struct (%c0_b32i, %c2_N32) : !S
   p4hir.assign %struct_S, %var_s : <!S>
   %struct_extract = p4hir.struct_extract_ref %var_s["n"] : <!S>
@@ -76,11 +83,15 @@ module {
   p4hir.assign %v1, %arr_ref : <!NN32>
 
   // Test casts
+  // CHECK: p4hir.cast(%{{c0_b32i}} : !b32i) : !b32i
   %cast_to_alias = p4hir.cast(%c0_b32i : !b32i) : !N32
+  // CHECK: p4hir.cast(%{{.*}} : !b32i) : !b32i
   %cast_from_alias = p4hir.cast(%cast_to_alias : !N32) : !b32i
+  // CHECK: p4hir.cast(%{{.*}} : !b32i) : !b32i
   %cast_nested = p4hir.cast(%cast_to_alias : !N32) : !NN32
 
-   // Test nested alias resolution
+  // Test nested alias resolution
+  // CHECK: p4hir.variable ["nested"] : <!b32i>
   %nested_var = p4hir.variable ["nested"] : <!NN32>
   p4hir.assign %c5_NN32, %nested_var : <!NN32>
   %nested_val = p4hir.read %nested_var : <!NN32>
@@ -195,4 +206,3 @@ module {
   %c = p4hir.construct @c () : !c
   p4hir.instantiate @top (%c : !c) as @main
 }
-
