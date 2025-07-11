@@ -612,7 +612,7 @@ void EnumType::print(AsmPrinter &p) const {
     p << ">";
 }
 
-std::optional<size_t> EnumType::indexOf(mlir::StringRef field) {
+std::optional<size_t> EnumType::indexOf(mlir::StringRef field) const {
     for (auto it : llvm::enumerate(getFields()))
         if (mlir::cast<StringAttr>(it.value()).getValue() == field) return it.index();
     return {};
@@ -623,6 +623,18 @@ mlir::TypedAttr EnumType::getDefaultValue() {
     if (fields.empty()) return nullptr;
 
     return P4HIR::EnumFieldAttr::get(*this, mlir::cast<mlir::StringAttr>(fields[0]));
+}
+
+mlir::Type EnumType::getUnderlyingType() const {
+    return P4HIR::BitsType::get(getContext(), 32, /*isSigned=*/false);
+}
+
+bool EnumType::shouldConvert() const { return true; }
+
+llvm::APInt EnumType::getEncoding(StringRef field) const {
+    assert(contains(field) && "field must exist in enum");
+    auto underlyingType = mlir::cast<P4HIR::BitsType>(getUnderlyingType());
+    return llvm::APInt(underlyingType.getWidth(), *indexOf(field));
 }
 
 Type ErrorType::parse(AsmParser &p) {
