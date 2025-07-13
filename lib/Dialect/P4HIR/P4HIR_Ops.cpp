@@ -33,6 +33,25 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
+namespace {
+
+bool isZeroConst(mlir::Value val) {
+    if (auto constOp = val.getDefiningOp<::P4::P4MLIR::P4HIR::ConstOp>()) {
+        return constOp.isZero();
+    }
+    return false;
+}
+
+bool isOneConst(mlir::Value val) {
+    if (auto constOp = val.getDefiningOp<::P4::P4MLIR::P4HIR::ConstOp>()) {
+        return constOp.isOne();
+    }
+    return false;
+}
+
+#include "p4mlir/Dialect/P4HIR/P4HIR_Patterns.inc"
+}  // namespace
+
 using namespace mlir;
 using namespace P4::P4MLIR;
 
@@ -289,6 +308,229 @@ void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), stringifyEnum(getKind()));
 }
 
+LogicalResult P4HIR::BinOp::verify() {
+    if (mlir::isa<P4HIR::BitsType>(getType())) {
+        return mlir::success();
+    }
+
+    if (mlir::isa<P4HIR::InfIntType>(getType())) {
+        switch (getKind()) {
+            case BinOpKind::Mul:
+            case BinOpKind::Div:
+            case BinOpKind::Mod:
+            case BinOpKind::Add:
+            case BinOpKind::Sub:
+                return mlir::success();
+            case BinOpKind::AddSat:
+            case BinOpKind::SubSat:
+                return emitOpError() << "saturating arithmetic ('" << stringifyEnum(getKind())
+                                     << "') is not valid for " << getType();
+            case BinOpKind::Or:
+            case BinOpKind::Xor:
+            case BinOpKind::And:
+                return emitOpError() << "bitwise operations ('" << stringifyEnum(getKind())
+                                     << "') is not valid for " << getType();
+        }
+    }
+
+    return emitOpError("Unknown BinOp type");
+}
+
+static OpFoldResult foldConstantBinOp(P4HIR::BinOp op, const APInt &lhsVal, const APInt &rhsVal) {
+    APInt result;
+    bool overflow = false;
+    (void)overflow;  // P4 doesn't emit any warnings on overflows
+
+    if (auto type = mlir::cast<P4HIR::BitsType>(op.getType())) {
+        switch (op.getKind()) {
+            case P4HIR::BinOpKind::Mul:
+                result = type.isSigned() ? lhsVal.smul_ov(rhsVal, overflow)
+                                         : lhsVal.umul_ov(rhsVal, overflow);
+                break;
+            case P4HIR::BinOpKind::Div:
+                result = type.isSigned() ? lhsVal.sdiv_ov(rhsVal, overflow) : lhsVal.udiv(rhsVal);
+                break;
+            case P4HIR::BinOpKind::Mod:
+                result = type.isSigned() ? lhsVal.srem(rhsVal) : lhsVal.urem(rhsVal);
+                break;
+            case P4HIR::BinOpKind::Add:
+                result = type.isSigned() ? lhsVal.sadd_ov(rhsVal, overflow)
+                                         : lhsVal.uadd_ov(rhsVal, overflow);
+                break;
+            case P4HIR::BinOpKind::Sub:
+                result = type.isSigned() ? lhsVal.ssub_ov(rhsVal, overflow)
+                                         : lhsVal.usub_ov(rhsVal, overflow);
+                break;
+            case P4HIR::BinOpKind::AddSat:
+                result = type.isSigned() ? lhsVal.sadd_sat(rhsVal) : lhsVal.uadd_sat(rhsVal);
+                break;
+            case P4HIR::BinOpKind::SubSat:
+                result = type.isSigned() ? lhsVal.ssub_sat(rhsVal) : lhsVal.usub_sat(rhsVal);
+                break;
+            case P4HIR::BinOpKind::Or:
+                result = lhsVal | rhsVal;
+                break;
+            case P4HIR::BinOpKind::Xor:
+                result = lhsVal ^ rhsVal;
+                break;
+            case P4HIR::BinOpKind::And:
+                result = lhsVal & rhsVal;
+                break;
+        }
+        return P4HIR::IntAttr::get(type, result);
+    }
+
+    if (mlir::isa<P4HIR::InfIntType>(op.getType())) {
+        unsigned lhsWidth = lhsVal.getActiveBits(), rhsWidth = rhsVal.getActiveBits();
+        unsigned newWidth;
+        switch (op.getKind()) {
+            case P4HIR::BinOpKind::Mul:
+                newWidth = lhsWidth + rhsWidth;
+                result = lhsVal.sext(newWidth) * rhsVal.sext(newWidth);
+                break;
+            case P4HIR::BinOpKind::Div:
+                newWidth = std::max(lhsWidth, rhsWidth);
+                result = lhsVal.sext(newWidth).sdiv(rhsVal.sext(newWidth));
+                break;
+            case P4HIR::BinOpKind::Mod:
+                newWidth = std::max(lhsWidth, rhsWidth);
+                result = lhsVal.sext(newWidth).srem(rhsVal.sext(newWidth));
+                break;
+            case P4HIR::BinOpKind::Add:
+                newWidth = std::max(lhsWidth, rhsWidth) + 1;
+                result = lhsVal.sext(newWidth) + rhsVal.sext(newWidth);
+                break;
+            case P4HIR::BinOpKind::Sub:
+                newWidth = std::max(lhsWidth, rhsWidth) + 1;
+                result = lhsVal.sext(newWidth) - rhsVal.sext(newWidth);
+                break;
+            default:
+                op.emitOpError("InfIntType does not support this BinOp kind");
+                return {};
+        }
+        return P4HIR::IntAttr::get(op.getType(), result);
+    }
+
+    op.emitOpError("Unknown BinOp type");
+    return {};
+}
+
+OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
+    auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs());
+    auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs());
+
+    // Constant folding
+    if (lhsAttr && rhsAttr) {
+        return foldConstantBinOp(*this, lhsAttr.getValue(), rhsAttr.getValue());
+    }
+
+    // Handle cases with single constant
+    if (rhsAttr) {
+        switch (getKind()) {
+            case P4HIR::BinOpKind::Mul:
+                // binop(mul, %x, 0) ==> 0
+                if (rhsAttr.isZero())
+                    return P4HIR::IntAttr::getZero(getType(), rhsAttr.getBitWidth());
+                // binop(mul, %x, 1) ==> %x
+                if (rhsAttr.isOne()) return getLhs();
+                break;
+            case P4HIR::BinOpKind::Div:
+                if (rhsAttr.isNegative()) {
+                    emitOpError("Division is not defined for negative numbers");
+                    return {};
+                }
+                if (rhsAttr.isZero()) {
+                    emitOpError("Division by zero");
+                    return {};
+                }
+                // binop(div, %x, 1) ==> %x
+                if (rhsAttr.isOne()) return getLhs();
+                break;
+            case P4HIR::BinOpKind::Mod:
+                if (rhsAttr.isNegative()) {
+                    emitOpError("Modulo is not defined for negative numbers");
+                    return {};
+                }
+                if (rhsAttr.isZero()) {
+                    emitOpError("Modulo by zero");
+                    return {};
+                }
+                // binop(mod, %x, 1) ==> 0
+                if (rhsAttr.isOne())
+                    return P4HIR::IntAttr::getZero(getType(), rhsAttr.getBitWidth());
+                break;
+            case P4HIR::BinOpKind::Add:
+                // binop(add, %x, 0) ==> %x
+                if (rhsAttr.isZero()) return getLhs();
+                break;
+            case P4HIR::BinOpKind::Sub:
+                // binop(sub, %x, 0) ==> %x
+                if (rhsAttr.isZero()) return getLhs();
+                break;
+            case P4HIR::BinOpKind::AddSat:
+                // binop(sadd, %x, 0) ==> %x
+                if (rhsAttr.isZero()) return getLhs();
+                break;
+            case P4HIR::BinOpKind::SubSat:
+                // binop(ssub, %x, 0) ==> %x
+                if (rhsAttr.isZero()) return getLhs();
+                break;
+            case P4HIR::BinOpKind::Or:
+                // binop(or, %x, 0) ==> %x
+                if (rhsAttr.isZero())
+                    return P4HIR::IntAttr::getZero(getType(), rhsAttr.getBitWidth());
+                // binop(or, %x, all_ones) ==> all_ones
+                if (rhsAttr.isAllOnes())
+                    return P4HIR::IntAttr::getAllOnes(getType(), rhsAttr.getBitWidth());
+                break;
+            case P4HIR::BinOpKind::Xor:
+                // binop(xor, %x, 0) ==> %x
+                if (rhsAttr.isZero()) return getLhs();
+                break;
+            case P4HIR::BinOpKind::And:
+                // binop(and, %x, 0) ==> 0
+                if (rhsAttr.isZero())
+                    return P4HIR::IntAttr::getZero(getType(), rhsAttr.getBitWidth());
+                // binop(and, %x, all_ones) ==> %x
+                if (rhsAttr.isAllOnes()) return getLhs();
+                break;
+        }
+    }
+
+    // Handle non-commutative single constant cases
+    if (lhsAttr) {
+        switch (getKind()) {
+            case P4HIR::BinOpKind::Div:
+                if (lhsAttr.isNegative()) {
+                    emitOpError("Division is not defined for negative numbers");
+                    return {};
+                }
+                // binop(div, 0, %x) ==> 0
+                if (lhsAttr.isZero())
+                    return P4HIR::IntAttr::getZero(getType(), lhsAttr.getBitWidth());
+                break;
+            case P4HIR::BinOpKind::Mod:
+                if (lhsAttr.isNegative()) {
+                    emitOpError("Modulo is not defined for negative numbers");
+                    return {};
+                }
+                // binop(mod, 0, %x) ==> 0
+                if (lhsAttr.isZero())
+                    return P4HIR::IntAttr::getZero(getType(), lhsAttr.getBitWidth());
+                break;
+            default:
+                break;
+        }
+    }
+
+    return {};
+}
+
+void P4HIR::BinOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                               mlir::MLIRContext *context) {
+    results.add<BinOpCommutativeCanonicalization, BinOpSubZero, BinOpSubSatZero>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // ConcatOp
 //===----------------------------------------------------------------------===//
@@ -358,15 +600,14 @@ OpFoldResult foldZeroConstants(ShiftOp op, typename ShiftOp::FoldAdaptor adaptor
     // Identity.
     // shl/shr(%x, 0) -> %x
     if (auto rhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getRhs())) {
-        if (rhsAttr.getValue().isZero()) return op.getLhs();
+        if (rhsAttr.isZero()) return op.getLhs();
     }
 
     // Zero.
     // shl/shr(0, c) -> 0
     if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
-        auto lhsVal = lhsAttr.getValue();
-        if (lhsVal.isZero()) {
-            return P4HIR::IntAttr::get(op.getType(), APInt::getZero(lhsVal.getBitWidth()));
+        if (lhsAttr.isZero()) {
+            return P4HIR::IntAttr::getZero(op.getType(), lhsAttr.getBitWidth());
         }
     }
 
@@ -386,7 +627,7 @@ OpFoldResult P4HIR::ShlOp::fold(FoldAdaptor adaptor) {
     // shl(%x : bit/int<W>, c) -> 0 if c >= W
     if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
         unsigned width = bitsType.getWidth();
-        if (shift.uge(width)) return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
+        if (shift.uge(width)) return P4HIR::IntAttr::getZero(bitsType, width);
     }
 
     // Try unwrapping shift used to extend infint width
@@ -398,7 +639,7 @@ OpFoldResult P4HIR::ShlOp::fold(FoldAdaptor adaptor) {
     if (auto lhsAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getLhs())) {
         auto lhsVal = lhsAttr.getValue();
         if (auto infIntType = mlir::dyn_cast<P4HIR::InfIntType>(getType()))
-            lhsVal = lhsVal.sextOrTrunc(lhsVal.getActiveBits() + shiftAmt + 1);
+            lhsVal = lhsVal.sext(lhsVal.getActiveBits() + shiftAmt + 1);
         return P4HIR::IntAttr::get(getType(), lhsVal.shl(shift));
     }
 
@@ -419,7 +660,7 @@ OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
     if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(getType())) {
         unsigned width = bitsType.getWidth();
         if (bitsType.isUnsigned() && shift.uge(width))
-            return P4HIR::IntAttr::get(bitsType, APInt::getZero(width));
+            return P4HIR::IntAttr::getZero(bitsType, width);
     }
 
     // Constant folding
