@@ -236,22 +236,6 @@ def SetProductOp : P4HIR_Op<"set_product",
   let hasVerifier = 1;
 }
 
-def UniversalSetOp : P4HIR_Op<"universal_set",
-   [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
-  let summary = "Create a universal set";
-  // TODO: Make it properly types
-  // let arguments = (ins AnyP4Type:$input);
-  let results = (outs SetType:$result);
-  let assemblyFormat = [{
-    attr-dict `:` qualified(type($result))
-  }];
-
-  let builders = [
-    OpBuilder<(ins)>
-  ];
-}
-
 def RangeOp : P4HIR_Op<"range", [Pure,
   TypesMatchWith<
        "the resulting type of a range operation must be the set of left-hand side operand types",

@@ -42,18 +42,18 @@ module {
           %c0_b10i = p4hir.const #int0_b10i
           %c0_b10i_0 = p4hir.const #int0_b10i
           %mask = p4hir.mask(%c0_b10i, %c0_b10i_0) : !p4hir.set<!b10i>
-          %everything = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+          %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           %setproduct = p4hir.set_product (%mask, %everything) : !p4hir.set<tuple<!b10i, !p4hir.dontcare>>
           p4hir.yield %setproduct : !p4hir.set<tuple<!b10i, !p4hir.dontcare>>
         } to @p2::@next
         p4hir.select_case {
-          %everything = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
-          %everything_0 = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+          %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+          %everything_0 = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           %setproduct = p4hir.set_product (%everything, %everything_0) : !p4hir.set<tuple<!p4hir.dontcare, !p4hir.dontcare>>
           p4hir.yield %setproduct : !p4hir.set<tuple<!p4hir.dontcare, !p4hir.dontcare>>
         } to @p2::@reject
         p4hir.select_case {
-          %everything = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+          %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
         } to @p2::@reject
       }

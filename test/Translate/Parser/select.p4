@@ -40,7 +40,7 @@ parser p1(in bit<10> foo, out bool matches) {
 // CHECK:          p4hir.yield %[[mask:.*]] : !p4hir.set<!b10i>
 // CHECK:        } to @p1::@next
 // CHECK:        p4hir.select_case {
-// CHECK:          %[[everything:.*]] = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+// CHECK:          %[[everything:.*]] = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
 // CHECK:          p4hir.yield %[[everything]] : !p4hir.set<!p4hir.dontcare>
 // CHECK:        } to @p1::@reject
 // CHECK:      }
@@ -99,18 +99,18 @@ parser p2(in bit<10> foo, out bool matches) {
 // CHECK:          %[[c0_b10i:.*]] = p4hir.const #int0_b10i
 // CHECK:          %[[c0_b10i_0:.*]] = p4hir.const #int0_b10i
 // CHECK:          %[[mask:.*]] = p4hir.mask(%[[c0_b10i]], %[[c0_b10i_0]]) : !p4hir.set<!b10i>
-// CHECK:          %[[everything:.*]] = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+// CHECK:          %[[everything:.*]] = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
 // CHECK:          %[[setproduct:.*]] = p4hir.set_product (%[[mask]], %[[everything]]) : !p4hir.set<tuple<!b10i, !p4hir.dontcare>>
 // CHECK:          p4hir.yield %[[setproduct]] : !p4hir.set<tuple<!b10i, !p4hir.dontcare>>
 // CHECK:        } to @p2::@next
 // CHECK:        p4hir.select_case {
-// CHECK:          %[[everything:.*]] = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
-// CHECK:          %[[everything_0:.*]] = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+// CHECK:          %[[everything:.*]] = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+// CHECK:          %[[everything_0:.*]] = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
 // CHECK:          %[[setproduct:.*]] = p4hir.set_product (%[[everything]], %[[everything_0]]) : !p4hir.set<tuple<!p4hir.dontcare, !p4hir.dontcare>>
 // CHECK:          p4hir.yield %[[setproduct]] : !p4hir.set<tuple<!p4hir.dontcare, !p4hir.dontcare>>
 // CHECK:        } to @p2::@reject
 // CHECK:        p4hir.select_case {
-// CHECK:          %[[everything:.*]] = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+// CHECK:          %[[everything:.*]] = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
 // CHECK:          p4hir.yield %[[everything]] : !p4hir.set<!p4hir.dontcare>
 // CHECK:        } to @p2::@reject
 // CHECK-LABEL:    p4hir.state @drop {
