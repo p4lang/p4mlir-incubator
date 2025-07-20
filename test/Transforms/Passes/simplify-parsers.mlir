@@ -40,7 +40,7 @@ module {
           p4hir.yield %set : !p4hir.set<!p4hir.bool>
         } to @p::@accept
         p4hir.select_case {
-          %everything = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+          %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
         } to @p::@reject
 
@@ -86,7 +86,7 @@ module {
           p4hir.yield %set : !p4hir.set<!p4hir.bool>
         } to @branching::@s1
         p4hir.select_case {
-          %everything = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+          %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
         } to @branching::@s2
       }
@@ -174,7 +174,7 @@ module {
           p4hir.yield %set : !p4hir.set<!p4hir.bool>
         } to @annotated_branching::@s1
         p4hir.select_case {
-          %everything = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+          %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
         } to @annotated_branching::@s2
       }
@@ -231,7 +231,7 @@ module {
           p4hir.yield %set : !p4hir.set<!p4hir.bool>
         } to @cycles::@s1
         p4hir.select_case {
-          %everything = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+          %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
         } to @cycles::@s4
       }

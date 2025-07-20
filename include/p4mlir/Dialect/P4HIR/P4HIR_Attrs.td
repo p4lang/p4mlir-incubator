@@ -250,6 +250,27 @@ def P4HIR_MatchKindAttr : P4HIR_Attr<"MatchKind", "match_kind",
 }
 
 //===----------------------------------------------------------------------===//
+// UniversalSetAttr
+//===----------------------------------------------------------------------===//
+// Represents a universal set
+def P4HIR_UniversalSetAttr : P4HIR_Attr<"UniversalSet", "universal_set", [TypedAttrInterface]> {
+ let summary = "Universal set";
+  let description = [{
+    This attribute represents an universal set.
+
+    Examples:
+    ```mlir
+      %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+    ```
+  }];
+
+  let extraClassDeclaration = [{
+    mlir::Type getType();
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // CaseOpKind
 //===----------------------------------------------------------------------===//
 

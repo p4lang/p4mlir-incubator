@@ -101,6 +101,13 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
         return success();
     }
 
+    if (mlir::isa<P4HIR::UniversalSetAttr>(attrType)) {
+        if (!mlir::isa<P4HIR::SetType>(opType))
+            return op->emitOpError("result type (")
+                   << opType << ") must be '!p4hir.set' for '" << attrType << "'";
+        return success();
+    }
+
     assert(isa<TypedAttr>(attrType) && "expected typed attribute");
     return op->emitOpError("constant with type ")
            << cast<TypedAttr>(attrType).getType() << " not supported";
@@ -148,6 +155,8 @@ void P4HIR::ConstOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
         }
 
         setNameFn(getResult(), specialName.str());
+    } else if (mlir::isa<P4HIR::UniversalSetAttr>(getValue())) {
+        setNameFn(getResult(), "everything");
     } else {
         setNameFn(getResult(), "cst");
     }
@@ -1879,18 +1888,6 @@ void P4HIR::SetProductOp::build(mlir::OpBuilder &builder, mlir::OperationState &
 
     result.addTypes(P4HIR::SetType::get(builder.getTupleType(elements)));
     result.addOperands(values);
-}
-
-//===----------------------------------------------------------------------===//
-// UniversalSetOp
-//===----------------------------------------------------------------------===//
-
-void P4HIR::UniversalSetOp::build(mlir::OpBuilder &builder, mlir::OperationState &result) {
-    result.addTypes(P4HIR::SetType::get(P4HIR::DontcareType::get(builder.getContext())));
-}
-
-void P4HIR::UniversalSetOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
-    setNameFn(getResult(), "everything");
 }
 
 //===----------------------------------------------------------------------===//

@@ -42,7 +42,7 @@ module {
           p4hir.yield %set : !p4hir.set<!b8i>
         } to @prs::@parse_two
         p4hir.select_case {
-          %everything = p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+          %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
         } to @prs::@parse_bottom
       }

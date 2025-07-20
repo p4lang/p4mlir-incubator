@@ -251,6 +251,10 @@ LogicalResult AggAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type
         });
 }
 
+mlir::Type UniversalSetAttr::getType() {
+    return P4HIR::SetType::get(P4HIR::DontcareType::get(getContext()));
+}
+
 void P4HIRDialect::registerAttributes() {
     addAttributes<
 #define GET_ATTRDEF_LIST
