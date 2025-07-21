@@ -101,7 +101,7 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
         return success();
     }
 
-    if (mlir::isa<P4HIR::UniversalSetAttr>(attrType)) {
+    if (mlir::isa<P4HIR::UniversalSetAttr, P4HIR::SetAttr>(attrType)) {
         if (!mlir::isa<P4HIR::SetType>(opType))
             return op->emitOpError("result type (")
                    << opType << ") must be '!p4hir.set' for '" << attrType << "'";
@@ -157,6 +157,8 @@ void P4HIR::ConstOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
         setNameFn(getResult(), specialName.str());
     } else if (mlir::isa<P4HIR::UniversalSetAttr>(getValue())) {
         setNameFn(getResult(), "everything");
+    } else if (mlir::isa<P4HIR::SetAttr>(getValue())) {
+        setNameFn(getResult(), "set");
     } else {
         setNameFn(getResult(), "cst");
     }
@@ -1777,6 +1779,36 @@ P4HIR::ParserStateOp P4HIR::ParserTransitionSelectOp::StateIterator::mapElement(
     return lookupParserState(op.getOperation(), op.getStateAttr());
 }
 
+static bool isUniversalSetAttr(mlir::Attribute val) {
+    if (mlir::isa<P4HIR::UniversalSetAttr>(val)) return true;
+
+    if (auto setAttr = mlir::dyn_cast<P4HIR::SetAttr>(val))
+        return setAttr.getKind() == P4HIR::SetKind::Prod &&
+               llvm::all_of(setAttr.getMembers(), isUniversalSetAttr);
+
+    return false;
+}
+
+static bool isUniversalSetValue(mlir::Value val) {
+    if (auto cst = mlir::dyn_cast<P4HIR::ConstOp>(val.getDefiningOp()))
+        return isUniversalSetAttr(cst.getValue());
+
+    if (auto prod = mlir::dyn_cast<P4HIR::SetProductOp>(val.getDefiningOp()))
+        return llvm::all_of(prod.getInput(), isUniversalSetValue);
+
+    return false;
+}
+
+bool P4HIR::ParserSelectCaseOp::isDefault() {
+    auto yield = mlir::cast<YieldOp>(getRegion().front().getTerminator());
+
+    // Return result not relying on folding, so default case might be one of:
+    //  - Explicit p4hir.const #p4hir.universal_set
+    //  - set_product op of universal sets
+    //  - set attribute being products of universal set
+    return isUniversalSetValue(yield.getOperand(0));
+}
+
 //===----------------------------------------------------------------------===//
 // SetOp
 //===----------------------------------------------------------------------===//
@@ -1825,6 +1857,14 @@ void P4HIR::SetOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
                          mlir::ValueRange values) {
     result.addTypes(P4HIR::SetType::get(values.front().getType()));
     result.addOperands(values);
+}
+
+OpFoldResult P4HIR::SetOp::fold(FoldAdaptor adaptor) {
+    // Fold constant inputs into set attribute
+    if (llvm::any_of(adaptor.getInput(), [](Attribute attr) { return !attr; })) return {};
+
+    return P4HIR::SetAttr::get(getType(), SetKind::Constant,
+                               mlir::ArrayAttr::get(getContext(), adaptor.getInput()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1890,6 +1930,14 @@ void P4HIR::SetProductOp::build(mlir::OpBuilder &builder, mlir::OperationState &
     result.addOperands(values);
 }
 
+OpFoldResult P4HIR::SetProductOp::fold(FoldAdaptor adaptor) {
+    // Fold constant inputs into set attribute
+    if (llvm::any_of(adaptor.getInput(), [](Attribute attr) { return !attr; })) return {};
+
+    return P4HIR::SetAttr::get(getType(), SetKind::Prod,
+                               mlir::ArrayAttr::get(getContext(), adaptor.getInput()));
+}
+
 //===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
@@ -1922,12 +1970,32 @@ LogicalResult P4HIR::RangeOp::verify() {
     return mlir::success();
 }
 
+OpFoldResult P4HIR::RangeOp::fold(FoldAdaptor adaptor) {
+    // Fold constant inputs into set attribute
+    if (adaptor.getLhs() && adaptor.getRhs())
+        return P4HIR::SetAttr::get(
+            getType(), SetKind::Range,
+            mlir::ArrayAttr::get(getContext(), {adaptor.getLhs(), adaptor.getRhs()}));
+
+    return {};
+}
+
 //===----------------------------------------------------------------------===//
 // MaskOp
 //===----------------------------------------------------------------------===//
 
 void P4HIR::MaskOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "mask");
+}
+
+OpFoldResult P4HIR::MaskOp::fold(FoldAdaptor adaptor) {
+    // Fold constant inputs into set attribute
+    if (adaptor.getLhs() && adaptor.getRhs())
+        return P4HIR::SetAttr::get(
+            getType(), SetKind::Mask,
+            mlir::ArrayAttr::get(getContext(), {adaptor.getLhs(), adaptor.getRhs()}));
+
+    return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -3415,6 +3483,24 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
 
         if (auto matchKindAttr = mlir::dyn_cast<P4HIR::MatchKindAttr>(attr)) {
             os << matchKindAttr.getValue().getValue();
+            return AliasResult::FinalAlias;
+        }
+
+        if (mlir::isa<P4HIR::UniversalSetAttr>(attr)) {
+            os << "everything";
+            return AliasResult::FinalAlias;
+        }
+
+        if (auto setAttr = mlir::dyn_cast<P4HIR::SetAttr>(attr)) {
+            if (setAttr.getMembers().size() > 2)
+                return AliasResult::NoAlias;  // or it will be too long
+
+            os << "set_" << stringifyEnum(setAttr.getKind()) << "_of";
+            for (auto attr : setAttr.getMembers()) {
+                os << "_";
+                getAlias(attr, os);
+            }
+
             return AliasResult::FinalAlias;
         }
 

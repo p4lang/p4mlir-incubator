@@ -269,6 +269,45 @@ def P4HIR_UniversalSetAttr : P4HIR_Attr<"UniversalSet", "universal_set", [TypedA
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// SetAttr
+//===----------------------------------------------------------------------===//
+def SetKind_Const : I32EnumAttrCase<"Constant", 1, "const">;
+def SetKind_Range : I32EnumAttrCase<"Range", 2, "range">;
+def SetKind_Mask  : I32EnumAttrCase<"Mask", 3, "mask">;
+def SetKind_Prod  : I32EnumAttrCase<"Prod", 4, "prod">;
+
+def SetKind : I32EnumAttr<
+    "SetKind",
+    "set constant kind",
+    [SetKind_Const, SetKind_Range, SetKind_Mask, SetKind_Prod]> {
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+}
+
+def P4HIR_SetAttr : P4HIR_Attr<"Set", "set", [TypedAttrInterface]> {
+  let summary = "An attribute containing a set value";
+  let description = [{
+    A set attribute is a literal attribute that represents a set of values
+    of the specified type. Only certain well-described types of sets are
+    supported as well as their products.
+  }];
+  let parameters = (ins AttributeSelfTypeParameter<"">:$type,
+                        "SetKind":$kind,
+                        "mlir::ArrayAttr":$members);
+
+  let builders = [
+    AttrBuilderWithInferredContext<(ins "P4HIR::SetType":$type, "SetKind":$kind,
+                                        "mlir::ArrayAttr":$members), [{
+      return $_get(type.getContext(), type, kind, members);
+    }]>
+  ];
+  let genVerifyDecl = 1;
+  let assemblyFormat = [{
+    `<` $kind `:` $members `>`
+  }];
+
+}
+
 
 //===----------------------------------------------------------------------===//
 // CaseOpKind
