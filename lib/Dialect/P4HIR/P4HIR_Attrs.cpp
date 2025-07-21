@@ -272,9 +272,8 @@ LogicalResult SetAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type
     switch (kind) {
         case SetKind::Constant:
             // Check that all of constants are of the same type
-            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(), [&](auto attr) {
-                    return attr.getType() != eltType;
-                })) {
+            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(),
+                             [&](auto attr) { return attr.getType() != eltType; })) {
                 emitError() << "p4hir.set elements must be of the same type: " << eltType;
                 return failure();
             }
@@ -287,9 +286,8 @@ LogicalResult SetAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type
             }
 
             // Check that all of constants are of the same type
-            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(), [&](auto attr) {
-                    return attr.getType() != eltType;
-                })) {
+            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(),
+                             [&](auto attr) { return attr.getType() != eltType; })) {
                 emitError() << "p4hir.set elements must be of the same type: " << eltType;
                 return failure();
             }

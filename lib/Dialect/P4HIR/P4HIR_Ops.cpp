@@ -3305,205 +3305,118 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
     using OpAsmDialectInterface::OpAsmDialectInterface;
 
     AliasResult getAlias(Type type, raw_ostream &os) const final {
-        if (auto infintType = mlir::dyn_cast<P4HIR::InfIntType>(type)) {
-            os << infintType.getAlias();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(type)) {
-            os << bitsType.getAlias();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto validBitType = mlir::dyn_cast<P4HIR::ValidBitType>(type)) {
-            os << validBitType.getAlias();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto voidType = mlir::dyn_cast<P4HIR::VoidType>(type)) {
-            os << voidType.getAlias();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto structType = mlir::dyn_cast<P4HIR::StructType>(type)) {
-            os << structType.getName();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto headerType = mlir::dyn_cast<P4HIR::HeaderType>(type)) {
-            os << headerType.getName();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto headerUnionType = mlir::dyn_cast<P4HIR::HeaderUnionType>(type)) {
-            os << headerUnionType.getName();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto enumType = mlir::dyn_cast<P4HIR::EnumType>(type)) {
-            auto name = enumType.getName();
-            os << (name.empty() ? "anon" : name);
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(type)) {
-            os << serEnumType.getName();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto errorType = mlir::dyn_cast<P4HIR::ErrorType>(type)) {
-            os << errorType.getAlias();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto stringType = mlir::dyn_cast<P4HIR::StringType>(type)) {
-            os << stringType.getAlias();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto typevarType = mlir::dyn_cast<P4HIR::TypeVarType>(type)) {
-            os << "type_" << typevarType.getName();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(type)) {
-            os << aliasType.getName();
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto parserType = mlir::dyn_cast<P4HIR::ParserType>(type)) {
-            os << parserType.getName();
-            for (auto typeArg : parserType.getTypeArguments()) {
-                os << "_";
-                getAlias(typeArg, os);
-            }
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto controlType = mlir::dyn_cast<P4HIR::ControlType>(type)) {
-            os << controlType.getName();
-            for (auto typeArg : controlType.getTypeArguments()) {
-                os << "_";
-                getAlias(typeArg, os);
-            }
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto externType = mlir::dyn_cast<P4HIR::ExternType>(type)) {
-            os << externType.getName();
-            for (auto typeArg : externType.getTypeArguments()) {
-                os << "_";
-                getAlias(typeArg, os);
-            }
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto packageType = mlir::dyn_cast<P4HIR::PackageType>(type)) {
-            os << packageType.getName();
-            for (auto typeArg : packageType.getTypeArguments()) {
-                os << "_";
-                getAlias(typeArg, os);
-            }
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto ctorType = mlir::dyn_cast<P4HIR::CtorType>(type)) {
-            os << "ctor_";
-            getAlias(ctorType.getReturnType(), os);
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(type)) {
-            os << "arr_" << arrayType.getSize() << "x";
-            getAlias(arrayType.getElementType(), os);
-            return AliasResult::OverridableAlias;
-        }
-
-        if (auto hsType = mlir::dyn_cast<P4HIR::HeaderStackType>(type)) {
-            os << "hs_" << hsType.getArraySize() << "x";
-            getAlias(hsType.getArrayElementType(), os);
-            return AliasResult::OverridableAlias;
-        }
-
-        return AliasResult::NoAlias;
+        return mlir::TypeSwitch<Type, AliasResult>(type)
+            .Case<P4HIR::InfIntType, P4HIR::BitsType, P4HIR::ValidBitType, P4HIR::VoidType,
+                  P4HIR::ErrorType, P4HIR::StringType>([&](auto type) {
+                os << type.getAlias();
+                return AliasResult::OverridableAlias;
+            })
+            .Case<P4HIR::StructType, P4HIR::HeaderType, P4HIR::HeaderUnionType, P4HIR::SerEnumType,
+                  P4HIR::AliasType>([&](auto type) {
+                os << type.getName();
+                return AliasResult::OverridableAlias;
+            })
+            .Case<P4HIR::ParserType, P4HIR::ControlType, P4HIR::ExternType, P4HIR::PackageType>(
+                [&](auto type) {
+                    os << type.getName();
+                    for (auto typeArg : type.getTypeArguments()) {
+                        os << "_";
+                        getAlias(typeArg, os);
+                    }
+                    return AliasResult::OverridableAlias;
+                })
+            .Case<P4HIR::EnumType>([&](auto type) {
+                auto name = type.getName();
+                os << (name.empty() ? "anon" : name);
+                return AliasResult::OverridableAlias;
+            })
+            .Case<P4HIR::TypeVarType>([&](auto type) {
+                os << "type_" << type.getName();
+                return AliasResult::OverridableAlias;
+            })
+            .Case<P4HIR::CtorType>([&](auto type) {
+                os << "ctor_";
+                getAlias(type.getReturnType(), os);
+                return AliasResult::OverridableAlias;
+            })
+            .Case<P4HIR::ArrayType>([&](auto type) {
+                os << "arr_" << type.getSize() << "x";
+                getAlias(type.getElementType(), os);
+                return AliasResult::OverridableAlias;
+            })
+            .Case<P4HIR::HeaderStackType>([&](auto type) {
+                os << "hs_" << type.getArraySize() << "x";
+                getAlias(type.getArrayElementType(), os);
+                return AliasResult::OverridableAlias;
+            })
+            .Default([](Type) { return AliasResult::NoAlias; });
     }
 
     AliasResult getAlias(Attribute attr, raw_ostream &os) const final {
-        if (auto boolAttr = mlir::dyn_cast<P4HIR::BoolAttr>(attr)) {
-            os << (boolAttr.getValue() ? "true" : "false");
-            if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(boolAttr.getType()))
-                os << "_" << aliasType.getName();
+        return mlir::TypeSwitch<Attribute, AliasResult>(attr)
+            .Case<P4HIR::BoolAttr>([&](auto boolAttr) {
+                os << (boolAttr.getValue() ? "true" : "false");
+                if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(boolAttr.getType()))
+                    os << "_" << aliasType.getName();
 
-            return AliasResult::FinalAlias;
-        }
+                return AliasResult::FinalAlias;
+            })
+            .Case<P4HIR::IntAttr>([&](auto intAttr) {
+                os << "int" << intAttr.getValue();
+                if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(intAttr.getType()))
+                    os << "_" << bitsType.getAlias();
+                else if (auto infintType = mlir::dyn_cast<P4HIR::InfIntType>(intAttr.getType()))
+                    os << "_" << infintType.getAlias();
+                else if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(intAttr.getType()))
+                    os << "_" << aliasType.getName();
 
-        if (auto intAttr = mlir::dyn_cast<P4HIR::IntAttr>(attr)) {
-            os << "int" << intAttr.getValue();
-            if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(intAttr.getType()))
-                os << "_" << bitsType.getAlias();
-            else if (auto infintType = mlir::dyn_cast<P4HIR::InfIntType>(intAttr.getType()))
-                os << "_" << infintType.getAlias();
-            else if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(intAttr.getType()))
-                os << "_" << aliasType.getName();
+                return AliasResult::FinalAlias;
+            })
+            .Case<P4HIR::ParamDirectionAttr, P4HIR::ValidityBitAttr>([&](auto attr) {
+                os << stringifyEnum(attr.getValue());
+                return AliasResult::FinalAlias;
+            })
+            .Case<P4HIR::ErrorCodeAttr>([&](auto errorAttr) {
+                os << "error_" << errorAttr.getField().getValue();
+                return AliasResult::FinalAlias;
+            })
+            .Case<P4HIR::EnumFieldAttr>([&](auto enumFieldAttr) {
+                if (auto enumType = mlir::dyn_cast<P4HIR::EnumType>(enumFieldAttr.getType()))
+                    os << (enumType.getName().empty() ? "anon" : enumType.getName()) << "_"
+                       << enumFieldAttr.getField().getValue();
+                else
+                    os << mlir::cast<P4HIR::SerEnumType>(enumFieldAttr.getType()).getName() << "_"
+                       << enumFieldAttr.getField().getValue();
 
-            return AliasResult::FinalAlias;
-        }
+                return AliasResult::FinalAlias;
+            })
+            .Case<P4HIR::CtorParamAttr>([&](auto ctorParamAttr) {
+                os << ctorParamAttr.getParent().getRootReference().getValue() << "_"
+                   << ctorParamAttr.getName().getValue();
+                return AliasResult::FinalAlias;
+            })
+            .Case<P4HIR::MatchKindAttr>([&](auto matchKindAttr) {
+                os << matchKindAttr.getValue().getValue();
+                return AliasResult::FinalAlias;
+            })
+            .Case<P4HIR::UniversalSetAttr>([&](auto) {
+                os << "everything";
+                return AliasResult::FinalAlias;
+            })
+            .Case<P4HIR::SetAttr>([&](auto setAttr) {
+                if (setAttr.getMembers().size() > 2)
+                    return AliasResult::NoAlias;  // or it will be too long
 
-        if (auto dirAttr = mlir::dyn_cast<P4HIR::ParamDirectionAttr>(attr)) {
-            os << stringifyEnum(dirAttr.getValue());
-            return AliasResult::FinalAlias;
-        }
+                os << "set_" << stringifyEnum(setAttr.getKind()) << "_of";
+                for (auto attr : setAttr.getMembers()) {
+                    os << "_";
+                    getAlias(attr, os);
+                }
 
-        if (auto validAttr = mlir::dyn_cast<P4HIR::ValidityBitAttr>(attr)) {
-            os << stringifyEnum(validAttr.getValue());
-            return AliasResult::FinalAlias;
-        }
+                return AliasResult::FinalAlias;
+            })
 
-        if (auto errorAttr = mlir::dyn_cast<P4HIR::ErrorCodeAttr>(attr)) {
-            os << "error_" << errorAttr.getField().getValue();
-            return AliasResult::FinalAlias;
-        }
-
-        if (auto enumFieldAttr = mlir::dyn_cast<P4HIR::EnumFieldAttr>(attr)) {
-            if (auto enumType = mlir::dyn_cast<P4HIR::EnumType>(enumFieldAttr.getType()))
-                os << (enumType.getName().empty() ? "anon" : enumType.getName()) << "_"
-                   << enumFieldAttr.getField().getValue();
-            else
-                os << mlir::cast<P4HIR::SerEnumType>(enumFieldAttr.getType()).getName() << "_"
-                   << enumFieldAttr.getField().getValue();
-
-            return AliasResult::FinalAlias;
-        }
-
-        if (auto ctorParamAttr = mlir::dyn_cast<P4HIR::CtorParamAttr>(attr)) {
-            os << ctorParamAttr.getParent().getRootReference().getValue() << "_"
-               << ctorParamAttr.getName().getValue();
-            return AliasResult::FinalAlias;
-        }
-
-        if (auto matchKindAttr = mlir::dyn_cast<P4HIR::MatchKindAttr>(attr)) {
-            os << matchKindAttr.getValue().getValue();
-            return AliasResult::FinalAlias;
-        }
-
-        if (mlir::isa<P4HIR::UniversalSetAttr>(attr)) {
-            os << "everything";
-            return AliasResult::FinalAlias;
-        }
-
-        if (auto setAttr = mlir::dyn_cast<P4HIR::SetAttr>(attr)) {
-            if (setAttr.getMembers().size() > 2)
-                return AliasResult::NoAlias;  // or it will be too long
-
-            os << "set_" << stringifyEnum(setAttr.getKind()) << "_of";
-            for (auto attr : setAttr.getMembers()) {
-                os << "_";
-                getAlias(attr, os);
-            }
-
-            return AliasResult::FinalAlias;
-        }
-
+            .Default([](Attribute) { return AliasResult::NoAlias; });
         return AliasResult::NoAlias;
     }
 };
