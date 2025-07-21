@@ -255,6 +255,61 @@ mlir::Type UniversalSetAttr::getType() {
     return P4HIR::SetType::get(P4HIR::DontcareType::get(getContext()));
 }
 
+LogicalResult SetAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type type,
+                              P4HIR::SetKind kind, ArrayAttr value) {
+    if (!type || mlir::isa<NoneType>(type)) {
+        emitError() << "p4hir.set attribute must be typed";
+        return failure();
+    }
+
+    auto setType = mlir::dyn_cast<P4HIR::SetType>(type);
+    if (!setType) {
+        emitError() << "p4hir.set attribute must have set type";
+        return failure();
+    }
+
+    auto eltType = setType.getElementType();
+    switch (kind) {
+        case SetKind::Constant:
+            // Check that all of constants are of the same type
+            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(), [&](auto attr) {
+                    return attr.getType() != eltType;
+                })) {
+                emitError() << "p4hir.set elements must be of the same type: " << eltType;
+                return failure();
+            }
+            break;
+        case SetKind::Range:
+        case SetKind::Mask:
+            if (value.size() != 2) {
+                emitError() << "p4hir.set mask / range attribute must have only two values";
+                return failure();
+            }
+
+            // Check that all of constants are of the same type
+            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(), [&](auto attr) {
+                    return attr.getType() != eltType;
+                })) {
+                emitError() << "p4hir.set elements must be of the same type: " << eltType;
+                return failure();
+            }
+            break;
+
+            break;
+        case SetKind::Prod:
+            // Must be either SetAttr or UniversalSetAttr
+            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(), [&](auto attr) {
+                    return !mlir::isa<P4HIR::SetType>(attr.getType());
+                })) {
+                emitError() << "p4hir.set product elements must be of set type all";
+                return failure();
+            }
+            break;
+    }
+
+    return success();
+}
+
 void P4HIRDialect::registerAttributes() {
     addAttributes<
 #define GET_ATTRDEF_LIST
