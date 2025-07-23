@@ -1168,6 +1168,66 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
     }
 }
 
+LogicalResult P4HIR::IfOp::canonicalize(P4HIR::IfOp op, PatternRewriter &rewriter) {
+    auto isEmptyRegion = [](mlir::Region &region) {
+        return region.empty()
+               || (region.hasOneBlock() && mlir::isa<P4HIR::YieldOp>(region.front().front()));
+    };
+
+    bool emptyThen = isEmptyRegion(op.getThenRegion()) && !op.getThenAnnotations();
+    bool emptyElse = isEmptyRegion(op.getElseRegion()) && !op.getElseAnnotations();
+
+    if (emptyThen && emptyElse) {
+        // Remove an empty if statement.
+        rewriter.eraseOp(op);
+        return success();
+    } else if (emptyElse) {
+        if (!op.getElseRegion().empty()) {
+            // Remove an empty else branch.
+            rewriter.modifyOpInPlace(op, [&]() {
+                op.getElseRegion().getBlocks().clear();
+            });
+
+            return success();
+        }
+    } else if (emptyThen) {
+        // if (c) then {} else B -> if (!c) then B
+        rewriter.modifyOpInPlace(op, [&]() {
+            auto invertedCond = rewriter.createOrFold<P4HIR::UnaryOp>(op.getCondition().getLoc(),
+                                                                      P4HIR::UnaryOpKind::LNot, op.getCondition());
+            op.getConditionMutable().assign(invertedCond);
+            op.getThenRegion().takeBody(op.getElseRegion());
+            op.setThenAnnotationsAttr(op.getElseAnnotationsAttr());
+            op.setElseAnnotationsAttr({});
+        });
+
+        return success();
+    } else {
+        auto condStmt = op.getCondition().getDefiningOp<P4HIR::UnaryOp>();
+
+        if (condStmt && condStmt.getKind() == P4HIR::UnaryOpKind::LNot) {
+            // if (!c) then A else B -> if (c) then B else A
+            rewriter.modifyOpInPlace(op, [&]() {
+                op.getConditionMutable().assign(condStmt.getInput());
+
+                mlir::Block *thenBlock = &op.getThenRegion().front();
+                op.getThenRegion().getBlocks().splice(op.getThenRegion().getBlocks().begin(),
+                                                      op.getElseRegion().getBlocks());
+                op.getElseRegion().getBlocks().splice(op.getElseRegion().getBlocks().begin(),
+                                                      op.getThenRegion().getBlocks(), thenBlock);
+
+                mlir::DictionaryAttr thenAttrs = op.getThenAnnotationsAttr();
+                op.setThenAnnotationsAttr(op.getElseAnnotationsAttr());
+                op.setElseAnnotationsAttr(thenAttrs);
+            });
+
+            return success();
+        }
+    }
+
+    return failure();
+}
+
 static mlir::LogicalResult verifyReturnLike(mlir::Operation *op, bool mayHaveNoOperands) {
     // Returns can be present in multiple different scopes, get the wrapping
     // function and start from there.
