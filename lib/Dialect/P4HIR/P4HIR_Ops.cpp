@@ -1864,7 +1864,8 @@ void P4HIR::SetOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
 
 OpFoldResult P4HIR::SetOp::fold(FoldAdaptor adaptor) {
     // Fold constant inputs into set attribute
-    if (llvm::any_of(adaptor.getInput(), [](Attribute attr) { return !attr; })) return {};
+    if (llvm::any_of(adaptor.getInput(), [](Attribute attr) { return !attr; }))  // NOLINT
+        return {};
 
     return P4HIR::SetAttr::get(getType(), SetKind::Constant,
                                mlir::ArrayAttr::get(getContext(), adaptor.getInput()));
@@ -1935,8 +1936,8 @@ void P4HIR::SetProductOp::build(mlir::OpBuilder &builder, mlir::OperationState &
 
 OpFoldResult P4HIR::SetProductOp::fold(FoldAdaptor adaptor) {
     // Fold constant inputs into set attribute
-    if (llvm::any_of(adaptor.getInput(), [](Attribute attr) { return !attr; })) return {};
-
+    if (llvm::any_of(adaptor.getInput(), [](Attribute attr) { return !attr; }))  // NOLINT
+        return {};
     return P4HIR::SetAttr::get(getType(), SetKind::Prod,
                                mlir::ArrayAttr::get(getContext(), adaptor.getInput()));
 }
