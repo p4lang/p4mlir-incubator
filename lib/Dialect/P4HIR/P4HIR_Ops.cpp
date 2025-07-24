@@ -1800,13 +1800,16 @@ static bool isUniversalSetValue(mlir::Value val) {
 }
 
 bool P4HIR::ParserSelectCaseOp::isDefault() {
-    auto yield = mlir::cast<YieldOp>(getRegion().front().getTerminator());
-
     // Return result not relying on folding, so default case might be one of:
     //  - Explicit p4hir.const #p4hir.universal_set
     //  - set_product op of universal sets
     //  - set attribute being products of universal set
-    return isUniversalSetValue(yield.getOperand(0));
+    return isUniversalSetValue(getSelectKey());
+}
+
+Value P4HIR::ParserSelectCaseOp::getSelectKey() {
+    auto yield = mlir::cast<YieldOp>(getRegion().front().getTerminator());
+    return yield.getOperand(0);
 }
 
 //===----------------------------------------------------------------------===//
