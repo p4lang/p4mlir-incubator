@@ -4,6 +4,7 @@
 def ParserOp : P4HIR_Op<"parser",
     [Symbol, SymbolTable, Annotated,
      FunctionOpInterface, AutomaticAllocationScope,
+     IsolatedFromAbove,
      SingleBlockImplicitTerminator<"ParserTransitionOp">]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FuncType>:$applyType,
@@ -176,7 +177,8 @@ def ParserTransitionSelectOp : P4HIR_Op<"transition_select",
 def ParserSelectCaseOp : P4HIR_Op<"select_case",
    [AutomaticAllocationScope,
     ParentOneOf<["ParserTransitionSelectOp"]>,
-    DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+    SingleBlockImplicitTerminator<"YieldOp">]> {
   let arguments = (ins SymbolRefAttr:$state);
   let regions = (region MinSizedRegion<1>:$key);
   let assemblyFormat = [{
@@ -192,6 +194,11 @@ def ParserSelectCaseOp : P4HIR_Op<"select_case",
     OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$keyBuilder,
                    "mlir::SymbolRefAttr":$nextState)>
   ];
+
+  let extraClassDeclaration = [{
+    bool isDefault();
+    mlir::Value getSelectKey();
+  }];
 }
 
 def SetOp : P4HIR_Op<"set",
@@ -213,6 +220,7 @@ def SetOp : P4HIR_Op<"set",
   ];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def SetProductOp : P4HIR_Op<"set_product",
@@ -234,22 +242,7 @@ def SetProductOp : P4HIR_Op<"set_product",
   ];
 
   let hasVerifier = 1;
-}
-
-def UniversalSetOp : P4HIR_Op<"universal_set",
-   [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
-  let summary = "Create a universal set";
-  // TODO: Make it properly types
-  // let arguments = (ins AnyP4Type:$input);
-  let results = (outs SetType:$result);
-  let assemblyFormat = [{
-    attr-dict `:` qualified(type($result))
-  }];
-
-  let builders = [
-    OpBuilder<(ins)>
-  ];
+  let hasFolder = 1;
 }
 
 def RangeOp : P4HIR_Op<"range", [Pure,
@@ -281,6 +274,7 @@ def RangeOp : P4HIR_Op<"range", [Pure,
   }];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 
   let builders = [
     OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
@@ -322,6 +316,8 @@ def MaskOp : P4HIR_Op<"mask", [Pure,
   let assemblyFormat = [{
     `(` $lhs `,` $rhs `)` `:` qualified(type($result)) attr-dict
   }];
+
+  let hasFolder = 1;
 
   let builders = [
     OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{

@@ -1,3 +1,7 @@
+// We explicitly do not use push / pop for diagnostic in
+// order to propagate pragma further on
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"

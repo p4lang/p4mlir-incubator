@@ -210,6 +210,9 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             loc, P4HIR::IntAttr::get(context(), P4HIR::BitsType::get(context(), bitWidth, true),
                                      llvm::APInt(bitWidth, value, true)));
     }
+    mlir::Value getUniversalSetConstant(mlir::Location loc) {
+        return builder.create<P4HIR::ConstOp>(loc, P4HIR::UniversalSetAttr::get(context()));
+    }
 
     mlir::TypedAttr getTypedConstant(mlir::Type type, mlir::Attribute constant) {
         if (mlir::isa<P4HIR::BoolType>(type)) return mlir::cast<P4HIR::BoolAttr>(constant);
@@ -3038,12 +3041,19 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                 auto convertElement = [&](const P4::IR::Expression *expr) -> mlir::Value {
                     // Universal set
                     if (expr->is<P4::IR::DefaultExpression>())
-                        return b.create<P4HIR::UniversalSetOp>(endLoc).getResult();
+                        return getUniversalSetConstant(endLoc);
 
                     auto elVal = convert(expr);
                     if (!mlir::isa<P4HIR::SetType>(elVal.getType()))
                         elVal = b.create<P4HIR::SetOp>(getEndLoc(builder, expr), elVal);
                     return elVal;
+                };
+
+                auto isUniversalSet = [](mlir::Value val) {
+                    if (auto cst = mlir::dyn_cast<P4HIR::ConstOp>(val.getDefiningOp()))
+                        return mlir::isa<P4HIR::UniversalSetAttr>(cst.getValue());
+
+                    return false;
                 };
 
                 if (const auto *keyList = keyset->to<P4::IR::ListExpression>()) {
@@ -3052,13 +3062,11 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                     for (const auto *element : keyList->components)
                         elements.push_back(convertElement(element));
                     // Treat product consisting entirely of universal sets as default case
-                    hasDefaultCase |= llvm::all_of(elements, [](mlir::Value el) {
-                        return mlir::isa<P4HIR::UniversalSetOp>(el.getDefiningOp());
-                    });
+                    hasDefaultCase |= llvm::all_of(elements, isUniversalSet);
                     keyVal = b.create<P4HIR::SetProductOp>(endLoc, elements);
                 } else {
                     keyVal = convertElement(keyset);
-                    hasDefaultCase |= mlir::isa<P4HIR::UniversalSetOp>(keyVal.getDefiningOp());
+                    hasDefaultCase |= isUniversalSet(keyVal);
                 }
                 b.create<P4HIR::YieldOp>(endLoc, keyVal);
             },
@@ -3072,8 +3080,7 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
         builder.create<P4HIR::ParserSelectCaseOp>(
             endLoc,
             [&](mlir::OpBuilder &b, mlir::Location) {
-                b.create<P4HIR::YieldOp>(endLoc,
-                                         builder.create<P4HIR::UniversalSetOp>(endLoc).getResult());
+                b.create<P4HIR::YieldOp>(endLoc, getUniversalSetConstant(endLoc));
             },
             getQualifiedSymbolRef(P4::IR::ParserState::reject.string_view()));
     }

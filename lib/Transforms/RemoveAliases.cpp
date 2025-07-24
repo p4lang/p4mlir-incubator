@@ -1,3 +1,7 @@
+// We explicitly do not use push / pop for diagnostic in
+// order to propagate pragma further on
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -26,7 +30,7 @@ struct RemoveAliasesPass : public P4::P4MLIR::impl::RemoveAliasesBase<RemoveAlia
 
 class AliasTypeConverter : public P4HIRTypeConverter {
  public:
-    AliasTypeConverter(MLIRContext *context) {
+    explicit AliasTypeConverter(MLIRContext *context) {
         addConversion([&](P4HIR::AliasType aliasType) -> Type {
             return convertType(aliasType.getAliasedType());
         });
