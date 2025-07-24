@@ -197,6 +197,7 @@ def ParserSelectCaseOp : P4HIR_Op<"select_case",
 
   let extraClassDeclaration = [{
     bool isDefault();
+    mlir::Value getSelectKey();
   }];
 }
 
