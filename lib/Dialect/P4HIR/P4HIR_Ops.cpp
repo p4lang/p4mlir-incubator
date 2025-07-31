@@ -1779,37 +1779,20 @@ P4HIR::ParserStateOp P4HIR::ParserTransitionSelectOp::StateIterator::mapElement(
     return lookupParserState(op.getOperation(), op.getStateAttr());
 }
 
-static bool isUniversalSetAttr(mlir::Attribute val) {
-    if (mlir::isa<P4HIR::UniversalSetAttr>(val)) return true;
-
-    if (auto setAttr = mlir::dyn_cast<P4HIR::SetAttr>(val))
-        return setAttr.getKind() == P4HIR::SetKind::Prod &&
-               llvm::all_of(setAttr.getMembers(), isUniversalSetAttr);
-
-    return false;
-}
-
-static bool isUniversalSetValue(mlir::Value val) {
-    if (auto cst = mlir::dyn_cast<P4HIR::ConstOp>(val.getDefiningOp()))
-        return isUniversalSetAttr(cst.getValue());
-
-    if (auto prod = mlir::dyn_cast<P4HIR::SetProductOp>(val.getDefiningOp()))
-        return llvm::all_of(prod.getInput(), isUniversalSetValue);
-
-    return false;
+bool P4HIR::isUniversalSetValue(mlir::Value val) {
+    auto cst = val.getDefiningOp<P4HIR::ConstOp>();
+    return cst && mlir::isa<P4HIR::UniversalSetAttr>(cst.getValue());
 }
 
 bool P4HIR::ParserSelectCaseOp::isDefault() {
-    // Return result not relying on folding, so default case might be one of:
-    //  - Explicit p4hir.const #p4hir.universal_set
-    //  - set_product op of universal sets
-    //  - set attribute being products of universal set
-    return isUniversalSetValue(getSelectKey());
+    // Return result not relying on folding, so default case might
+    // be a single universal set constant or a tuple of them.
+    return llvm::all_of(getSelectKeys(), isUniversalSetValue);
 }
 
-Value P4HIR::ParserSelectCaseOp::getSelectKey() {
+mlir::ValueRange P4HIR::ParserSelectCaseOp::getSelectKeys() {
     auto yield = mlir::cast<YieldOp>(getRegion().front().getTerminator());
-    return yield.getOperand(0);
+    return yield.getArgs();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1868,77 +1851,6 @@ OpFoldResult P4HIR::SetOp::fold(FoldAdaptor adaptor) {
         return {};
 
     return P4HIR::SetAttr::get(getType(), SetKind::Constant,
-                               mlir::ArrayAttr::get(getContext(), adaptor.getInput()));
-}
-
-//===----------------------------------------------------------------------===//
-// SetProductOp
-//===----------------------------------------------------------------------===//
-
-ParseResult P4HIR::SetProductOp::parse(OpAsmParser &parser, OperationState &result) {
-    llvm::SMLoc inputOperandsLoc = parser.getCurrentLocation();
-    llvm::SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
-    Type declType;
-
-    if (parser.parseLParen() || parser.parseOperandList(operands) || parser.parseRParen() ||
-        parser.parseOptionalAttrDict(result.attributes) || parser.parseColonType(declType))
-        return failure();
-
-    auto setType = mlir::dyn_cast<P4HIR::SetType>(declType);
-    if (!setType) return parser.emitError(parser.getNameLoc(), "expected !p4hir.set type");
-    auto tupleType = mlir::dyn_cast<mlir::TupleType>(setType.getElementType());
-    if (!tupleType) return parser.emitError(parser.getNameLoc(), "expected set of tuples");
-
-    result.addTypes(setType);
-    llvm::SmallVector<mlir::Type, 4> elements;
-    for (auto elTy : tupleType.getTypes()) elements.push_back(P4HIR::SetType::get(elTy));
-
-    if (parser.resolveOperands(operands, elements, inputOperandsLoc, result.operands))
-        return failure();
-    return success();
-}
-
-void P4HIR::SetProductOp::print(OpAsmPrinter &printer) {
-    printer << " (";
-    printer.printOperands(getInput());
-    printer << ")";
-    printer.printOptionalAttrDict((*this)->getAttrs());
-    printer << " : " << getType();
-}
-
-LogicalResult P4HIR::SetProductOp::verify() {
-    auto elementType = mlir::dyn_cast<mlir::TupleType>(getType().getElementType());
-    if (!elementType) return emitError("expected set of tuple type result");
-
-    if (elementType.size() != getInput().size())
-        return emitError("type mismatch: result and operands have different lengths");
-
-    for (const auto &[field, value] : llvm::zip(elementType.getTypes(), getInput()))
-        if (field != mlir::cast<P4HIR::SetType>(value.getType()).getElementType())
-            return emitOpError("set product operands do not match result type");
-
-    return success();
-}
-
-void P4HIR::SetProductOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
-    setNameFn(getResult(), "setproduct");
-}
-
-void P4HIR::SetProductOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
-                                mlir::ValueRange values) {
-    llvm::SmallVector<mlir::Type, 4> elements;
-    for (auto elTy : values.getTypes())
-        elements.push_back(mlir::cast<SetType>(elTy).getElementType());
-
-    result.addTypes(P4HIR::SetType::get(builder.getTupleType(elements)));
-    result.addOperands(values);
-}
-
-OpFoldResult P4HIR::SetProductOp::fold(FoldAdaptor adaptor) {
-    // Fold constant inputs into set attribute
-    if (llvm::any_of(adaptor.getInput(), [](Attribute attr) { return !attr; }))  // NOLINT
-        return {};
-    return P4HIR::SetAttr::get(getType(), SetKind::Prod,
                                mlir::ArrayAttr::get(getContext(), adaptor.getInput()));
 }
 
