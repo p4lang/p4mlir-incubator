@@ -196,6 +196,7 @@ def ParserSelectCaseOp : P4HIR_Op<"select_case",
   ];
 
   let extraClassDeclaration = [{
+    mlir::Operation *getTerminator() { return getRegion().front().getTerminator(); }
     bool isDefault();
     mlir::ValueRange getSelectKeys();
   }];
