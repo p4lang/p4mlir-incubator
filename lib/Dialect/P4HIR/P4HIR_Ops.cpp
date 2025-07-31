@@ -1443,6 +1443,19 @@ void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, 
     build(builder, odsState, tupleType.getType(fieldIndex), input, fieldIndex);
 }
 
+OpFoldResult P4HIR::TupleExtractOp::fold(FoldAdaptor adaptor) {
+    // Fold extract from aggregate constant
+    if (auto aggAttr = adaptor.getInput()) {
+        return mlir::cast<P4HIR::AggAttr>(aggAttr).getFields()[getFieldIndex()];
+    }
+    // Fold extract from tuple
+    if (auto tupleOp = mlir::dyn_cast_if_present<P4HIR::TupleOp>(getInput().getDefiningOp())) {
+        return tupleOp.getOperand(getFieldIndex());
+    }
+
+    return {};
+}
+
 //===----------------------------------------------------------------------===//
 // SliceOp, SliceRefOp
 //===----------------------------------------------------------------------===//
@@ -1769,7 +1782,7 @@ bool P4HIR::ParserSelectCaseOp::isDefault() {
 }
 
 mlir::ValueRange P4HIR::ParserSelectCaseOp::getSelectKeys() {
-    auto yield = mlir::cast<YieldOp>(getRegion().front().getTerminator());
+    auto yield = mlir::cast<YieldOp>(getTerminator());
     return yield.getArgs();
 }
 
