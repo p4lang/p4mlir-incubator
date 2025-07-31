@@ -528,6 +528,170 @@ class ReplaceRanges : public mlir::OpRewritePattern<P4HIR::ParserTransitionSelec
     size_t caseCountLimit;
 };
 
+// Make a select statement have a single argument by concatenating arguments and keysets.
+// Replace (a, b, c) with ((a ++ b ++ c) &&& (maska ++ maskb ++ maskc)) using suitable masks.
+// This should be run after FlattenTuples, ReplaceBoolWithInt, ReplaceRanges.
+class MakeSingleArgument : public mlir::OpRewritePattern<P4HIR::ParserTransitionSelectOp> {
+ public:
+    using OpRewritePattern<P4HIR::ParserTransitionSelectOp>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(P4HIR::ParserTransitionSelectOp selectOp,
+                                        mlir::PatternRewriter &rewriter) const override {
+        auto selectArgs = selectOp.getArgs();
+
+        if (selectArgs.size() == 1)
+            return rewriter.notifyMatchFailure(selectOp.getLoc(),
+                                               "Select op doesn't have multiple arguments.");
+
+        for (auto arg : selectArgs)
+            if (!mlir::isa<P4HIR::BitsType>(arg.getType()))
+                return rewriter.notifyMatchFailure(
+                    selectOp.getLoc(), "Cannot handle select op with non-integer arguments.");
+
+        // Make sure createMaskOpForVal can handle all keysets.
+        for (auto selectCase : selectOp.selects()) {
+            if (selectCase.isDefault()) continue;
+
+            for (auto key : selectCase.getSelectKeys()) {
+                if (P4HIR::isUniversalSetValue(key)) continue;
+
+                auto keyOp = key.getDefiningOp();
+                if (auto constOp = mlir::dyn_cast<P4HIR::ConstOp>(keyOp)) {
+                    auto setAttr = mlir::cast<P4HIR::SetAttr>(constOp.getValue());
+                    if (setAttr.getKind() != P4HIR::SetKind::Constant &&
+                        setAttr.getKind() != P4HIR::SetKind::Mask) {
+                        return rewriter.notifyMatchFailure(
+                            keyOp->getLoc(),
+                            "Cannot handle SetAttr kinds other than Constant and Mask.");
+                    }
+                } else if (!mlir::isa<P4HIR::MaskOp, P4HIR::SetOp>(keyOp)) {
+                    return rewriter.notifyMatchFailure(
+                        keyOp->getLoc(),
+                        "Cannot handle case keys other than ConstOp, MaskOp and SetOp.");
+                } else if (auto setOp = mlir::dyn_cast<P4HIR::SetOp>(keyOp)) {
+                    if (setOp.getInput().size() != 1)
+                        return rewriter.notifyMatchFailure(
+                            keyOp->getLoc(), "Cannot handle SetOp with multiple values.");
+                }
+            }
+        }
+
+        rewriter.setInsertionPoint(selectOp);
+
+        auto selectArgsConcat = selectArgs[0];
+        for (auto arg : selectArgs.slice(1, selectArgs.size() - 1))
+            selectArgsConcat =
+                rewriter.create<P4HIR::ConcatOp>(arg.getLoc(), selectArgsConcat, arg);
+
+        for (auto selectCase : selectOp.selects()) {
+            auto yield = mlir::cast<P4HIR::YieldOp>(selectCase.getTerminator());
+
+            rewriter.setInsertionPoint(yield);
+
+            mlir::Value valConcat, maskConcat;
+            bool anyNeedsMask = false;
+
+            // Helper to append values and build the final concatenated MaskOp for this
+            // yield statement. `destType` is the type for the resulting mask; we need
+            // it because universal_set is typeless.
+            auto concatVal = [&](P4HIR::BitsType destType, mlir::Value val) {
+                auto [keyVal, keyMask, needsMask] = createMaskOp(rewriter, destType, val);
+
+                anyNeedsMask |= needsMask;
+
+                if (valConcat) {
+                    valConcat = rewriter.create<P4HIR::ConcatOp>(val.getLoc(), valConcat, keyVal);
+                    maskConcat =
+                        rewriter.create<P4HIR::ConcatOp>(val.getLoc(), maskConcat, keyMask);
+                } else {
+                    valConcat = keyVal;
+                    maskConcat = keyMask;
+                }
+            };
+
+            if (selectCase.isDefault()) {
+                concatVal(mlir::cast<P4HIR::BitsType>(selectArgsConcat.getType()),
+                          yield.getArgs()[0]);
+            } else {
+                for (auto [selectArg, yieldArg] : llvm::zip_equal(selectArgs, yield.getArgs())) {
+                    auto destType = mlir::cast<P4HIR::BitsType>(selectArg.getType());
+                    concatVal(destType, yieldArg);
+                }
+            }
+
+            rewriter.modifyOpInPlace(yield, [&]() {
+                mlir::Value concatArgs;
+
+                if (anyNeedsMask) {
+                    concatArgs =
+                        rewriter.createOrFold<P4HIR::MaskOp>(yield.getLoc(), valConcat, maskConcat);
+                } else {
+                    concatArgs = rewriter.createOrFold<P4HIR::SetOp>(yield.getLoc(),
+                                                                     mlir::ValueRange(valConcat));
+                }
+
+                yield.getArgsMutable().assign(concatArgs);
+            });
+        }
+
+        rewriter.modifyOpInPlace(selectOp,
+                                 [&]() { selectOp.getArgsMutable().assign(selectArgsConcat); });
+
+        return mlir::success();
+    }
+
+ private:
+    std::tuple<mlir::Value, mlir::Value, bool> createMaskOp(mlir::PatternRewriter &rewriter,
+                                                            P4HIR::BitsType destType,
+                                                            mlir::Value yieldArg) const {
+        auto createConstant = [&](const llvm::APInt &value) {
+            return rewriter.create<P4HIR::ConstOp>(yieldArg.getLoc(),
+                                                   P4HIR::IntAttr::get(destType, value));
+        };
+
+        auto maybeCast = [&](mlir::Value value) {
+            if (value.getType() != destType)
+                return rewriter.createOrFold<P4HIR::CastOp>(yieldArg.getLoc(), destType, value);
+
+            return value;
+        };
+
+        mlir::Value keyVal;
+        mlir::Value keyMask;
+        bool needsMask = false;
+
+        if (auto constOp = yieldArg.getDefiningOp<P4HIR::ConstOp>()) {
+            if (P4HIR::isUniversalSetValue(yieldArg)) {
+                keyVal = keyMask = createConstant(llvm::APInt::getZero(destType.getWidth()));
+                needsMask = true;
+            } else {
+                auto setAttr = constOp.getValueAs<P4HIR::SetAttr>();
+
+                if (setAttr.getKind() == P4HIR::SetKind::Constant) {
+                    keyVal = createConstant(setAttr.getConstantValue());
+                    keyMask = createConstant(llvm::APInt::getAllOnes(destType.getWidth()));
+                } else {
+                    auto [val, mask] = setAttr.getMaskValues();
+                    keyVal = createConstant(val);
+                    keyMask = createConstant(mask);
+                    needsMask = true;
+                }
+            }
+        } else if (auto maskOp = yieldArg.getDefiningOp<P4HIR::MaskOp>()) {
+            keyVal = maybeCast(maskOp.getLhs());
+            keyMask = maybeCast(maskOp.getRhs());
+            needsMask = true;
+        } else if (auto setOp = yieldArg.getDefiningOp<P4HIR::SetOp>()) {
+            keyVal = maybeCast(setOp.getInput()[0]);
+            keyMask = createConstant(llvm::APInt::getAllOnes(destType.getWidth()));
+        } else {
+            llvm_unreachable("Impossible key value.");
+        }
+
+        return {keyVal, keyMask, needsMask};
+    }
+};
+
 }  // end namespace
 
 void SimplifySelect::runOnOperation() {
@@ -537,6 +701,7 @@ void SimplifySelect::runOnOperation() {
     if (replaceBools) patterns.add<ReplaceBoolWithInt>(patterns.getContext());
     if (replaceRanges)
         patterns.add<ReplaceRanges>(patterns.getContext(), replaceRangesCaseCountLimit);
+    if (concatArgs) patterns.add<MakeSingleArgument>(patterns.getContext());
 
     // Collect operations and apply patterns.
     llvm::SmallVector<mlir::Operation *, 16> ops;
