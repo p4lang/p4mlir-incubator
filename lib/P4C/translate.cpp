@@ -2995,16 +2995,16 @@ bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
 bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
     ConversionTracer trace("Converting ", select);
 
-    // Materialize value to select over. Select is always a ListExpression,
-    // even if it contains a single value. Lists ae lowered to tuples,
-    // however, single value cases are not single-value tuples. Unwrap
-    // single-value ListExpression down to the sole component.
-    const P4::IR::Expression *selectArg = select->select;
-    if (select->select->components.size() == 1) selectArg = select->select->components.front();
+    // Materialize values to select over. Select is always a ListExpression,
+    // even if it contains a single value. Unpack the top-level select tuple
+    // to its individual components for p4hir.transition_select.
+    const auto& comps = select->select->components;
+    llvm::SmallVector<mlir::Value, 4> operands;
+    for (const P4::IR::Node *comp : comps)
+        operands.push_back(convert(comp));
 
-    // Create select itself
     auto transitionSelectOp = builder.create<P4HIR::ParserTransitionSelectOp>(
-        getLoc(builder, select), convert(selectArg));
+        getLoc(builder, select), operands);
     mlir::Block &first = transitionSelectOp.getBody().emplaceBlock();
 
     mlir::OpBuilder::InsertionGuard guard(builder);
@@ -3019,7 +3019,6 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
             [&](mlir::OpBuilder &b, mlir::Location) {
                 const auto *keyset = selectCase->keyset;
                 auto endLoc = getEndLoc(builder, keyset);
-                mlir::Value keyVal;
 
                 // Type inference does not do proper type unification for the key,
                 // so we'd need to do this by ourselves
@@ -3034,26 +3033,17 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                     return elVal;
                 };
 
-                auto isUniversalSet = [](mlir::Value val) {
-                    if (auto cst = mlir::dyn_cast<P4HIR::ConstOp>(val.getDefiningOp()))
-                        return mlir::isa<P4HIR::UniversalSetAttr>(cst.getValue());
-
-                    return false;
-                };
-
+                // Create a variadic yield expression from the keys in the keyset.
+                llvm::SmallVector<mlir::Value, 4> elements;
                 if (const auto *keyList = keyset->to<P4::IR::ListExpression>()) {
-                    // Set product
-                    llvm::SmallVector<mlir::Value, 4> elements;
                     for (const auto *element : keyList->components)
                         elements.push_back(convertElement(element));
-                    // Treat product consisting entirely of universal sets as default case
-                    hasDefaultCase |= llvm::all_of(elements, isUniversalSet);
-                    keyVal = b.create<P4HIR::SetProductOp>(endLoc, elements);
                 } else {
-                    keyVal = convertElement(keyset);
-                    hasDefaultCase |= isUniversalSet(keyVal);
+                    elements.push_back(convertElement(keyset));
                 }
-                b.create<P4HIR::YieldOp>(endLoc, keyVal);
+
+                hasDefaultCase |= llvm::all_of(elements, P4HIR::isUniversalSetValue);
+                b.create<P4HIR::YieldOp>(endLoc, elements);
             },
             getQualifiedSymbolRef(nextState->name.string_view()));
     }
