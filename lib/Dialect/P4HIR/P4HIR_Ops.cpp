@@ -301,6 +301,16 @@ LogicalResult P4HIR::ConcatOp::verify() {
     return success();
 }
 
+OpFoldResult P4HIR::ConcatOp::fold(FoldAdaptor adaptor) {
+    if (adaptor.getLhs() && adaptor.getRhs()) {
+        auto lhs = mlir::cast<P4HIR::IntAttr>(adaptor.getLhs()).getValue();
+        auto rhs = mlir::cast<P4HIR::IntAttr>(adaptor.getRhs()).getValue();
+        return P4HIR::IntAttr::get(getType(), lhs.concat(rhs));
+    }
+
+    return {};
+}
+
 //===----------------------------------------------------------------------===//
 // ShlOp & ShrOp
 //===----------------------------------------------------------------------===//

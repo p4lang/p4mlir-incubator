@@ -382,6 +382,7 @@ def ConcatOp : P4HIR_Op<"concat", [Pure]> {
   ];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 
   let assemblyFormat = [{
     `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
