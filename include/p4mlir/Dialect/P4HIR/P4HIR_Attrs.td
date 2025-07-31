@@ -299,11 +299,40 @@ def P4HIR_SetAttr : P4HIR_Attr<"Set", "set", [TypedAttrInterface]> {
       return $_get(type.getContext(), type, kind, members);
     }]>
   ];
+  let extraClassDeclaration = [{
+    llvm::APInt getConstantValue() {
+      assert(getKind() == SetKind::Constant && "Expected Constant kind set.");
+      assert(getMembers().size() == 1 && "Expected single member set.");
+      return P4HIR::getConstantInt(getMembers()[0]).value();
+    }
+
+    std::pair<llvm::APInt, llvm::APInt> getRangeValues() {
+      assert(getKind() == SetKind::Range && "Expected Range kind set.");
+      return {
+        P4HIR::getConstantInt(getMembers()[0]).value(),
+        P4HIR::getConstantInt(getMembers()[1]).value()
+      };
+    }
+
+    std::pair<llvm::APInt, llvm::APInt> getMaskValues() {
+      assert(getKind() == SetKind::Mask && "Expected Mask kind set.");
+      return {
+        P4HIR::getConstantInt(getMembers()[0]).value(),
+        P4HIR::getConstantInt(getMembers()[1]).value()
+      };
+    }
+
+    bool isEmptyRange() {
+      assert(getKind() == SetKind::Range && "Expected Range kind set.");
+      auto min = P4HIR::getConstantInt(getMembers()[0]).value();
+      auto max = P4HIR::getConstantInt(getMembers()[1]).value();
+      return max < min;
+    }
+  }];
   let genVerifyDecl = 1;
   let assemblyFormat = [{
     `<` $kind `:` $members `>`
   }];
-
 }
 
 

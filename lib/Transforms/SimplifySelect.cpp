@@ -1,3 +1,8 @@
+#include <optional>
+#include <string>
+#include <tuple>
+#include <vector>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -252,6 +257,277 @@ class ReplaceBoolWithInt : public CastSelectArguments {
     }
 };
 
+class ReplaceRanges : public mlir::OpRewritePattern<P4HIR::ParserTransitionSelectOp> {
+ public:
+    ReplaceRanges(mlir::MLIRContext *ctx, size_t caseCountLimit)
+        : OpRewritePattern(ctx), caseCountLimit(caseCountLimit) {}
+
+    using Mask = std::pair<llvm::APInt, llvm::APInt>;
+    using MasksVec = std::vector<Mask>;
+    using MasksVecProduct = std::vector<MasksVec>;
+
+    mlir::LogicalResult matchAndRewrite(P4HIR::ParserTransitionSelectOp selectOp,
+                                        mlir::PatternRewriter &rewriter) const override {
+        std::vector<std::optional<MasksVecProduct>> masksProducts;
+        llvm::SmallDenseSet<mlir::Value> signedArgsToAdjust;
+        bool hasAnyTransforms = false;
+        size_t totalCaseCount = 0;
+
+        // First compute all the masks required so we can decide if to transform.
+        for (auto selectCase : selectOp.selects()) {
+            auto &masksProduct = masksProducts.emplace_back(std::nullopt);
+
+            if (selectCase.isDefault()) continue;
+
+            auto yield = mlir::cast<P4HIR::YieldOp>(selectCase.getTerminator());
+            bool hasTransforms = false;
+
+            MasksVecProduct masksProductVec;
+            masksProductVec.push_back({});
+
+            for (auto [selectArg, yieldArg] :
+                 llvm::zip_equal(selectOp.getArgs(), yield.getArgs())) {
+                if (auto [rangeSetAttr, isMatch] = matchConstRangeSet(yieldArg); isMatch) {
+                    auto masksVec = expandRange(rangeSetAttr);
+
+                    if (cartesianSize(masksProductVec, masksVec) > caseCountLimit) {
+                        // Avoid polynomial blowup for a single case.
+                        auto msg = llvm::formatv("Total cases required exceed maximum limit of {0}",
+                                                 caseCountLimit);
+                        return rewriter.notifyMatchFailure(selectOp.getLoc(), msg);
+                    }
+
+                    masksProductVec = cartesianAppend(masksProductVec, masksVec);
+                    hasTransforms = true;
+
+                    if (getUnderlyingBitsType(selectArg.getType()).isSigned())
+                        signedArgsToAdjust.insert(selectArg);
+                } else {
+                    // For a non-range argument append a placeholder that will be replaced
+                    // with an actual argument during transformation.
+                    masksProductVec = cartesianAppend(masksProductVec, getPlaceholderMask());
+                }
+            }
+
+            if (hasTransforms) {
+                hasAnyTransforms = true;
+                totalCaseCount += masksProductVec.size();
+                masksProduct = std::move(masksProductVec);
+            } else {
+                totalCaseCount++;
+            }
+        }
+
+        if (!hasAnyTransforms) {
+            // Nothing to do.
+            return mlir::failure();
+        } else if (totalCaseCount > caseCountLimit) {
+            auto msg = llvm::formatv("Total cases required ({0}) exceed maximum limit of {1}",
+                                     totalCaseCount, caseCountLimit);
+            return rewriter.notifyMatchFailure(selectOp.getLoc(), msg);
+        }
+
+        if (!signedArgsToAdjust.empty()) {
+            ReplaceIntWithUInt adjustArgs(rewriter.getContext(), signedArgsToAdjust);
+            auto status = adjustArgs.matchAndRewrite(selectOp, rewriter);
+
+            if (mlir::failed(status)) return status;
+        }
+
+        // Apply transformations.
+        rewriter.startOpModification(selectOp);
+
+        size_t idx = 0;
+        for (auto selectCase : llvm::make_early_inc_range(selectOp.selects())) {
+            const auto &masksProduct = masksProducts[idx++];
+
+            if (!masksProduct) continue;
+
+            // Create a new case for each mask combination.
+            for (const auto &masks : masksProduct.value()) {
+                rewriter.setInsertionPoint(selectCase);
+                auto newSelectCase =
+                    mlir::cast<P4HIR::ParserSelectCaseOp>(rewriter.clone(*selectCase));
+                auto newYield = mlir::cast<P4HIR::YieldOp>(newSelectCase.getTerminator());
+
+                rewriter.setInsertionPoint(newYield);
+                auto newArgs = materializeMasks(rewriter, masks, newYield.getArgs());
+
+                rewriter.modifyOpInPlace(selectOp,
+                                         [&]() { newYield.getArgsMutable().assign(newArgs); });
+            }
+
+            rewriter.eraseOp(selectCase);
+        }
+
+        rewriter.finalizeOpModification(selectOp);
+
+        return mlir::success();
+    }
+
+ private:
+    class ReplaceIntWithUInt : public CastSelectArguments {
+     public:
+        ReplaceIntWithUInt(mlir::MLIRContext *context,
+                           const llvm::SmallDenseSet<mlir::Value> &signedArgsToAdjust)
+            : CastSelectArguments(context), signedArgsToAdjust(signedArgsToAdjust) {}
+
+     protected:
+        virtual bool shouldAdjustArg(mlir::Value arg) const override {
+            return signedArgsToAdjust.count(arg);
+        }
+
+        virtual mlir::Type getAdjustedArgType(mlir::MLIRContext *context,
+                                              mlir::Value arg) const override {
+            auto width = getUnderlyingBitsType(arg.getType()).getWidth();
+            return P4HIR::BitsType::get(context, width, false);
+        }
+
+        const llvm::SmallDenseSet<mlir::Value> &signedArgsToAdjust;
+    };
+
+    // Debug helper to return a base-2 string for `value`.
+    static std::string bitStr(const llvm::APInt &value) {
+        llvm::SmallVector<char, 64> buffer;
+        value.toStringUnsigned(buffer, 2);
+        buffer.insert(buffer.begin(), value.getBitWidth() - buffer.size(), '0');
+        return std::string(buffer.begin(), buffer.end());
+    }
+
+    static P4HIR::BitsType getUnderlyingBitsType(mlir::Type type) {
+        if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(type)) return bitsType;
+
+        if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(type))
+            return getUnderlyingBitsType(serEnumType.getType());
+
+        return {};
+    }
+
+    static Mask getPlaceholderMask() {
+        return Mask{llvm::APInt(0, 0, false), llvm::APInt(0, 0, false)};
+    }
+
+    static bool isPlaceholderMask(Mask m) { return m.first.getBitWidth() == 0; }
+
+    // Find if `val` is a SetAttr representing a constant range set and return it.
+    std::pair<P4HIR::SetAttr, bool> matchConstRangeSet(mlir::Value val) const {
+        if (auto constOp = val.getDefiningOp<P4HIR::ConstOp>()) {
+            if (auto setAttr = mlir::dyn_cast<P4HIR::SetAttr>(constOp.getValue())) {
+                if (setAttr.getKind() == P4HIR::SetKind::Range) {
+                    return {setAttr, true};
+                }
+            }
+        }
+
+        return {nullptr, false};
+    }
+
+    size_t cartesianSize(const MasksVecProduct &vecs, const MasksVec &masks) const {
+        return vecs.size() * masks.size();
+    }
+
+    MasksVecProduct cartesianAppend(const MasksVecProduct &vecs, const MasksVec &masks) const {
+        MasksVecProduct newVecs;
+
+        for (const auto &v : vecs) {
+            for (const auto &mask : masks) {
+                auto copy(v);
+                copy.push_back(mask);
+                newVecs.push_back(copy);
+            }
+        }
+
+        return newVecs;
+    }
+
+    MasksVecProduct cartesianAppend(const MasksVecProduct &vecs, Mask mask) const {
+        return cartesianAppend(vecs, MasksVec{mask});
+    }
+
+    // Append to `result` the masks whose union equals the unsigned range [min, max].
+    void expandRangeUnsigned(MasksVec &result, llvm::APInt min, llvm::APInt max) const {
+        LLVM_DEBUG(llvm::dbgs() << "Expand range [" << min << ", " << max << "]:\n");
+        assert(min.ule(max) && "min u<= max");
+
+        unsigned width = min.getBitWidth();
+        unsigned activeWidth = max.getActiveBits();
+        llvm::APInt range_size_remaining = max - min + 1;
+
+        // We're decomposing the range [min, max] into power-of-2 sized chunks that can
+        // be represented as a MaskOp. At each iteration we find a value `stride` (the size
+        // of the current chunk) which satisfying the following criteria:
+        //   - (min + stride <= max) -> (stride <= 2^floor_log2(max - min + 1))
+        //      so that we don't overshoot the range.
+        //   - stride <= 2^countr_zero(min)
+        //      so the prefix starting at the first set bit of `min` changes.
+        //   - stride is maximum, ensuring a unique and optimal solution.
+        while (!range_size_remaining.isZero()) {
+            unsigned strideLog2 = std::min(range_size_remaining.logBase2(), min.countr_zero());
+            llvm::APInt stride = llvm::APInt::getOneBitSet(width, strideLog2);
+            llvm::APInt mask = llvm::APInt::getBitsSet(width, strideLog2, width);
+
+            LLVM_DEBUG(llvm::dbgs()
+                       << "  mask " << bitStr(min.trunc(activeWidth)) << " &&& "
+                       << bitStr(mask.trunc(activeWidth)) << ", stride " << stride << "\n");
+
+            result.emplace_back(min, mask);
+            range_size_remaining -= stride;
+            min += stride;
+        }
+    }
+
+    // Return a list masks whose union equals the range described by `rangeSetAttr`.
+    MasksVec expandRange(P4HIR::SetAttr rangeSetAttr) const {
+        auto [min, max] = rangeSetAttr.getRangeValues();
+        unsigned width = min.getBitWidth();
+
+        auto elmType = mlir::cast<P4HIR::SetType>(rangeSetAttr.getType()).getElementType();
+        bool isSigned = mlir::cast<P4HIR::BitsType>(elmType).isSigned();
+        MasksVec result;
+
+        if (!rangeSetAttr.isEmptyRange()) {
+            if (isSigned && min.slt(0) && max.sge(0)) {
+                expandRangeUnsigned(result, min, llvm::APInt::getAllOnes(width));
+                expandRangeUnsigned(result, llvm::APInt::getZero(width), max);
+            } else {
+                expandRangeUnsigned(result, min, max);
+            }
+        }
+
+        return result;
+    }
+
+    // Materialize the mask set constants described by `masks` to replace some of `values`.
+    std::vector<mlir::Value> materializeMasks(mlir::PatternRewriter &rewriter,
+                                              const MasksVec &masks,
+                                              mlir::ValueRange values) const {
+        auto getMaskSetAttr = [&](const llvm::APInt &val, const llvm::APInt &mask) {
+            mlir::MLIRContext *ctx = rewriter.getContext();
+            auto uintType = P4HIR::BitsType::get(ctx, val.getBitWidth(), false);
+            auto setType = P4HIR::SetType::get(ctx, uintType);
+            auto valAttr = P4HIR::IntAttr::get(uintType, val);
+            auto maskAttr = P4HIR::IntAttr::get(uintType, mask);
+            return P4HIR::SetAttr::get(setType, P4HIR::SetKind::Mask,
+                                       mlir::ArrayAttr::get(ctx, {valAttr, maskAttr}));
+        };
+
+        std::vector<mlir::Value> result;
+        for (const auto &[mask, value] : llvm::zip_equal(masks, values)) {
+            if (!isPlaceholderMask(mask)) {
+                auto maskSetAttr = getMaskSetAttr(mask.first, mask.second);
+                auto maskSetConstant = rewriter.create<P4HIR::ConstOp>(value.getLoc(), maskSetAttr);
+                result.push_back(maskSetConstant);
+            } else {
+                result.push_back(value);
+            }
+        }
+
+        return result;
+    }
+
+    size_t caseCountLimit;
+};
+
 }  // end namespace
 
 void SimplifySelect::runOnOperation() {
@@ -259,6 +535,8 @@ void SimplifySelect::runOnOperation() {
 
     if (flattenTuples) patterns.add<FlattenTuples>(patterns.getContext());
     if (replaceBools) patterns.add<ReplaceBoolWithInt>(patterns.getContext());
+    if (replaceRanges)
+        patterns.add<ReplaceRanges>(patterns.getContext(), replaceRangesCaseCountLimit);
 
     // Collect operations and apply patterns.
     llvm::SmallVector<mlir::Operation *, 16> ops;
