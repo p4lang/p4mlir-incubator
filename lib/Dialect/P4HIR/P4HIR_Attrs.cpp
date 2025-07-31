@@ -325,17 +325,7 @@ LogicalResult SetAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type
                 emitError() << "p4hir.set elements must be of the same type: " << eltType;
                 return failure();
             }
-            break;
 
-            break;
-        case SetKind::Prod:
-            // Must be either SetAttr or UniversalSetAttr
-            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(), [&](auto attr) {
-                    return !mlir::isa<P4HIR::SetType>(attr.getType());
-                })) {
-                emitError() << "p4hir.set product elements must be of set type all";
-                return failure();
-            }
             break;
     }
 

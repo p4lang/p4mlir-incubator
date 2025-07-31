@@ -6,7 +6,6 @@
 
 // CHECK-DAG: #[[set_const_of_int1_b10i:.*]] = #p4hir.set<const : [#int1_b10i]> : !p4hir.set<!b10i>
 // CHECK-DAG: #[[set_const_of_int1_b10i_int10_b10i:.*]] = #p4hir.set<const : [#int1_b10i, #int10_b10i]> : !p4hir.set<!b10i>
-// CHECK: #[[set_prod_of_set_const_of_int1_b10i_set_const_of_int1_b10i_int10_b10i:.*]] = #p4hir.set<prod : [#[[set_const_of_int1_b10i]], #[[set_const_of_int1_b10i_int10_b10i]]]> : !p4hir.set<tuple<!b10i, !b10i>>
 
 // CHECK-LABEL: module
 module {
@@ -16,7 +15,6 @@ module {
   %c1_b10i = p4hir.const #int1_b10i
   %c10_b10i = p4hir.const #int10_b10i
 
-  // CHECK-DAG: p4hir.const #set_prod_of_set_const_of_int1_b10i_set_const_of_int1_b10i_int10_b10i
   // CHECK-DAG: p4hir.const #set_const_of_int1_b10i_int10_b10i
   // CHECK-DAG: p4hir.const #set_const_of_int1_b10i
 
@@ -34,7 +32,4 @@ module {
   // CHECK: p4hir.set (%{{.*}}, %{{.*}}, %[[val]]) : !p4hir.set<!b10i>
   %set3 = p4hir.set (%c1_b10i, %c10_b10i, %val) : !p4hir.set<!b10i>
   p4hir.call @blackhole(%set3) : (!p4hir.set<!b10i>) -> ()
-
-  %set4 = p4hir.set_product (%set, %set2) : !p4hir.set<tuple<!b10i, !b10i>>
-  p4hir.call @blackhole_t(%set4) : (!p4hir.set<tuple<!b10i, !b10i>>) -> ()
 }
