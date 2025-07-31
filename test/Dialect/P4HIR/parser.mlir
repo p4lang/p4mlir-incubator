@@ -19,15 +19,13 @@ module {
   p4hir.parser @p2(%arg0: !b10i, %arg1: !p4hir.ref<!p4hir.bool>)() {
     p4hir.state @start {
       %true = p4hir.const #true
-      %tuple = p4hir.tuple (%arg0, %true) : tuple<!b10i, !p4hir.bool>
-      p4hir.transition_select %tuple : tuple<!b10i, !p4hir.bool> {
+      p4hir.transition_select %arg0, %true : !b10i, !p4hir.bool {
         p4hir.select_case {
           %c1_b10i = p4hir.const #int1_b10i
           %set = p4hir.set (%c1_b10i) : !p4hir.set<!b10i>
           %false = p4hir.const #false
           %set_0 = p4hir.set (%false) : !p4hir.set<!p4hir.bool>
-          %setproduct = p4hir.set_product (%set, %set_0) : !p4hir.set<tuple<!b10i, !p4hir.bool>>
-          p4hir.yield %setproduct : !p4hir.set<tuple<!b10i, !p4hir.bool>>
+          p4hir.yield %set, %set_0 : !p4hir.set<!b10i>, !p4hir.set<!p4hir.bool>
         } to @p2::@drop
         p4hir.select_case {
           %c10_b10i = p4hir.const #int10_b10i
@@ -35,22 +33,19 @@ module {
           %range = p4hir.range(%c10_b10i, %c20_b10i) : !p4hir.set<!b10i>
           %true_0 = p4hir.const #true
           %set = p4hir.set (%true_0) : !p4hir.set<!p4hir.bool>
-          %setproduct = p4hir.set_product (%range, %set) : !p4hir.set<tuple<!b10i, !p4hir.bool>>
-          p4hir.yield %setproduct : !p4hir.set<tuple<!b10i, !p4hir.bool>>
+          p4hir.yield %range, %set : !p4hir.set<!b10i>, !p4hir.set<!p4hir.bool>
         } to @p2::@next
         p4hir.select_case {
           %c0_b10i = p4hir.const #int0_b10i
           %c0_b10i_0 = p4hir.const #int0_b10i
           %mask = p4hir.mask(%c0_b10i, %c0_b10i_0) : !p4hir.set<!b10i>
           %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
-          %setproduct = p4hir.set_product (%mask, %everything) : !p4hir.set<tuple<!b10i, !p4hir.dontcare>>
-          p4hir.yield %setproduct : !p4hir.set<tuple<!b10i, !p4hir.dontcare>>
+          p4hir.yield %mask, %everything : !p4hir.set<!b10i>, !p4hir.set<!p4hir.dontcare>
         } to @p2::@next
         p4hir.select_case {
           %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           %everything_0 = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
-          %setproduct = p4hir.set_product (%everything, %everything_0) : !p4hir.set<tuple<!p4hir.dontcare, !p4hir.dontcare>>
-          p4hir.yield %setproduct : !p4hir.set<tuple<!p4hir.dontcare, !p4hir.dontcare>>
+          p4hir.yield %everything, %everything_0 : !p4hir.set<!p4hir.dontcare>, !p4hir.set<!p4hir.dontcare>
         } to @p2::@reject
         p4hir.select_case {
           %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
