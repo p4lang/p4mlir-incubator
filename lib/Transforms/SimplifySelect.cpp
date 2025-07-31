@@ -136,12 +136,129 @@ class FlattenTuples : public mlir::OpRewritePattern<P4HIR::ParserTransitionSelec
     }
 };
 
+class CastSelectArguments : public mlir::OpRewritePattern<P4HIR::ParserTransitionSelectOp> {
+ public:
+    using OpRewritePattern<P4HIR::ParserTransitionSelectOp>::OpRewritePattern;
+
+    virtual ~CastSelectArguments() {}
+
+    mlir::LogicalResult matchAndRewrite(P4HIR::ParserTransitionSelectOp selectOp,
+                                        mlir::PatternRewriter &rewriter) const override {
+        auto selectArgs = selectOp.getArgs();
+        bool hasArgAdjustments =
+            llvm::any_of(selectArgs, [this](mlir::Value arg) { return shouldAdjustArg(arg); });
+
+        if (!hasArgAdjustments)
+            return rewriter.notifyMatchFailure(
+                selectOp.getLoc(), "Select doesn't have applicable argument adjustments.");
+
+        llvm::SmallVector<mlir::Value, 4> newArgs;
+        llvm::SmallVector<mlir::Type, 4> newTypes;
+        rewriter.setInsertionPoint(selectOp);
+
+        // Replace arguments that we want to adjust their types with a cast.
+        for (auto arg : selectArgs) {
+            if (shouldAdjustArg(arg)) {
+                mlir::Type castType = getAdjustedArgType(rewriter.getContext(), arg);
+                mlir::Value argInt = rewriter.create<P4HIR::CastOp>(arg.getLoc(), castType, arg);
+                newArgs.push_back(argInt);
+                newTypes.push_back(castType);
+            } else {
+                newArgs.push_back(arg);
+                newTypes.push_back(nullptr);
+            }
+        }
+
+        rewriter.modifyOpInPlace(selectOp, [&]() { selectOp.getArgsMutable().assign(newArgs); });
+
+        // Replace corresponding set operations or constants in select cases.
+        for (auto selectCase : selectOp.selects()) {
+            if (selectCase.isDefault()) continue;
+
+            auto yield = mlir::cast<P4HIR::YieldOp>(selectCase.getTerminator());
+            rewriter.setInsertionPoint(yield);
+
+            llvm::SmallVector<mlir::Value, 4> newArgs;
+            for (auto [newType, yieldArg] : llvm::zip_equal(newTypes, yield.getArgs())) {
+                if (!newType || P4HIR::isUniversalSetValue(yieldArg))
+                    newArgs.push_back(yieldArg);
+                else
+                    newArgs.push_back(castKeysetValue(rewriter, newType, yieldArg));
+            }
+
+            rewriter.modifyOpInPlace(selectOp, [&]() { yield.getArgsMutable().assign(newArgs); });
+        }
+
+        return mlir::success();
+    }
+
+ protected:
+    virtual bool shouldAdjustArg(mlir::Value arg) const = 0;
+    virtual mlir::Type getAdjustedArgType(mlir::MLIRContext *context, mlir::Value arg) const = 0;
+
+ private:
+    // Create appropriate casts to convert `keyset` to a set with element type `newType`.
+    mlir::Value castKeysetValue(mlir::PatternRewriter &rewriter, mlir::Type newType,
+                                mlir::Value keyset) const {
+        auto cast = [&](mlir::Value arg) {
+            return rewriter.createOrFold<P4HIR::CastOp>(arg.getLoc(), newType, arg);
+        };
+
+        if (auto setOp = keyset.getDefiningOp<P4HIR::SetOp>()) {
+            auto newArg = cast(setOp.getInput().front());
+            return rewriter.create<P4HIR::SetOp>(setOp.getLoc(), mlir::ValueRange(newArg));
+        } else if (auto rangeOp = keyset.getDefiningOp<P4HIR::RangeOp>()) {
+            auto newLhs = cast(rangeOp.getLhs());
+            auto newRhs = cast(rangeOp.getRhs());
+            return rewriter.create<P4HIR::RangeOp>(rangeOp.getLoc(), newLhs, newRhs);
+        } else if (auto maskOp = keyset.getDefiningOp<P4HIR::MaskOp>()) {
+            auto newLhs = cast(maskOp.getLhs());
+            auto newRhs = cast(maskOp.getRhs());
+            return rewriter.create<P4HIR::MaskOp>(maskOp.getLoc(), newLhs, newRhs);
+        } else if (auto setConstOp = keyset.getDefiningOp<P4HIR::ConstOp>()) {
+            auto setAttr = setConstOp.getValueAs<P4HIR::SetAttr>();
+
+            llvm::SmallVector<mlir::Attribute> newSetAttrs;
+            for (auto member : setAttr.getMembers()) {
+                auto newAttr = P4HIR::foldConstantCast(newType, member);
+                newSetAttrs.push_back(newAttr);
+            }
+
+            mlir::MLIRContext *ctx = rewriter.getContext();
+            auto newSetAttr =
+                P4HIR::SetAttr::get(P4HIR::SetType::get(ctx, newType), setAttr.getKind(),
+                                    mlir::ArrayAttr::get(ctx, newSetAttrs));
+            return rewriter.create<P4HIR::ConstOp>(setConstOp.getLoc(), newSetAttr);
+        } else {
+            llvm_unreachable("Impossible set operation.");
+            return mlir::Value();
+        }
+    }
+};
+
+class ReplaceBoolWithInt : public CastSelectArguments {
+ public:
+    using CastSelectArguments::CastSelectArguments;
+
+ protected:
+    virtual bool shouldAdjustArg(mlir::Value arg) const override {
+        return mlir::isa<P4HIR::BoolType>(arg.getType());
+    }
+
+    virtual mlir::Type getAdjustedArgType(mlir::MLIRContext *context,
+                                          mlir::Value arg) const override {
+        assert(shouldAdjustArg(arg));
+        return P4HIR::BitsType::get(context, 1, false);
+    }
+};
+
 }  // end namespace
 
 void SimplifySelect::runOnOperation() {
     mlir::RewritePatternSet patterns(&getContext());
 
     if (flattenTuples) patterns.add<FlattenTuples>(patterns.getContext());
+    if (replaceBools) patterns.add<ReplaceBoolWithInt>(patterns.getContext());
 
     // Collect operations and apply patterns.
     llvm::SmallVector<mlir::Operation *, 16> ops;
