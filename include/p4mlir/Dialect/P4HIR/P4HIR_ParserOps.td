@@ -172,6 +172,7 @@ def ParserTransitionSelectOp : P4HIR_Op<"transition_select",
      return { StateIterator(selectCases.begin()), StateIterator(selectCases.end()) };
    }
  }];
+ let hasCanonicalizeMethod = 1;
 }
 
 def ParserSelectCaseOp : P4HIR_Op<"select_case",

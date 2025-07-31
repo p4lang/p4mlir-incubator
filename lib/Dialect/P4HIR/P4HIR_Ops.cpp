@@ -1797,6 +1797,52 @@ mlir::ValueRange P4HIR::ParserSelectCaseOp::getSelectKeys() {
 }
 
 //===----------------------------------------------------------------------===//
+// ParserTransitionSelectOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult P4HIR::ParserTransitionSelectOp::canonicalize(P4HIR::ParserTransitionSelectOp op,
+                                                            PatternRewriter &rewriter) {
+    mlir::Block *body = &op.getBody().back();
+    auto selectCases = op.selects();
+    auto it = llvm::find_if(selectCases, [](auto op) { return op.isDefault(); });
+
+    // No default case found.
+    if (it == selectCases.end()) return mlir::failure();
+
+    LogicalResult result = mlir::failure();
+
+    // Remove unreachable cases after last default case.
+    if (std::next(it) != selectCases.end()) {
+        mlir::Block *unreachableCases = rewriter.splitBlock(body, ++Block::iterator(*it));
+        rewriter.eraseBlock(unreachableCases);
+        result = mlir::success();
+    }
+
+    // Canonicalize tuple of universal sets to single universal set.
+    auto defaultCase = mlir::cast<P4HIR::ParserSelectCaseOp>(body->back());
+    auto defaultYield = mlir::cast<P4HIR::YieldOp>(defaultCase.getTerminator());
+    if (defaultYield.getArgs().size() > 1) {
+        rewriter.modifyOpInPlace(defaultYield, [&]() {
+            auto universalSetAttr = P4HIR::UniversalSetAttr::get(rewriter.getContext());
+            auto universalSet =
+                rewriter.create<P4HIR::ConstOp>(defaultYield.getLoc(), universalSetAttr);
+            defaultYield.getArgsMutable().assign(universalSet);
+        });
+
+        result = mlir::success();
+    }
+
+    // Replace select with single default case with direct transition.
+    if (body->getOperations().size() == 1) {
+        auto firstCase = *op.selects().begin();
+        rewriter.replaceOpWithNewOp<P4HIR::ParserTransitionOp>(op, firstCase.getState());
+        result = mlir::success();
+    }
+
+    return result;
+}
+
+//===----------------------------------------------------------------------===//
 // SetOp
 //===----------------------------------------------------------------------===//
 
