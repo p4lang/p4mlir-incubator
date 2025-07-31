@@ -1525,40 +1525,25 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
     if (const auto *cast = expr->to<P4::IR::Cast>()) {
         mlir::Type destType = getOrCreateType(cast);
         mlir::Type srcType = getOrCreateType(cast->expr);
+        auto srcAttr = getOrCreateConstantExpr(cast->expr);
+
         // Fold equal-type casts (e.g. due to typedefs)
-        if (destType == srcType) return setConstantExpr(expr, getOrCreateConstantExpr(cast->expr));
+        if (destType == srcType) return setConstantExpr(expr, srcAttr);
 
         // Fold some conversions
-        if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
-            if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(srcType)) {
-                auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(cast->expr));
-                return setConstantExpr(
-                    expr,
-                    P4HIR::IntAttr::get(context(), destBitsType,
-                                        castee.getValue().zextOrTrunc(destBitsType.getWidth())));
-            }
-            if (mlir::isa<P4HIR::SerEnumType>(srcType)) {
-                auto castee = mlir::cast<P4HIR::EnumFieldAttr>(getOrCreateConstantExpr(cast->expr));
-                auto enumType = mlir::cast<P4HIR::SerEnumType>(castee.getType());
-                auto casteeVal =
-                    mlir::cast<P4HIR::IntAttr>(enumType.valueOf(castee.getField().getValue()));
-                return setConstantExpr(
-                    expr,
-                    P4HIR::IntAttr::get(context(), destBitsType,
-                                        casteeVal.getValue().zextOrTrunc(destBitsType.getWidth())));
-            }
-        }
+        if (auto castResult = P4HIR::foldConstantCast(destType, srcAttr))
+            return setConstantExpr(expr, castResult);
 
         // Handle casts to aliased types
         if (auto destAliasType = mlir::dyn_cast<P4HIR::AliasType>(destType)) {
             assert(destAliasType.getAliasedType() == srcType && "expected aliased types match");
             if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(srcType)) {
-                auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(cast->expr));
+                auto castee = mlir::cast<P4HIR::IntAttr>(srcAttr);
                 return setConstantExpr(
                     expr, P4HIR::IntAttr::get(context(), destAliasType, castee.getValue()));
             }
             if (auto srcBoolType = mlir::dyn_cast<P4HIR::BoolType>(srcType)) {
-                auto castee = mlir::cast<P4HIR::BoolAttr>(getOrCreateConstantExpr(cast->expr));
+                auto castee = mlir::cast<P4HIR::BoolAttr>(srcAttr);
                 return setConstantExpr(
                     expr, P4HIR::BoolAttr::get(context(), destAliasType, castee.getValue()));
             }
