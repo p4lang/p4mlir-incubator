@@ -5,8 +5,16 @@
 // order to propagate pragma further on
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
+#include <optional>
+
+#include "llvm/ADT/APSInt.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
+
+namespace P4::P4MLIR::P4HIR {
+std::optional<llvm::APSInt> getConstantInt(mlir::Attribute attr);
+mlir::TypedAttr foldConstantCast(mlir::Type destType, mlir::Attribute srcAttr);
+}  // namespace  P4::P4MLIR::P4HIR
 
 namespace P4::P4MLIR::P4HIR::detail {
 struct IntAttrStorage : public ::mlir::AttributeStorage {
