@@ -82,6 +82,20 @@ def SimplifySelect : Pass<"p4hir-simplify-select", "P4HIR::ParserOp"> {
 
     - replace-bool
     Replace bool arguments with bit<1> by inserting appropriate casts.
+
+    - replace-ranges
+    Replace constant ranges in keysest with an appropriate list of masks.
+    Example:
+
+    Before:
+      ...
+      (8w2..8w8): next;
+
+    After:
+      ...
+      (8w2 &&& 8w0xfe): next;
+      (8w4 &&& 8w0xfc): next;
+      (8w8 &&& 8w0xff): next;
   }];
 
   let constructor = "P4MLIR::createSimplifySelectPass()";
@@ -92,6 +106,10 @@ def SimplifySelect : Pass<"p4hir-simplify-select", "P4HIR::ParserOp"> {
            "Flatten tuples found in select arguments and keyset expressions">,
     Option<"replaceBools", "replace-bools", "bool", /*default=*/"true",
            "Replace bool arguments with bit<1> by inserting appropriate casts">,
+    Option<"replaceRanges", "replace-ranges", "bool", /*default=*/"true",
+           "Replace constant ranges in keysest with an appropriate list of masks">,
+    Option<"replaceRangesCaseCountLimit", "replace-ranges-case-limit", "size_t", /*default=*/"100",
+           "Do not replace ranges if the resuling case count exceeds this limit">,
   ];
 }
 

@@ -299,11 +299,43 @@ def P4HIR_SetAttr : P4HIR_Attr<"Set", "set", [TypedAttrInterface]> {
       return $_get(type.getContext(), type, kind, members);
     }]>
   ];
+  let extraClassDeclaration = [{
+    llvm::APInt getConstantValue() {
+      assert(getKind() == SetKind::Constant && "Expected Constant kind set.");
+      assert(getMembers().size() == 1 && "Expected single member set.");
+      auto attr = getMembers()[0];
+      if (auto intAttr = mlir::dyn_cast<P4HIR::IntAttr>(attr)) {
+        return intAttr.getValue();
+      } else if (auto boolAttr = mlir::dyn_cast<P4HIR::BoolAttr>(attr)) {
+        return llvm::APInt(1, static_cast<uint64_t>(boolAttr.getValue()));
+      } else {
+        auto enumFieldAttr = mlir::cast<P4HIR::EnumFieldAttr>(attr);
+        auto enumType = mlir::cast<P4HIR::SerEnumType>(enumFieldAttr.getType());
+        auto field = enumFieldAttr.getField().getValue();
+        return enumType.valueOf<P4HIR::IntAttr>(field).getValue();
+      }
+    }
+
+    std::pair<llvm::APInt, llvm::APInt> getRangeValues() {
+      assert(getKind() == SetKind::Range && "Expected Range kind set.");
+      return {
+        mlir::cast<P4HIR::IntAttr>(getMembers()[0]).getValue(),
+        mlir::cast<P4HIR::IntAttr>(getMembers()[1]).getValue()
+      };
+    }
+
+    std::pair<llvm::APInt, llvm::APInt> getMaskValues() {
+      assert(getKind() == SetKind::Mask && "Expected Mask kind set.");
+      return {
+        mlir::cast<P4HIR::IntAttr>(getMembers()[0]).getValue(),
+        mlir::cast<P4HIR::IntAttr>(getMembers()[1]).getValue()
+      };
+    }
+  }];
   let genVerifyDecl = 1;
   let assemblyFormat = [{
     `<` $kind `:` $members `>`
   }];
-
 }
 
 
