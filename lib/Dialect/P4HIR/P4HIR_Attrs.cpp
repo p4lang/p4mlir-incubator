@@ -13,6 +13,40 @@
 using namespace mlir;
 using namespace P4::P4MLIR::P4HIR;
 
+std::optional<llvm::APSInt> P4::P4MLIR::P4HIR::getConstantInt(mlir::Attribute attr) {
+    return mlir::TypeSwitch<mlir::Attribute, std::optional<llvm::APSInt>>(attr)
+        .Case<IntAttr>([&](IntAttr intAttr) {
+            mlir::Type type = intAttr.getType();
+            bool isSigned = mlir::isa<InfIntType>(type) || mlir::cast<BitsType>(type).isSigned();
+            return llvm::APSInt(intAttr.getValue(), !isSigned);
+        })
+        .Case<EnumFieldAttr>([&](EnumFieldAttr enumFieldAttr) -> std::optional<llvm::APSInt> {
+            auto serEnumType = mlir::dyn_cast<SerEnumType>(enumFieldAttr.getType());
+            if (!serEnumType) return std::nullopt;
+
+            bool isSigned = serEnumType.getType().isSigned();
+            llvm::APInt val = serEnumType.valueOf<IntAttr>(enumFieldAttr.getField()).getValue();
+            return llvm::APSInt(val, !isSigned);
+        })
+        .Case<BoolAttr>([&](BoolAttr boolAttr) {
+            llvm::APInt val(1, boolAttr.getValue() ? 1 : 0);
+            return llvm::APSInt(val, true);
+        })
+        .Default([](mlir::Attribute) { return std::nullopt; });
+}
+
+mlir::TypedAttr P4::P4MLIR::P4HIR::foldConstantCast(mlir::Type destType, mlir::Attribute srcAttr) {
+    if (auto destBitsType = mlir::dyn_cast<BitsType>(destType)) {
+        if (auto srcCst = getConstantInt(srcAttr)) {
+            unsigned destWidth = destBitsType.getWidth();
+            llvm::APInt newVal = srcCst->extOrTrunc(destWidth);
+            return IntAttr::get(destBitsType, newVal);
+        }
+    }
+
+    return {};
+}
+
 mlir::Type IntAttr::getType() const { return getImpl()->type; }
 
 llvm::APInt IntAttr::getValue() const { return getImpl()->value; }

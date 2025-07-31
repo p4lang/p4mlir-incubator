@@ -183,30 +183,8 @@ OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
     if (getOperand().getType() == getType()) return getOperand();
 
     // Casts of integer constants
-    if (auto inputConst = mlir::dyn_cast_if_present<ConstOp>(getOperand().getDefiningOp())) {
-        auto destType = getType(), srcType = inputConst.getType();
-
-        if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
-            return mlir::TypeSwitch<Type, OpFoldResult>(srcType)
-                .Case<P4HIR::BitsType, P4HIR::InfIntType>([&](mlir::Type) {
-                    auto castee = inputConst.getValueAs<P4HIR::IntAttr>();
-                    return P4HIR::IntAttr::get(
-                        destBitsType, castee.getValue().zextOrTrunc(destBitsType.getWidth()));
-                })
-                .Case<P4HIR::SerEnumType>([&](P4HIR::SerEnumType enumType) {
-                    auto castee = inputConst.getValueAs<P4HIR::EnumFieldAttr>();
-                    auto casteeVal =
-                        mlir::cast<P4HIR::IntAttr>(enumType.valueOf(castee.getField().getValue()));
-                    return P4HIR::IntAttr::get(
-                        destBitsType, casteeVal.getValue().zextOrTrunc(destBitsType.getWidth()));
-                })
-                .Case<P4HIR::BoolType>([&](mlir::Type) {
-                    auto castee = inputConst.getValueAs<P4HIR::BoolAttr>();
-                    return P4HIR::IntAttr::get(destBitsType, castee.getValue() ? 1 : 0);
-                })
-                .Default([](Type) { return OpFoldResult(); });
-        }
-    }
+    if (auto inputConst = mlir::dyn_cast_if_present<ConstOp>(getOperand().getDefiningOp()))
+        if (auto castResult = P4HIR::foldConstantCast(getType(), inputConst.getValue())) return castResult;
 
     return {};
 }
