@@ -46,9 +46,4 @@ module {
   %mod_int = p4hir.binop(mod, %lhs_int, %rhs_int) : !int
   %add_int = p4hir.binop(add, %lhs_int, %rhs_int) : !int
   %sub_int = p4hir.binop(sub, %lhs_int, %rhs_int) : !int
-  %sadd_int = p4hir.binop(sadd, %lhs_int, %rhs_int) : !int
-  %ssub_int = p4hir.binop(ssub, %lhs_int, %rhs_int) : !int
-  %and_int = p4hir.binop(and, %lhs_int, %rhs_int) : !int
-  %or_int = p4hir.binop(or, %lhs_int, %rhs_int) : !int
-  %xor_int = p4hir.binop(xor, %lhs_int, %rhs_int) : !int
 }

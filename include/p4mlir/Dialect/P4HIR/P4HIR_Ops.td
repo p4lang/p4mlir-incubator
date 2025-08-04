@@ -346,6 +346,10 @@ def BinOp : P4HIR_Op<"binop", [Pure,
   let assemblyFormat = [{
     `(` $kind `,` $lhs `,` $rhs  `)` `:` type($lhs) attr-dict
   }];
+
+  let hasVerifier = 1;
+  let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def ConcatOp : P4HIR_Op<"concat", [Pure]> {
