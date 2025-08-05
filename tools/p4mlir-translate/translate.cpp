@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <climits>
 
+#include "ir/ir-generated.h"
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -444,7 +446,10 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     mlir::Value getValue(const P4::IR::Node *node, mlir::Type type = {}, bool unchecked = false) {
         // If this is a PathExpression, resolve it
         if (const auto *pe = node->to<P4::IR::PathExpression>()) {
-            node = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
+            const auto *target = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
+            // Constants are special. We materialize them at each use. Therefore
+            // their values are associates with PathExpression itself
+            if (!target->is<P4::IR::Declaration_Constant>()) node = target;
         }
 
         mlir::Value val = p4Values->lookup(node);
@@ -641,8 +646,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::PathExpression *e) override {
         // Should be resolved eslewhere, except for the constants
         if (const auto *cst = resolvePath(e->path, false)->to<P4::IR::Declaration_Constant>()) {
-            materializeConstantDecl(cst);
-            visitAgain();
+            setValue(e, materializeConstantDecl(cst));
+            // visitAgain();
         }
 
         return false;
@@ -1440,7 +1445,10 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
     // If this is a PathExpression, resolve it to the actual declaration, usualy this
     // is a "leaf" case.
     if (const auto *pe = node->to<P4::IR::PathExpression>()) {
-        node = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
+        const auto *target = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
+        // Constants are special. We materialize them at each use. Therefore
+        // their values are associates with PathExpression itself
+        if (!target->is<P4::IR::Declaration_Constant>()) node = target;
     }
 
     ref = p4Values->lookup(node);
@@ -1665,22 +1673,20 @@ mlir::Value P4HIRConverter::materializeConstantExpr(const P4::IR::Expression *ex
 mlir::Value P4HIRConverter::materializeConstantDecl(const P4::IR::Declaration_Constant *decl) {
     ConversionTracer trace("Materializing constant decl ", decl);
 
-    if (auto val = getValue(decl, {}, /* unchecked */ true)) return val;
-
     auto annotations = convert(decl->annotations);
 
     auto init = getOrCreateConstantExpr(decl->initializer);
     auto loc = getLoc(builder, decl);
 
-    auto val = builder.create<P4HIR::ConstOp>(loc, init, decl->name.string_view(), annotations);
-    return setValue(decl, val);
+    return builder.create<P4HIR::ConstOp>(loc, init, decl->name.string_view(), annotations);
 }
 
 bool P4HIRConverter::preorder(const P4::IR::Declaration_Constant *decl) {
-    ConversionTracer trace("Converting ", decl);
+    ConversionTracer trace("Skipping constant decl ", decl);
 
-    materializeConstantDecl(decl);
-    visitAgain();
+    // We do not create global constants. Instead we do materialize them
+    // at each use.
+
     return false;
 }
 

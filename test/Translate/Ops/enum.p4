@@ -8,7 +8,6 @@
 enum Suits { Clubs, Diamonds, Hearths, Spades }
 
 // CHECK-LABEL: module
-// CHECK: p4hir.const ["cEnum"] #Suits_Hearths
 const Suits cEnum = Suits.Hearths;
 
 // CHECK-LABEL: p4hir.func action @test
@@ -16,8 +15,9 @@ action test(inout bit<42> a, Suits b) {
   // CHECK: %Suits_Diamonds = p4hir.const #Suits_Diamonds
   // CHECK: %d = p4hir.variable ["d", init] : <!Suits>
   // CHECK: p4hir.assign %Suits_Diamonds, %d : <!Suits>
+  // CHECK: p4hir.const ["cEnum"] #Suits_Hearths
   Suits d = Suits.Diamonds;
-  if (b == Suits.Spades) {
+  if (b == Suits.Spades || b == cEnum) {
     a = a + 1;
   } else if (b == d) {
     a = a - 1;
