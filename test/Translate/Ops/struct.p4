@@ -28,23 +28,14 @@ struct Empty {};
 const T t = { 32s10, 32s20 };
 const S s = { { 32s15, 32s25}, t };
 
-// CHECK: %t = p4hir.const ["t"] #p4hir.aggregate<[#int10_i32i, #int20_i32i]> : !T
-// CHECK: %s = p4hir.const ["s"] #p4hir.aggregate<[#p4hir.aggregate<[#int15_i32i, #int25_i32i]> : !T, #p4hir.aggregate<[#int10_i32i, #int20_i32i]> : !T]> : !S
-
 const int<32> x = t.t1;
 const int<32> y = s.s1.t2;
 
 const int<32> w = .t.t1;
 
-// CHECK: %x = p4hir.const ["x"] #int10_i32i
-// CHECK: %y = p4hir.const ["y"] #int25_i32i
-// CHECK: %w = p4hir.const ["w"] #int10_i32i
 
 const T tt1 = s.s1;
 const Empty e = {};
-
-// CHECK: %tt1 = p4hir.const ["tt1"] #p4hir.aggregate<[#int15_i32i, #int25_i32i]> : !T
-// CHECK: %e = p4hir.const ["e"] #p4hir.aggregate<[]> : !Empty
 
 const T t1 = { 10, 20 };
 const S s1 = { { 15, 25 }, t1 };
@@ -58,11 +49,32 @@ const T t2 = s1.s1;
 
 struct PortId_t { bit<9> _v; }
 
-// CHECK: %[[PSA_CPU_PORT:.*]] = p4hir.const ["PSA_CPU_PORT"] #p4hir.aggregate<[#int192_b9i]> : !PortId_t
 const PortId_t PSA_CPU_PORT = { _v = 9w192 };
 
 struct metadata_t {
     PortId_t foo;
+}
+
+// CHECK-LABEL: p4hir.func action @reference
+action reference() {
+  // CHECK-DAG: %t = p4hir.const ["t"] #p4hir.aggregate<[#int10_i32i, #int20_i32i]> : !T
+  // CHECK-DAG: %s = p4hir.const ["s"] #p4hir.aggregate<[#p4hir.aggregate<[#int15_i32i, #int25_i32i]> : !T, #p4hir.aggregate<[#int10_i32i, #int20_i32i]> : !T]> : !S
+
+  // CHECK-DAG: %x = p4hir.const ["x"] #int10_i32i
+  // CHECK-DAG: %y = p4hir.const ["y"] #int25_i32i
+  // CHECK-DAG: %w = p4hir.const ["w"] #int10_i32i
+
+  // CHECK-DAG: %tt1 = p4hir.const ["tt1"] #p4hir.aggregate<[#int15_i32i, #int25_i32i]> : !T
+  // CHECK-DAG: %e = p4hir.const ["e"] #p4hir.aggregate<[]> : !Empty
+
+  int<32> a = x1 + y1 + w1 + x + y + w;
+  T local_t2 = t2;
+  T local_t1 = t1;
+  S local_s1 = s1;
+  Empty local_e = e;
+  T local_tt1 = tt1;
+  T local_t = t;
+  S local_s = s;
 }
 
 action test2(inout PortId_t port) {
