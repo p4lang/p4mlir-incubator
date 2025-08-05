@@ -22,3 +22,7 @@ action test(inout S s) {
 error { Baz }
 
 const S s = { error.Baz };
+
+action reference() {
+  S local_s = s;
+}

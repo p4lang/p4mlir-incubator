@@ -11,7 +11,6 @@ type Wide_t Wide;
 // CHECK: #int3_b32i = #p4hir.int<3> : !b32i
 // CHECK: #int192_Narrow = #p4hir.int<192> : !Narrow
 
-// CHECK: %[[PSA_CPU_PORT:.*]] = p4hir.const ["PSA_CPU_PORT"] #int192_Narrow
 const Narrow PSA_CPU_PORT = (Narrow) 9w192; // target-specific
 
 // CHECK-LABEL: p4hir.func action @c

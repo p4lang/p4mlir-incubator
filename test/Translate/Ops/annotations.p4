@@ -8,7 +8,6 @@ match_kind {
 
 // CHECK: !Annotated = !p4hir.extern<"Annotated" annotations {size = ["100"]}>
 
-// CHECK:   p4hir.const ["b"] #int-1_b1i annotations {hidden}
 @hidden const bit b = 1;
 
 struct Foo {
@@ -49,7 +48,9 @@ parser p(in empty e, in int<10> sinit) {
 // CHECK:     p4hir.state @start annotations {name = "state.start"}
     @name("state.start")
     state start {
-        s = 1;
+// Constfolding killed original constant before us    
+// xHECK:   p4hir.const ["b"] #int-1_b1i annotations {hidden}
+        s = (int<10>)(b);
         transition next;
     }
 
