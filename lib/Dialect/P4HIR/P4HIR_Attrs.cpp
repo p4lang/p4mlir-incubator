@@ -13,6 +13,40 @@
 using namespace mlir;
 using namespace P4::P4MLIR::P4HIR;
 
+mlir::TypedAttr P4::P4MLIR::P4HIR::foldConstantCast(mlir::Type destType, mlir::TypedAttr srcAttr) {
+    auto srcType = srcAttr.getType();
+
+    if (auto destBitsType = mlir::dyn_cast<BitsType>(destType)) {
+        auto extOrTructToDest = [&](bool isSigned, const llvm::APInt &val) {
+            unsigned destWidth = destBitsType.getWidth();
+            auto newVal = isSigned ? val.sextOrTrunc(destWidth) : val.zextOrTrunc(destWidth);
+            return IntAttr::get(destBitsType, newVal);
+        };
+
+        return mlir::TypeSwitch<Type, mlir::TypedAttr>(srcType)
+            .Case<BitsType, InfIntType>([&](mlir::Type type) {
+                bool isSigned =
+                    mlir::isa<InfIntType>(type) || mlir::cast<BitsType>(type).isSigned();
+                auto srcVal = mlir::cast<IntAttr>(srcAttr).getValue();
+                return extOrTructToDest(isSigned, srcVal);
+            })
+            .Case<SerEnumType>([&](SerEnumType enumType) {
+                bool isSigned = enumType.getType().isSigned();
+                auto field = mlir::cast<EnumFieldAttr>(srcAttr).getField();
+                auto srcVal = enumType.valueOf<IntAttr>(field).getValue();
+                return extOrTructToDest(isSigned, srcVal);
+            })
+            .Case<BoolType>([&](mlir::Type) {
+                auto castee = mlir::cast<BoolAttr>(srcAttr);
+                auto srcVal = llvm::APInt(1, castee.getValue() ? 1 : 0);
+                return extOrTructToDest(false, srcVal);
+            })
+            .Default([](Type) { return mlir::TypedAttr{}; });
+    }
+
+    return {};
+}
+
 mlir::Type IntAttr::getType() const { return getImpl()->type; }
 
 llvm::APInt IntAttr::getValue() const { return getImpl()->value; }
@@ -291,17 +325,7 @@ LogicalResult SetAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type
                 emitError() << "p4hir.set elements must be of the same type: " << eltType;
                 return failure();
             }
-            break;
 
-            break;
-        case SetKind::Prod:
-            // Must be either SetAttr or UniversalSetAttr
-            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(), [&](auto attr) {
-                    return !mlir::isa<P4HIR::SetType>(attr.getType());
-                })) {
-                emitError() << "p4hir.set product elements must be of set type all";
-                return failure();
-            }
             break;
     }
 

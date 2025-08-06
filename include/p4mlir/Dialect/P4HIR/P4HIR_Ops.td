@@ -382,6 +382,7 @@ def ConcatOp : P4HIR_Op<"concat", [Pure]> {
   ];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 
   let assemblyFormat = [{
     `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict
@@ -1153,6 +1154,7 @@ def TupleExtractOp : P4HIR_Op<"tuple_extract",
   let arguments = (ins Builtin_Tuple:$input, I32Attr:$fieldIndex);
   // FIXME: Better constraint type
   let results = (outs AnyP4Type:$result);
+  let hasFolder = 1;
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$input, "unsigned":$fieldIndex)>,

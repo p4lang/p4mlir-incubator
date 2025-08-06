@@ -8,6 +8,10 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
+namespace P4::P4MLIR::P4HIR {
+mlir::TypedAttr foldConstantCast(mlir::Type destType, mlir::TypedAttr srcAttr);
+}  // namespace  P4::P4MLIR::P4HIR
+
 namespace P4::P4MLIR::P4HIR::detail {
 struct IntAttrStorage : public ::mlir::AttributeStorage {
     using KeyTy = std::tuple<::mlir::Type, llvm::APInt>;

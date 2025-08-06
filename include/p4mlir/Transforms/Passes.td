@@ -53,6 +53,72 @@ def SimplifyParsers : Pass<"p4hir-simplify-parsers"> {
 }
 
 //===----------------------------------------------------------------------===//
+// SimplifySelect
+//===----------------------------------------------------------------------===//
+
+def SimplifySelect : Pass<"p4hir-simplify-select", "P4HIR::ParserOp"> {
+  let summary = "Simplifies select statements";
+  let description = [{
+    This pass implements a number of simplifications for transition select statements.
+    It consists of the following optimizations:
+
+    - flatten-tuples
+    Flatten tuples in select arguments and keysets as much as possible.
+    Example:
+
+    Before:
+      bit<8> x; bool y;
+      transition select(x, {y}, {x * 3, {y}}) {
+        (1, {false}, {8w1, {true}}): accept;
+        ...
+      }
+
+    After:
+      bit<8> x; bool y;
+      transition select(x, y, x * 3, y) {
+        (1, false, 8w1, true): accept;
+        ...
+      }
+
+    - replace-bool
+    Replace bool arguments with bit<1> by inserting appropriate casts.
+
+    - replace-ranges
+    Replace constant ranges in keysest with an appropriate list of masks.
+    Example:
+
+    Before:
+      ...
+      (8w2..8w8): next;
+
+    After:
+      ...
+      (8w2 &&& 8w0xfe): next;
+      (8w4 &&& 8w0xfc): next;
+      (8w8 &&& 8w0xff): next;
+
+    - concat-args
+    Convert multiple select arguments to a single one by concatenation.
+  }];
+
+  let constructor = "P4MLIR::createSimplifySelectPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+
+  let options = [
+    Option<"flattenTuples", "flatten-tuples", "bool", /*default=*/"true",
+           "Flatten tuples found in select arguments and keyset expressions">,
+    Option<"replaceBools", "replace-bools", "bool", /*default=*/"true",
+           "Replace bool arguments with bit<1> by inserting appropriate casts">,
+    Option<"replaceRanges", "replace-ranges", "bool", /*default=*/"true",
+           "Replace constant ranges in keysest with an appropriate list of masks">,
+    Option<"replaceRangesCaseCountLimit", "replace-ranges-case-limit", "size_t", /*default=*/"100",
+           "Do not replace ranges if the resuling case count exceeds this limit">,
+    Option<"concatArgs", "concat-args", "bool", /*default=*/"true",
+           "Convert multiple select arguments to a single one by concatenation">,
+  ];
+}
+
+//===----------------------------------------------------------------------===//
 // FlattenCFG
 //===----------------------------------------------------------------------===//
 
