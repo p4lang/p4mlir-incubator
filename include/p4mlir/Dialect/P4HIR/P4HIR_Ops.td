@@ -1701,6 +1701,10 @@ def CaseOp : P4HIR_Op<"case", [
   let arguments = (ins ArrayAttr:$value, CaseOpKind:$kind);
   let regions = (region AnyRegion:$caseRegion);
 
+  let extraClassDeclaration = [{
+    auto getBlock() { return &getCaseRegion().front(); }
+  }];
+
   let assemblyFormat = [{
     `(` $kind `,` $value `)` $caseRegion attr-dict
   }];
@@ -1733,6 +1737,11 @@ def SwitchOp : P4HIR_Op<"switch",
   let arguments = (ins SwitchCondType:$condition);
 
   let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    /// Returns all select cases
+    auto cases() { return getBody().back().getOps<CaseOp>(); }
+  }];
 
   let hasVerifier = 1;
 
