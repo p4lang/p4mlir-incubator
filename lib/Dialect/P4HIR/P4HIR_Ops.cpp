@@ -1937,6 +1937,13 @@ P4HIR::ParserStateOp P4HIR::ParserOp::getStartState() {
     return lookupParserState(getOperation(), transition.getStateAttr());
 }
 
+mlir::SymbolRefAttr P4HIR::ParserStateOp::getSymbolRef() {
+    auto parser = getOperation()->getParentOfType<P4HIR::ParserOp>();
+    auto leafSymbol = mlir::FlatSymbolRefAttr::get(getContext(), getSymName());
+    auto symbol = mlir::SymbolRefAttr::get(getContext(), parser.getSymName(), {leafSymbol});
+    return symbol;
+}
+
 P4HIR::ParserStateOp::StateRange P4HIR::ParserStateOp::getNextStates() {
     auto &block = getBody().back();
 
