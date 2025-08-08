@@ -30,6 +30,70 @@ void adjustBlockUses(mlir::RewriterBase &rewriter, mlir::Block *block);
 P4HIR::ParserStateOp createSubState(mlir::RewriterBase &rewriter, P4HIR::ParserStateOp state,
                                     llvm::StringRef suffix);
 
+// Helper class to replace one operation in a state with multiple new states.
+// During init it creates two "pre" and "post" states in which the code before and after the split
+// point is put. Then any number of additional states between pre and post can be created with the
+// createXXXState functions. Once done the user should either call finalize to commit changes or
+// cancel and any changes will be undone.
+class SplitStateRewriter {
+ public:
+    SplitStateRewriter(mlir::RewriterBase &rewriter, mlir::Operation *op)
+        : rewriter(rewriter), op(op), step(CREATED) {}
+    SplitStateRewriter(SplitStateRewriter &&) = delete;
+    SplitStateRewriter &operator=(SplitStateRewriter &&) = delete;
+    SplitStateRewriter(const SplitStateRewriter &) = delete;
+    SplitStateRewriter &operator=(const SplitStateRewriter &) = delete;
+    ~SplitStateRewriter() {
+        assert((step == CANCELED || step == FINALIZED) && "Incorrect state on destruction");
+    }
+
+    // Initialize and check if splitting is feasible.
+    mlir::LogicalResult init();
+
+    // Create new intermediate state that transitions to `transitionTo` and move `ops` in it.
+    // If `ops` is non-null the terminator of the block is erased once moved.
+    P4HIR::ParserStateOp createSubState(llvm::StringRef suffix,
+                                        P4HIR::ParserStateOp transitionTo = {},
+                                        mlir::Block *ops = nullptr);
+
+    // Same as createSubState but transition to the "post" state specifically.
+    P4HIR::ParserStateOp createJoinSubState(llvm::StringRef suffix, mlir::Block *ops = nullptr) {
+        return createSubState(suffix, postState, ops);
+    }
+
+    // Undo any changes done so far.
+    void cancel();
+
+    // Finalize and commit all changes.
+    void finalize();
+
+    P4HIR::ParserStateOp getPreState() {
+        assert(step == INITIALIZED);
+        return preState;
+    }
+
+    P4HIR::ParserStateOp getPostState() {
+        assert(step == INITIALIZED);
+        return postState;
+    }
+
+    void setStateInsertionPointAfter(P4HIR::ParserStateOp afterState) {
+        stateCreationPoint = afterState;
+    }
+
+ private:
+    enum RewriteStep { CREATED, INITIALIZED, CANCELED, FINALIZED };
+
+    mlir::RewriterBase &rewriter;
+    mlir::Operation *op;
+    RewriteStep step;
+
+    P4HIR::ParserStateOp state;
+    P4HIR::ParserStateOp preState;
+    P4HIR::ParserStateOp postState;
+    mlir::Operation *stateCreationPoint;
+};
+
 };  // namespace P4::P4MLIR::IRUtils
 
 #endif  // P4MLIR_IMPL_IR_UTILS_H
