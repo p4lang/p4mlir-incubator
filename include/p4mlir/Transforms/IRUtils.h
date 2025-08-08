@@ -94,6 +94,46 @@ class SplitStateRewriter {
     mlir::Operation *stateCreationPoint;
 };
 
+// Helper class to build transition select statements.
+class TransitionSelectBuilder {
+ public:
+    TransitionSelectBuilder(mlir::RewriterBase &rewriter) : rewriter(rewriter) {}
+
+    // Create a new transition select statement.
+    void create(mlir::Location loc, mlir::Value selectArg) {
+        assert((selectBody == nullptr) && "create can only be called once");
+        selectOp = rewriter.create<P4HIR::ParserTransitionSelectOp>(loc, selectArg);
+        selectBody = &selectOp.getBody().emplaceBlock();
+    }
+
+    // Add a new case that transitions to `transitionTo` using a custom yield builder.
+    P4HIR::ParserSelectCaseOp addCase(
+        llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> yieldBuilder,
+        P4HIR::ParserStateOp transitionTo);
+
+    // Add a new case that transitions to `transitionTo` with a constant keyset.
+    P4HIR::ParserSelectCaseOp addCase(mlir::TypedAttr constant, P4HIR::ParserStateOp transitionTo);
+
+    // Add a new case that transitions to `transitionTo` with a constant boolean keyset.
+    P4HIR::ParserSelectCaseOp addCase(bool labelValue, P4HIR::ParserStateOp transitionTo) {
+        return addCase(P4HIR::BoolAttr::get(rewriter.getContext(), labelValue), transitionTo);
+    }
+
+    // Add a new case that transitions to `transitionTo` with a keyset equivalent to `caseOp`.
+    P4HIR::ParserSelectCaseOp addCase(P4HIR::CaseOp caseOp, P4HIR::ParserStateOp transitionTo);
+
+    // Add a default case that transitions to `transitionTo`.
+    P4HIR::ParserSelectCaseOp addDefaultCase(P4HIR::ParserStateOp transitionTo) {
+        return addCase(P4HIR::UniversalSetAttr::get(rewriter.getContext()), transitionTo);
+    }
+
+ private:
+    mlir::RewriterBase &rewriter;
+    mlir::Block *selectBody = nullptr;
+    P4HIR::ParserTransitionSelectOp selectOp;
+    P4HIR::ParserSelectCaseOp lastAdded;
+};
+
 };  // namespace P4::P4MLIR::IRUtils
 
 #endif  // P4MLIR_IMPL_IR_UTILS_H
