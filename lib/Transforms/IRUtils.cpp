@@ -130,3 +130,89 @@ P4HIR::ParserStateOp IRUtils::createSubState(mlir::RewriterBase &rewriter,
 
     return newState;
 };
+
+mlir::LogicalResult IRUtils::SplitStateRewriter::init() {
+    assert(step == CREATED || step == CANCELED);
+    auto state = getState();
+
+    if (!state)
+        return rewriter.notifyMatchFailure(op->getLoc(), "Operation must be within parser state.");
+
+    if (!canSplitBlockAt(state.getBlock(), op))
+        return rewriter.notifyMatchFailure(op->getLoc(), "Cannot split state at given position.");
+
+    step = INITIALIZED;
+
+    // Create two new sub-states "pre" and "post" that will hold the code before and after `op`
+    // respectively.
+    setStateInsertionPointAfter(state);
+    preState = createSubState("pre");
+    postState = createSubState("post");
+    setStateInsertionPointAfter(preState);
+
+    return mlir::success();
+}
+
+P4HIR::ParserStateOp IRUtils::SplitStateRewriter::createSubState(const llvm::Twine &suffix,
+                                                                 P4HIR::ParserStateOp transitionTo,
+                                                                 mlir::Block *ops) {
+    assert(step == INITIALIZED);
+    mlir::OpBuilder::InsertionGuard guard(rewriter);
+
+    rewriter.setInsertionPointAfter(stateCreationPoint);
+    auto newState = IRUtils::createSubState(rewriter, getState(), suffix);
+    auto newStateBB = newState.getBlock();
+
+    if (ops) {
+        rewriter.inlineBlockBefore(ops, newStateBB, newStateBB->end());
+        rewriter.eraseOp(newStateBB->getTerminator());
+    }
+
+    if (transitionTo) {
+        rewriter.setInsertionPointToEnd(newStateBB);
+        rewriter.create<P4HIR::ParserTransitionOp>(newState.getLoc(), transitionTo.getSymbolRef());
+    }
+
+    stateCreationPoint = newState;
+
+    return newState;
+}
+
+void IRUtils::SplitStateRewriter::cancel() {
+    assert(step == CREATED || step == INITIALIZED);
+
+    if (step == INITIALIZED) {
+        auto createdStates = llvm::make_range(preState->getIterator(), ++postState->getIterator());
+        for (mlir::Operation &op : llvm::make_early_inc_range(createdStates)) rewriter.eraseOp(&op);
+    }
+
+    step = CANCELED;
+}
+
+void IRUtils::SplitStateRewriter::finalize() {
+    assert(step == INITIALIZED);
+
+    auto state = getState();
+    assert(canSplitBlockAt(state.getBlock(), op) && "Split op moved to invalid location");
+    mlir::OpBuilder::InsertionGuard guard(rewriter);
+
+    // Split code around `op` and move it to "pre" / "post" states.
+    auto [beforeBB, opBB, afterBB] = splitBlockAt(rewriter, state.getBlock(), op);
+
+    auto preStateBB = preState.getBlock();
+    rewriter.inlineBlockBefore(beforeBB, preStateBB, preStateBB->begin());
+    auto postStateBB = postState.getBlock();
+    rewriter.inlineBlockBefore(afterBB, postStateBB, postStateBB->begin());
+
+    // Replace `op` with a transition to the "pre" state.
+    rewriter.setInsertionPoint(op);
+    rewriter.create<P4HIR::ParserTransitionOp>(op->getLoc(), preState.getSymbolRef());
+    rewriter.eraseOp(op);
+
+    // Due to the splitting states, we may have values with uses in other states.
+    auto parser = state->getParentOfType<P4HIR::ParserOp>();
+    rewriter.setInsertionPoint(parser.getStartState());
+    adjustBlockUses(rewriter, preStateBB);
+
+    step = FINALIZED;
+}
