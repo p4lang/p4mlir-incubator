@@ -216,3 +216,41 @@ void IRUtils::SplitStateRewriter::finalize() {
 
     step = FINALIZED;
 }
+
+P4HIR::ParserSelectCaseOp IRUtils::TransitionSelectBuilder::addCase(
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> yieldBuilder,
+    P4HIR::ParserStateOp transitionTo) {
+    assert(selectBody && "Must create select statement first");
+    mlir::OpBuilder::InsertionGuard guard(rewriter);
+
+    if (lastAdded)
+        rewriter.setInsertionPointAfter(lastAdded);
+    else
+        rewriter.setInsertionPointToStart(selectBody);
+
+    lastAdded = rewriter.create<P4HIR::ParserSelectCaseOp>(selectOp.getLoc(), yieldBuilder,
+                                                           transitionTo.getSymbolRef());
+
+    return lastAdded;
+}
+
+P4HIR::ParserSelectCaseOp IRUtils::TransitionSelectBuilder::addCase(
+    mlir::TypedAttr constant, P4HIR::ParserStateOp transitionTo) {
+    return addCase(
+        [&](mlir::OpBuilder &b, mlir::Location loc) {
+            mlir::Value keyset = b.create<P4HIR::ConstOp>(loc, constant);
+            if (!mlir::isa<P4HIR::SetType>(keyset.getType()))
+                keyset = b.create<P4HIR::SetOp>(loc, mlir::ValueRange(keyset));
+            b.create<P4HIR::YieldOp>(loc, mlir::ValueRange(keyset));
+        },
+        transitionTo);
+}
+
+void IRUtils::TransitionSelectBuilder::addCases(P4HIR::CaseOp caseOp,
+                                                P4HIR::ParserStateOp transitionTo) {
+    if (caseOp.getKind() == P4HIR::CaseOpKind::Default)
+        addDefaultCase(transitionTo);
+    else
+        for (mlir::Attribute attr : caseOp.getValue())
+            addCase(mlir::cast<mlir::TypedAttr>(attr), transitionTo);
+}
