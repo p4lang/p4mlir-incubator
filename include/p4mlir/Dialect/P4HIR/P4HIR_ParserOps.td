@@ -66,11 +66,16 @@ def ParserStateOp : P4HIR_Op<"state",
  }];
 
  let extraClassDeclaration = [{
+    mlir::Block *getBlock() { return &getBody().front(); }
+
     /// Returns the op that determines the next transition of a state:
     ///  - Could be accept or reject (AcceptOp, RejectOp)
     ///  - Direct transition (TransitionOp)
     ///  - Select transition (TransitionSelectOp)
-    auto getNextTransition() { return getBody().back().getTerminator(); }
+    auto getNextTransition() { return getBlock()->getTerminator(); }
+
+    /// Get a SymbolRefAttr for this parser state.
+    mlir::SymbolRefAttr getSymbolRef();
 
     /// Checks if this state accepts the packet
     bool isAccept() {
