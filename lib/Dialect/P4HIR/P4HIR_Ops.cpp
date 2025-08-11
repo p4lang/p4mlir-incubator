@@ -2606,6 +2606,10 @@ LogicalResult P4HIR::ApplyOp::verifySymbolUses(SymbolTableCollection &symbolTabl
     return success();
 }
 
+P4HIR::InstantiateOp P4HIR::ApplyOp::getInstantiateOp() {
+    return getParentModule(*this).lookupSymbol<P4HIR::InstantiateOp>(getCallee());
+}
+
 //===----------------------------------------------------------------------===//
 // ExternOp
 //===----------------------------------------------------------------------===//

@@ -154,6 +154,38 @@ def EnumElimination : Pass<"p4hir-enum-elimination", "mlir::ModuleOp"> {
   }];
 
   let constructor = "P4MLIR::createEnumEliminationPass()";
+}
+
+//===----------------------------------------------------------------------===//
+// Inline Parsers
+//===----------------------------------------------------------------------===//
+
+def InlineParsers : Pass<"p4hir-inline-parsers", "mlir::ModuleOp"> {
+  let summary = "Inline subparser calls";
+  let description = [{
+    This pass inlines subparser calls where possible.
+    If successful, the subparser instantiation is replaced with the instantiation of
+    its stateful objects and the states are inlined in the place of the apply call.
+    The inlining will fail if the apply call is within control flow statements,
+    as it won't be possible to split the corresponding state.
+  }];
+  let constructor = "P4MLIR::createInlineParsersPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
+//===----------------------------------------------------------------------===//
+// Inline Controls
+//===----------------------------------------------------------------------===//
+
+def InlineControls : Pass<"p4hir-inline-controls", "mlir::ModuleOp"> {
+  let summary = "Inline sub-control calls";
+  let description = [{
+    This pass inlines sub-control calls where possible.
+    If successful, the sub-control instantiation is replaced with the instantiation of
+    its stateful objects, actions and tables are copied and the sub-control call is
+    replaced with the inlined sub-control apply code.
+  }];
+  let constructor = "P4MLIR::createInlineControlsPass()";
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
