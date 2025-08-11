@@ -2799,6 +2799,10 @@ void P4HIR::ApplyOp::getEffects(
     effects.emplace_back(MemoryEffects::Read::get(), ExternResource::get());
 }
 
+P4HIR::InstantiateOp P4HIR::ApplyOp::getInstantiateOp() {
+    return getParentModule(*this).lookupSymbol<P4HIR::InstantiateOp>(getCallee());
+}
+
 //===----------------------------------------------------------------------===//
 // ExternOp
 //===----------------------------------------------------------------------===//

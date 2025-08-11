@@ -98,8 +98,8 @@ void IRUtils::adjustBlockUses(mlir::RewriterBase &rewriter, mlir::Block *block) 
             if (!getEscapingBlocks(block, op.getResult(0)).empty())
                 rewriter.moveOpBefore(&op, rewriter.getInsertionBlock(),
                                       rewriter.getInsertionPoint());
-        } else if (mlir::isa<P4HIR::ConstOp, P4HIR::StructExtractRefOp, P4HIR::ArrayElementRefOp,
-                             P4HIR::SliceRefOp>(op)) {
+        } else if (mlir::isa<P4HIR::ConstOp, P4HIR::StructFieldRefOp, P4HIR::ArrayElementRefOp,
+                             P4HIR::ReadSliceOp>(op)) {
             // Copy RefOps and constants.
             auto escapingBlocks = getEscapingBlocks(block, op.getResult(0));
             copyOp(rewriter, &op, escapingBlocks);
