@@ -157,4 +157,51 @@ def EnumElimination : Pass<"p4hir-enum-elimination", "mlir::ModuleOp"> {
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
+//===----------------------------------------------------------------------===//
+// Remove Soft Control Flow
+//===----------------------------------------------------------------------===//
+
+def RemoveSoftCF : Pass<"p4hir-remove-soft-cf"> {
+  let summary = "Convert functions and controls to SESE form.";
+  let description = [{
+    Convert functions and controls to Single-Entry-Single-Exit (SESE) form by restructuring
+    code and eliminating return, break and continue statements.
+
+    For example code like this:
+    ```
+    bit<8> func(bit<8> a) {
+      if (a > 200) { return 1; }
+
+      if (a > 100) {
+        a += 10;
+      } else {
+        return 2;
+      }
+
+      return a;
+    }
+    ```
+
+    Will be transformed to something like this:
+    ```
+    bit<8> func(bit<8> a) {
+      bit<8> result;
+      if (a > 200) {
+        result = 1;
+      } else {
+        if (a > 100) {
+          a += 10;
+          result = a;
+        } else {
+          result = 2;
+        }
+      }
+      return result;
+    }
+    ```
+  }];
+  let constructor = "P4MLIR::createRemoveSoftCFPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
 #endif // P4MLIR_TRANSFORMS_PASSES_TD
