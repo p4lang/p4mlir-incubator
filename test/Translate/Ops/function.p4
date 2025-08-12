@@ -1,15 +1,12 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
-// CHECK-LABEL: p4hir.func @max(%arg0: !b16i {p4hir.dir = #in, p4hir.param_name = "left"}, %arg1: !b16i {p4hir.dir = #in, p4hir.param_name = "right"}) -> !b16i
-// CHECK:    %[[retval:.*]] = p4hir.variable ["retval"] : <!b16i>
+// CHECK-LABEL: p4hir.func @max(%arg0: !b16i {p4hir.dir = #in, p4hir.param_name = "left"}, %arg1: !b16i {p4hir.dir = #in, p4hir.param_name = "right"}) -> !b16i {
 // CHECK:    %[[CMP:.*]] = p4hir.cmp(gt, %arg0 : !b16i, %arg1 : !b16i)
 // CHECK:    p4hir.if %[[CMP]] {
-// CHECK:      p4hir.assign %arg0, %[[retval]] : <!b16i>
-// CHECK:    } else {
-// CHECK:      p4hir.assign %arg1, %[[retval]] : <!b16i>
+// CHECK:      p4hir.soft_return %arg0 : !b16i
 // CHECK:    }
-// CHECK:    %[[val:.*]] = p4hir.read %[[retval]] : <!b16i>
-// CHECK:    p4hir.return %[[val]] : !b16i
+// CHECK:    p4hir.soft_return %arg1 : !b16i
+// CHECK:    p4hir.return
 // CHECK:  }
 
 bit<16> max(in bit<16> left, in bit<16> right) {

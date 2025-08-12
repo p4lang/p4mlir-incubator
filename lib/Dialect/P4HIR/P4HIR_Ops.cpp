@@ -1123,27 +1123,40 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
     elseBuilder(builder, result.location);
 }
 
-mlir::LogicalResult P4HIR::ReturnOp::verify() {
+static mlir::LogicalResult verifyReturnLike(mlir::Operation *op, bool mayHaveNoOperands) {
     // Returns can be present in multiple different scopes, get the wrapping
     // function and start from there.
-    auto fnOp = getOperation()->getParentOfType<FunctionOpInterface>();
+    auto fnOp = op->getParentOfType<FunctionOpInterface>();
     if (!fnOp || !mlir::isa<P4HIR::FuncOp, P4HIR::ControlOp>(fnOp)) {
-        return emitOpError() << "returns are only possible from function-like objects: functions, "
-                                "actions and control apply blocks";
+        return op->emitOpError()
+               << "returns are only possible from function-like objects: functions, "
+                  "actions and control apply blocks";
     }
 
     // ReturnOps currently only have a single optional operand.
-    if (getNumOperands() > 1) return emitOpError() << "expects at most 1 return operand";
+    unsigned operandCount = op->getNumOperands();
+    if (operandCount > 1) return op->emitOpError() << "expects at most 1 return operand";
+
+    if (mayHaveNoOperands && operandCount == 0) return success();
 
     // Ensure returned type matches the function signature.
     auto expectedTy = mlir::cast<P4HIR::FuncType>(fnOp.getFunctionType()).getReturnType();
     auto actualTy =
-        (getNumOperands() == 0 ? P4HIR::VoidType::get(getContext()) : getOperand(0).getType());
+        (operandCount == 0 ? P4HIR::VoidType::get(op->getContext()) : op->getOperand(0).getType());
     if (actualTy != expectedTy)
-        return emitOpError() << "returns " << actualTy << " but enclosing function returns "
-                             << expectedTy;
+        return op->emitOpError() << "returns " << actualTy << " but enclosing function returns "
+                                 << expectedTy;
 
     return success();
+}
+
+mlir::LogicalResult P4HIR::ReturnOp::verify() {
+    // Return ops may have zero arguments before SoftReturn ops are eliminated.
+    return verifyReturnLike(getOperation(), true);
+}
+
+mlir::LogicalResult P4HIR::SoftReturnOp::verify() {
+    return verifyReturnLike(getOperation(), false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3909,7 +3922,6 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
 struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
     using DialectInlinerInterface::DialectInlinerInterface;
 
-    // All call operations can be inlined.
     bool isLegalToInline(Operation *call, Operation *callable, bool wouldBeCloned) const final {
         if (mlir::isa<P4HIR::CallOp>(call) &&
             mlir::isa<P4HIR::FuncOp, P4HIR::OverloadSetOp>(callable))
@@ -3917,9 +3929,16 @@ struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
 
         return false;
     }
-    // All operations can be inlined.
-    // TODO: Actually not, but we are protected by that isLegalToInline check above
-    bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final { return true; }
+    bool isLegalToInline(Operation *op, Region *, bool, IRMapping &) const final {
+        // We can't inline callables that return values but haven't had their soft control flow
+        // converted yet.
+        if (auto softReturnOp = mlir::dyn_cast<P4HIR::SoftReturnOp>(op))
+            return softReturnOp.getNumOperands() == 0;
+
+        // Not all other operations are possible to inline, but they are excluded by
+        // `isLegalToInline` above.
+        return true;
+    }
     /// All regions can be inlined.
     bool isLegalToInline(Region *, Region *, bool, IRMapping &) const final { return true; }
 
