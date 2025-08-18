@@ -463,24 +463,24 @@ LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewri
     // Check if the variable has one unique assignment to it, all other
     // uses are reads, and that all uses are in the same block as the variable
     // itself.
-    auto *block = op->getBlock();
     P4HIR::AssignOp uniqueAssignOp;
     for (auto *user : op->getUsers()) {
-        // Ensure that all users of the variable are in the same block.
-        // TODO: Relax this condition, only require assignment to be in the same block
-        if (user->getBlock() != block) return failure();
-
         // Ensure there is at most one unique assignment to the variable.
         if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(user)) {
             if (uniqueAssignOp) return failure();
             uniqueAssignOp = assignOp;
-            continue;
         }
-
-        // Ensure all other users are reads.
-        if (!mlir::isa<ReadOp>(user)) return failure();
     }
+
     if (!uniqueAssignOp) return failure();
+
+    for (auto *user : op->getUsers()) {
+        if (user == uniqueAssignOp) continue;
+        if (user->getBlock() != uniqueAssignOp->getBlock()) return failure();
+
+        // Ensure all other users are reads and after the write.
+        if (!mlir::isa<ReadOp>(user) || user->isBeforeInBlock(uniqueAssignOp)) return failure();
+    }
 
     // Remove the assign op and replace all reads with the new assigned var op.
     mlir::Value assignedValue = uniqueAssignOp.getValue();
