@@ -108,3 +108,23 @@ bit<32> for_in() {
     }
     return sum;
 }
+
+// CHECK-LABEL: p4hir.func @for_in_array
+// CHECK-SAME:    (%[[ARRAY_ARG:.*]]: !arr_16xb32i {{.*}}) -> !b32i
+// CHECK:       %[[CONST_0:.*]] = p4hir.const #int0_b32i
+// CHECK:       %[[CAST_0:.*]] = p4hir.cast(%[[CONST_0]] : !b32i) : !b32i
+// CHECK:       %[[SUM:.*]] = p4hir.variable ["sum", init] : <!b32i>
+// CHECK:       p4hir.assign %[[CAST_0]], %[[SUM]] : <!b32i>
+// CHECK:       p4hir.foreach %[[ARG:.*]] : !b32i in %[[ARRAY_ARG]] : !arr_16xb32i {
+// CHECK:         %[[SUM_VAL:.*]] = p4hir.read %sum : <!b32i>
+// CHECK:         %[[ADD:.*]] = p4hir.binop(add, %[[SUM_VAL]], %[[ARG]]) : !b32i
+// CHECK:         p4hir.assign %[[ADD]], %[[SUM]] : <!b32i>
+// CHECK:         p4hir.yield
+// CHECK:       }
+bit<32> for_in_array(bit<32>[16] array) {
+    bit<32> sum = 0;
+    for (bit<32> x in array) {
+        sum = sum + x;
+    }
+    return sum;
+}
