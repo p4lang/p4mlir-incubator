@@ -3585,7 +3585,8 @@ bool P4HIRConverter::preorder(const P4::IR::ForStatement *fstmt) {
                 ValueScope scope(*p4Values);
 
                 visit(fstmt->updates);
-                P4HIR::buildTerminatedBody(b, getEndLoc(builder, fstmt->updates.back()));
+                const auto *locNode = fstmt->updates.empty() ? fstmt : fstmt->updates.back();
+                P4HIR::buildTerminatedBody(b, getEndLoc(builder, locNode));
             });
     };
 

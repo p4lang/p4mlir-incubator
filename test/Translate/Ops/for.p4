@@ -40,6 +40,13 @@ bit<32> loop() {
     return sum;
 }
 
+// CHECK-LABEL: p4hir.func @empty_statements()
+void empty_statements() {
+    // Check that we don't crash when init or updates is empty.
+    for (bit<32> i = 0; i < 10;) {}
+    for (; false;) {}
+}
+
 // CHECK-LABEL: p4hir.func action @multiple_statements
 // CHECK:        p4hir.scope {
 // CHECK:          %[[CONST_0_I:.*]] = p4hir.const #int0_b8i
