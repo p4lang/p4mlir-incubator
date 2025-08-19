@@ -103,7 +103,7 @@ module {
     // }
     // CHECK-LABEL p4hir.func @f2_1
     p4hir.func @f2_1(%arg0: !p4hir.ref<!b8i>) -> !b8i {
-      // CHECK: %return_value = p4hir.variable ["return_value"] : <!b8i>
+      // CHECK: %return_value = p4hir.variable ["return_value", init] : <!b8i>
       %c2_b8i = p4hir.const #int2_b8i
       %c1_b8i = p4hir.const #int1_b8i
       %c100_b8i = p4hir.const #int100_b8i
