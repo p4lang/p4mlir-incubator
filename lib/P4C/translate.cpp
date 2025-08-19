@@ -706,6 +706,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     HANDLE_IN_POSTORDER(Geq)
 
     HANDLE_IN_POSTORDER(ReturnStatement)
+    HANDLE_IN_POSTORDER(ContinueStatement)
+    HANDLE_IN_POSTORDER(BreakStatement)
     HANDLE_IN_POSTORDER(ExitStatement)
     HANDLE_IN_POSTORDER(ArrayIndex)
     HANDLE_IN_POSTORDER(Range)
@@ -2296,14 +2298,20 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
 void P4HIRConverter::postorder(const P4::IR::ReturnStatement *ret) {
     ConversionTracer trace("Converting ", ret);
 
-    // TODO: ReturnOp is a terminator, so it cannot be in the middle of block;
-    // ensure nothing is created afterwards
     if (ret->expression) {
         auto retVal = getValue(ret->expression);
-        builder.create<P4HIR::ReturnOp>(getLoc(builder, ret), retVal);
+        builder.create<P4HIR::SoftReturnOp>(getLoc(builder, ret), retVal);
     } else {
-        builder.create<P4HIR::ReturnOp>(getLoc(builder, ret));
+        builder.create<P4HIR::SoftReturnOp>(getLoc(builder, ret));
     }
+}
+void P4HIRConverter::postorder(const P4::IR::ContinueStatement *cont) {
+    ConversionTracer trace("Converting ", cont);
+    builder.create<P4HIR::SoftContinueOp>(getLoc(builder, cont));
+}
+void P4HIRConverter::postorder(const P4::IR::BreakStatement *br) {
+    ConversionTracer trace("Converting ", br);
+    builder.create<P4HIR::SoftBreakOp>(getLoc(builder, br));
 }
 void P4HIRConverter::postorder(const P4::IR::ExitStatement *ex) {
     ConversionTracer trace("Converting ", ex);

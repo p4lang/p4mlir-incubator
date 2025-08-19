@@ -156,7 +156,6 @@ int main(int argc, char *const argv[]) {
                 new P4::StructInitializers(&typeMap),  // TODO: Decide if we can do the same at MLIR
                                                        // level to reduce GC traffic
                 new P4::TableKeyNames(&typeMap),
-                new P4::RemoveReturns(),
                 new P4::TypeChecking(nullptr, &typeMap, true),
             });
             passes.setName("TypeInference");
