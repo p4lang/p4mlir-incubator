@@ -1905,8 +1905,7 @@ let description = [{
   The `p4hir.foreach` operation executes a statement for each element in a collection.
 }];
 
-  // TODO: Should support either ArrayTypes or SetTypes
-  let arguments = (ins SetType:$collection,
+  let arguments = (ins AnyCollectionType:$collection,
                        OptionalAttr<DictionaryAttr>:$annotations);
 
   let regions = (region AnyRegion:$bodyRegion);
