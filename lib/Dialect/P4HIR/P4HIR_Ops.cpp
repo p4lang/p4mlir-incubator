@@ -715,6 +715,74 @@ void P4HIR::CmpOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), stringifyEnum(getKind()));
 }
 
+OpFoldResult P4HIR::CmpOp::fold(FoldAdaptor adaptor) {
+    P4HIR::CmpOpKind kind = getKind();
+
+    // cmp(kind, x, x)
+    if (getLhs() == getRhs()) {
+        switch (kind) {
+            case P4HIR::CmpOpKind::Lt:
+            case P4HIR::CmpOpKind::Gt:
+            case P4HIR::CmpOpKind::Ne:
+                return P4HIR::BoolAttr::get(getContext(), false);
+            case P4HIR::CmpOpKind::Le:
+            case P4HIR::CmpOpKind::Ge:
+            case P4HIR::CmpOpKind::Eq:
+                return P4HIR::BoolAttr::get(getContext(), true);
+        }
+    }
+
+    // Move constant to the right side.
+    if (adaptor.getLhs() && !adaptor.getRhs()) {
+        using KindPair = std::pair<P4HIR::CmpOpKind, P4HIR::CmpOpKind>;
+        const KindPair swapKinds[] = {
+            {P4HIR::CmpOpKind::Lt, P4HIR::CmpOpKind::Gt},
+            {P4HIR::CmpOpKind::Gt, P4HIR::CmpOpKind::Lt},
+            {P4HIR::CmpOpKind::Le, P4HIR::CmpOpKind::Ge},
+            {P4HIR::CmpOpKind::Ge, P4HIR::CmpOpKind::Le},
+            {P4HIR::CmpOpKind::Eq, P4HIR::CmpOpKind::Eq},
+            {P4HIR::CmpOpKind::Ne, P4HIR::CmpOpKind::Ne},
+        };
+
+        for (auto [from, to] : swapKinds) {
+            if (kind == from) {
+                setKind(to);
+                mlir::Value lhs = getLhs();
+                mlir::Value rhs = getRhs();
+                getLhsMutable().assign(rhs);
+                getRhsMutable().assign(lhs);
+                return getResult();
+            }
+        }
+
+        llvm_unreachable("unknown cmp kind");
+    }
+
+    auto binop = [&](const auto &a, const auto &b) {
+        switch (kind) {
+            case P4HIR::CmpOpKind::Lt:
+                return a < b;
+            case P4HIR::CmpOpKind::Gt:
+                return a > b;
+            case P4HIR::CmpOpKind::Le:
+                return a <= b;
+            case P4HIR::CmpOpKind::Ge:
+                return a >= b;
+            case P4HIR::CmpOpKind::Eq:
+                return a == b;
+            case P4HIR::CmpOpKind::Ne:
+                return a != b;
+            default:
+                break;
+        }
+
+        llvm_unreachable("Unknown cmp kind");
+        return false;
+    };
+
+    return constFoldBinOp<P4HIR::BoolAttr>(adaptor.getOperands(), getType(), InfIntExt::MAX, binop);
+}
+
 //===----------------------------------------------------------------------===//
 // VariableOp
 //===----------------------------------------------------------------------===//
