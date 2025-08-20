@@ -1835,6 +1835,16 @@ LogicalResult P4HIR::SliceOp::verify() {
     return success();
 }
 
+OpFoldResult P4HIR::SliceOp::fold(FoldAdaptor adaptor) {
+    if (adaptor.getInput()) {
+        auto input = P4HIR::getConstantInt(adaptor.getInput()).value();
+        auto sliceVal = input.extractBits((getHighBit() - getLowBit() + 1), getLowBit());
+        return P4HIR::IntAttr::get(getContext(), getType(), sliceVal);
+    }
+
+    return {};
+}
+
 LogicalResult P4HIR::SliceRefOp::verify() {
     auto resultType = getResult().getType();
     auto sourceType = llvm::cast<P4HIR::ReferenceType>(getInput().getType()).getObjectType();
