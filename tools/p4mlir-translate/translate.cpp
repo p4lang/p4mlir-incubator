@@ -1525,40 +1525,25 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
     if (const auto *cast = expr->to<P4::IR::Cast>()) {
         mlir::Type destType = getOrCreateType(cast);
         mlir::Type srcType = getOrCreateType(cast->expr);
+        auto srcAttr = getOrCreateConstantExpr(cast->expr);
+
         // Fold equal-type casts (e.g. due to typedefs)
-        if (destType == srcType) return setConstantExpr(expr, getOrCreateConstantExpr(cast->expr));
+        if (destType == srcType) return setConstantExpr(expr, srcAttr);
 
         // Fold some conversions
-        if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
-            if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(srcType)) {
-                auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(cast->expr));
-                return setConstantExpr(
-                    expr,
-                    P4HIR::IntAttr::get(context(), destBitsType,
-                                        castee.getValue().zextOrTrunc(destBitsType.getWidth())));
-            }
-            if (mlir::isa<P4HIR::SerEnumType>(srcType)) {
-                auto castee = mlir::cast<P4HIR::EnumFieldAttr>(getOrCreateConstantExpr(cast->expr));
-                auto enumType = mlir::cast<P4HIR::SerEnumType>(castee.getType());
-                auto casteeVal =
-                    mlir::cast<P4HIR::IntAttr>(enumType.valueOf(castee.getField().getValue()));
-                return setConstantExpr(
-                    expr,
-                    P4HIR::IntAttr::get(context(), destBitsType,
-                                        casteeVal.getValue().zextOrTrunc(destBitsType.getWidth())));
-            }
-        }
+        if (auto castResult = P4HIR::foldConstantCast(destType, srcAttr))
+            return setConstantExpr(expr, castResult);
 
         // Handle casts to aliased types
         if (auto destAliasType = mlir::dyn_cast<P4HIR::AliasType>(destType)) {
             assert(destAliasType.getAliasedType() == srcType && "expected aliased types match");
             if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(srcType)) {
-                auto castee = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(cast->expr));
+                auto castee = mlir::cast<P4HIR::IntAttr>(srcAttr);
                 return setConstantExpr(
                     expr, P4HIR::IntAttr::get(context(), destAliasType, castee.getValue()));
             }
             if (auto srcBoolType = mlir::dyn_cast<P4HIR::BoolType>(srcType)) {
-                auto castee = mlir::cast<P4HIR::BoolAttr>(getOrCreateConstantExpr(cast->expr));
+                auto castee = mlir::cast<P4HIR::BoolAttr>(srcAttr);
                 return setConstantExpr(
                     expr, P4HIR::BoolAttr::get(context(), destAliasType, castee.getValue()));
             }
@@ -3016,16 +3001,16 @@ bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
 bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
     ConversionTracer trace("Converting ", select);
 
-    // Materialize value to select over. Select is always a ListExpression,
-    // even if it contains a single value. Lists ae lowered to tuples,
-    // however, single value cases are not single-value tuples. Unwrap
-    // single-value ListExpression down to the sole component.
-    const P4::IR::Expression *selectArg = select->select;
-    if (select->select->components.size() == 1) selectArg = select->select->components.front();
+    // Materialize values to select over. Select is always a ListExpression,
+    // even if it contains a single value. Unpack the top-level select tuple
+    // to its individual components for p4hir.transition_select.
+    const auto& comps = select->select->components;
+    llvm::SmallVector<mlir::Value, 4> operands;
+    for (const P4::IR::Node *comp : comps)
+        operands.push_back(convert(comp));
 
-    // Create select itself
     auto transitionSelectOp = builder.create<P4HIR::ParserTransitionSelectOp>(
-        getLoc(builder, select), convert(selectArg));
+        getLoc(builder, select), operands);
     mlir::Block &first = transitionSelectOp.getBody().emplaceBlock();
 
     mlir::OpBuilder::InsertionGuard guard(builder);
@@ -3040,7 +3025,6 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
             [&](mlir::OpBuilder &b, mlir::Location) {
                 const auto *keyset = selectCase->keyset;
                 auto endLoc = getEndLoc(builder, keyset);
-                mlir::Value keyVal;
 
                 // Type inference does not do proper type unification for the key,
                 // so we'd need to do this by ourselves
@@ -3055,26 +3039,17 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                     return elVal;
                 };
 
-                auto isUniversalSet = [](mlir::Value val) {
-                    if (auto cst = mlir::dyn_cast<P4HIR::ConstOp>(val.getDefiningOp()))
-                        return mlir::isa<P4HIR::UniversalSetAttr>(cst.getValue());
-
-                    return false;
-                };
-
+                // Create a variadic yield expression from the keys in the keyset.
+                llvm::SmallVector<mlir::Value, 4> elements;
                 if (const auto *keyList = keyset->to<P4::IR::ListExpression>()) {
-                    // Set product
-                    llvm::SmallVector<mlir::Value, 4> elements;
                     for (const auto *element : keyList->components)
                         elements.push_back(convertElement(element));
-                    // Treat product consisting entirely of universal sets as default case
-                    hasDefaultCase |= llvm::all_of(elements, isUniversalSet);
-                    keyVal = b.create<P4HIR::SetProductOp>(endLoc, elements);
                 } else {
-                    keyVal = convertElement(keyset);
-                    hasDefaultCase |= isUniversalSet(keyVal);
+                    elements.push_back(convertElement(keyset));
                 }
-                b.create<P4HIR::YieldOp>(endLoc, keyVal);
+
+                hasDefaultCase |= llvm::all_of(elements, P4HIR::isUniversalSetValue);
+                b.create<P4HIR::YieldOp>(endLoc, elements);
             },
             getQualifiedSymbolRef(nextState->name.string_view()));
     }

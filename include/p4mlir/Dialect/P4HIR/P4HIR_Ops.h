@@ -23,6 +23,7 @@
 
 namespace P4::P4MLIR::P4HIR {
 void buildTerminatedBody(mlir::OpBuilder &builder, mlir::Location loc);
+bool isUniversalSetValue(mlir::Value value);
 }  // namespace  P4::P4MLIR::P4HIR
 
 #define GET_OP_CLASSES

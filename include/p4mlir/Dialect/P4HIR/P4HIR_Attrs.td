@@ -275,21 +275,19 @@ def P4HIR_UniversalSetAttr : P4HIR_Attr<"UniversalSet", "universal_set", [TypedA
 def SetKind_Const : I32EnumAttrCase<"Constant", 1, "const">;
 def SetKind_Range : I32EnumAttrCase<"Range", 2, "range">;
 def SetKind_Mask  : I32EnumAttrCase<"Mask", 3, "mask">;
-def SetKind_Prod  : I32EnumAttrCase<"Prod", 4, "prod">;
 
 def SetKind : I32EnumAttr<
     "SetKind",
     "set constant kind",
-    [SetKind_Const, SetKind_Range, SetKind_Mask, SetKind_Prod]> {
+    [SetKind_Const, SetKind_Range, SetKind_Mask]> {
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
 
 def P4HIR_SetAttr : P4HIR_Attr<"Set", "set", [TypedAttrInterface]> {
   let summary = "An attribute containing a set value";
   let description = [{
-    A set attribute is a literal attribute that represents a set of values
-    of the specified type. Only certain well-described types of sets are
-    supported as well as their products.
+    A set attribute is a literal attribute that represents a set of values of
+    the specified type. Only certain well-described types of sets are supported.
   }];
   let parameters = (ins AttributeSelfTypeParameter<"">:$type,
                         "SetKind":$kind,
@@ -301,11 +299,40 @@ def P4HIR_SetAttr : P4HIR_Attr<"Set", "set", [TypedAttrInterface]> {
       return $_get(type.getContext(), type, kind, members);
     }]>
   ];
+  let extraClassDeclaration = [{
+    llvm::APInt getConstantValue() {
+      assert(getKind() == SetKind::Constant && "Expected Constant kind set.");
+      assert(getMembers().size() == 1 && "Expected single member set.");
+      return P4HIR::getConstantInt(getMembers()[0]).value();
+    }
+
+    std::pair<llvm::APInt, llvm::APInt> getRangeValues() {
+      assert(getKind() == SetKind::Range && "Expected Range kind set.");
+      return {
+        P4HIR::getConstantInt(getMembers()[0]).value(),
+        P4HIR::getConstantInt(getMembers()[1]).value()
+      };
+    }
+
+    std::pair<llvm::APInt, llvm::APInt> getMaskValues() {
+      assert(getKind() == SetKind::Mask && "Expected Mask kind set.");
+      return {
+        P4HIR::getConstantInt(getMembers()[0]).value(),
+        P4HIR::getConstantInt(getMembers()[1]).value()
+      };
+    }
+
+    bool isEmptyRange() {
+      assert(getKind() == SetKind::Range && "Expected Range kind set.");
+      auto min = P4HIR::getConstantInt(getMembers()[0]).value();
+      auto max = P4HIR::getConstantInt(getMembers()[1]).value();
+      return max < min;
+    }
+  }];
   let genVerifyDecl = 1;
   let assemblyFormat = [{
     `<` $kind `:` $members `>`
   }];
-
 }
 
 

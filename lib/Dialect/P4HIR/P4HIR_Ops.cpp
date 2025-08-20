@@ -183,30 +183,8 @@ OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
     if (getOperand().getType() == getType()) return getOperand();
 
     // Casts of integer constants
-    if (auto inputConst = mlir::dyn_cast_if_present<ConstOp>(getOperand().getDefiningOp())) {
-        auto destType = getType(), srcType = inputConst.getType();
-
-        if (auto destBitsType = mlir::dyn_cast<P4HIR::BitsType>(destType)) {
-            return mlir::TypeSwitch<Type, OpFoldResult>(srcType)
-                .Case<P4HIR::BitsType, P4HIR::InfIntType>([&](mlir::Type) {
-                    auto castee = inputConst.getValueAs<P4HIR::IntAttr>();
-                    return P4HIR::IntAttr::get(
-                        destBitsType, castee.getValue().zextOrTrunc(destBitsType.getWidth()));
-                })
-                .Case<P4HIR::SerEnumType>([&](P4HIR::SerEnumType enumType) {
-                    auto castee = inputConst.getValueAs<P4HIR::EnumFieldAttr>();
-                    auto casteeVal =
-                        mlir::cast<P4HIR::IntAttr>(enumType.valueOf(castee.getField().getValue()));
-                    return P4HIR::IntAttr::get(
-                        destBitsType, casteeVal.getValue().zextOrTrunc(destBitsType.getWidth()));
-                })
-                .Case<P4HIR::BoolType>([&](mlir::Type) {
-                    auto castee = inputConst.getValueAs<P4HIR::BoolAttr>();
-                    return P4HIR::IntAttr::get(destBitsType, castee.getValue() ? 1 : 0);
-                })
-                .Default([](Type) { return OpFoldResult(); });
-        }
-    }
+    if (auto inputConst = mlir::dyn_cast_if_present<ConstOp>(getOperand().getDefiningOp()))
+        if (auto castResult = P4HIR::foldConstantCast(getType(), inputConst.getValue())) return castResult;
 
     return {};
 }
@@ -319,6 +297,16 @@ LogicalResult P4HIR::ConcatOp::verify() {
                                 "signedness of the left-hand side operand";
 
     return success();
+}
+
+OpFoldResult P4HIR::ConcatOp::fold(FoldAdaptor adaptor) {
+    if (adaptor.getLhs() && adaptor.getRhs()) {
+        auto lhs = P4HIR::getConstantInt(adaptor.getLhs()).value();
+        auto rhs = P4HIR::getConstantInt(adaptor.getRhs()).value();
+        return P4HIR::IntAttr::get(getType(), lhs.concat(rhs));
+    }
+
+    return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1465,6 +1453,19 @@ void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, 
     build(builder, odsState, tupleType.getType(fieldIndex), input, fieldIndex);
 }
 
+OpFoldResult P4HIR::TupleExtractOp::fold(FoldAdaptor adaptor) {
+    // Fold extract from aggregate constant
+    if (auto aggAttr = adaptor.getInput()) {
+        return mlir::cast<P4HIR::AggAttr>(aggAttr).getFields()[getFieldIndex()];
+    }
+    // Fold extract from tuple
+    if (auto tupleOp = mlir::dyn_cast_if_present<P4HIR::TupleOp>(getInput().getDefiningOp())) {
+        return tupleOp.getOperand(getFieldIndex());
+    }
+
+    return {};
+}
+
 //===----------------------------------------------------------------------===//
 // SliceOp, SliceRefOp
 //===----------------------------------------------------------------------===//
@@ -1779,37 +1780,66 @@ P4HIR::ParserStateOp P4HIR::ParserTransitionSelectOp::StateIterator::mapElement(
     return lookupParserState(op.getOperation(), op.getStateAttr());
 }
 
-static bool isUniversalSetAttr(mlir::Attribute val) {
-    if (mlir::isa<P4HIR::UniversalSetAttr>(val)) return true;
-
-    if (auto setAttr = mlir::dyn_cast<P4HIR::SetAttr>(val))
-        return setAttr.getKind() == P4HIR::SetKind::Prod &&
-               llvm::all_of(setAttr.getMembers(), isUniversalSetAttr);
-
-    return false;
-}
-
-static bool isUniversalSetValue(mlir::Value val) {
-    if (auto cst = mlir::dyn_cast<P4HIR::ConstOp>(val.getDefiningOp()))
-        return isUniversalSetAttr(cst.getValue());
-
-    if (auto prod = mlir::dyn_cast<P4HIR::SetProductOp>(val.getDefiningOp()))
-        return llvm::all_of(prod.getInput(), isUniversalSetValue);
-
-    return false;
+bool P4HIR::isUniversalSetValue(mlir::Value val) {
+    auto cst = val.getDefiningOp<P4HIR::ConstOp>();
+    return cst && mlir::isa<P4HIR::UniversalSetAttr>(cst.getValue());
 }
 
 bool P4HIR::ParserSelectCaseOp::isDefault() {
-    // Return result not relying on folding, so default case might be one of:
-    //  - Explicit p4hir.const #p4hir.universal_set
-    //  - set_product op of universal sets
-    //  - set attribute being products of universal set
-    return isUniversalSetValue(getSelectKey());
+    // Return result not relying on folding, so default case might
+    // be a single universal set constant or a tuple of them.
+    return llvm::all_of(getSelectKeys(), isUniversalSetValue);
 }
 
-Value P4HIR::ParserSelectCaseOp::getSelectKey() {
-    auto yield = mlir::cast<YieldOp>(getRegion().front().getTerminator());
-    return yield.getOperand(0);
+mlir::ValueRange P4HIR::ParserSelectCaseOp::getSelectKeys() {
+    auto yield = mlir::cast<YieldOp>(getTerminator());
+    return yield.getArgs();
+}
+
+//===----------------------------------------------------------------------===//
+// ParserTransitionSelectOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult P4HIR::ParserTransitionSelectOp::canonicalize(P4HIR::ParserTransitionSelectOp op,
+                                                            PatternRewriter &rewriter) {
+    mlir::Block *body = &op.getBody().back();
+    auto selectCases = op.selects();
+    auto it = llvm::find_if(selectCases, [](auto op) { return op.isDefault(); });
+
+    // No default case found.
+    if (it == selectCases.end()) return mlir::failure();
+
+    LogicalResult result = mlir::failure();
+
+    // Remove unreachable cases after last default case.
+    if (std::next(it) != selectCases.end()) {
+        mlir::Block *unreachableCases = rewriter.splitBlock(body, ++Block::iterator(*it));
+        rewriter.eraseBlock(unreachableCases);
+        result = mlir::success();
+    }
+
+    // Canonicalize tuple of universal sets to single universal set.
+    auto defaultCase = mlir::cast<P4HIR::ParserSelectCaseOp>(body->back());
+    auto defaultYield = mlir::cast<P4HIR::YieldOp>(defaultCase.getTerminator());
+    if (defaultYield.getArgs().size() > 1) {
+        rewriter.modifyOpInPlace(defaultYield, [&]() {
+            auto universalSetAttr = P4HIR::UniversalSetAttr::get(rewriter.getContext());
+            auto universalSet =
+                rewriter.create<P4HIR::ConstOp>(defaultYield.getLoc(), universalSetAttr);
+            defaultYield.getArgsMutable().assign(universalSet);
+        });
+
+        result = mlir::success();
+    }
+
+    // Replace select with single default case with direct transition.
+    if (body->getOperations().size() == 1) {
+        auto firstCase = *op.selects().begin();
+        rewriter.replaceOpWithNewOp<P4HIR::ParserTransitionOp>(op, firstCase.getState());
+        result = mlir::success();
+    }
+
+    return result;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1868,77 +1898,6 @@ OpFoldResult P4HIR::SetOp::fold(FoldAdaptor adaptor) {
         return {};
 
     return P4HIR::SetAttr::get(getType(), SetKind::Constant,
-                               mlir::ArrayAttr::get(getContext(), adaptor.getInput()));
-}
-
-//===----------------------------------------------------------------------===//
-// SetProductOp
-//===----------------------------------------------------------------------===//
-
-ParseResult P4HIR::SetProductOp::parse(OpAsmParser &parser, OperationState &result) {
-    llvm::SMLoc inputOperandsLoc = parser.getCurrentLocation();
-    llvm::SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
-    Type declType;
-
-    if (parser.parseLParen() || parser.parseOperandList(operands) || parser.parseRParen() ||
-        parser.parseOptionalAttrDict(result.attributes) || parser.parseColonType(declType))
-        return failure();
-
-    auto setType = mlir::dyn_cast<P4HIR::SetType>(declType);
-    if (!setType) return parser.emitError(parser.getNameLoc(), "expected !p4hir.set type");
-    auto tupleType = mlir::dyn_cast<mlir::TupleType>(setType.getElementType());
-    if (!tupleType) return parser.emitError(parser.getNameLoc(), "expected set of tuples");
-
-    result.addTypes(setType);
-    llvm::SmallVector<mlir::Type, 4> elements;
-    for (auto elTy : tupleType.getTypes()) elements.push_back(P4HIR::SetType::get(elTy));
-
-    if (parser.resolveOperands(operands, elements, inputOperandsLoc, result.operands))
-        return failure();
-    return success();
-}
-
-void P4HIR::SetProductOp::print(OpAsmPrinter &printer) {
-    printer << " (";
-    printer.printOperands(getInput());
-    printer << ")";
-    printer.printOptionalAttrDict((*this)->getAttrs());
-    printer << " : " << getType();
-}
-
-LogicalResult P4HIR::SetProductOp::verify() {
-    auto elementType = mlir::dyn_cast<mlir::TupleType>(getType().getElementType());
-    if (!elementType) return emitError("expected set of tuple type result");
-
-    if (elementType.size() != getInput().size())
-        return emitError("type mismatch: result and operands have different lengths");
-
-    for (const auto &[field, value] : llvm::zip(elementType.getTypes(), getInput()))
-        if (field != mlir::cast<P4HIR::SetType>(value.getType()).getElementType())
-            return emitOpError("set product operands do not match result type");
-
-    return success();
-}
-
-void P4HIR::SetProductOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
-    setNameFn(getResult(), "setproduct");
-}
-
-void P4HIR::SetProductOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
-                                mlir::ValueRange values) {
-    llvm::SmallVector<mlir::Type, 4> elements;
-    for (auto elTy : values.getTypes())
-        elements.push_back(mlir::cast<SetType>(elTy).getElementType());
-
-    result.addTypes(P4HIR::SetType::get(builder.getTupleType(elements)));
-    result.addOperands(values);
-}
-
-OpFoldResult P4HIR::SetProductOp::fold(FoldAdaptor adaptor) {
-    // Fold constant inputs into set attribute
-    if (llvm::any_of(adaptor.getInput(), [](Attribute attr) { return !attr; }))  // NOLINT
-        return {};
-    return P4HIR::SetAttr::get(getType(), SetKind::Prod,
                                mlir::ArrayAttr::get(getContext(), adaptor.getInput()));
 }
 

@@ -142,10 +142,10 @@ def ParserTransitionSelectOp : P4HIR_Op<"transition_select",
    [Terminator, NoTerminator,
     ParentOneOf<["ParserStateOp"]>]> {
   // FIXME: constraint argument better. Should be tuple or "normal" type.
-  let arguments = (ins AnyP4Type:$select);
+  let arguments = (ins Variadic<AnyP4Type>:$args);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
-    $select `:` type($select) $body attr-dict
+    $args `:` type($args) $body attr-dict
   }];
   // FIXME: Implement verifier for cases
 
@@ -172,6 +172,7 @@ def ParserTransitionSelectOp : P4HIR_Op<"transition_select",
      return { StateIterator(selectCases.begin()), StateIterator(selectCases.end()) };
    }
  }];
+ let hasCanonicalizeMethod = 1;
 }
 
 def ParserSelectCaseOp : P4HIR_Op<"select_case",
@@ -196,8 +197,9 @@ def ParserSelectCaseOp : P4HIR_Op<"select_case",
   ];
 
   let extraClassDeclaration = [{
+    mlir::Operation *getTerminator() { return getRegion().front().getTerminator(); }
     bool isDefault();
-    mlir::Value getSelectKey();
+    mlir::ValueRange getSelectKeys();
   }];
 }
 
@@ -207,28 +209,6 @@ def SetOp : P4HIR_Op<"set",
   let summary = "Create a set from constituent parts.";
   // FIXME: Better constraint type
   let arguments = (ins Variadic<AnyP4Type>:$input);
-  let results = (outs SetType:$result);
-  let hasCustomAssemblyFormat = 1;
-  // FIXME: use declarative format
-  // let assemblyFormat = [{
-  //   `(` $input `)` attr-dict `:` type($result)
-  // }];
-
-  // TODO: Automatically infer result type
-  let builders = [
-    OpBuilder<(ins "mlir::ValueRange":$input)>
-  ];
-
-  let hasVerifier = 1;
-  let hasFolder = 1;
-}
-
-def SetProductOp : P4HIR_Op<"set_product",
-   [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
-  let summary = "Create a carthesian set product";
-  // FIXME: Better constraint type
-  let arguments = (ins Variadic<SetType>:$input);
   let results = (outs SetType:$result);
   let hasCustomAssemblyFormat = 1;
   // FIXME: use declarative format
