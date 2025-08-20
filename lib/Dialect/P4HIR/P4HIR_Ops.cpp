@@ -806,11 +806,21 @@ void P4HIR::VariableOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 }
 
 LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewriter &rewriter) {
+    auto users = op->getUsers();
+    auto firstNonAssignOp =
+        llvm::find_if(users, [](auto *user) { return !mlir::isa<P4HIR::AssignOp>(user); });
+
+    if (firstNonAssignOp == users.end()) {
+        // Completely remove variable if it is only written to.
+        for (auto *user : llvm::make_early_inc_range(users)) rewriter.eraseOp(user);
+        rewriter.eraseOp(op);
+        return success();
+    }
+
     // Check if the variable has one unique assignment to it, all other
-    // uses are reads, and that all uses are in the same block as the variable
-    // itself.
+    // uses are reads, and all reads are in the same block with the write.
     P4HIR::AssignOp uniqueAssignOp;
-    for (auto *user : op->getUsers()) {
+    for (auto *user : users) {
         // Ensure there is at most one unique assignment to the variable.
         if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(user)) {
             if (uniqueAssignOp) return failure();
@@ -820,7 +830,7 @@ LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewri
 
     if (!uniqueAssignOp) return failure();
 
-    for (auto *user : op->getUsers()) {
+    for (auto *user : users) {
         if (user == uniqueAssignOp) continue;
         if (user->getBlock() != uniqueAssignOp->getBlock()) return failure();
 
@@ -831,10 +841,7 @@ LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewri
     // Remove the assign op and replace all reads with the new assigned var op.
     mlir::Value assignedValue = uniqueAssignOp.getValue();
     rewriter.eraseOp(uniqueAssignOp);
-    for (auto *user : llvm::make_early_inc_range(op->getUsers())) {
-        auto readOp = mlir::cast<P4HIR::ReadOp>(user);
-        rewriter.replaceOp(readOp, assignedValue);
-    }
+    for (auto *user : llvm::make_early_inc_range(users)) rewriter.replaceOp(user, assignedValue);
 
     // Remove the original variable.
     rewriter.eraseOp(op);
