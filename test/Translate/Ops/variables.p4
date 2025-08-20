@@ -87,3 +87,10 @@ action init_with_cast() {
     int<8> b = (int<8>)a;
     bit<8> c = (bit<8>)b;
 }
+
+// CHECK-LABEL:   p4hir.func action @check_zero_width_int
+// Check that we don't crash.
+
+action check_zero_width_int() {
+    bit<0> tmp = 1;
+}

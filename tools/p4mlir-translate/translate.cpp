@@ -75,12 +75,12 @@ mlir::Location getEndLoc(mlir::OpBuilder &builder, const P4::IR::Node *node) {
         end.getColumnNumber());
 }
 
-mlir::APInt toAPInt(const P4::big_int &value, unsigned bitWidth = 0) {
+mlir::APInt toAPInt(const P4::big_int &value, unsigned bitWidth = UINT_MAX) {
     std::vector<uint64_t> valueBits;
     // Export absolute value into 64-bit unsigned values, most significant bit last
     export_bits(value, std::back_inserter(valueBits), 64, false);
 
-    if (!bitWidth) bitWidth = valueBits.size() * sizeof(valueBits[0]) * CHAR_BIT;
+    if (bitWidth == UINT_MAX) bitWidth = valueBits.size() * sizeof(valueBits[0]) * CHAR_BIT;
 
     mlir::APInt apValue(bitWidth, valueBits);
     if (value < 0) apValue.negate();
