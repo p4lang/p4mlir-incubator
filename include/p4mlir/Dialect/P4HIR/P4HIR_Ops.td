@@ -1187,6 +1187,7 @@ def SliceOp : P4HIR_Op<"slice",
   let assemblyFormat = [{
     $input`[`$highBit `:` $lowBit`]` attr-dict `:` type($input) `->` type($result)
   }];
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
