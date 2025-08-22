@@ -61,6 +61,7 @@ static P4HIR::IntAttr subIntegerAttrs(mlir::PatternRewriter &builder, mlir::Valu
     return applyToIntegerAttrs(builder, res, lhs, rhs, std::minus<APInt>());
 }
 
+// Helper function to check if `attr` is an integer constant that equals the signed amount `val`.
 static bool isIntegerAttr(mlir::Attribute attr, int64_t val) {
     if (auto intAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(attr)) {
         llvm::APInt intVal = intAttr.getValue();
@@ -70,6 +71,7 @@ static bool isIntegerAttr(mlir::Attribute attr, int64_t val) {
     return false;
 }
 
+// Helper function to create a integer `attr` that represents `val` sign-extended to match `type`.
 static mlir::Attribute getIntegerAttr(mlir::Type type, int64_t val) {
     if (auto intType = mlir::dyn_cast<P4HIR::BitsType>(type))
         return P4HIR::IntAttr::get(type, llvm::APInt(intType.getWidth(), val, true));
@@ -341,12 +343,20 @@ OpFoldResult P4HIR::UnaryOp::fold(FoldAdaptor adaptor) {
 // BinaryOp
 //===----------------------------------------------------------------------===//
 
-void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
-    setNameFn(getResult(), stringifyEnum(getKind()));
+static bool isCommutative(P4HIR::BinOpKind kind) {
+    return (kind == P4HIR::BinOpKind::Add) || (kind == P4HIR::BinOpKind::AddSat) ||
+           (kind == P4HIR::BinOpKind::Mul) || (kind == P4HIR::BinOpKind::And) ||
+           (kind == P4HIR::BinOpKind::Or) || (kind == P4HIR::BinOpKind::Xor);
 }
 
+static bool isCommutative(Operation *op) {
+    if (auto binop = mlir::dyn_cast<P4HIR::BinOp>(op)) return isCommutative(binop.getKind());
+    return false;
+}
+
+// Assuming that `op` is a commutative operation, canonicalize the position of constant argumets.
 static void sortCommutativeArgs(Operation *op, ArrayRef<Attribute> operands) {
-    assert(op->getNumOperands() == 2);
+    assert(isCommutative(op));
 
     OpOperand *operandsBegin = op->getOpOperands().begin();
     auto isNonConstant = [&](OpOperand &o) {
@@ -356,9 +366,21 @@ static void sortCommutativeArgs(Operation *op, ArrayRef<Attribute> operands) {
     std::stable_partition(firstConstantIt, op->getOpOperands().end(), isNonConstant);
 }
 
-enum class InfIntExt { MAX, ADD_LIKE, MUL_LIKE, SHL_LIKE, SHR_LIKE };
+// Describes how to extend InfInt arguments before constant folding:
+// None: Leave argument bit widths unaffected.
+// Max: Extend the argument with smaller bit width to match the one with the larger bit width.
+// AddLike: Like MAX but with one bit more to potentially store a carry/borrow bit.
+// MulLike: Extend arguments to the sum of their bit widths.
+// ShlLike: Extend the LHS by the amount specified in RHS.
+enum class InfIntExt { None, Max, AddLike, MulLike, ShlLike };
 
-template <class OutAttrT, class F>
+// Helper function to constant fold a binary operation.
+// `operands` is an array of constant operands and `calculate` is a functor object describing a
+// binary operation on those arguments. `calculate` will be called with two APSInt arguments and
+// should produce a result suitable to `resultType` (APSInt or bool). If folding is successfull a
+// constant of type `resultType` is returned. `extKind` describes how to extend InfInt arguments
+// before calling `calculate`.
+template <class F>
 static Attribute constFoldBinOp(llvm::ArrayRef<Attribute> operands, mlir::Type resultType,
                                 InfIntExt extKind, F &&calculate) {
     assert(operands.size() == 2 && "binary op takes two operands");
@@ -379,24 +401,21 @@ static Attribute constFoldBinOp(llvm::ArrayRef<Attribute> operands, mlir::Type r
         unsigned rhsBits = rhs->getActiveBits() + 1;
 
         switch (extKind) {
-            case InfIntExt::MAX:
+            case InfIntExt::None:
+                break;
+            case InfIntExt::Max:
                 lhsBits = rhsBits = std::max(lhsBits, rhsBits);
                 break;
-            case InfIntExt::ADD_LIKE:
+            case InfIntExt::AddLike:
                 lhsBits = rhsBits = std::max(lhsBits, rhsBits) + 1;
                 break;
-            case InfIntExt::MUL_LIKE:
+            case InfIntExt::MulLike:
                 lhsBits = rhsBits = (lhsBits + rhsBits) + 1;
                 break;
-            case InfIntExt::SHL_LIKE: {
-                auto amt = rhs->tryZExtValue();
-                if (!amt) return {};
-                lhsBits = (lhsBits + amt.value() + 1);
+            case InfIntExt::ShlLike: {
+                lhsBits = (lhsBits + rhs->getLimitedValue());
                 break;
             }
-            case InfIntExt::SHR_LIKE:
-                if (!rhs->tryZExtValue()) return {};
-                break;
         }
 
         lhs = lhs->extOrTrunc(lhsBits);
@@ -404,7 +423,15 @@ static Attribute constFoldBinOp(llvm::ArrayRef<Attribute> operands, mlir::Type r
     }
 
     auto calRes = calculate(lhs.value(), rhs.value());
-    return OutAttrT::get(resultType.getContext(), resultType, calRes);
+
+    if constexpr (std::is_same_v<decltype(calRes), bool>)
+        return P4HIR::BoolAttr::get(resultType.getContext(), calRes);
+    else
+        return P4HIR::IntAttr::get(resultType.getContext(), resultType, calRes);
+}
+
+void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+    setNameFn(getResult(), stringifyEnum(getKind()));
 }
 
 LogicalResult P4HIR::BinOp::verify() {
@@ -438,14 +465,10 @@ LogicalResult P4HIR::BinOp::verify() {
 OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
     P4HIR::BinOpKind kind = getKind();
 
-    bool isCommutative = (kind == P4HIR::BinOpKind::Add) || (kind == P4HIR::BinOpKind::AddSat) ||
-                         (kind == P4HIR::BinOpKind::Mul) || (kind == P4HIR::BinOpKind::And) ||
-                         (kind == P4HIR::BinOpKind::Or) || (kind == P4HIR::BinOpKind::Xor);
+    if (isCommutative(kind)) sortCommutativeArgs(getOperation(), adaptor.getOperands());
 
-    if (isCommutative) sortCommutativeArgs(getOperation(), adaptor.getOperands());
-
-    auto foldIntBinop = [&](auto binop, InfIntExt ext = InfIntExt::MAX) {
-        return constFoldBinOp<P4HIR::IntAttr>(adaptor.getOperands(), getType(), ext, binop);
+    auto foldIntBinop = [&](auto binop, InfIntExt ext = InfIntExt::Max) {
+        return constFoldBinOp(adaptor.getOperands(), getType(), ext, binop);
     };
 
     if (kind == P4HIR::BinOpKind::Add) {
@@ -460,7 +483,7 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
         if (auto sub = getDefiningBinop(P4HIR::BinOpKind::Sub, getRhs()))
             if (getLhs() == sub.getRhs()) return sub.getLhs();
 
-        return foldIntBinop(std::plus<llvm::APSInt>{}, InfIntExt::ADD_LIKE);
+        return foldIntBinop(std::plus<llvm::APSInt>{}, InfIntExt::AddLike);
     } else if (kind == P4HIR::BinOpKind::Sub) {
         // subi(a, 0) -> a
         if (isIntegerAttr(adaptor.getRhs(), 0)) return getLhs();
@@ -476,7 +499,7 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
             if (getRhs() == add.getLhs()) return add.getRhs();
         }
 
-        return foldIntBinop(std::minus<llvm::APSInt>{}, InfIntExt::ADD_LIKE);
+        return foldIntBinop(std::minus<llvm::APSInt>{}, InfIntExt::AddLike);
     } else if (kind == P4HIR::BinOpKind::AddSat) {
         // add_sat(a, 0) -> 0
         if (isIntegerAttr(adaptor.getRhs(), 0)) return getLhs();
@@ -507,7 +530,7 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
         // mul(a, 0) -> 0
         if (isIntegerAttr(adaptor.getRhs(), 0)) return getIntegerAttr(getType(), 0);
 
-        return foldIntBinop(std::multiplies<llvm::APInt>{}, InfIntExt::MUL_LIKE);
+        return foldIntBinop(std::multiplies<llvm::APInt>{}, InfIntExt::MulLike);
     } else if (kind == P4HIR::BinOpKind::Div) {
         // div(a, 1) -> a
         if (isIntegerAttr(adaptor.getRhs(), 1)) return getLhs();
@@ -525,6 +548,7 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
 
         return foldIntBinop(std::modulus<llvm::APSInt>{});
     } else if (kind == P4HIR::BinOpKind::And || kind == P4HIR::BinOpKind::Or) {
+        // 0 and -1 represent all-zeros or all-ones constants when sign-extended in `isIntegerAttr`.
         int64_t neutralVal = (kind == P4HIR::BinOpKind::And) ? int64_t(-1) : int64_t(0);
         int64_t absorbVal = (kind == P4HIR::BinOpKind::And) ? int64_t(0) : int64_t(-1);
 
@@ -680,9 +704,8 @@ OpFoldResult P4HIR::ShlOp::fold(FoldAdaptor adaptor) {
         if (shift.uge(width)) return getIntegerAttr(bitsType, 0);
     }
 
-    return constFoldBinOp<P4HIR::IntAttr>(
-        adaptor.getOperands(), getType(), InfIntExt::SHL_LIKE,
-        [&](const auto &a, const auto &b) { return a << b.getZExtValue(); });
+    return constFoldBinOp(adaptor.getOperands(), getType(), InfIntExt::ShlLike,
+                          [&](const auto &a, const auto &b) { return a << b.getZExtValue(); });
 }
 
 OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
@@ -701,10 +724,10 @@ OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
         if (bitsType.isUnsigned() && shift.uge(width)) return getIntegerAttr(bitsType, 0);
     }
 
-    return constFoldBinOp<P4HIR::IntAttr>(
-        adaptor.getOperands(), getType(), InfIntExt::SHR_LIKE, [&](const auto &a, const auto &b) {
-            return a >> std::min(b.getZExtValue(), (uint64_t)a.getBitWidth());
-        });
+    return constFoldBinOp(adaptor.getOperands(), getType(), InfIntExt::None,
+                          [&](const auto &a, const auto &b) {
+                              return a >> std::min(b.getLimitedValue(), (uint64_t)a.getBitWidth());
+                          });
 }
 
 //===----------------------------------------------------------------------===//
@@ -780,7 +803,7 @@ OpFoldResult P4HIR::CmpOp::fold(FoldAdaptor adaptor) {
         return false;
     };
 
-    return constFoldBinOp<P4HIR::BoolAttr>(adaptor.getOperands(), getType(), InfIntExt::MAX, binop);
+    return constFoldBinOp(adaptor.getOperands(), getType(), InfIntExt::Max, binop);
 }
 
 //===----------------------------------------------------------------------===//
