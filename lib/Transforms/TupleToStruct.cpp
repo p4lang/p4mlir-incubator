@@ -107,9 +107,6 @@ void TupleToStructPass::runOnOperation() {
         RewritePatternSet patterns(&context);
         ConversionTarget target(context);
 
-        //target.addIllegalOp<P4::P4MLIR::P4HIR::TupleOp>();
-        //target.addIllegalOp<P4::P4MLIR::P4HIR::TupleExtractOp>();
-
         target.markUnknownOpDynamicallyLegal([&](Operation *op){
             return typeConverter.isLegal(op);
         });
