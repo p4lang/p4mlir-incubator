@@ -4,18 +4,62 @@
 !i32i = !p4hir.int<32>
 
 // CHECK-LABEL: module
-// CHECK-LABEL: p4hir.func @basic
+// CHECK-LABEL: p4hir.func @bid
+// CHECK: p4hir.return
+// CHECK-NO: p4hir.tuple_extract
 
-// CHECK: %[[S:.*]] = p4hir.struct %{{.*}}, %{{.*}}, : i32, i1
-// CHECK: %[[X:.*]] = p4hir.struct_extract %[[S]][0] : ! !p4hir.struct<i32, i1> -> i32
-// CHECK: return %[[X]] : i32
 module {
+   p4hir.func @bid(%t : tuple<!b32i, !i32i>) ->  tuple<!b32i, !i32i>{
+        p4hir.return %t :  tuple<!b32i, !i32i>
+    }
+}
 
-   p4hir.func @basic(%x: !b32i, %y: !i32i) -> tuple<!b32i, !i32i> {
+// CHECK-LABEL: module
+// CHECK-LABEL: p4hir.func @make_tuple
+// CHECK: p4hir.return
+
+module {
+   p4hir.func @make_tuple(%x : !b32i, %y: !i32i) -> tuple<!b32i, !i32i> {
         %t = p4hir.tuple(%x, %y) : tuple<!b32i, !i32i>
-        //%x = p4hir.tuple_extract %t[0] : !p4hir.tuple<i32, i1> -> i32
         p4hir.return %t : tuple<!b32i, !i32i>
     }
+}
 
 
+// CHECK-LABEL: module
+// CHECK-LABEL: p4hir.func @make_large_tuple
+// CHECK: p4hir.return
+
+module {
+   p4hir.func @make_large_tuple(%x : !b32i, %y: !i32i, %z: !b32i) -> tuple<!b32i, !i32i, !b32i> {
+        %t = p4hir.tuple(%x, %y, %z) : tuple<!b32i, !i32i, !b32i>
+        p4hir.return %t : tuple<!b32i, !i32i, !b32i>
+    }
+}
+
+
+// CHECK-LABEL: module
+// CHECK-LABEL: p4hir.func @create_and_return
+// CHECK: p4hir.return
+// CHECK-NOT: p4hir.tuple_extract
+
+module {
+   p4hir.func @create_and_return(%x : !b32i, %y: !i32i) -> tuple<!b32i, !i32i> {
+        %t = p4hir.tuple(%x, %y) : tuple<!b32i, !i32i>
+        p4hir.return %t : tuple<!b32i, !i32i>
+    }
+}
+
+
+// CHECK-LABEL: module
+// CHECK-LABEL: p4hir.func @create_nested
+// CHECK: p4hir.return
+// CHECK-NOT: p4hir.tuple_extract
+
+module {
+   p4hir.func @create_nested(%x : !b32i, %y: !i32i, %z: !b32i) -> tuple<tuple<!b32i, !i32i>, !b32i> {
+        %inner = p4hir.tuple(%x, %y) : tuple<!b32i, !i32i>
+        %outer = p4hir.tuple(%inner, %z) : tuple<tuple<!b32i, !i32i>, !b32i>
+        p4hir.return %outer : tuple<tuple<!b32i, !i32i>, !b32i>
+    }
 }
