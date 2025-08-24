@@ -145,7 +145,7 @@ def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
 // TupleToStruct
 //===----------------------------------------------------------------------===//
 
-def TupleToStruct : Pass<"convert-p4hir-tuple-to-struct", "mlir::ModuleOp"> {
+def TupleToStruct : Pass<"p4hir-tuple-to-struct", "mlir::ModuleOp"> {
   let summary = "Convert p4hir.tuple types/ops into p4hir.stract types/ops";
   let description = [{
     Eliminate all p4hir.tuple types and operations by converting them into equivalent

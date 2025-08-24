@@ -12,7 +12,7 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 
 
-#define DEBUG_TYPE "convert-p4hir-tuple-to-struct"
+#define DEBUG_TYPE "p4hir-tuple-to-struct"
 
 using namespace mlir;
 
@@ -106,9 +106,6 @@ void TupleToStructPass::runOnOperation() {
 
         RewritePatternSet patterns(&context);
         ConversionTarget target(context);
-
-        target.addIllegalOp<P4::P4MLIR::P4HIR::TupleOp>();
-        target.addIllegalOp<P4::P4MLIR::P4HIR::TupleExtractOp>();
 
         target.markUnknownOpDynamicallyLegal([&](Operation *op){
             return typeConverter.isLegal(op);
