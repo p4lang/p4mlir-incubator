@@ -13,7 +13,7 @@ def SubIntAttrs : NativeCodeCall<"subIntegerAttrs($_builder, $0, $1, $2)">;
 def CreateConstOp : NativeCodeCall<"$_builder.create<P4HIR::ConstOp>($_loc, $0)">;
 
 class HasValueConstraint<int value> : Constraint<
-  CPred<"isIntegerAttr($0, " # value # ")">,
+  CPred<"isIntegerValue($0, " # value # ")">,
   "operand has value " # value
 >;
 
