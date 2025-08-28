@@ -603,7 +603,10 @@ def HeaderStackType : StructLikeType<"HeaderStack", "header_stack"> {
 //===----------------------------------------------------------------------===//
 // EnumType, ErrorType  & SerEnumType
 //===----------------------------------------------------------------------===//
-def EnumType : P4HIR_Type<"Enum", "enum", [AnnotatedType, HasDefaultValue]> {
+def EnumType : P4HIR_Type<"Enum", "enum", [
+  AnnotatedType, HasDefaultValue,
+  DeclareTypeInterfaceMethods<EnumRepresentationInterface>,
+]> {
   let summary = "enum type";
   let description = [{
     Represents an enumeration of values
@@ -645,11 +648,11 @@ def EnumType : P4HIR_Type<"Enum", "enum", [AnnotatedType, HasDefaultValue]> {
 
   let extraClassDeclaration = [{
     /// Returns true if the requested field is part of this enum
-    bool contains(mlir::StringRef field) { return indexOf(field).has_value(); }
+    bool contains(mlir::StringRef field) const { return indexOf(field).has_value(); }
 
     /// Returns the index of the requested field, or a nullopt if the field is
     /// not part of this enum.
-    std::optional<size_t> indexOf(mlir::StringRef field);
+    std::optional<size_t> indexOf(mlir::StringRef field) const;
 
     mlir::TypedAttr getDefaultValue();
   }];
