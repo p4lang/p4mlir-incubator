@@ -343,9 +343,22 @@ def BinOp : P4HIR_Op<"binop", [Pure,
   let arguments = (ins Arg<BinOpKind, "binop kind">:$kind,
                        AnyIntP4Type:$lhs, AnyIntP4Type:$rhs);
 
+  let extraClassDeclaration = [{
+    bool isCommutative() {
+      auto kind = getKind();
+      return (kind == P4HIR::BinOpKind::Add) || (kind == P4HIR::BinOpKind::AddSat) ||
+             (kind == P4HIR::BinOpKind::Mul) || (kind == P4HIR::BinOpKind::And) ||
+             (kind == P4HIR::BinOpKind::Or) || (kind == P4HIR::BinOpKind::Xor);
+    }
+  }];
+
   let assemblyFormat = [{
     `(` $kind `,` $lhs `,` $rhs  `)` `:` type($lhs) attr-dict
   }];
+
+  let hasVerifier = 1;
+  let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def ConcatOp : P4HIR_Op<"concat", [Pure]> {
@@ -503,6 +516,7 @@ def CmpOp : P4HIR_Op<"cmp",
 
   // Already covered by the traits
   let hasVerifier = 0;
+  let hasFolder = 1;
 }
 
 def ScopeOp : P4HIR_Op<"scope", [
@@ -1182,6 +1196,7 @@ def SliceOp : P4HIR_Op<"slice",
   let assemblyFormat = [{
     $input`[`$highBit `:` $lowBit`]` attr-dict `:` type($input) `->` type($result)
   }];
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
