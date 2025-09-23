@@ -537,7 +537,8 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
 
         return foldIntBinop(std::modulus<llvm::APSInt>{});
     } else if (kind == P4HIR::BinOpKind::And || kind == P4HIR::BinOpKind::Or) {
-        // 0 and -1 represent all-zeros or all-ones constants when sign-extended in `isIntegerValue`.
+        // 0 and -1 represent all-zeros or all-ones constants when sign-extended in
+        // `isIntegerValue`.
         int64_t neutralVal = (kind == P4HIR::BinOpKind::And) ? int64_t(-1) : int64_t(0);
         int64_t absorbVal = (kind == P4HIR::BinOpKind::And) ? int64_t(0) : int64_t(-1);
 
@@ -545,7 +546,8 @@ OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
         if (isIntegerValue(adaptor.getRhs(), neutralVal)) return getLhs();
 
         /// OP(a, absorbVal) -> absorbVal
-        if (isIntegerValue(adaptor.getRhs(), absorbVal)) return getIntegerAttr(getType(), absorbVal);
+        if (isIntegerValue(adaptor.getRhs(), absorbVal))
+            return getIntegerAttr(getType(), absorbVal);
 
         /// OP(a, a) -> a
         if (getLhs() == getRhs()) return getLhs();
@@ -1172,7 +1174,7 @@ LogicalResult P4HIR::FuncOp::verify() {
 
 void P4HIR::FuncOp::build(OpBuilder &builder, OperationState &result, llvm::StringRef name,
                           P4HIR::FuncType type, bool isExternal, ArrayRef<DictionaryAttr> argAttrs,
-                          mlir::DictionaryAttr annotations) {
+                          mlir::DictionaryAttr annotations, ArrayRef<DictionaryAttr> resAttrs) {
     result.addRegion();
 
     result.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
@@ -1183,9 +1185,9 @@ void P4HIR::FuncOp::build(OpBuilder &builder, OperationState &result, llvm::Stri
     if (annotations && !annotations.empty())
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
 
-    function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-                                                  /*resultAttrs=*/std::nullopt,
-                                                  getArgAttrsAttrName(result.name), {});
+    call_interface_impl::addArgAndResultAttrs(builder, result, argAttrs, resAttrs,
+                                              getArgAttrsAttrName(result.name),
+                                              getResAttrsAttrName(result.name));
 }
 
 void P4HIR::FuncOp::createEntryBlock() {
@@ -1263,12 +1265,12 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
     }
 
     llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
-    llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
+    llvm::SmallVector<DictionaryAttr, 0> resultAttrs;
     llvm::SmallVector<Type, 8> argTypes;
-    llvm::SmallVector<Type, 0> resultTypes;
+    llvm::SmallVector<Type, 1> resultTypes;
     bool isVariadic = false;
-    if (function_interface_impl::parseFunctionSignature(parser, /*allowVariadic=*/false, arguments,
-                                                        isVariadic, resultTypes, resultAttrs))
+    if (function_interface_impl::parseFunctionSignatureWithArguments(
+            parser, /*allowVariadic=*/false, arguments, isVariadic, resultTypes, resultAttrs))
         return failure();
 
     // Actions have no results
@@ -1280,7 +1282,7 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
     // Build the function type.
     for (auto &arg : arguments) argTypes.push_back(arg.type);
 
-    // Fetch return type or set it to void if empty/ommited.
+    // Fetch return type or set it to void if empty / not present.
     mlir::Type returnType =
         (resultTypes.empty() ? P4HIR::VoidType::get(builder.getContext()) : resultTypes.front());
 
@@ -1294,8 +1296,9 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
 
     // Add the attributes to the function arguments.
     assert(resultAttrs.size() == resultTypes.size());
-    function_interface_impl::addArgAndResultAttrs(builder, state, arguments, resultAttrs,
-                                                  getArgAttrsAttrName(state.name), {});
+    call_interface_impl::addArgAndResultAttrs(builder, state, arguments, resultAttrs,
+                                              getArgAttrsAttrName(state.name),
+                                              getResAttrsAttrName(state.name));
 
     // Parse annotations
     mlir::DictionaryAttr annotations;
@@ -1917,9 +1920,9 @@ void P4HIR::ParserOp::build(mlir::OpBuilder &builder, mlir::OperationState &resu
 
     if (annotations && !annotations.empty())
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
-    function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-                                                  /*resultAttrs=*/std::nullopt,
-                                                  getArgAttrsAttrName(result.name), {});
+    call_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                              /*resultAttrs=*/std::nullopt,
+                                              getArgAttrsAttrName(result.name), {});
 }
 
 void P4HIR::ParserOp::createEntryBlock() {
@@ -2022,16 +2025,17 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
     result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
 
     llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
+    llvm::SmallVector<DictionaryAttr, 8> argAttrs;
     llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
     llvm::SmallVector<Type, 8> argTypes;
     llvm::SmallVector<Type, 0> resultTypes;
-    bool isVariadic = false;
-    if (function_interface_impl::parseFunctionSignature(parser, /*allowVariadic=*/false, arguments,
-                                                        isVariadic, resultTypes, resultAttrs))
+    bool isVariadic;
+    if (function_interface_impl::parseFunctionSignatureWithArguments(
+            parser, /*allowVariadic=*/false, arguments, isVariadic, resultTypes, resultAttrs))
         return mlir::failure();
 
     // Parsers have no results
-    if (!resultTypes.empty())
+    if (!resultTypes.empty() || !resultAttrs.empty())
         return parser.emitError(loc, "parsers should not produce any results");
 
     // Build the function type.
@@ -2072,15 +2076,15 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
 
     // Parse annotations
     mlir::DictionaryAttr annotations;
-    if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+    if (mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
         if (parser.parseAttribute<mlir::DictionaryAttr>(annotations)) return failure();
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
     }
 
     // Add the attributes to the function arguments.
-    assert(resultAttrs.size() == resultTypes.size());
-    function_interface_impl::addArgAndResultAttrs(builder, result, arguments, resultAttrs,
-                                                  getArgAttrsAttrName(result.name), {});
+    assert(argAttrs.empty() || argAttrs.size() == argTypes.size());
+    call_interface_impl::addArgAndResultAttrs(builder, result, arguments, resultAttrs,
+                                              getArgAttrsAttrName(result.name), {});
 
     // Parse the parser body.
     auto *body = result.addRegion();
@@ -2470,9 +2474,9 @@ void P4HIR::PackageOp::build(mlir::OpBuilder &builder, mlir::OperationState &res
     if (annotations && !annotations.empty())
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
 
-    function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-                                                  /*resultAttrs=*/std::nullopt,
-                                                  getArgAttrsAttrName(result.name), {});
+    call_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                              /*resultAttrs=*/std::nullopt,
+                                              getArgAttrsAttrName(result.name), {});
 }
 
 //===----------------------------------------------------------------------===//
@@ -2884,9 +2888,9 @@ void P4HIR::ControlOp::build(mlir::OpBuilder &builder, mlir::OperationState &res
 
     if (annotations && !annotations.empty())
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
-    function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-                                                  /*resultAttrs=*/std::nullopt,
-                                                  getArgAttrsAttrName(result.name), {});
+    call_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                              /*resultAttrs=*/std::nullopt,
+                                              getArgAttrsAttrName(result.name), {});
 }
 
 void P4HIR::ControlOp::createEntryBlock() {
@@ -2931,8 +2935,7 @@ void P4HIR::ControlOp::print(mlir::OpAsmPrinter &printer) {
 }
 
 mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
-    // This is essentially function_interface_impl::parseFunctionOp, but we do not have
-    // result / argument attributes (for now)
+    // This is essentially function_interface_impl::parseFunctionOp, but there is no control results
     llvm::SMLoc loc = parser.getCurrentLocation();
     auto &builder = parser.getBuilder();
 
@@ -2949,12 +2952,12 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
     llvm::SmallVector<Type, 8> argTypes;
     llvm::SmallVector<Type, 0> resultTypes;
     bool isVariadic = false;
-    if (function_interface_impl::parseFunctionSignature(parser, /*allowVariadic=*/false, arguments,
-                                                        isVariadic, resultTypes, resultAttrs))
+    if (function_interface_impl::parseFunctionSignatureWithArguments(
+            parser, /*allowVariadic=*/false, arguments, isVariadic, resultTypes, resultAttrs))
         return mlir::failure();
 
     // Controls have no results
-    if (!resultTypes.empty())
+    if (!resultTypes.empty() || !resultAttrs.empty())
         return parser.emitError(loc, "controls should not produce any results");
 
     // Build the function type.
@@ -3001,9 +3004,8 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
     }
 
     // Add the attributes to the control arguments.
-    assert(resultAttrs.size() == resultTypes.size());
-    function_interface_impl::addArgAndResultAttrs(builder, result, arguments, resultAttrs,
-                                                  getArgAttrsAttrName(result.name), {});
+    call_interface_impl::addArgAndResultAttrs(builder, result, arguments, resultAttrs,
+                                              getArgAttrsAttrName(result.name), {});
 
     // Parse the control body.
     auto *body = result.addRegion();
@@ -3157,9 +3159,9 @@ void P4HIR::TableActionOp::build(
     if (annotations && !annotations.empty())
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
 
-    function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-                                                  /*resultAttrs=*/std::nullopt,
-                                                  getArgAttrsAttrName(result.name), {});
+    call_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                              /*resultAttrs=*/std::nullopt,
+                                              getArgAttrsAttrName(result.name), {});
 
     OpBuilder::InsertionGuard guard(builder);
     auto *body = result.addRegion();
@@ -3217,16 +3219,16 @@ mlir::ParseResult P4HIR::TableActionOp::parse(mlir::OpAsmParser &parser,
         return mlir::failure();
 
     llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
-    llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
+    llvm::SmallVector<DictionaryAttr, 0> resultAttrs;
     llvm::SmallVector<Type, 8> argTypes;
     llvm::SmallVector<Type, 0> resultTypes;
     bool isVariadic = false;
-    if (function_interface_impl::parseFunctionSignature(parser, /*allowVariadic=*/false, arguments,
-                                                        isVariadic, resultTypes, resultAttrs))
+    if (function_interface_impl::parseFunctionSignatureWithArguments(
+            parser, /*allowVariadic=*/false, arguments, isVariadic, resultTypes, resultAttrs))
         return mlir::failure();
 
     // Table actions have no results
-    if (!resultTypes.empty())
+    if (!resultTypes.empty() || !resultAttrs.empty())
         return parser.emitError(loc, "table actions should not produce any results");
 
     // Build the function type.
@@ -3242,8 +3244,8 @@ mlir::ParseResult P4HIR::TableActionOp::parse(mlir::OpAsmParser &parser,
 
     // Add the attributes to the function arguments.
     assert(resultAttrs.size() == resultTypes.size());
-    function_interface_impl::addArgAndResultAttrs(builder, result, arguments, resultAttrs,
-                                                  getArgAttrsAttrName(result.name), {});
+    call_interface_impl::addArgAndResultAttrs(builder, result, arguments, resultAttrs,
+                                              getArgAttrsAttrName(result.name), {});
 
     // Parse annotations
     mlir::DictionaryAttr annotations;
