@@ -63,7 +63,7 @@ def ConstOp : P4HIR_Op<"const",
         build($_builder, $_state, value.getType(), value, {}, {});
       }]>,
       OpBuilder<(ins "mlir::TypedAttr":$value, "mlir::DictionaryAttr":$annotations), [{
-        build($_builder, $_state, value.getType(), value, {}, annotations.empty() ? mlir::DictionaryAttr() : annotations);
+        build($_builder, $_state, value.getType(), value, {}, annotations && annotations.empty() ? mlir::DictionaryAttr() : annotations);
       }]>,
 
       OpBuilder<(ins "mlir::TypedAttr":$value, "const llvm::Twine &":$name), [{
@@ -72,7 +72,7 @@ def ConstOp : P4HIR_Op<"const",
       }]>,
       OpBuilder<(ins "mlir::TypedAttr":$value, "const llvm::Twine &":$name, "mlir::DictionaryAttr":$annotations), [{
         build($_builder, $_state,
-              value.getType(), value, $_builder.getStringAttr(name), annotations.empty() ? mlir::DictionaryAttr() : annotations);
+              value.getType(), value, $_builder.getStringAttr(name), annotations && annotations.empty() ? mlir::DictionaryAttr() : annotations);
       }]>
     ];
 
@@ -132,7 +132,7 @@ def VariableOp : P4HIR_Op<"variable", [
 
     OpBuilder<(ins "mlir::Type":$resultType, "const llvm::Twine &":$name, "mlir::DictionaryAttr":$annotations), [{
           build($_builder, $_state,
-                resultType, $_builder.getStringAttr(name), false, annotations.empty() ? mlir::DictionaryAttr() : annotations);
+                resultType, $_builder.getStringAttr(name), false, annotations && annotations.empty() ? mlir::DictionaryAttr() : annotations);
         }]>,
 
     OpBuilder<(ins "mlir::Type":$resultType, "const llvm::Twine &":$name, "bool":$init), [{
@@ -142,7 +142,7 @@ def VariableOp : P4HIR_Op<"variable", [
 
     OpBuilder<(ins "mlir::Type":$resultType, "const llvm::Twine &":$name, "bool":$init, "mlir::DictionaryAttr":$annotations), [{
           build($_builder, $_state,
-                resultType, $_builder.getStringAttr(name), init, annotations.empty() ? mlir::DictionaryAttr() : annotations);
+                resultType, $_builder.getStringAttr(name), init, annotations && annotations.empty() ? mlir::DictionaryAttr() : annotations);
         }]>,
 
   ];
@@ -386,8 +386,8 @@ def ConcatOp : P4HIR_Op<"concat", [Pure]> {
   // Custom builder to infer the result type with the proper width
   let builders = [
     OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs), [{
-      auto lhsBits = lhs.getType().cast<BitsType>();
-      auto rhsBits = rhs.getType().cast<BitsType>();
+      auto lhsBits = mlir::cast<BitsType>(lhs.getType());
+      auto rhsBits = mlir::cast<BitsType>(rhs.getType());
       auto resultWidth = lhsBits.getWidth() + rhsBits.getWidth();
       auto resultType = BitsType::get($_builder.getContext(), resultWidth, lhsBits.isSigned());
       build($_builder, $_state, resultType, lhs, rhs);
@@ -848,6 +848,7 @@ def FuncOp : P4HIR_Op<"func", [
                        TypeAttrOf<FuncType>:$function_type,
                        UnitAttr:$action,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictArrayAttr>:$res_attrs,
                        OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region AnyRegion:$body);
   let skipDefaultBuilders = 1;
@@ -856,7 +857,8 @@ def FuncOp : P4HIR_Op<"func", [
     OpBuilder<(ins "llvm::StringRef":$name, "FuncType":$type,
                CArg<"bool", "false">:$isExternal,
                CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs,
-               CArg<"mlir::DictionaryAttr", "{}">:$annotations)>
+               CArg<"mlir::DictionaryAttr", "{}">:$annotations,
+               CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$resAttrs)>
   ];
 
   let extraClassDeclaration = [{
@@ -974,7 +976,9 @@ def CallOp : P4HIR_Op<"call",
   let results = (outs Optional<CallResultP4Type>:$result);
   let arguments = (ins SymbolRefAttr:$callee,
                        OptionalAttr<TypeArrayAttr>:$type_operands,
-                       Variadic<AnyType>:$arg_operands);
+                       Variadic<AnyType>:$arg_operands,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictArrayAttr>:$res_attrs);
 
   let skipDefaultBuilders = 1;
   let hasVerifier = 0;
@@ -1240,10 +1244,40 @@ def InstantiateOp : P4HIR_Op<"instantiate",
   // TODO: refine parameter type (must be constants!)
   let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
                        SymbolNameAttr:$sym_name, OptionalAttr<ArrayAttr>:$type_parameters,
-                       OptionalAttr<DictionaryAttr>:$annotations);
+                       OptionalAttr<DictionaryAttr>:$annotations,
+                       OptionalAttr<ArrayAttr>:$arg_attrs);
 
   // TODO: Add verifier
   let hasVerifier = 0;
+
+  let builders = [
+      OpBuilder<(ins "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name), [{
+        build($_builder, $_state,
+              callee, arg_operands, sym_name, nullptr, nullptr, nullptr);
+      }]>,
+
+      OpBuilder<(ins "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name, "mlir::TypeRange":$type_parameters), [{
+        build($_builder, $_state,
+              callee, arg_operands, sym_name,
+              type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters),
+              nullptr, nullptr);
+      }]>,
+
+      OpBuilder<(ins "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name, "mlir::DictionaryAttr":$annotations), [{
+        build($_builder, $_state,
+              callee, arg_operands, sym_name, nullptr,
+              annotations && annotations.empty() ? nullptr : annotations,
+              nullptr);
+      }]>,
+
+      OpBuilder<(ins "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name, "mlir::TypeRange":$type_parameters, "mlir::DictionaryAttr":$annotations), [{
+        build($_builder, $_state,
+              callee, arg_operands, sym_name,
+              type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters),
+              annotations && annotations.empty() ? nullptr : annotations,
+              nullptr);
+      }]>,
+  ];
 
   let extraClassDeclaration = [{
     /// Return the callee of this operation.
@@ -1259,6 +1293,10 @@ def InstantiateOp : P4HIR_Op<"instantiate",
     void setArg(unsigned index, mlir::Value value) {
       setOperand(index, value);
     }
+
+    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
+    mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
+    void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
   }];
 
   let assemblyFormat = [{
@@ -1289,10 +1327,23 @@ def ConstructOp : P4HIR_Op<"construct",
   // TODO: Refine result types, refine parameter type (must be constants!)
   let results = (outs P4ObjectType:$result);
   let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
-                       OptionalAttr<ArrayAttr>:$type_parameters);
+                       OptionalAttr<ArrayAttr>:$type_parameters,
+                       OptionalAttr<ArrayAttr>:$arg_attrs);
 
   // TODO: Add verifier
   let hasVerifier = 0;
+
+  let builders = [
+      OpBuilder<(ins "mlir::Type":$result, "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands), [{
+        build($_builder, $_state,
+              result, callee, arg_operands, nullptr, nullptr);
+      }]>,
+
+      OpBuilder<(ins "mlir::Type":$result, "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands, "mlir::TypeRange":$type_parameters), [{
+        build($_builder, $_state,
+              result, callee, arg_operands, type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters), nullptr);
+      }]>,
+  ];
 
   let extraClassDeclaration = [{
     /// Return the callee of this operation.
@@ -1308,6 +1359,10 @@ def ConstructOp : P4HIR_Op<"construct",
     void setArg(unsigned index, mlir::Value value) {
       setOperand(index, value);
     }
+
+    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
+    mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
+    void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
   }];
 
   let assemblyFormat = [{
@@ -1370,10 +1425,18 @@ def ApplyOp : P4HIR_Op<"apply",
 
   // TODO: Refine result types, refine parameter type (must be constants!)
   let results = (outs);
-  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands);
+  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs);
 
   // TODO: Add verifier
   let hasVerifier = 0;
+
+  let builders = [
+      OpBuilder<(ins "mlir::SymbolRefAttr":$callee, "mlir::ValueRange":$arg_operands), [{
+        build($_builder, $_state,
+              callee, arg_operands, nullptr);
+      }]>,
+  ];
 
   let extraClassDeclaration = [{
     /// Return the callee of this operation.
@@ -1385,6 +1448,10 @@ def ApplyOp : P4HIR_Op<"apply",
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
       (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
     }
+
+    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
+    mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
+    void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
   }];
 
   let assemblyFormat = [{
@@ -1416,6 +1483,33 @@ def ExternOp : P4HIR_Op<"extern",
   let arguments = (ins SymbolNameAttr:$sym_name, OptionalAttr<ArrayAttr>:$type_parameters,
                        OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
+
+  let builders = [
+      OpBuilder<(ins "mlir::StringRef":$sym_name), [{
+        build($_builder, $_state,  sym_name, mlir::ArrayAttr(), mlir::DictionaryAttr());
+      }]>,
+
+      OpBuilder<(ins "mlir::StringRef":$sym_name, "mlir::TypeRange":$type_parameters), [{
+        build($_builder, $_state,
+              sym_name,
+              type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters),
+              nullptr);
+      }]>,
+
+      OpBuilder<(ins "mlir::StringRef":$sym_name, "mlir::DictionaryAttr":$annotations), [{
+        build($_builder, $_state,
+              sym_name, mlir::ArrayAttr(),
+              annotations && annotations.empty() ? nullptr : annotations);
+      }]>,
+
+      OpBuilder<(ins "mlir::StringRef":$sym_name, "mlir::TypeRange":$type_parameters, "mlir::DictionaryAttr":$annotations), [{
+        build($_builder, $_state,
+              sym_name,
+              type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters),
+              annotations && annotations.empty() ? nullptr : annotations);
+      }]>,
+  ];
+
 
   let assemblyFormat = [{
     $sym_name (`<` $type_parameters^ `>`)? (`annotations` $annotations^)? $body attr-dict
@@ -1451,7 +1545,8 @@ def CallMethodOp : P4HIR_Op<"call_method",
   let arguments = (ins SymbolRefAttr:$callee,
                        Optional<P4ObjectType>:$obj,
                        OptionalAttr<TypeArrayAttr>:$type_operands,
-                       Variadic<AnyType>:$arg_operands);
+                       Variadic<AnyType>:$arg_operands,
+                       OptionalAttr<ArrayAttr>:$arg_attrs);
 
   // let hasCustomAssemblyFormat = 1;
 
@@ -1513,6 +1608,10 @@ def CallMethodOp : P4HIR_Op<"call_method",
 
     P4HIR::ExternOp getExtern();
     mlir::StringAttr getMethodName();
+
+    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
+    mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
+    void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
   }];
 }
 

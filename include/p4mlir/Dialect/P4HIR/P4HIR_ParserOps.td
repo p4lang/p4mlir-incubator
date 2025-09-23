@@ -41,6 +41,10 @@ def ParserOp : P4HIR_Op<"parser",
       return {};
     }
 
+    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
+    mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
+    void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
+
     /// IR-related methods
 
     /// Returns the range over all states defined in the parser

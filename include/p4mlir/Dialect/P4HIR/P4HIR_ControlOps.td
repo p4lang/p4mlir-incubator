@@ -38,6 +38,10 @@ def ControlOp : P4HIR_Op<"control",
       return {};
     }
 
+    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
+    mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
+    void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
+
     void createEntryBlock();
   }];
 }
@@ -108,6 +112,14 @@ def TableApplyOp : P4HIR_Op<"table_apply",
     mlir::MutableOperandRange getArgOperandsMutable() {
       llvm_unreachable("no operands for table apply");
     }
+
+    mlir::ArrayAttr getArgAttrsAttr() { return nullptr; }
+    mlir::ArrayAttr removeArgAttrsAttr() { return nullptr; }
+    void setArgAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no arg attributes"); }
+
+    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
+    mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
+    void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
   }];
 
   let assemblyFormat = [{
