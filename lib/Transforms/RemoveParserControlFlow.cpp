@@ -93,7 +93,7 @@ void RemoveParserControlFlowPass::runOnOperation() {
     mlir::FrozenRewritePatternSet frozenPatterns(std::move(patterns));
 
     mlir::GreedyRewriteConfig grc;
-    grc.useTopDownTraversal = true;
+    grc.setUseTopDownTraversal(true);
 
     auto walkResult = getOperation()->walk([&](P4HIR::ParserOp parserOp) -> mlir::WalkResult {
         // Interrupt on failure.
