@@ -22,7 +22,7 @@ header_union U {
 // CHECK-LABEL:   p4hir.func action @header_union_isValid
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
 // CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
-// CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1_>
+// CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1>
 // CHECK:           %[[VAL_3:.*]] = p4hir.read %[[VAL_2]] : <!validity_bit>
 // CHECK:           %[[VAL_4:.*]] = p4hir.const #[[$ATTR_VALID]]
 // CHECK:           %[[VAL_5:.*]] = p4hir.cmp(eq, %[[VAL_3]], %[[VAL_4]]) : !validity_bit, !p4hir.bool
@@ -31,7 +31,7 @@ header_union U {
 // CHECK:             p4hir.yield %[[VAL_7]] : !p4hir.bool
 // CHECK:           }, false {
 // CHECK:             %[[VAL_8:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h2"] : <!U>
-// CHECK:             %[[VAL_9:.*]] = p4hir.struct_extract_ref %[[VAL_8]]["__valid"] : <!H2_>
+// CHECK:             %[[VAL_9:.*]] = p4hir.struct_extract_ref %[[VAL_8]]["__valid"] : <!H2>
 // CHECK:             %[[VAL_10:.*]] = p4hir.read %[[VAL_9]] : <!validity_bit>
 // CHECK:             %[[VAL_11:.*]] = p4hir.const #[[$ATTR_VALID]]
 // CHECK:             %[[VAL_12:.*]] = p4hir.cmp(eq, %[[VAL_10]], %[[VAL_11]]) : !validity_bit, !p4hir.bool
@@ -59,11 +59,11 @@ action header_union_isValid() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h2"] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H2_>
+// CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H2>
 // CHECK:           p4hir.assign %[[VAL_3]], %[[VAL_4]] : <!validity_bit>
 // CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_5:.*]] = p4hir.const #[[$ATTR_VALID]]
-// CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1_>
+// CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1>
 // CHECK:           p4hir.assign %[[VAL_5]], %[[VAL_6]] : <!validity_bit>
 // CHECK:           p4hir.return
 
@@ -77,11 +77,11 @@ action header_setValid() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H1_>
+// CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H1>
 // CHECK:           p4hir.assign %[[VAL_3]], %[[VAL_4]] : <!validity_bit>
 // CHECK:           %[[VAL_5:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h2"] : <!U>
 // CHECK:           %[[VAL_6:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_7:.*]] = p4hir.struct_extract_ref %[[VAL_5]]["__valid"] : <!H2_>
+// CHECK:           %[[VAL_7:.*]] = p4hir.struct_extract_ref %[[VAL_5]]["__valid"] : <!H2>
 // CHECK:           p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!validity_bit>
 // CHECK:           p4hir.return
 
@@ -93,18 +93,18 @@ action header_setInvalid() {
 
 // CHECK-LABEL:   p4hir.func action @assign_header
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
-// CHECK:           %[[VAL_1:.*]] = p4hir.variable ["h"] : <!H1_>
+// CHECK:           %[[VAL_1:.*]] = p4hir.variable ["h"] : <!H1>
 // CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_4:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_5:.*]] = p4hir.struct_extract_ref %[[VAL_3]]["__valid"] : <!H1_>
+// CHECK:           %[[VAL_5:.*]] = p4hir.struct_extract_ref %[[VAL_3]]["__valid"] : <!H1>
 // CHECK:           p4hir.assign %[[VAL_4]], %[[VAL_5]] : <!validity_bit>
 // CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h2"] : <!U>
 // CHECK:           %[[VAL_7:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_8:.*]] = p4hir.struct_extract_ref %[[VAL_6]]["__valid"] : <!H2_>
+// CHECK:           %[[VAL_8:.*]] = p4hir.struct_extract_ref %[[VAL_6]]["__valid"] : <!H2>
 // CHECK:           p4hir.assign %[[VAL_7]], %[[VAL_8]] : <!validity_bit>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
-// CHECK:           %[[VAL_9:.*]] = p4hir.read %[[VAL_1]] : <!H1_>
-// CHECK:           p4hir.assign %[[VAL_9]], %[[VAL_2]] : <!H1_>
+// CHECK:           %[[VAL_9:.*]] = p4hir.read %[[VAL_1]] : <!H1>
+// CHECK:           p4hir.assign %[[VAL_9]], %[[VAL_2]] : <!H1>
 // CHECK:           p4hir.return
 
 action assign_header() {
@@ -118,17 +118,17 @@ action assign_header() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H1_>
+// CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H1>
 // CHECK:           p4hir.assign %[[VAL_3]], %[[VAL_4]] : <!validity_bit>
 // CHECK:           %[[VAL_5:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h2"] : <!U>
 // CHECK:           %[[VAL_6:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_7:.*]] = p4hir.struct_extract_ref %[[VAL_5]]["__valid"] : <!H2_>
+// CHECK:           %[[VAL_7:.*]] = p4hir.struct_extract_ref %[[VAL_5]]["__valid"] : <!H2>
 // CHECK:           p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!validity_bit>
 // CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_8:.*]] = p4hir.const #[[$ATTR_CONST42]]
 // CHECK:           %[[VAL_9:.*]] = p4hir.const #[[$ATTR_VALID]]
-// CHECK:           %[[VAL_10:.*]] = p4hir.struct (%[[VAL_8]], %[[VAL_9]]) : !H1_
-// CHECK:           p4hir.assign %[[VAL_10]], %[[VAL_1]] : <!H1_>
+// CHECK:           %[[VAL_10:.*]] = p4hir.struct (%[[VAL_8]], %[[VAL_9]]) : !H1
+// CHECK:           p4hir.assign %[[VAL_10]], %[[VAL_1]] : <!H1>
 // CHECK:           p4hir.return
 
 action assign_tuple() {
@@ -141,11 +141,11 @@ action assign_tuple() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H1_>
+// CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_2]]["__valid"] : <!H1>
 // CHECK:           p4hir.assign %[[VAL_3]], %[[VAL_4]] : <!validity_bit>
 // CHECK:           %[[VAL_5:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h2"] : <!U>
 // CHECK:           %[[VAL_6:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_7:.*]] = p4hir.struct_extract_ref %[[VAL_5]]["__valid"] : <!H2_>
+// CHECK:           %[[VAL_7:.*]] = p4hir.struct_extract_ref %[[VAL_5]]["__valid"] : <!H2>
 // CHECK:           p4hir.assign %[[VAL_6]], %[[VAL_7]] : <!validity_bit>
 // CHECK:           p4hir.return
 
@@ -173,11 +173,11 @@ action assign_header_union() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u", init] : <!U>
 // CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1_>
+// CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1>
 // CHECK:           p4hir.assign %[[VAL_2]], %[[VAL_3]] : <!validity_bit>
 // CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h2"] : <!U>
 // CHECK:           %[[VAL_5:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_4]]["__valid"] : <!H2_>
+// CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_4]]["__valid"] : <!H2>
 // CHECK:           p4hir.assign %[[VAL_5]], %[[VAL_6]] : <!validity_bit>
 // CHECK:           p4hir.return
 
@@ -189,11 +189,11 @@ action init_with_invalid_header_union() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
 // CHECK:           %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h1"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1_>
+// CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1>
 // CHECK:           p4hir.assign %[[VAL_2]], %[[VAL_3]] : <!validity_bit>
 // CHECK:           %[[VAL_4:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["h2"] : <!U>
 // CHECK:           %[[VAL_5:.*]] = p4hir.const #[[$ATTR_INVALID]]
-// CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_4]]["__valid"] : <!H2_>
+// CHECK:           %[[VAL_6:.*]] = p4hir.struct_extract_ref %[[VAL_4]]["__valid"] : <!H2>
 // CHECK:           p4hir.assign %[[VAL_5]], %[[VAL_6]] : <!validity_bit>
 // CHECK:           p4hir.return
 
@@ -205,10 +205,10 @@ action assign_invalid_header_union() {
 
 // CHECK-LABEL:   p4hir.func action @get_header
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
-// CHECK:           %[[VAL_1:.*]] = p4hir.variable ["h2"] : <!H1_>
+// CHECK:           %[[VAL_1:.*]] = p4hir.variable ["h2"] : <!H1>
 // CHECK:           %[[VAL_2:.*]] = p4hir.read %[[VAL_0]] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract %[[VAL_2]]["h1"] : !U
-// CHECK:           p4hir.assign %[[VAL_3]], %[[VAL_1]] : <!H1_>
+// CHECK:           p4hir.assign %[[VAL_3]], %[[VAL_1]] : <!H1>
 // CHECK:           p4hir.return
 
 action get_header() {
@@ -256,7 +256,7 @@ action neq_header_unions() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
 // CHECK:           %[[VAL_1:.*]] = p4hir.read %[[VAL_0]] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract %[[VAL_1]]["h1"] : !U
-// CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract %[[VAL_2]]["__valid"] : !H1_
+// CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract %[[VAL_2]]["__valid"] : !H1
 // CHECK:           %[[VAL_4:.*]] = p4hir.const #[[$ATTR_VALID]]
 // CHECK:           %[[VAL_5:.*]] = p4hir.cmp(eq, %[[VAL_3]], %[[VAL_4]]) : !validity_bit, !p4hir.bool
 // CHECK:           %[[VAL_6:.*]] = p4hir.ternary(%[[VAL_5]], true {
@@ -264,7 +264,7 @@ action neq_header_unions() {
 // CHECK:             p4hir.yield %[[VAL_7]] : !p4hir.bool
 // CHECK:           }, false {
 // CHECK:             %[[VAL_8:.*]] = p4hir.struct_extract %[[VAL_1]]["h2"] : !U
-// CHECK:             %[[VAL_9:.*]] = p4hir.struct_extract %[[VAL_8]]["__valid"] : !H2_
+// CHECK:             %[[VAL_9:.*]] = p4hir.struct_extract %[[VAL_8]]["__valid"] : !H2
 // CHECK:             %[[VAL_10:.*]] = p4hir.const #[[$ATTR_VALID]]
 // CHECK:             %[[VAL_11:.*]] = p4hir.cmp(eq, %[[VAL_9]], %[[VAL_10]]) : !validity_bit, !p4hir.bool
 // CHECK:             %[[VAL_12:.*]] = p4hir.ternary(%[[VAL_11]], true {
@@ -292,7 +292,7 @@ action equ_with_invalid_header_union() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["u"] : <!U>
 // CHECK:           %[[VAL_1:.*]] = p4hir.read %[[VAL_0]] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract %[[VAL_1]]["h1"] : !U
-// CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract %[[VAL_2]]["__valid"] : !H1_
+// CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract %[[VAL_2]]["__valid"] : !H1
 // CHECK:           %[[VAL_4:.*]] = p4hir.const #[[$ATTR_VALID]]
 // CHECK:           %[[VAL_5:.*]] = p4hir.cmp(eq, %[[VAL_3]], %[[VAL_4]]) : !validity_bit, !p4hir.bool
 // CHECK:           %[[VAL_6:.*]] = p4hir.ternary(%[[VAL_5]], true {
@@ -300,7 +300,7 @@ action equ_with_invalid_header_union() {
 // CHECK:             p4hir.yield %[[VAL_7]] : !p4hir.bool
 // CHECK:           }, false {
 // CHECK:             %[[VAL_8:.*]] = p4hir.struct_extract %[[VAL_1]]["h2"] : !U
-// CHECK:             %[[VAL_9:.*]] = p4hir.struct_extract %[[VAL_8]]["__valid"] : !H2_
+// CHECK:             %[[VAL_9:.*]] = p4hir.struct_extract %[[VAL_8]]["__valid"] : !H2
 // CHECK:             %[[VAL_10:.*]] = p4hir.const #[[$ATTR_VALID]]
 // CHECK:             %[[VAL_11:.*]] = p4hir.cmp(eq, %[[VAL_9]], %[[VAL_10]]) : !validity_bit, !p4hir.bool
 // CHECK:             %[[VAL_12:.*]] = p4hir.ternary(%[[VAL_11]], true {

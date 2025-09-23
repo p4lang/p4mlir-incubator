@@ -2703,8 +2703,7 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
         BUG_CHECK(parserSym, "expected reference parser to be converted: %1%", dbp(parser));
 
         auto instance = builder.create<P4HIR::ConstructOp>(getLoc(builder, cce), resultType,
-                                                           parserSym.getRootReference(), operands,
-                                                           mlir::ArrayAttr());
+                                                           parserSym.getRootReference(), operands);
         setValue(cce, instance.getResult());
     } else if (const auto *control = type->to<P4::IR::P4Control>()) {
         LOG4("resolved as control instantiation");
@@ -2712,24 +2711,21 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
         BUG_CHECK(controlSym, "expected reference control to be converted: %1%", dbp(control));
 
         auto instance = builder.create<P4HIR::ConstructOp>(getLoc(builder, cce), resultType,
-                                                           controlSym.getRootReference(), operands,
-                                                           mlir::ArrayAttr());
+                                                           controlSym.getRootReference(), operands);
         setValue(cce, instance.getResult());
     } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
         LOG4("resolved as extern instantiation");
 
         auto externName = builder.getStringAttr(ext->name.string_view());
-        auto instance = builder.create<P4HIR::ConstructOp>(
-            getLoc(builder, cce), resultType, externName, operands,
-            typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters));
+        auto instance = builder.create<P4HIR::ConstructOp>(getLoc(builder, cce), resultType,
+                                                           externName, operands, typeParameters);
         setValue(cce, instance.getResult());
     } else if (const auto *pkg = type->to<P4::IR::Type_Package>()) {
         LOG4("resolved as package instantiation");
 
         auto pkgName = builder.getStringAttr(pkg->name.string_view());
-        auto instance = builder.create<P4HIR::ConstructOp>(
-            getLoc(builder, cce), resultType, pkgName, operands,
-            typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters));
+        auto instance = builder.create<P4HIR::ConstructOp>(getLoc(builder, cce), resultType,
+                                                           pkgName, operands, typeParameters);
         setValue(cce, instance.getResult());
     } else {
         BUG("unsupported constructor call: %1% (of type %2%)", cce, dbp(type));
@@ -3083,7 +3079,6 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
     ConversionTracer trace("Converting ", decl);
 
     auto annotations = convert(decl->annotations);
-    if (annotations.empty()) annotations = mlir::DictionaryAttr();
 
     // P4::Instantiation goes via typeMap and it returns some weird clone
     // instead of converted type
@@ -3145,17 +3140,14 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         BUG_CHECK(parserSym, "expected reference parser to be converted: %1%", dbp(parser));
 
         auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), parserSym.getRootReference(), operands, nameAttr,
-            mlir::ArrayAttr(), annotations);
+            getLoc(builder, decl), parserSym.getRootReference(), operands, nameAttr, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
         LOG4("resolved as extern instantiation");
         auto externName = builder.getStringAttr(ext->name.string_view());
 
         auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), externName, operands, nameAttr,
-            typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters),
-            annotations);
+            getLoc(builder, decl), externName, operands, nameAttr, typeParameters, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *control = type->to<P4::IR::P4Control>()) {
         LOG4("resolved as control instantiation");
@@ -3163,16 +3155,13 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         BUG_CHECK(controlSym, "expected reference control to be converted: %1%", dbp(control));
 
         auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), controlSym.getRootReference(), operands, nameAttr,
-            mlir::ArrayAttr(), annotations);
+            getLoc(builder, decl), controlSym.getRootReference(), operands, nameAttr, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *pkg = type->to<P4::IR::Type_Package>()) {
         LOG4("resolved as package instantiation");
         auto packageName = builder.getStringAttr(pkg->name.string_view());
         auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), packageName, operands, nameAttr,
-            typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters),
-            annotations);
+            getLoc(builder, decl), packageName, operands, nameAttr, typeParameters, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else {
         BUG("unsupported instance: %1% (of type %2%)", decl, dbp(type));
@@ -3192,10 +3181,8 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Extern *ext) {
 
     auto annotations = convert(ext->annotations);
 
-    auto extOp = builder.create<P4HIR::ExternOp>(
-        loc, ext->name.string_view(),
-        typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters),
-        annotations.empty() ? mlir::DictionaryAttr() : annotations);
+    auto extOp =
+        builder.create<P4HIR::ExternOp>(loc, ext->name.string_view(), typeParameters, annotations);
     extOp.createEntryBlock();
 
     mlir::OpBuilder::InsertionGuard guard(builder);
