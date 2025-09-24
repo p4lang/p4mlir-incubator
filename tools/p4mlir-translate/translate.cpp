@@ -143,7 +143,7 @@ class P4TypeConverter : public P4::Inspector, P4::ResolutionContext {
     bool preorder(const P4::IR::Type_ActionEnum *e) override;
     bool preorder(const P4::IR::Type_Header *h) override;
     bool preorder(const P4::IR::Type_HeaderUnion *hu) override;
-    bool preorder(const P4::IR::Type_Stack *h) override;
+    bool preorder(const P4::IR::Type_Array *h) override;
     bool preorder(const P4::IR::Type_BaseList *l) override;  // covers both Type_Tuple and Type_List
     bool preorder(const P4::IR::Type_Parser *p) override;
     bool preorder(const P4::IR::P4Parser *a) override;
@@ -1153,7 +1153,7 @@ bool P4TypeConverter::preorder(const P4::IR::Type_HeaderUnion *type) {
     return setType(type, mlirType);
 }
 
-bool P4TypeConverter::preorder(const P4::IR::Type_Stack *type) {
+bool P4TypeConverter::preorder(const P4::IR::Type_Array *type) {
     if ((this->type = converter.findType(type))) return false;
 
     ConversionTracer trace("TypeConverting ", type);
@@ -1399,16 +1399,16 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
     if (const auto *m = node->to<P4::IR::Member>()) {
         mlir::Value fieldRef;
         auto base = resolveReference(m->expr, unchecked);
-        if (m->expr->type->is<P4::IR::Type_Stack>()) {
+        if (m->expr->type->is<P4::IR::Type_Array>()) {
             auto arrayRef = builder.create<P4HIR::StructExtractRefOp>(
                 loc, base, P4HIR::HeaderStackType::dataFieldName);
             auto nextIndexRef = builder.create<P4HIR::StructExtractRefOp>(
                 loc, base, P4HIR::HeaderStackType::nextIndexFieldName);
             auto nextIndexVal = getValue(nextIndexRef);
-            if (m->member == P4::IR::Type_Stack::next) {
+            if (m->member == P4::IR::Type_Array::next) {
                 // TODO: Insert verify() call
                 fieldRef = builder.create<P4HIR::ArrayElementRefOp>(loc, arrayRef, nextIndexVal);
-            } else if (m->member == P4::IR::Type_Stack::last) {
+            } else if (m->member == P4::IR::Type_Array::last) {
                 auto last = builder.create<P4HIR::BinOp>(loc, P4HIR::BinOpKind::Sub, nextIndexVal,
                                                          getUIntConstant(loc, 1, 32));
                 // TODO: Insert verify() call
@@ -1429,7 +1429,7 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
         return setValue(m, fieldRef);
     } else if (const auto *a = node->to<P4::IR::ArrayIndex>()) {
         auto base = resolveReference(a->left, unchecked);
-        if (a->left->type->is<P4::IR::Type_Stack>()) {
+        if (a->left->type->is<P4::IR::Type_Array>()) {
             visit(a->right);
             auto arrayRef = builder
                                 .create<P4HIR::StructExtractRefOp>(
@@ -2385,7 +2385,7 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                     setValue(mce, emitHeaderUnionBuiltInMethod(loc, bCall));
                 } else if (member->expr->type->to<P4::IR::Type_Header>()) {
                     setValue(mce, emitHeaderBuiltInMethod(loc, bCall));
-                } else if (member->expr->type->to<P4::IR::Type_Stack>()) {
+                } else if (member->expr->type->to<P4::IR::Type_Array>()) {
                     setValue(mce, emitHeaderStackBuiltInMethod(loc, bCall));
                 } else {
                     BUG("cannot handle this builtin method yet: %1% (aka %2%)", member,
@@ -2703,8 +2703,7 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
         BUG_CHECK(parserSym, "expected reference parser to be converted: %1%", dbp(parser));
 
         auto instance = builder.create<P4HIR::ConstructOp>(getLoc(builder, cce), resultType,
-                                                           parserSym.getRootReference(), operands,
-                                                           mlir::ArrayAttr());
+                                                           parserSym.getRootReference(), operands);
         setValue(cce, instance.getResult());
     } else if (const auto *control = type->to<P4::IR::P4Control>()) {
         LOG4("resolved as control instantiation");
@@ -2712,24 +2711,21 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
         BUG_CHECK(controlSym, "expected reference control to be converted: %1%", dbp(control));
 
         auto instance = builder.create<P4HIR::ConstructOp>(getLoc(builder, cce), resultType,
-                                                           controlSym.getRootReference(), operands,
-                                                           mlir::ArrayAttr());
+                                                           controlSym.getRootReference(), operands);
         setValue(cce, instance.getResult());
     } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
         LOG4("resolved as extern instantiation");
 
         auto externName = builder.getStringAttr(ext->name.string_view());
-        auto instance = builder.create<P4HIR::ConstructOp>(
-            getLoc(builder, cce), resultType, externName, operands,
-            typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters));
+        auto instance = builder.create<P4HIR::ConstructOp>(getLoc(builder, cce), resultType,
+                                                           externName, operands, typeParameters);
         setValue(cce, instance.getResult());
     } else if (const auto *pkg = type->to<P4::IR::Type_Package>()) {
         LOG4("resolved as package instantiation");
 
         auto pkgName = builder.getStringAttr(pkg->name.string_view());
-        auto instance = builder.create<P4HIR::ConstructOp>(
-            getLoc(builder, cce), resultType, pkgName, operands,
-            typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters));
+        auto instance = builder.create<P4HIR::ConstructOp>(getLoc(builder, cce), resultType,
+                                                           pkgName, operands, typeParameters);
         setValue(cce, instance.getResult());
     } else {
         BUG("unsupported constructor call: %1% (of type %2%)", cce, dbp(type));
@@ -2779,10 +2775,10 @@ void P4HIRConverter::postorder(const P4::IR::Member *m) {
         auto field = builder.create<P4HIR::StructExtractOp>(loc, parent, m->member.string_view());
         setValue(m, field);
     } else if (auto hsType = mlir::dyn_cast<P4HIR::HeaderStackType>(parentType)) {
-        if (m->member == P4::IR::Type_Stack::arraySize) {
+        if (m->member == P4::IR::Type_Array::arraySize) {
             size_t sz = hsType.getArraySize();
             setValue(m, getUIntConstant(getLoc(builder, m), sz, 32));
-        } else if (m->member == P4::IR::Type_Stack::lastIndex) {
+        } else if (m->member == P4::IR::Type_Array::lastIndex) {
             auto parent = getValue(m->expr);
             auto last = builder.create<P4HIR::BinOp>(
                 loc, P4HIR::BinOpKind::Sub,
@@ -2791,7 +2787,7 @@ void P4HIRConverter::postorder(const P4::IR::Member *m) {
                 getUIntConstant(loc, 1, 32));
             // TODO: Insert verify() call inside parser
             setValue(m, last);
-        } else if (m->member == P4::IR::Type_Stack::next) {
+        } else if (m->member == P4::IR::Type_Array::next) {
             auto parent = getValue(m->expr);
             auto array = builder.create<P4HIR::StructExtractOp>(
                 loc, parent, P4HIR::HeaderStackType::dataFieldName);
@@ -2800,7 +2796,7 @@ void P4HIRConverter::postorder(const P4::IR::Member *m) {
             // TODO: Insert verify() call
             auto field = builder.create<P4HIR::ArrayGetOp>(loc, array, next);
             setValue(m, field);
-        } else if (m->member == P4::IR::Type_Stack::last) {
+        } else if (m->member == P4::IR::Type_Array::last) {
             auto parent = getValue(m->expr);
             auto array = builder.create<P4HIR::StructExtractOp>(
                 loc, parent, P4HIR::HeaderStackType::dataFieldName);
@@ -3083,7 +3079,6 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
     ConversionTracer trace("Converting ", decl);
 
     auto annotations = convert(decl->annotations);
-    if (annotations.empty()) annotations = mlir::DictionaryAttr();
 
     // P4::Instantiation goes via typeMap and it returns some weird clone
     // instead of converted type
@@ -3145,17 +3140,14 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         BUG_CHECK(parserSym, "expected reference parser to be converted: %1%", dbp(parser));
 
         auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), parserSym.getRootReference(), operands, nameAttr,
-            mlir::ArrayAttr(), annotations);
+            getLoc(builder, decl), parserSym.getRootReference(), operands, nameAttr, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
         LOG4("resolved as extern instantiation");
         auto externName = builder.getStringAttr(ext->name.string_view());
 
         auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), externName, operands, nameAttr,
-            typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters),
-            annotations);
+            getLoc(builder, decl), externName, operands, nameAttr, typeParameters, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *control = type->to<P4::IR::P4Control>()) {
         LOG4("resolved as control instantiation");
@@ -3163,16 +3155,13 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         BUG_CHECK(controlSym, "expected reference control to be converted: %1%", dbp(control));
 
         auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), controlSym.getRootReference(), operands, nameAttr,
-            mlir::ArrayAttr(), annotations);
+            getLoc(builder, decl), controlSym.getRootReference(), operands, nameAttr, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *pkg = type->to<P4::IR::Type_Package>()) {
         LOG4("resolved as package instantiation");
         auto packageName = builder.getStringAttr(pkg->name.string_view());
         auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), packageName, operands, nameAttr,
-            typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters),
-            annotations);
+            getLoc(builder, decl), packageName, operands, nameAttr, typeParameters, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else {
         BUG("unsupported instance: %1% (of type %2%)", decl, dbp(type));
@@ -3192,10 +3181,8 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Extern *ext) {
 
     auto annotations = convert(ext->annotations);
 
-    auto extOp = builder.create<P4HIR::ExternOp>(
-        loc, ext->name.string_view(),
-        typeParameters.empty() ? mlir::ArrayAttr() : builder.getTypeArrayAttr(typeParameters),
-        annotations.empty() ? mlir::DictionaryAttr() : annotations);
+    auto extOp =
+        builder.create<P4HIR::ExternOp>(loc, ext->name.string_view(), typeParameters, annotations);
     extOp.createEntryBlock();
 
     mlir::OpBuilder::InsertionGuard guard(builder);
