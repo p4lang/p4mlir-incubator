@@ -60,7 +60,8 @@ struct TupleOpConversion : public OpConversionPattern<P4::P4MLIR::P4HIR::TupleOp
   LogicalResult matchAndRewrite(P4::P4MLIR::P4HIR::TupleOp op, OpAdaptor adaptor,
                                 ConversionPatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
-    auto structType = getTypeConverter()->convertType(op.getType()).dyn_cast<P4::P4MLIR::P4HIR::StructType>();
+    Type converted = getTypeConverter()->convertType(op.getType());
+    auto structType = dyn_cast<P4::P4MLIR::P4HIR::StructType>(converted);
 
     if(!structType)
       return rewriter.notifyMatchFailure(op, "Type conversion failed to struct");
@@ -80,7 +81,7 @@ struct TupleExtractOpConversion : public OpConversionPattern<P4::P4MLIR::P4HIR::
 
     auto index = op.getFieldIndex();
     Value input =  adaptor.getOperands()[0];
-    auto structType = input.getType().dyn_cast<P4::P4MLIR::P4HIR::StructType>();
+    auto structType = dyn_cast<P4::P4MLIR::P4HIR::StructType>(input.getType());
 
     if(!structType)
       return rewriter.notifyMatchFailure(op, "Expect StructType as Input");
