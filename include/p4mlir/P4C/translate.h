@@ -1,3 +1,6 @@
+#ifndef INCLUDE_P4MLIR_P4C_TRANSLATE_H_
+#define INCLUDE_P4MLIR_P4C_TRANSLATE_H_
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "mlir/IR/BuiltinOps.h"
@@ -15,3 +18,5 @@ namespace P4::P4MLIR {
 mlir::OwningOpRef<mlir::ModuleOp> toMLIR(mlir::MLIRContext &context,
                                          const P4::IR::P4Program *program, P4::TypeMap *typeMap);
 }  // namespace P4::P4MLIR
+
+#endif  // INCLUDE_P4MLIR_P4C_TRANSLATE_H_
