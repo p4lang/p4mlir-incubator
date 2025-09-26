@@ -1,9 +1,7 @@
-#include "translate.h"
+#include "p4mlir/P4C/translate.h"
 
 #include <algorithm>
 #include <climits>
-
-#include "ir/ir-generated.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
