@@ -324,7 +324,7 @@ Type StructType::parse(AsmParser &p) {
 
 mlir::TypedAttr ValidBitType::getDefaultValue() {
     return P4HIR::ValidityBitAttr::get(getContext(), ValidityBit::Invalid);
-};
+}
 
 Type HeaderType::parse(AsmParser &p) {
     llvm::SmallVector<FieldInfo, 4> parameters;

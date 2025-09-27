@@ -12,7 +12,7 @@
 
 namespace P4::P4MLIR::P4HIR {
 mlir::TypedAttr getStructLikeDefaultValue(StructLikeTypeInterface type);
-};
+}
 
 #define GET_TYPEDEF_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h.inc"

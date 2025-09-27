@@ -56,9 +56,8 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass/PassManager.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
+#include "p4mlir/P4C/translate.h"
 #pragma GCC diagnostic pop
-
-#include "translate.h"
 
 namespace {
 void log_dump(const P4::IR::Node *node, const char *head) {

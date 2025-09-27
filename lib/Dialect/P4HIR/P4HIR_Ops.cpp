@@ -1360,7 +1360,7 @@ static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs
     }
 
     return type;
-};
+}
 
 // Callee might be:
 //  - Overload set, then we need to look for a particular overload
@@ -1921,8 +1921,8 @@ void P4HIR::ParserOp::build(mlir::OpBuilder &builder, mlir::OperationState &resu
     if (annotations && !annotations.empty())
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
     call_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-                                              /*resultAttrs=*/std::nullopt,
-                                              getArgAttrsAttrName(result.name), {});
+                                              /*resultAttrs=*/{}, getArgAttrsAttrName(result.name),
+                                              {});
 }
 
 void P4HIR::ParserOp::createEntryBlock() {
@@ -2475,8 +2475,8 @@ void P4HIR::PackageOp::build(mlir::OpBuilder &builder, mlir::OperationState &res
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
 
     call_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-                                              /*resultAttrs=*/std::nullopt,
-                                              getArgAttrsAttrName(result.name), {});
+                                              /*resultAttrs=*/{}, getArgAttrsAttrName(result.name),
+                                              {});
 }
 
 //===----------------------------------------------------------------------===//
@@ -2889,8 +2889,8 @@ void P4HIR::ControlOp::build(mlir::OpBuilder &builder, mlir::OperationState &res
     if (annotations && !annotations.empty())
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
     call_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-                                              /*resultAttrs=*/std::nullopt,
-                                              getArgAttrsAttrName(result.name), {});
+                                              /*resultAttrs=*/{}, getArgAttrsAttrName(result.name),
+                                              {});
 }
 
 void P4HIR::ControlOp::createEntryBlock() {
@@ -3160,8 +3160,8 @@ void P4HIR::TableActionOp::build(
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
 
     call_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
-                                              /*resultAttrs=*/std::nullopt,
-                                              getArgAttrsAttrName(result.name), {});
+                                              /*resultAttrs=*/{}, getArgAttrsAttrName(result.name),
+                                              {});
 
     OpBuilder::InsertionGuard guard(builder);
     auto *body = result.addRegion();
