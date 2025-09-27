@@ -102,7 +102,7 @@ def TableApplyOp : P4HIR_Op<"table_apply",
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+      (*this)->setAttr("callee", mlir::cast<mlir::SymbolRefAttr>(callee));
     }
 
     mlir::OperandRange getArgOperands() {
