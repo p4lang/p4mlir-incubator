@@ -1772,10 +1772,10 @@ mlir::Value P4HIRConverter::emitCmp(const P4::IR::Operation_Relation *relop,
         setValue(node, emitUnOp(node, P4HIR::UnaryOpKind::Kind)); \
     }
 
-CONVERT_UNOP(Neg, Neg);
-CONVERT_UNOP(UPlus, UPlus);
-CONVERT_UNOP(Cmpl, Cmpl);
-CONVERT_UNOP(LNot, LNot);
+CONVERT_UNOP(Neg, Neg)
+CONVERT_UNOP(UPlus, UPlus)
+CONVERT_UNOP(Cmpl, Cmpl)
+CONVERT_UNOP(LNot, LNot)
 
 #undef CONVERT_UNOP
 
@@ -1785,16 +1785,16 @@ CONVERT_UNOP(LNot, LNot);
         setValue(node, emitBinOp(node, P4HIR::BinOpKind::Kind)); \
     }
 
-CONVERT_BINOP(Mul, Mul);
-CONVERT_BINOP(Div, Div);
-CONVERT_BINOP(Mod, Mod);
-CONVERT_BINOP(Add, Add);
-CONVERT_BINOP(Sub, Sub);
-CONVERT_BINOP(AddSat, AddSat);
-CONVERT_BINOP(SubSat, SubSat);
-CONVERT_BINOP(BOr, Or);
-CONVERT_BINOP(BAnd, And);
-CONVERT_BINOP(BXor, Xor);
+CONVERT_BINOP(Mul, Mul)
+CONVERT_BINOP(Div, Div)
+CONVERT_BINOP(Mod, Mod)
+CONVERT_BINOP(Add, Add)
+CONVERT_BINOP(Sub, Sub)
+CONVERT_BINOP(AddSat, AddSat)
+CONVERT_BINOP(SubSat, SubSat)
+CONVERT_BINOP(BOr, Or)
+CONVERT_BINOP(BAnd, And)
+CONVERT_BINOP(BXor, Xor)
 
 #undef CONVERT_BINOP
 
@@ -1813,8 +1813,8 @@ void P4HIRConverter::postorder(const P4::IR::Concat *concat) {
         setValue(op, result);                                                             \
     }
 
-CONVERT_SHL_SHR_OP(Shl, ShlOp);
-CONVERT_SHL_SHR_OP(Shr, ShrOp);
+CONVERT_SHL_SHR_OP(Shl, ShlOp)
+CONVERT_SHL_SHR_OP(Shr, ShrOp)
 
 #undef CONVERT_SHL_SHR_OP
 
@@ -1824,12 +1824,12 @@ CONVERT_SHL_SHR_OP(Shr, ShrOp);
         setValue(node, emitCmp(node, P4HIR::CmpOpKind::Kind)); \
     }
 
-CONVERT_CMP(Equ, Eq);
-CONVERT_CMP(Neq, Ne);
-CONVERT_CMP(Lss, Lt);
-CONVERT_CMP(Leq, Le);
-CONVERT_CMP(Grt, Gt);
-CONVERT_CMP(Geq, Ge);
+CONVERT_CMP(Equ, Eq)
+CONVERT_CMP(Neq, Ne)
+CONVERT_CMP(Lss, Lt)
+CONVERT_CMP(Leq, Le)
+CONVERT_CMP(Grt, Gt)
+CONVERT_CMP(Geq, Ge)
 
 #undef CONVERT_CMP
 

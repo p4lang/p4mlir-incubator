@@ -1029,7 +1029,7 @@ def CallOp : P4HIR_Op<"call",
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+      (*this)->setAttr("callee", cast<mlir::SymbolRefAttr>(callee));
     }
 
     mlir::Operation *resolveCallableInTable(mlir::SymbolTableCollection *symbolTable);
@@ -1287,7 +1287,7 @@ def InstantiateOp : P4HIR_Op<"instantiate",
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr(getCalleeAttrName(), callee.get<mlir::SymbolRefAttr>());
+      (*this)->setAttr(getCalleeAttrName(), cast<mlir::SymbolRefAttr>(callee));
     }
 
     void setArg(unsigned index, mlir::Value value) {
@@ -1353,7 +1353,7 @@ def ConstructOp : P4HIR_Op<"construct",
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr(getCalleeAttrName(), callee.get<mlir::SymbolRefAttr>());
+      (*this)->setAttr(getCalleeAttrName(), cast<mlir::SymbolRefAttr>(callee));
     }
 
     void setArg(unsigned index, mlir::Value value) {
@@ -1446,7 +1446,7 @@ def ApplyOp : P4HIR_Op<"apply",
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+      (*this)->setAttr("callee", cast<mlir::SymbolRefAttr>(callee));
     }
 
     mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
