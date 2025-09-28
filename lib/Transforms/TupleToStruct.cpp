@@ -92,8 +92,7 @@ struct ReturnOpConversion : public OpConversionPattern<P4HIR::ReturnOp> {
 
     LogicalResult matchAndRewrite(P4HIR::ReturnOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
-        auto newRet = rewriter.create<P4HIR::ReturnOp>(op.getLoc(), adaptor.getOperands());
-        rewriter.replaceOp(op, newRet.getOperation()->getResults());
+        rewriter.replaceOpWithNewOp<P4HIR::ReturnOp>(op, adaptor.getOperands());
         return success();
     }
 };
