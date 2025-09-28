@@ -2,30 +2,36 @@
 
 !b32i = !p4hir.bit<32>
 !i32i = !p4hir.int<32>
+!_tupleToStruct = !p4hir.struct<"_tupleToStruct", element_0: !b32i, element_1: !i32i>
 
 // CHECK-LABEL: module
 // CHECK-LABEL: p4hir.func @bid
-// CHECK: p4hir.return
+// CHECK-SAME: (%arg0: !_tupleToStruct) -> !_tupleToStruct
+// CHECK: p4hir.return %arg0 : !_tupleToStruct
+// CHECK-NOT: tuple<
 // CHECK-NOT: p4hir.tuple
 // CHECK-NOT: p4hir.tuple_extract
 
 module {
-   p4hir.func @bid(%t : tuple<!b32i, !i32i>) ->  tuple<!b32i, !i32i>{
-        p4hir.return %t :  tuple<!b32i, !i32i>
-    }
+  p4hir.func @bid(%t : tuple<!b32i, !i32i>) -> tuple<!b32i, !i32i> {
+    p4hir.return %t : tuple<!b32i, !i32i>
+  }
 }
 
 // CHECK-LABEL: module
 // CHECK-LABEL: p4hir.func @make_tuple
-// CHECK: p4hir.return
+// CHECK-SAME: (%arg0: !b32i, %arg1: !i32i) -> !_tupleToStruct
+// CHECK: %[[S:[a-zA-Z0-9_]+]] = p4hir.struct (%arg0, %arg1) : !_tupleToStruct
+// CHECK: p4hir.return %[[S]] : !_tupleToStruct
+// CHECK-NOT: tuple<
 // CHECK-NOT: p4hir.tuple
 // CHECK-NOT: p4hir.tuple_extract
 
 module {
-   p4hir.func @make_tuple(%x : !b32i, %y: !i32i) -> tuple<!b32i, !i32i> {
-        %t = p4hir.tuple(%x, %y) : tuple<!b32i, !i32i>
-        p4hir.return %t : tuple<!b32i, !i32i>
-    }
+  p4hir.func @make_tuple(%x : !b32i, %y: !i32i) -> tuple<!b32i, !i32i> {
+    %t = p4hir.tuple(%x, %y) : tuple<!b32i, !i32i>
+    p4hir.return %t : tuple<!b32i, !i32i>
+  }
 }
 
 // CHECK-LABEL: module

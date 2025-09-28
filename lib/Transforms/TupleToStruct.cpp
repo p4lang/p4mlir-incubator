@@ -3,14 +3,13 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
-
-#include "p4mlir/Transforms/Passes.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Conversion/ConversionPatterns.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
-
+#include "p4mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "p4hir-tuple-to-struct"
 
@@ -19,105 +18,123 @@ using namespace mlir;
 namespace P4::P4MLIR {
 #define GEN_PASS_DEF_TUPLETOSTRUCT
 #include "p4mlir/Transforms/Passes.cpp.inc"
-}
-
-using namespace P4::P4MLIR;
 
 namespace {
 
-struct TupleToStructPass
-    : public P4::P4MLIR::impl::TupleToStructBase<TupleToStructPass> {
+struct TupleToStructPass : public P4::P4MLIR::impl::TupleToStructBase<TupleToStructPass> {
     TupleToStructPass() = default;
     void runOnOperation() override;
 };
 
-
-class TupleToStructTypeConverter: public P4HIRTypeConverter {
+class TupleToStructTypeConverter : public P4HIRTypeConverter {
  public:
     explicit TupleToStructTypeConverter() {
-
-        addConversion([](TupleType tupleType)-> Type {
+        addConversion([this](TupleType tupleType) -> Type {
             MLIRContext *ctx = tupleType.getContext();
-            ArrayRef<Type> elementTypes = tupleType.getTypes();
+            SmallVector<Type> convertedElements;
 
-            SmallVector<P4::P4MLIR::P4HIR::FieldInfo> structFiedls;
-            structFiedls.reserve(elementTypes.size());
-
-            for(unsigned i=0; i< elementTypes.size(); i++){
-                mlir::StringAttr name = mlir::StringAttr::get(ctx, "elemet_" + std::to_string(i));
-                P4::P4MLIR::P4HIR::FieldInfo field = P4::P4MLIR::P4HIR::FieldInfo(name, elementTypes[i]);
-                structFiedls.push_back(field);
+            // needed to convert nested tuple, to be better investigate
+            for (Type t : tupleType.getTypes()) {
+                auto ce = this->convertType(t);
+                if (!ce) return nullptr;
+                convertedElements.emplace_back(ce);
             }
-            llvm::StringRef name("_tupletoStruct");
-            return P4::P4MLIR::P4HIR::StructType::get(ctx, name, structFiedls);
+
+            SmallVector<P4HIR::FieldInfo> structFields;
+            mlir::StringAttr name;
+
+            for (auto [index, type] : llvm::enumerate(convertedElements)) {
+                name = mlir::StringAttr::get(ctx, "element_" + std::to_string(index));
+                structFields.emplace_back(name, type);
+            }
+            return P4HIR::StructType::get(ctx, "_tupleToStruct", structFields);
         });
     }
 };
 
-struct TupleOpConversion : public OpConversionPattern<P4::P4MLIR::P4HIR::TupleOp> {
-  using OpConversionPattern::OpConversionPattern;
+struct TupleOpConversion : public OpConversionPattern<P4HIR::TupleOp> {
+    using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(P4::P4MLIR::P4HIR::TupleOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const override {
-    auto loc = op.getLoc();
-    Type converted = getTypeConverter()->convertType(op.getType());
-    auto structType = dyn_cast<P4::P4MLIR::P4HIR::StructType>(converted);
+    LogicalResult matchAndRewrite(P4HIR::TupleOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto loc = op.getLoc();
+        auto structType =
+            llvm::dyn_cast<P4HIR::StructType>(getTypeConverter()->convertType(op.getType()));
 
-    if(!structType)
-      return rewriter.notifyMatchFailure(op, "Type conversion failed to struct");
+        if (!structType) return rewriter.notifyMatchFailure(op, "Type conversion failed to struct");
 
-    Value newStruct = rewriter.create<P4::P4MLIR::P4HIR::StructOp>(loc, structType, adaptor.getOperands());
-    rewriter.replaceOp(op, newStruct);
-    return success();
-
-   }
+        rewriter.replaceOpWithNewOp<P4HIR::StructOp>(op, structType, adaptor.getOperands());
+        return success();
+    }
 };
 
-struct TupleExtractOpConversion : public OpConversionPattern<P4::P4MLIR::P4HIR::TupleExtractOp> {
-  using OpConversionPattern::OpConversionPattern;
+struct TupleExtractOpConversion : public OpConversionPattern<P4HIR::TupleExtractOp> {
+    using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(P4::P4MLIR::P4HIR::TupleExtractOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const override {
+    LogicalResult matchAndRewrite(P4HIR::TupleExtractOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto index = op.getFieldIndex();
+        Value input = adaptor.getOperands()[0];
+        auto structType = llvm::dyn_cast<P4HIR::StructType>(input.getType());
 
-    auto index = op.getFieldIndex();
-    Value input =  adaptor.getOperands()[0];
-    auto structType = dyn_cast<P4::P4MLIR::P4HIR::StructType>(input.getType());
+        if (!structType) return rewriter.notifyMatchFailure(op, "Expect StructType as Input");
 
-    if(!structType)
-      return rewriter.notifyMatchFailure(op, "Expect StructType as Input");
+        if (index >= structType.getFields().size())
+            return rewriter.notifyMatchFailure(op, "Index out of bounds in StructType");
 
-    if(index >= structType.getFields().size())
-      return rewriter.notifyMatchFailure(op, "Indexout of bounds in StructType");
-
-    const auto &field = structType.getFields()[index];
-    StringAttr fieldName = field.name;
-
-    rewriter.replaceOpWithNewOp<P4::P4MLIR::P4HIR::StructExtractOp>(op, input, fieldName);
-    return success();
-
-   }
+        rewriter.replaceOpWithNewOp<P4HIR::StructExtractOp>(op, input,
+                                                            structType.getFields()[index].name);
+        return success();
+    }
 };
-}  // namescpace
+struct ReturnOpConversion : public OpConversionPattern<P4HIR::ReturnOp> {
+    using OpConversionPattern::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ReturnOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto newRet = rewriter.create<P4HIR::ReturnOp>(op.getLoc(), adaptor.getOperands());
+        rewriter.replaceOp(op, newRet.getOperation()->getResults());
+        return success();
+    }
+};
+
+}  // end namespace
 
 void TupleToStructPass::runOnOperation() {
-        mlir::ModuleOp module = getOperation();
-        MLIRContext &context  = getContext();
+    mlir::ModuleOp module = getOperation();
+    MLIRContext &context = getContext();
 
-        P4HIRTypeConverter typeConverter;
+    TupleToStructTypeConverter typeConverter;
 
-        RewritePatternSet patterns(&context);
-        ConversionTarget target(context);
+    RewritePatternSet patterns(&context);
+    ConversionTarget target(context);
 
-        target.markUnknownOpDynamicallyLegal([&](Operation *op){
-            return typeConverter.isLegal(op);
-        });
+    target.addDynamicallyLegalOp<P4HIR::ReturnOp>(
+        [&](P4HIR::ReturnOp ret) { return typeConverter.isLegal(ret->getOperandTypes()); });
 
-        patterns.add<TupleOpConversion, TupleExtractOpConversion>(typeConverter, &context);
+    target.markUnknownOpDynamicallyLegal([&](Operation *op) {
+        if (auto func = dyn_cast<FunctionOpInterface>(op)) {
+            auto fnType = func.getFunctionType();
+            return typeConverter.isLegal(fnType);
+        }
 
-        if(failed(applyPartialConversion(module, target, std::move(patterns))))
-            signalPassFailure();
+        return typeConverter.isLegal(op->getOperandTypes()) &&
+               typeConverter.isLegal(op->getResultTypes());
+    });
+
+    // Translate call operands and results via type converter
+    populateP4HIRAnyCallOpTypeConversionPattern(patterns, typeConverter);
+    // Translate function-like ops signatures and types
+    populateP4HIRFunctionOpTypeConversionPattern<P4HIR::FuncOp, P4HIR::ParserOp, P4HIR::ControlOp>(
+        patterns, typeConverter);
+
+    patterns.add<TypeConversionPattern>(typeConverter, &context);
+    patterns.add<TupleOpConversion, TupleExtractOpConversion, ReturnOpConversion>(typeConverter,
+                                                                                  &context);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
 
-std::unique_ptr<Pass> P4::P4MLIR::createTupleToStructPass() {
-    return std::make_unique<TupleToStructPass>();
-}
+std::unique_ptr<Pass> createTupleToStructPass() { return std::make_unique<TupleToStructPass>(); }
+
+}  // namespace P4::P4MLIR
