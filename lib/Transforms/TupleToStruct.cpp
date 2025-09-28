@@ -87,15 +87,6 @@ struct TupleExtractOpConversion : public OpConversionPattern<P4HIR::TupleExtract
         return success();
     }
 };
-struct ReturnOpConversion : public OpConversionPattern<P4HIR::ReturnOp> {
-    using OpConversionPattern::OpConversionPattern;
-
-    LogicalResult matchAndRewrite(P4HIR::ReturnOp op, OpAdaptor adaptor,
-                                  ConversionPatternRewriter &rewriter) const override {
-        rewriter.replaceOpWithNewOp<P4HIR::ReturnOp>(op, adaptor.getOperands());
-        return success();
-    }
-};
 
 }  // end namespace
 
@@ -128,8 +119,7 @@ void TupleToStructPass::runOnOperation() {
         patterns, typeConverter);
 
     patterns.add<TypeConversionPattern>(typeConverter, &context);
-    patterns.add<TupleOpConversion, TupleExtractOpConversion, ReturnOpConversion>(typeConverter,
-                                                                                  &context);
+    patterns.add<TupleOpConversion, TupleExtractOpConversion>(typeConverter, &context);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
