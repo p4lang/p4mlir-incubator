@@ -120,7 +120,7 @@ def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
     !b32i = !p4hir.bit<32>
     !T = !p4hir.alias<"T", !b32i>
     !Nested = !p4hir.alias<"Nested", !T>
-    
+
     p4hir.func @process(%arg0: !Nested) {
       %c = p4hir.const #p4hir.int<10> : !Nested
       p4hir.return
@@ -130,7 +130,7 @@ def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
     After the pass:
     ```mlir
     !b32i = !p4hir.bit<32>
-    
+
     p4hir.func @process(%arg0: !b32i) {
       %c = p4hir.const #p4hir.int<10> : !b32i
       p4hir.return
@@ -138,6 +138,20 @@ def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
     ```
   }];
   let constructor = "P4MLIR::createRemoveAliasesPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
+//===----------------------------------------------------------------------===//
+// TupleToStruct
+//===----------------------------------------------------------------------===//
+
+def TupleToStruct : Pass<"p4hir-tuple-to-struct", "mlir::ModuleOp"> {
+  let summary = "Convert tuple types/ops into p4hir.struct types/ops";
+  let description = [{
+    This pass converts all `tuple` types and operations into equivalent `p4hir.struct` types and operations.
+  }];
+
+  let constructor = "P4MLIR::createTupleToStructPass()";
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
