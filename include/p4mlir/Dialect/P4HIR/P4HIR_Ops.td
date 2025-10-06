@@ -1075,6 +1075,7 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$input, "P4HIR::FieldInfo":$field)>,
@@ -1923,6 +1924,7 @@ def ArrayGetOp : P4HIR_Op<"array_get",
   let results = (outs AnyP4Type:$result);
 
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 
   let assemblyFormat = [{
     $input `[` $index `]` attr-dict `:` qualified(type($input)) `,` qualified(type($index))

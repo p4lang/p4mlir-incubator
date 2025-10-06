@@ -1672,6 +1672,28 @@ OpFoldResult P4HIR::StructExtractOp::fold(FoldAdaptor adaptor) {
     return {};
 }
 
+LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
+                                                   PatternRewriter &rewriter) {
+    // Simple SROA / load shrinking: turn (struct_extract (read ref), field)
+    // into (read (struct_extract_ref ref, field)) if `read` operation has a
+    // single use. Usually these come from struct field access and it is
+    // beneficial to project from whole-width read to a single-field read. We do
+    // not do complete SROA here as it would require tracking writes as well as
+    // reads.
+    if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>(); readOp && readOp->hasOneUse()) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        auto ref = readOp.getRef();
+        rewriter.setInsertionPoint(readOp);
+        auto fieldRef = rewriter.create<P4HIR::StructExtractRefOp>(
+            op.getLoc(), P4HIR::ReferenceType::get(op.getType()), ref, op.getFieldIndexAttr());
+        rewriter.replaceOpWithNewOp<P4HIR::ReadOp>(op, fieldRef);
+        rewriter.eraseOp(readOp);
+        return success();
+    }
+
+    return failure();
+}
+
 void P4HIR::StructExtractRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
     llvm::SmallString<16> name = getFieldName();
     name += "_field_ref";
@@ -3542,6 +3564,27 @@ OpFoldResult P4HIR::ArrayGetOp::fold(FoldAdaptor adaptor) {
         return arrayOp.getOperand(idxAttr.getUInt());
 
     return {};
+}
+
+LogicalResult P4HIR::ArrayGetOp::canonicalize(P4HIR::ArrayGetOp op, PatternRewriter &rewriter) {
+    // Simple SROA / load shrinking: turn (array_get (read ref), idx)
+    // into (read (array_element_ref ref, idx)) if `read` operation has a
+    // single use. Usually these come from header stack field access and it is
+    // beneficial to project from whole-width read to a single-field read. We do
+    // not do complete SROA here as it would require tracking writes as well as
+    // reads.
+    if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>(); readOp && readOp->hasOneUse()) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        auto ref = readOp.getRef();
+        rewriter.setInsertionPoint(readOp);
+        auto eltRef = rewriter.create<P4HIR::ArrayElementRefOp>(
+            op.getLoc(), P4HIR::ReferenceType::get(op.getType()), ref, op.getIndex());
+        rewriter.replaceOpWithNewOp<P4HIR::ReadOp>(op, eltRef);
+        rewriter.eraseOp(readOp);
+        return success();
+    }
+
+    return failure();
 }
 
 void P4HIR::ArrayGetOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
