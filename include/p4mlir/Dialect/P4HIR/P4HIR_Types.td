@@ -926,7 +926,7 @@ def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType,
 def LoadableP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType,
                                 StructType, HeaderType, HeaderUnionType, HeaderStackType, Builtin_Tuple,
                                 EnumType, SerEnumType, ErrorType,
-                                ValidBitType, AliasType]> {}
+                                ValidBitType, AliasType, ArrayType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def SwitchCondType : AnyTypeOf<[AnyIntP4Type, AnyEnumType, ErrorType]>;
 def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType, HeaderStackType]>;
