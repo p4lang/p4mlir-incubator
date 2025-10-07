@@ -1681,7 +1681,6 @@ LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
     // not do complete SROA here as it would require tracking writes as well as
     // reads.
     if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>(); readOp && readOp->hasOneUse()) {
-        OpBuilder::InsertionGuard guard(rewriter);
         auto ref = readOp.getRef();
         rewriter.setInsertionPoint(readOp);
         auto fieldRef = rewriter.create<P4HIR::StructExtractRefOp>(
@@ -3574,7 +3573,6 @@ LogicalResult P4HIR::ArrayGetOp::canonicalize(P4HIR::ArrayGetOp op, PatternRewri
     // not do complete SROA here as it would require tracking writes as well as
     // reads.
     if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>(); readOp && readOp->hasOneUse()) {
-        OpBuilder::InsertionGuard guard(rewriter);
         auto ref = readOp.getRef();
         rewriter.setInsertionPoint(readOp);
         auto eltRef = rewriter.create<P4HIR::ArrayElementRefOp>(
