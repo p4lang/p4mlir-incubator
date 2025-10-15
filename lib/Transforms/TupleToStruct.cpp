@@ -61,7 +61,8 @@ struct TupleOpConversion : public OpConversionPattern<P4HIR::TupleOp> {
         auto structType =
             llvm::dyn_cast<P4HIR::StructType>(getTypeConverter()->convertType(op.getType()));
 
-        if (!structType) return rewriter.notifyMatchFailure(op, "Type conversion failed to struct");
+        if (!structType)
+            return rewriter.notifyMatchFailure(op, "Type conversion failed to P4HIR StructType");
 
         rewriter.replaceOpWithNewOp<P4HIR::StructOp>(op, structType, adaptor.getOperands());
         return success();
@@ -77,10 +78,11 @@ struct TupleExtractOpConversion : public OpConversionPattern<P4HIR::TupleExtract
         Value input = adaptor.getOperands()[0];
         auto structType = llvm::dyn_cast<P4HIR::StructType>(input.getType());
 
-        if (!structType) return rewriter.notifyMatchFailure(op, "Expect StructType as Input");
+        if (!structType)
+            return rewriter.notifyMatchFailure(op, "expected P4HIR StructType as input operand");
 
         if (index >= structType.getFields().size())
-            return rewriter.notifyMatchFailure(op, "Index out of bounds in StructType");
+            return rewriter.notifyMatchFailure(op, "Index out of bounds in P4HIR StructType");
 
         rewriter.replaceOpWithNewOp<P4HIR::StructExtractOp>(op, input,
                                                             structType.getFields()[index].name);
