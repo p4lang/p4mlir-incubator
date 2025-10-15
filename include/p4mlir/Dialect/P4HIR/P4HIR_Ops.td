@@ -1075,6 +1075,7 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$input, "P4HIR::FieldInfo":$field)>,
@@ -1701,6 +1702,10 @@ def CaseOp : P4HIR_Op<"case", [
   let arguments = (ins ArrayAttr:$value, CaseOpKind:$kind);
   let regions = (region AnyRegion:$caseRegion);
 
+  let extraClassDeclaration = [{
+    auto getBlock() { return &getCaseRegion().front(); }
+  }];
+
   let assemblyFormat = [{
     `(` $kind `,` $value `)` $caseRegion attr-dict
   }];
@@ -1733,6 +1738,11 @@ def SwitchOp : P4HIR_Op<"switch",
   let arguments = (ins SwitchCondType:$condition);
 
   let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    /// Returns all select cases
+    auto cases() { return getBody().back().getOps<CaseOp>(); }
+  }];
 
   let hasVerifier = 1;
 
@@ -1914,6 +1924,7 @@ def ArrayGetOp : P4HIR_Op<"array_get",
   let results = (outs AnyP4Type:$result);
 
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 
   let assemblyFormat = [{
     $input `[` $index `]` attr-dict `:` qualified(type($input)) `,` qualified(type($index))

@@ -70,11 +70,16 @@ def ParserStateOp : P4HIR_Op<"state",
  }];
 
  let extraClassDeclaration = [{
+    mlir::Block *getBlock() { return &getBody().front(); }
+
     /// Returns the op that determines the next transition of a state:
     ///  - Could be accept or reject (AcceptOp, RejectOp)
     ///  - Direct transition (TransitionOp)
     ///  - Select transition (TransitionSelectOp)
-    auto getNextTransition() { return getBody().back().getTerminator(); }
+    auto getNextTransition() { return getBlock()->getTerminator(); }
+
+    /// Get a fully qualified SymbolRefAttr for this parser state.
+    mlir::SymbolRefAttr getSymbolRef();
 
     /// Checks if this state accepts the packet
     bool isAccept() {
@@ -146,10 +151,10 @@ def ParserTransitionSelectOp : P4HIR_Op<"transition_select",
    [Terminator, NoTerminator,
     ParentOneOf<["ParserStateOp"]>]> {
   // FIXME: constraint argument better. Should be tuple or "normal" type.
-  let arguments = (ins AnyP4Type:$select);
+  let arguments = (ins Variadic<AnyP4Type>:$args);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
-    $select `:` type($select) $body attr-dict
+    $args `:` type($args) $body attr-dict
   }];
   // FIXME: Implement verifier for cases
 
@@ -201,7 +206,7 @@ def ParserSelectCaseOp : P4HIR_Op<"select_case",
 
   let extraClassDeclaration = [{
     bool isDefault();
-    mlir::Value getSelectKey();
+    mlir::ValueRange getSelectKeys();
   }];
 }
 
@@ -211,28 +216,6 @@ def SetOp : P4HIR_Op<"set",
   let summary = "Create a set from constituent parts.";
   // FIXME: Better constraint type
   let arguments = (ins Variadic<AnyP4Type>:$input);
-  let results = (outs SetType:$result);
-  let hasCustomAssemblyFormat = 1;
-  // FIXME: use declarative format
-  // let assemblyFormat = [{
-  //   `(` $input `)` attr-dict `:` type($result)
-  // }];
-
-  // TODO: Automatically infer result type
-  let builders = [
-    OpBuilder<(ins "mlir::ValueRange":$input)>
-  ];
-
-  let hasVerifier = 1;
-  let hasFolder = 1;
-}
-
-def SetProductOp : P4HIR_Op<"set_product",
-   [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
-  let summary = "Create a carthesian set product";
-  // FIXME: Better constraint type
-  let arguments = (ins Variadic<SetType>:$input);
   let results = (outs SetType:$result);
   let hasCustomAssemblyFormat = 1;
   // FIXME: use declarative format
