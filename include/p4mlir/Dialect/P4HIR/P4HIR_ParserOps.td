@@ -33,6 +33,9 @@ def ParserOp : P4HIR_Op<"parser",
       return getApplyType().getInputs();
     }
 
+    /// Return the `i`th apply argument direction.
+    ParamDirection getArgumentDirection(unsigned i);
+
     void setFunctionTypeAttr(mlir::TypeAttr attr) {
       getProperties().applyType = attr;
     }

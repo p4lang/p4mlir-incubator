@@ -6,6 +6,7 @@ add_mlir_dialect_library(P4MLIRTransforms
   RemoveSoftCF.cpp
   SerEnumElimination.cpp
   SimplifyParsers.cpp
+  CopyInCopyOutElimination.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/p4mlir/Transforms

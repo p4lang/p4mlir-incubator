@@ -105,7 +105,7 @@ def SerEnumElimination : Pass<"p4hir-ser-enum-elimination", "mlir::ModuleOp"> {
 }
 
 //===----------------------------------------------------------------------===//
-// Remove Aliases
+// Remove alias types
 //===----------------------------------------------------------------------===//
 
 def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
@@ -200,7 +200,71 @@ def RemoveSoftCF : Pass<"p4hir-remove-soft-cf"> {
     }
     ```
   }];
+  
   let constructor = "P4MLIR::createRemoveSoftCFPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
+//===----------------------------------------------------------------------===//
+// De-alias (aka copy-in/copy-out elimin
+//===----------------------------------------------------------------------===//
+
+def CopyInCopyOutElimination : Pass<"p4hir-copyin-copyout-elimination", "mlir::ModuleOp"> {
+  let summary = "Remove extra call arguments copies due to copy-in/copy-out semantics";
+  let description = [{
+    P4 calls has copy-in / copy-out semantics for its arguments so we can assume
+    that inout / out function parameters never alias. In order to enforce this
+    copies for all inout arguments are created and inout/out arguments are read
+    in very specific order. While semantically correct, this creates potentially
+    inefficient code as additional local variable is created for every indirect call
+    argument as well as corresponding loads and stores.
+
+    This pass aims to match particular copy-in / copy-out argument passing patterns
+    and remove extra variables ("de-alias") when we can prove that the callee
+    access their arguments in compatible manner.
+
+    E.g. the following code:
+    ```mlir
+    p4hir.parser @parserI(%arg0: !packet_in ..., %arg1: !p4hir.ref<!Parsed_packet> {p4hir.dir = #out, p4hir.param_name = "hdr"})() {
+      p4hir.state @start {
+        p4hir.scope {
+          %ethernet_field_ref = p4hir.struct_extract_ref %arg1["ethernet"] : <!Parsed_packet>
+          %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!Ethernet_h>
+          p4hir.call_method @packet_in::@extract<[!Ethernet_h]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!Ethernet_h>) -> ()
+          %val_0 = p4hir.read %hdr_out_arg : <!Ethernet_h>
+          p4hir.assign %val_0, %ethernet_field_ref : <!Ethernet_h>
+        }
+        ...
+    ```
+    would first be translated to (via P4CoreLib dialect):
+    ```
+    mlir
+      p4hir.parser @parserI(%arg0: !p4corelib.packet_in {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "pkt"}, %arg1: !p4hir.ref<!Parsed_packet> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "hdr"})() {
+      p4hir.state @start {
+        p4hir.scope {
+          %ethernet_field_ref = p4hir.struct_extract_ref %arg1["ethernet"] : <!Parsed_packet>
+          %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!Ethernet_h>
+          p4corelib.extract_header %hdr_out_arg : <!Ethernet_h> from %arg0 : !p4corelib.packet_in
+          %val_0 = p4hir.read %hdr_out_arg : <!Ethernet_h>
+          p4hir.assign %val_0, %ethernet_field_ref : <!Ethernet_h>
+        }
+        ...
+    ```
+    and because `p4corelib.extract_header` has well-defined memory access semantics it could be turned into
+    ```
+    mlir
+      p4hir.parser @parserI(%arg0: !p4corelib.packet_in {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "pkt"}, %arg1: !p4hir.ref<!Parsed_packet> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "hdr"})() {
+      p4hir.state @start {
+        p4hir.scope {
+          %ethernet_field_ref = p4hir.struct_extract_ref %arg1["ethernet"] : <!Parsed_packet>
+          p4corelib.extract_header %%ethernet_field_ref : <!Ethernet_h> from %arg0 : !p4corelib.packet_in
+        }
+        ...
+    ```
+    eliminating variable as well as read / assign pair
+  }];
+
+  let constructor = "P4MLIR::createCopyInCopyOutEliminationPass()";
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
