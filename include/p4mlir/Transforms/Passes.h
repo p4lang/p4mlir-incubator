@@ -38,6 +38,7 @@ std::unique_ptr<mlir::Pass> createRemoveAliasesPass();
 std::unique_ptr<mlir::Pass> createTupleToStructPass();
 std::unique_ptr<mlir::Pass> createEnumEliminationPass();
 std::unique_ptr<mlir::Pass> createRemoveSoftCFPass();
+std::unique_ptr<mlir::Pass> createCopyInCopyOutEliminationPass();
 
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"

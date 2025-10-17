@@ -6,6 +6,7 @@ add_mlir_dialect_library(P4MLIRTransforms
   RemoveSoftCF.cpp
   SerEnumElimination.cpp
   SimplifyParsers.cpp
+  CopyInCopyOutElimination.cpp
   TupleToStruct.cpp
 
   ADDITIONAL_HEADER_DIRS
