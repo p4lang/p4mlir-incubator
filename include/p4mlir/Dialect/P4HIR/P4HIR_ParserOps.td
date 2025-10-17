@@ -199,8 +199,6 @@ def ParserSelectCaseOp : P4HIR_Op<"select_case",
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$keyBuilder,
-                   "llvm::StringRef":$nextState)>,
-    OpBuilder<(ins "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$keyBuilder,
                    "mlir::SymbolRefAttr":$nextState)>
   ];
 
