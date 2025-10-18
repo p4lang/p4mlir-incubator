@@ -33,6 +33,7 @@ std::unique_ptr<mlir::Pass> createSimplifyParsersPass();
 std::unique_ptr<mlir::Pass> createFlattenCFGPass();
 std::unique_ptr<mlir::Pass> createSerEnumEliminationPass();
 std::unique_ptr<mlir::Pass> createRemoveAliasesPass();
+std::unique_ptr<mlir::Pass> createTupleToStructPass();
 
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"
