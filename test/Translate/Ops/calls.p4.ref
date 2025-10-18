@@ -1,0 +1,59 @@
+action foo(in int<16> arg2, bit<10> arg1) {
+    int<16> x1 = (int<16>)(16s3);
+    bit<10> x2 = arg1;
+
+    x1 = arg2;
+    return;
+}
+
+action bar() {
+    bool hasReturned = false;
+    int<16> x1 = (int<16>)(16s2);
+
+    {
+        hasReturned = true;
+    }
+    return;
+}
+
+action baz(inout int<16> x) {
+    bool hasReturned_0 = false;
+
+    x = (x + 16s1);
+    {
+        hasReturned_0 = true;
+    }
+    return;
+}
+
+action quuz(out int<16> a) {
+    a = (int<16>)(16s42);
+    return;
+}
+
+action bazz(in int<16> arg1) {
+    bool hasReturned_1 = false;
+    bit<10> x1 = (bit<10>)(10w5);
+    int<16> val;
+
+    foo(arg1, (bit<10>)(10w7));
+    foo(arg1, x1);
+    foo((int<16>)(16s4), (bit<10>)(10w2));
+    bar();
+    {
+        int<16> a_out_arg;
+        quuz(a_out_arg);
+        val = a_out_arg;
+    }
+    {
+        int<16> x_inout_arg;
+        x_inout_arg = val;
+        baz(x_inout_arg);
+        val = x_inout_arg;
+    }
+    {
+        hasReturned_1 = true;
+    }
+    return;
+}
+
