@@ -1891,11 +1891,6 @@ def ArrayOp : P4HIR_Op<"array",
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 
-  let builders = [
-    // ValueRange needs to contain at least one element.
-    OpBuilder<(ins "::mlir::ValueRange":$input)>
-  ];
-
   let extraClassDeclaration = [{
     /// If the all elements of the array are identical, returns that element
     /// value. Otherwise returns a null value.
