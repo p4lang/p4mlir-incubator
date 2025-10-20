@@ -33,7 +33,6 @@ class TupleToStructTypeConverter : public P4HIRTypeConverter {
             MLIRContext *ctx = tupleType.getContext();
             SmallVector<Type> convertedElements;
 
-            // needed to convert nested tuple, to be better investigate
             for (Type t : tupleType.getTypes()) {
                 auto ce = this->convertType(t);
                 if (!ce) return nullptr;
@@ -57,7 +56,6 @@ struct TupleOpConversion : public OpConversionPattern<P4HIR::TupleOp> {
 
     LogicalResult matchAndRewrite(P4HIR::TupleOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
-        auto loc = op.getLoc();
         auto structType =
             llvm::dyn_cast<P4HIR::StructType>(getTypeConverter()->convertType(op.getType()));
 
@@ -82,7 +80,7 @@ struct TupleExtractOpConversion : public OpConversionPattern<P4HIR::TupleExtract
             return rewriter.notifyMatchFailure(op, "expected P4HIR StructType as input operand");
 
         if (index >= structType.getFields().size())
-            return rewriter.notifyMatchFailure(op, "Index out of bounds in P4HIR StructType");
+            return rewriter.notifyMatchFailure(op, "index out of bounds in P4HIR StructType");
 
         rewriter.replaceOpWithNewOp<P4HIR::StructExtractOp>(op, input,
                                                             structType.getFields()[index].name);
