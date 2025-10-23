@@ -36,14 +36,22 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
     addTypeAttributeConversion([&](mlir::Type type, P4HIR::AggAttr attr) {
         if (isLegal(type)) return attr;
 
-        SmallVector<Attribute> newAttrs;
-        llvm::transform(
-            attr.getFields().getAsRange<mlir::TypedAttr>(), std::back_inserter(newAttrs),
-            [&](auto fieldAttr) {
+        auto newAttrs = llvm::map_to_vector(
+            attr.getFields().getAsRange<mlir::TypedAttr>(), [&](auto fieldAttr) {
                 return convertTypeAttribute(fieldAttr.getType(), fieldAttr).value_or(nullptr);
             });
-
         return P4HIR::AggAttr::get(convertType(type), ArrayAttr::get(attr.getContext(), newAttrs));
+    });
+
+    addTypeAttributeConversion([&](mlir::Type type, P4HIR::SetAttr attr) {
+        if (isLegal(type)) return attr;
+
+        auto newMembers = llvm::map_to_vector(
+            attr.getMembers().getAsRange<mlir::TypedAttr>(), [&](auto memberAttr) {
+                return convertTypeAttribute(memberAttr.getType(), memberAttr).value_or(nullptr);
+            });
+        return P4HIR::SetAttr::get(mlir::cast<P4HIR::SetType>(convertType(type)), attr.getKind(),
+                                   ArrayAttr::get(attr.getContext(), newMembers));
     });
 
     addConversion([&](P4HIR::CtorType ctorType) {
