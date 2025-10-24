@@ -1,0 +1,31 @@
+error: loc("test/Translate/Parser/select.p4":8:19):  Unsupported parser state statement 'p4hir.transition_select'
+note: loc("test/Translate/Parser/select.p4":8:19): see current operation: 
+"p4hir.transition_select"(%arg4) ({
+  "p4hir.select_case"() <{state = @p1::@drop}> ({
+    %107 = "p4hir.const"() <{value = #p4hir.int<1> : !p4hir.bit<10>}> : () -> !p4hir.bit<10>
+    %108 = "p4hir.set"(%107) : (!p4hir.bit<10>) -> !p4hir.set<!p4hir.bit<10>>
+    "p4hir.yield"(%108) : (!p4hir.set<!p4hir.bit<10>>) -> ()
+  }) : () -> ()
+  "p4hir.select_case"() <{state = @p1::@next}> ({
+    %104 = "p4hir.const"() <{value = #p4hir.int<10> : !p4hir.bit<10>}> : () -> !p4hir.bit<10>
+    %105 = "p4hir.const"() <{value = #p4hir.int<20> : !p4hir.bit<10>}> : () -> !p4hir.bit<10>
+    %106 = "p4hir.range"(%104, %105) : (!p4hir.bit<10>, !p4hir.bit<10>) -> !p4hir.set<!p4hir.bit<10>>
+    "p4hir.yield"(%106) : (!p4hir.set<!p4hir.bit<10>>) -> ()
+  }) : () -> ()
+  "p4hir.select_case"() <{state = @p1::@next}> ({
+    %101 = "p4hir.const"() <{value = #p4hir.int<0> : !p4hir.bit<10>}> : () -> !p4hir.bit<10>
+    %102 = "p4hir.const"() <{value = #p4hir.int<0> : !p4hir.bit<10>}> : () -> !p4hir.bit<10>
+    %103 = "p4hir.mask"(%101, %102) : (!p4hir.bit<10>, !p4hir.bit<10>) -> !p4hir.set<!p4hir.bit<10>>
+    "p4hir.yield"(%103) : (!p4hir.set<!p4hir.bit<10>>) -> ()
+  }) : () -> ()
+  "p4hir.select_case"() <{state = @p1::@reject}> ({
+    %100 = "p4hir.universal_set"() : () -> !p4hir.set<!p4hir.dontcare>
+    "p4hir.yield"(%100) : (!p4hir.set<!p4hir.dontcare>) -> ()
+  }) : () -> ()
+}) : (!p4hir.bit<10>) -> ()
+   6 |     state start {
+   7 |         transition select(foo) {
+   8 |           1 : drop;
+     |                   ^
+   9 |           10..20 : next;
+  10 |           0 &&& 0 : next;
