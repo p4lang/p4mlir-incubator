@@ -141,4 +141,20 @@ def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
+//===----------------------------------------------------------------------===//
+// EnumElimination
+//===----------------------------------------------------------------------===//
+
+def EnumElimination : Pass<"p4hir-enum-elimination", "mlir::ModuleOp"> {
+  let summary = "Lower enums to serializable enums";
+  let description = [{
+    This pass converts instances of `!p4hir.enum` to `!p4hir.ser_enum`.
+    The underlying integer type and values for each enum are defined by
+    `EnumRepresentationInterface`.
+  }];
+
+  let constructor = "P4MLIR::createEnumEliminationPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
 #endif // P4MLIR_TRANSFORMS_PASSES_TD

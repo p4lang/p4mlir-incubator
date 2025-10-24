@@ -159,7 +159,6 @@ def AnnotatedType : TypeInterface<"AnnotatedType"> {
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
 
-
 def HasDefaultValue : TypeInterface<"HasDefaultValue"> {
   let description = [{
     Implemented by the types having a default value
@@ -173,6 +172,37 @@ def HasDefaultValue : TypeInterface<"HasDefaultValue"> {
       /*methodName=*/  "getDefaultValue"
     >
   ];
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+}
+
+def EnumRepresentationInterface : TypeInterface<"EnumRepresentationInterface"> {
+  let description = [{
+    Interface to specify the underlying representation of an enum type when it is
+    lowered to serialized form. This allows downstream users to provide a policy
+    for the bit-width of enums.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/        "Get the underlying type for an enum type",
+      /*returnType=*/  "mlir::Type",
+      /*methodName=*/  "getUnderlyingType",
+      /*args=*/        (ins)
+    >,
+    InterfaceMethod<
+      /*desc=*/        "Whether this enum should be converted to serializable form",
+      /*returnType=*/  "bool",
+      /*methodName=*/  "shouldConvert",
+      /*args=*/        (ins)
+    >,
+    InterfaceMethod<
+      /*desc=*/        "Get the numeric encoding for a specific enum field",
+      /*returnType=*/  "llvm::APInt",
+      /*methodName=*/  "getEncoding",
+      /*args=*/        (ins "llvm::StringRef":$fieldName)
+    >
+  ];
+
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
 

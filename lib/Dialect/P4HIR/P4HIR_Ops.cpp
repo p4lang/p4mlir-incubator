@@ -3779,6 +3779,25 @@ Operation *P4HIR::P4HIRDialect::materializeConstant(OpBuilder &builder, Attribut
     return builder.create<P4HIR::ConstOp>(loc, typedAttr);
 }
 
+struct EnumRepresentationModel
+    : public P4HIR::EnumRepresentationInterface::ExternalModel<EnumRepresentationModel,
+                                                               P4HIR::EnumType> {
+    static constexpr unsigned bitWidth = 32;
+
+    Type getUnderlyingType(Type type) const {
+        return P4HIR::BitsType::get(type.getContext(), bitWidth, /*isSigned=*/false);
+    }
+
+    bool shouldConvert(Type type) const { return true; }
+
+    llvm::APInt getEncoding(Type type, llvm::StringRef field) const {
+        auto enumType = mlir::cast<P4HIR::EnumType>(type);
+        assert(enumType.contains(field) && "Field must exist in enum");
+        auto underlyingType = mlir::cast<P4HIR::BitsType>(getUnderlyingType(enumType));
+        return llvm::APInt(underlyingType.getWidth(), *enumType.indexOf(field));
+    }
+};
+
 void P4HIR::P4HIRDialect::initialize() {
     registerTypes();
     registerAttributes();
@@ -3788,6 +3807,8 @@ void P4HIR::P4HIRDialect::initialize() {
         >();
     addInterfaces<P4HIROpAsmDialectInterface>();
     addInterfaces<P4HIRInlinerInterface>();
+
+    P4HIR::EnumType::attachInterface<EnumRepresentationModel>(*getContext());
 }
 
 #define GET_OP_CLASSES
