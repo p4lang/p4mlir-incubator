@@ -2016,4 +2016,75 @@ def CondBrOp : P4HIR_Op<"cond_br",
   }];
 }
 
+def InlineAsmOp : P4HIR_Op<"asm", [RecursiveMemoryEffects]> {
+  let description = [{
+    The `p4hir.asm` operation represents asm inline.
+
+    Constraints strings follow barelly the same rules that are established
+    for the C/C++ level assembler constraints.
+
+    Thus, numbers that appears in the constraint string may also refer to:
+    - the output variable index referenced by the input operands.
+    - the index of early-clobber operand
+
+    Operand attributes is a storage, where each element corresponds to the operand with
+    the same index. The first index relates to the operation result (if any).
+    Note, the operands themselves are stored as VariadicOfVariadic in the next order:
+    output, input and then in/out operands.
+
+    Note, when several output operands are present, the result type may be represented as
+    an anon record type. The examples below ar in C/C++ syntax as P4 mainline does
+    not support inline assembler fully
+
+    Example:
+    ```C++
+    __asm__("foo" : : : );
+    __asm__("bar $42 %[val]" : [val] "=r" (x), "+&r"(x));
+    __asm__("baz $42 %[val]" : [val] "=r" (x), "+&r"(x) : "[val]"(y));
+    ```
+
+    ```mlir
+    p4hir.asm(
+      out = [],
+      in = [],
+      in_out = [],
+      {"foo" "~{flags}"}) side_effects
+
+    p4hir.asm(
+      out = [],
+      in = [],
+      in_out = [%2 : !s32i],
+      {"bar $$42 $0" "=r,=&r,1,~{flags}"}) -> !some.type
+
+    p4hir.asm(
+      out = [],
+      in = [%3 : !s32i],
+      in_out = [%2 : !s32i],
+      {"baz $$42 $0" "=r,=&r,0,1,~{flags}"}) -> !some.type
+    ```
+  }];
+
+  let results = (outs Optional<AnyP4Type>:$res);
+
+  let arguments = (
+    ins VariadicOfVariadic<AnyType, "operands_segments">:$asm_operands,
+        StrAttr:$asm_string,
+        StrAttr:$constraints,
+        UnitAttr:$side_effects,
+        ArrayAttr:$operand_attrs,
+        DenseI32ArrayAttr:$operands_segments
+        );
+
+  let builders = [
+    OpBuilder<(ins
+      "llvm::ArrayRef<mlir::ValueRange>":$asm_operands,
+      "llvm::StringRef":$asm_string,
+      "llvm::StringRef":$constraints,
+      "bool":$side_effects,
+      "llvm::ArrayRef<mlir::Attribute>":$operand_attrs)>
+  ];
+
+  let hasCustomAssemblyFormat = 1;
+}
+
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD
