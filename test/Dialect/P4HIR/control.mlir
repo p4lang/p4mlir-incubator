@@ -86,7 +86,7 @@ module {
       p4hir.call @Pipe1::@bar () : () -> ()
       %c3 = p4hir.const #int3_infint
       %cast_1 = p4hir.cast(%c3 : !infint) : !i16i
-      %eq = p4hir.cmp(eq, %arg1, %cast_1) : !i16i, !p4hir.bool
+      %eq = p4hir.cmp(eq, %arg1 : !i16i, %cast_1 : !i16i)
       p4hir.if %eq {
         p4hir.call @Pipe1::@foo () : () -> ()
         %c3_i16i = p4hir.const #int3_i16i

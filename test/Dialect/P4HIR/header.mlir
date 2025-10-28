@@ -27,7 +27,7 @@ module {
 
     %val = p4hir.read %h : <!H>
     %__valid = p4hir.struct_extract %val["__valid"] : !H
-    %eq = p4hir.cmp(eq, %__valid, %invalid) : !validity_bit, !p4hir.bool
+    %eq = p4hir.cmp(eq, %__valid : !validity_bit, %invalid : !validity_bit)
     p4hir.if %eq {
       %x_field_ref = p4hir.struct_extract_ref %h["x"] : <!H>
       %c42_b32i = p4hir.const #int42_b32i

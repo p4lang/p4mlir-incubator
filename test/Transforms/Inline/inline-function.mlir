@@ -17,7 +17,7 @@ module {
     p4hir.scope {
       %true = p4hir.const #true
       p4hir.assign %true, %hasReturned : <!p4hir.bool>
-      %gt = p4hir.cmp(gt, %arg0, %arg1) : !b32i, !p4hir.bool
+      %gt = p4hir.cmp(gt, %arg0 : !b32i, %arg1 : !b32i)
       %0 = p4hir.ternary(%gt, true {
         p4hir.yield %arg1 : !b32i
       }, false {

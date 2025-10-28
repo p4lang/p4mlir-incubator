@@ -11,7 +11,7 @@ module {
   p4hir.parser @p2(%arg0: !p4hir.bool {p4hir.dir = #in, p4hir.param_name = "check"}, %arg1: !p4hir.ref<!p4hir.bool> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "matches"})() {
     p4hir.state @start {
       %true = p4hir.const #true
-      %eq = p4hir.cmp(eq, %arg0, %true) : !p4hir.bool, !p4hir.bool
+      %eq = p4hir.cmp(eq, %arg0 : !p4hir.bool, %true : !p4hir.bool)
       %error_SomeError = p4hir.const #error_SomeError
       // CHECK: p4corelib.verify %eq signalling %error_SomeError : !error
       p4hir.call @verify (%eq, %error_SomeError) : (!p4hir.bool, !error) -> ()
