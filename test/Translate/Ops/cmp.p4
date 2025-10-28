@@ -14,27 +14,27 @@
 // CHECK:         p4hir.assign %[[VAL_5]], %[[VAL_6]] : <!b10i>
 // CHECK:         %[[VAL_7:.*]] = p4hir.read %[[VAL_3]] : <!b10i>
 // CHECK:         %[[VAL_8:.*]] = p4hir.read %[[VAL_6]] : <!b10i>
-// CHECK:         %[[VAL_9:.*]] = p4hir.cmp(eq, %[[VAL_7]], %[[VAL_8]]) : !b10i, !p4hir.bool
+// CHECK:         %[[VAL_9:.*]] = p4hir.cmp(eq, %[[VAL_7]] : !b10i, %[[VAL_8]] : !b10i)
 // CHECK:         p4hir.assign %[[VAL_9]], %[[VAL_0]] : <!p4hir.bool>
 // CHECK:         %[[VAL_10:.*]] = p4hir.read %[[VAL_3]] : <!b10i>
 // CHECK:         %[[VAL_11:.*]] = p4hir.read %[[VAL_6]] : <!b10i>
-// CHECK:         %[[VAL_12:.*]] = p4hir.cmp(ne, %[[VAL_10]], %[[VAL_11]]) : !b10i, !p4hir.bool
+// CHECK:         %[[VAL_12:.*]] = p4hir.cmp(ne, %[[VAL_10]] : !b10i, %[[VAL_11]] : !b10i)
 // CHECK:         p4hir.assign %[[VAL_12]], %[[VAL_0]] : <!p4hir.bool>
 // CHECK:         %[[VAL_13:.*]] = p4hir.read %[[VAL_3]] : <!b10i>
 // CHECK:         %[[VAL_14:.*]] = p4hir.read %[[VAL_6]] : <!b10i>
-// CHECK:         %[[VAL_15:.*]] = p4hir.cmp(lt, %[[VAL_13]], %[[VAL_14]]) : !b10i, !p4hir.bool
+// CHECK:         %[[VAL_15:.*]] = p4hir.cmp(lt, %[[VAL_13]] : !b10i, %[[VAL_14]] : !b10i)
 // CHECK:         p4hir.assign %[[VAL_15]], %[[VAL_0]] : <!p4hir.bool>
 // CHECK:         %[[VAL_16:.*]] = p4hir.read %[[VAL_3]] : <!b10i>
 // CHECK:         %[[VAL_17:.*]] = p4hir.read %[[VAL_6]] : <!b10i>
-// CHECK:         %[[VAL_18:.*]] = p4hir.cmp(gt, %[[VAL_16]], %[[VAL_17]]) : !b10i, !p4hir.bool
+// CHECK:         %[[VAL_18:.*]] = p4hir.cmp(gt, %[[VAL_16]] : !b10i, %[[VAL_17]] : !b10i)
 // CHECK:         p4hir.assign %[[VAL_18]], %[[VAL_0]] : <!p4hir.bool>
 // CHECK:         %[[VAL_19:.*]] = p4hir.read %[[VAL_3]] : <!b10i>
 // CHECK:         %[[VAL_20:.*]] = p4hir.read %[[VAL_6]] : <!b10i>
-// CHECK:         %[[VAL_21:.*]] = p4hir.cmp(le, %[[VAL_19]], %[[VAL_20]]) : !b10i, !p4hir.bool
+// CHECK:         %[[VAL_21:.*]] = p4hir.cmp(le, %[[VAL_19]] : !b10i, %[[VAL_20]] : !b10i)
 // CHECK:         p4hir.assign %[[VAL_21]], %[[VAL_0]] : <!p4hir.bool>
 // CHECK:         %[[VAL_22:.*]] = p4hir.read %[[VAL_3]] : <!b10i>
 // CHECK:         %[[VAL_23:.*]] = p4hir.read %[[VAL_6]] : <!b10i>
-// CHECK:         %[[VAL_24:.*]] = p4hir.cmp(ge, %[[VAL_22]], %[[VAL_23]]) : !b10i, !p4hir.bool
+// CHECK:         %[[VAL_24:.*]] = p4hir.cmp(ge, %[[VAL_22]] : !b10i, %[[VAL_23]] : !b10i)
 // CHECK:         p4hir.assign %[[VAL_24]], %[[VAL_0]] : <!p4hir.bool>
 
 action cmp() {

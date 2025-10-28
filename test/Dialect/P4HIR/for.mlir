@@ -23,7 +23,7 @@ module {
             %c10 = p4hir.const #int10_infint
             %cast_2 = p4hir.cast(%c10 : !infint) : !b32i
             %val_3 = p4hir.read %i : <!b32i>
-            %cond = p4hir.cmp(lt, %val_3, %cast_2) : !b32i, !p4hir.bool
+            %cond = p4hir.cmp(lt, %val_3 : !b32i, %cast_2 : !b32i)
             p4hir.condition %cond
         } body {
             %c1_b32i = p4hir.const #int1_b32i

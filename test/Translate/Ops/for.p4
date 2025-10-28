@@ -15,7 +15,7 @@ bit<32> loop() {
     // CHECK:            %[[CONST_10:.*]] = p4hir.const #int10_infint
     // CHECK:            %[[CAST_10:.*]] = p4hir.cast(%c10 : !infint) : !b32i
     // CHECK:            %[[INDEX_VAL:.*]] = p4hir.read %[[INDEX]] : <!b32i>
-    // CHECK:            %[[COND:.*]] = p4hir.cmp(lt, %[[INDEX_VAL]], %[[CAST_10]]) : !b32i, !p4hir.bool
+    // CHECK:            %[[COND:.*]] = p4hir.cmp(lt, %[[INDEX_VAL]] : !b32i, %[[CAST_10]] : !b32i)
     for (bit<32> i = 0; i < 10; i = i + 1) {
 
         // CHECK:      } body {
@@ -55,7 +55,7 @@ bit<32> loop() {
 // CHECK:            %[[CONST_10:.*]] = p4hir.const #int10_infint
 // CHECK:            %[[CAST_10:.*]] = p4hir.cast(%[[CONST_10]] : !infint) : !b8i
 // CHECK:            %[[I_VAL:.*]] = p4hir.read %[[I]] : <!b8i>
-// CHECK:            %[[CMP_I:.*]] = p4hir.cmp(le, %[[I_VAL]], %[[CAST_10]]) : !b8i, !p4hir.bool
+// CHECK:            %[[CMP_I:.*]] = p4hir.cmp(le, %[[I_VAL]] : !b8i, %[[CAST_10]] : !b8i)
 // CHECK:            %[[TERNARY:.*]] = p4hir.ternary(%[[CMP_I]], true {
 // CHECK:              %[[TRUE:.*]] = p4hir.const #true
 // CHECK:              p4hir.yield %[[TRUE]] : !p4hir.bool
@@ -63,7 +63,7 @@ bit<32> loop() {
 // CHECK:              %[[CONST_5:.*]] = p4hir.const #int5_infint
 // CHECK:              %[[CAST_5:.*]] = p4hir.cast(%[[CONST_5]] : !infint) : !b8i
 // CHECK:              %[[J_VAL:.*]] = p4hir.read %[[J]] : <!b8i>
-// CHECK:              %[[CMP_J:.*]] = p4hir.cmp(le, %[[J_VAL]], %[[CAST_5]]) : !b8i, !p4hir.bool
+// CHECK:              %[[CMP_J:.*]] = p4hir.cmp(le, %[[J_VAL]] : !b8i, %[[CAST_5]] : !b8i)
 // CHECK:              p4hir.yield %[[CMP_J]] : !p4hir.bool
 // CHECK:            }) : (!p4hir.bool) -> !p4hir.bool
 // CHECK:          } body {

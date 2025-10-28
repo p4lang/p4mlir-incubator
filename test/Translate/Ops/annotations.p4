@@ -106,7 +106,7 @@ control c(in Foo ff, bool bb) {
         }
 
 // CHECK:      p4hir.for : cond {
-// CHECK:       %[[LOOP_COND:.*]] = p4hir.cmp(lt, %{{.*}}, %{{.*}}) : !b8i, !p4hir.bool
+// CHECK:       %[[LOOP_COND:.*]] = p4hir.cmp(lt, %{{.*}} : !b8i, %{{.*}} : !b8i)
 // CHECK:      } body annotations {unroll} {
 // CHECK:      } updates {
         @unroll
