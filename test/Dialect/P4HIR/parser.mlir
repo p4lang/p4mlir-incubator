@@ -77,7 +77,7 @@ module {
       p4hir.yield %c0_i10i : !i10i
     }, false {
       p4hir.yield %arg0 : !i10i
-    }) : (!p4hir.bool) -> !i10i
+    }) : !i10i
     %s = p4hir.variable ["s", init] : <!i10i>
     p4hir.assign %0, %s : <!i10i>
     p4hir.state @start {

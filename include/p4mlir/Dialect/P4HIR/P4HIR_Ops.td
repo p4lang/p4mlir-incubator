@@ -638,7 +638,7 @@ def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
 
   // TODO: Need to allow externs plus any normal P4 type
   let arguments = (ins Variadic<AnyType>:$args);
-  let assemblyFormat = "($args^ `:` type($args))? attr-dict";
+  let assemblyFormat = [{($args^ `:` type($args))? attr-dict}];
   let builders = [
     OpBuilder<(ins), [{ /* nothing to do */ }]>,
   ];
@@ -689,7 +689,7 @@ def TernaryOp : P4HIR_Op<"ternary",
     `(` $cond `,`
       `true` $trueRegion `,`
       `false` $falseRegion
-    `)` `:` functional-type(operands, results) attr-dict
+    `)` `:` type($result) attr-dict
   }];
 }
 
