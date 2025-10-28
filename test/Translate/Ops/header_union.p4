@@ -25,7 +25,7 @@ header_union U {
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_1]]["__valid"] : <!H1>
 // CHECK:           %[[VAL_3:.*]] = p4hir.read %[[VAL_2]] : <!validity_bit>
 // CHECK:           %[[VAL_4:.*]] = p4hir.const #[[$ATTR_VALID]]
-// CHECK:           %[[VAL_5:.*]] = p4hir.cmp(eq, %[[VAL_3]], %[[VAL_4]]) : !validity_bit, !p4hir.bool
+// CHECK:           %[[VAL_5:.*]] = p4hir.cmp(eq, %[[VAL_3]] : !validity_bit, %[[VAL_4]] : !validity_bit)
 // CHECK:           %[[VAL_6:.*]] = p4hir.ternary(%[[VAL_5]], true {
 // CHECK:             %[[VAL_7:.*]] = p4hir.const #[[$ATTR_TRUE]]
 // CHECK:             p4hir.yield %[[VAL_7]] : !p4hir.bool
@@ -34,7 +34,7 @@ header_union U {
 // CHECK:             %[[VAL_9:.*]] = p4hir.struct_extract_ref %[[VAL_8]]["__valid"] : <!H2>
 // CHECK:             %[[VAL_10:.*]] = p4hir.read %[[VAL_9]] : <!validity_bit>
 // CHECK:             %[[VAL_11:.*]] = p4hir.const #[[$ATTR_VALID]]
-// CHECK:             %[[VAL_12:.*]] = p4hir.cmp(eq, %[[VAL_10]], %[[VAL_11]]) : !validity_bit, !p4hir.bool
+// CHECK:             %[[VAL_12:.*]] = p4hir.cmp(eq, %[[VAL_10]] : !validity_bit, %[[VAL_11]] : !validity_bit)
 // CHECK:             %[[VAL_13:.*]] = p4hir.ternary(%[[VAL_12]], true {
 // CHECK:               %[[VAL_14:.*]] = p4hir.const #[[$ATTR_TRUE]]
 // CHECK:               p4hir.yield %[[VAL_14]] : !p4hir.bool
@@ -45,7 +45,7 @@ header_union U {
 // CHECK:             p4hir.yield %[[VAL_13]] : !p4hir.bool
 // CHECK:           }) : (!p4hir.bool) -> !p4hir.bool
 // CHECK:           %[[VAL_16:.*]] = p4hir.const #[[$ATTR_TRUE]]
-// CHECK:           %[[VAL_17:.*]] = p4hir.cmp(eq, %[[VAL_6]], %[[VAL_16]]) : !p4hir.bool, !p4hir.bool
+// CHECK:           %[[VAL_17:.*]] = p4hir.cmp(eq, %[[VAL_6]] : !p4hir.bool, %[[VAL_16]] : !p4hir.bool)
 // CHECK:           p4hir.if %[[VAL_17]]
 
 action header_union_isValid() {
@@ -223,7 +223,7 @@ action get_header() {
 // CHECK:           %[[VAL_1:.*]] = p4hir.variable ["u2"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.read %[[VAL_0]] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.read %[[VAL_1]] : <!U>
-// CHECK:           %[[VAL_4:.*]] = p4hir.cmp(eq, %[[VAL_2]], %[[VAL_3]]) : !U, !p4hir.bool
+// CHECK:           %[[VAL_4:.*]] = p4hir.cmp(eq, %[[VAL_2]] : !U, %[[VAL_3]] : !U)
 // CHECK:           p4hir.if %[[VAL_4]]
 
 action equ_header_unions() {
@@ -240,7 +240,7 @@ action equ_header_unions() {
 // CHECK:           %[[VAL_1:.*]] = p4hir.variable ["u2"] : <!U>
 // CHECK:           %[[VAL_2:.*]] = p4hir.read %[[VAL_0]] : <!U>
 // CHECK:           %[[VAL_3:.*]] = p4hir.read %[[VAL_1]] : <!U>
-// CHECK:           %[[VAL_4:.*]] = p4hir.cmp(ne, %[[VAL_2]], %[[VAL_3]]) : !U, !p4hir.bool
+// CHECK:           %[[VAL_4:.*]] = p4hir.cmp(ne, %[[VAL_2]] : !U, %[[VAL_3]] : !U)
 // CHECK:           p4hir.if %[[VAL_4]]
 
 action neq_header_unions() {
@@ -258,7 +258,7 @@ action neq_header_unions() {
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract %[[VAL_1]]["h1"] : !U
 // CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract %[[VAL_2]]["__valid"] : !H1
 // CHECK:           %[[VAL_4:.*]] = p4hir.const #[[$ATTR_VALID]]
-// CHECK:           %[[VAL_5:.*]] = p4hir.cmp(eq, %[[VAL_3]], %[[VAL_4]]) : !validity_bit, !p4hir.bool
+// CHECK:           %[[VAL_5:.*]] = p4hir.cmp(eq, %[[VAL_3]] : !validity_bit, %[[VAL_4]] : !validity_bit)
 // CHECK:           %[[VAL_6:.*]] = p4hir.ternary(%[[VAL_5]], true {
 // CHECK:             %[[VAL_7:.*]] = p4hir.const #[[$ATTR_TRUE]]
 // CHECK:             p4hir.yield %[[VAL_7]] : !p4hir.bool
@@ -266,7 +266,7 @@ action neq_header_unions() {
 // CHECK:             %[[VAL_8:.*]] = p4hir.struct_extract %[[VAL_1]]["h2"] : !U
 // CHECK:             %[[VAL_9:.*]] = p4hir.struct_extract %[[VAL_8]]["__valid"] : !H2
 // CHECK:             %[[VAL_10:.*]] = p4hir.const #[[$ATTR_VALID]]
-// CHECK:             %[[VAL_11:.*]] = p4hir.cmp(eq, %[[VAL_9]], %[[VAL_10]]) : !validity_bit, !p4hir.bool
+// CHECK:             %[[VAL_11:.*]] = p4hir.cmp(eq, %[[VAL_9]] : !validity_bit, %[[VAL_10]] : !validity_bit)
 // CHECK:             %[[VAL_12:.*]] = p4hir.ternary(%[[VAL_11]], true {
 // CHECK:               %[[VAL_13:.*]] = p4hir.const #[[$ATTR_TRUE]]
 // CHECK:               p4hir.yield %[[VAL_13]] : !p4hir.bool
@@ -277,7 +277,7 @@ action neq_header_unions() {
 // CHECK:             p4hir.yield %[[VAL_12]] : !p4hir.bool
 // CHECK:           }) : (!p4hir.bool) -> !p4hir.bool
 // CHECK:           %[[VAL_15:.*]] = p4hir.const #[[$ATTR_FALSE]]
-// CHECK:           %[[VAL_16:.*]] = p4hir.cmp(eq, %[[VAL_6]], %[[VAL_15]]) : !p4hir.bool, !p4hir.bool
+// CHECK:           %[[VAL_16:.*]] = p4hir.cmp(eq, %[[VAL_6]] : !p4hir.bool, %[[VAL_15]] : !p4hir.bool)
 // CHECK:           p4hir.if %[[VAL_16]]
 
 action equ_with_invalid_header_union() {
@@ -294,7 +294,7 @@ action equ_with_invalid_header_union() {
 // CHECK:           %[[VAL_2:.*]] = p4hir.struct_extract %[[VAL_1]]["h1"] : !U
 // CHECK:           %[[VAL_3:.*]] = p4hir.struct_extract %[[VAL_2]]["__valid"] : !H1
 // CHECK:           %[[VAL_4:.*]] = p4hir.const #[[$ATTR_VALID]]
-// CHECK:           %[[VAL_5:.*]] = p4hir.cmp(eq, %[[VAL_3]], %[[VAL_4]]) : !validity_bit, !p4hir.bool
+// CHECK:           %[[VAL_5:.*]] = p4hir.cmp(eq, %[[VAL_3]] : !validity_bit, %[[VAL_4]] : !validity_bit)
 // CHECK:           %[[VAL_6:.*]] = p4hir.ternary(%[[VAL_5]], true {
 // CHECK:             %[[VAL_7:.*]] = p4hir.const #[[$ATTR_TRUE]]
 // CHECK:             p4hir.yield %[[VAL_7]] : !p4hir.bool
@@ -302,7 +302,7 @@ action equ_with_invalid_header_union() {
 // CHECK:             %[[VAL_8:.*]] = p4hir.struct_extract %[[VAL_1]]["h2"] : !U
 // CHECK:             %[[VAL_9:.*]] = p4hir.struct_extract %[[VAL_8]]["__valid"] : !H2
 // CHECK:             %[[VAL_10:.*]] = p4hir.const #[[$ATTR_VALID]]
-// CHECK:             %[[VAL_11:.*]] = p4hir.cmp(eq, %[[VAL_9]], %[[VAL_10]]) : !validity_bit, !p4hir.bool
+// CHECK:             %[[VAL_11:.*]] = p4hir.cmp(eq, %[[VAL_9]] : !validity_bit, %[[VAL_10]] : !validity_bit)
 // CHECK:             %[[VAL_12:.*]] = p4hir.ternary(%[[VAL_11]], true {
 // CHECK:               %[[VAL_13:.*]] = p4hir.const #[[$ATTR_TRUE]]
 // CHECK:               p4hir.yield %[[VAL_13]] : !p4hir.bool
@@ -313,7 +313,7 @@ action equ_with_invalid_header_union() {
 // CHECK:             p4hir.yield %[[VAL_12]] : !p4hir.bool
 // CHECK:           }) : (!p4hir.bool) -> !p4hir.bool
 // CHECK:           %[[VAL_15:.*]] = p4hir.const #[[$ATTR_TRUE]]
-// CHECK:           %[[VAL_16:.*]] = p4hir.cmp(eq, %[[VAL_6]], %[[VAL_15]]) : !p4hir.bool, !p4hir.bool
+// CHECK:           %[[VAL_16:.*]] = p4hir.cmp(eq, %[[VAL_6]] : !p4hir.bool, %[[VAL_15]] : !p4hir.bool)
 // CHECK:           p4hir.if %[[VAL_16]]
 
 action neq_with_invalid_header_union() {

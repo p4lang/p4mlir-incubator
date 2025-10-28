@@ -502,7 +502,7 @@ def CmpOp : P4HIR_Op<"cmp",
     [lt,gt,ge,eq,ne]
 
     ```mlir
-    %7 = p4hir.cmp(gt, %1, %2) : !p4hir.bit<32>, !p4hir.bool
+    %7 = p4hir.cmp(gt, %1, %2) : !p4hir.bit<32>
     ```
   }];
 
@@ -511,7 +511,7 @@ def CmpOp : P4HIR_Op<"cmp",
                        AnyP4Type:$lhs, AnyP4Type:$rhs);
 
   let assemblyFormat = [{
-    `(` $kind `,` $lhs `,` $rhs  `)` `:` type($lhs) `,` type($result) attr-dict
+    `(` $kind `,` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` attr-dict
   }];
 
   // Already covered by the traits

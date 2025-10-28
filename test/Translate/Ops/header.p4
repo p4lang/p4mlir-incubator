@@ -77,7 +77,7 @@ action test1(inout Headers h) {
     // CHECK: %[[__valid_field_ref:.*]] = p4hir.struct_extract_ref %[[eth_field_ref]]["__valid"] : <!Ethernet>
     // CHECK: %[[val:.*]] = p4hir.read %[[__valid_field_ref]] : <!validity_bit>
     // CHECK: %[[valid:.*]] = p4hir.const #valid
-    // CHECK: %[[eq:.*]] = p4hir.cmp(eq, %[[val]], %[[valid]]) : !validity_bit, !p4hir.bool
+    // CHECK: %[[eq:.*]] = p4hir.cmp(eq, %[[val]] : !validity_bit, %[[valid]] : !validity_bit)
     // CHECK: %[[not:.*]] = p4hir.unary(not, %[[eq]]) : !p4hir.bool
     // CHECK: p4hir.if %[[not]] {
     // CHECK:   p4hir.return

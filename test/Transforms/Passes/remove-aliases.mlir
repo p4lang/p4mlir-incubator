@@ -95,7 +95,7 @@ module {
   %nested_var = p4hir.variable ["nested"] : <!NN32>
   p4hir.assign %c5_NN32, %nested_var : <!NN32>
   %nested_val = p4hir.read %nested_var : <!NN32>
-  %nested_eq = p4hir.cmp(eq, %nested_val, %c5_NN32) : !NN32, !p4hir.bool
+  %nested_eq = p4hir.cmp(eq, %nested_val : !NN32, %c5_NN32 : !NN32)
 }
 
 
@@ -176,7 +176,7 @@ module {
       p4hir.assign %cast_10, %n1 : <!N32>
       %val_11 = p4hir.read %n : <!N32>
       %val_12 = p4hir.read %n1 : <!N32>
-      %eq = p4hir.cmp(eq, %val_11, %val_12) : !N32, !p4hir.bool
+      %eq = p4hir.cmp(eq, %val_11 : !N32, %val_12 : !N32)
       p4hir.if %eq {
         %c2_b32i = p4hir.const #int2_b32i
         %cast_21 = p4hir.cast(%c2_b32i : !b32i) : !b32i
@@ -194,7 +194,7 @@ module {
       %val_17 = p4hir.read %s : <!S>
       %n_18 = p4hir.struct_extract %val_17["n"] : !S
       %cast_19 = p4hir.cast(%n_18 : !N32) : !b32i
-      %eq_20 = p4hir.cmp(eq, %b_16, %cast_19) : !b32i, !p4hir.bool
+      %eq_20 = p4hir.cmp(eq, %b_16 : !b32i, %cast_19 : !b32i)
       p4hir.if %eq_20 {
         %c3_b32i = p4hir.const #int3_b32i
         %cast_21 = p4hir.cast(%c3_b32i : !b32i) : !b32i
