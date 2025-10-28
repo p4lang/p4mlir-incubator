@@ -22,7 +22,7 @@ module {
         p4hir.yield %arg1 : !b32i
       }, false {
         p4hir.yield %arg0 : !b32i
-      }) : (!p4hir.bool) -> !b32i
+      }) : !b32i
       p4hir.assign %0, %retval : <!b32i>
     }
     %val = p4hir.read %retval : <!b32i>

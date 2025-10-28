@@ -9,24 +9,7 @@
 #define DEBUG_TYPE "p4hir-conversion-patterns"
 
 using namespace mlir;
-
 using namespace P4::P4MLIR;
-
-namespace {
-struct AnyCallOpInterfaceConversionPattern : public OpInterfaceConversionPattern<CallOpInterface> {
-    using OpInterfaceConversionPattern<CallOpInterface>::OpInterfaceConversionPattern;
-
-    LogicalResult matchAndRewrite(CallOpInterface callOp, ArrayRef<Value> operands,
-                                  ConversionPatternRewriter &rewriter) const override {
-        FailureOr<Operation *> newOp =
-            doTypeConversion(callOp, operands, rewriter, getTypeConverter());
-        if (failed(newOp)) return failure();
-
-        return success();
-    }
-};
-
-}  // end anonymous namespace
 
 P4HIRTypeConverter::P4HIRTypeConverter() {
     addConversion([&](mlir::Type t) { return t; });
@@ -52,6 +35,11 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
             });
         return P4HIR::SetAttr::get(mlir::cast<P4HIR::SetType>(convertType(type)), attr.getKind(),
                                    ArrayAttr::get(attr.getContext(), newMembers));
+    });
+
+    addTypeAttributeConversion([&](mlir::Type type, P4HIR::EnumFieldAttr attr) {
+        if (isLegal(type)) return attr;
+        return P4HIR::EnumFieldAttr::get(convertType(type), attr.getField());
     });
 
     addConversion([&](P4HIR::CtorType ctorType) {
@@ -242,7 +230,23 @@ FailureOr<Operation *> P4::P4MLIR::doTypeConversion(Operation *op, ValueRange op
     return newOp;
 }
 
-void P4::P4MLIR::populateP4HIRAnyCallOpTypeConversionPattern(mlir::RewritePatternSet &patterns,
-                                                             const mlir::TypeConverter &converter) {
-    patterns.add<AnyCallOpInterfaceConversionPattern>(converter, patterns.getContext());
+void P4::P4MLIR::configureUnknownOpDynamicallyLegalByTypes(mlir::ConversionTarget &target,
+                                                           const mlir::TypeConverter &converter) {
+    target.markUnknownOpDynamicallyLegal([&](Operation *op) {
+        if (auto func = dyn_cast<FunctionOpInterface>(op))
+            return converter.isLegal(func.getFunctionType());
+
+        if (!converter.isLegal(op->getOperandTypes()) || !converter.isLegal(op->getResultTypes()))
+            return false;
+
+        mlir::AttrTypeWalker walker;
+        walker.addWalk([&](Type type) {
+            return converter.isLegal(type) ? WalkResult::advance() : WalkResult::interrupt();
+        });
+
+        for (auto attr : op->getAttrs())
+            if (walker.walk(attr.getValue()).wasInterrupted()) return false;
+
+        return true;
+    });
 }

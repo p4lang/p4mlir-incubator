@@ -41,9 +41,9 @@ header_union U {
 // CHECK:             }, false {
 // CHECK:               %[[VAL_15:.*]] = p4hir.const #[[$ATTR_FALSE]]
 // CHECK:               p4hir.yield %[[VAL_15]] : !p4hir.bool
-// CHECK:             }) : (!p4hir.bool) -> !p4hir.bool
+// CHECK:             }) : !p4hir.bool
 // CHECK:             p4hir.yield %[[VAL_13]] : !p4hir.bool
-// CHECK:           }) : (!p4hir.bool) -> !p4hir.bool
+// CHECK:           }) : !p4hir.bool
 // CHECK:           %[[VAL_16:.*]] = p4hir.const #[[$ATTR_TRUE]]
 // CHECK:           %[[VAL_17:.*]] = p4hir.cmp(eq, %[[VAL_6]] : !p4hir.bool, %[[VAL_16]] : !p4hir.bool)
 // CHECK:           p4hir.if %[[VAL_17]]
@@ -273,9 +273,9 @@ action neq_header_unions() {
 // CHECK:             }, false {
 // CHECK:               %[[VAL_14:.*]] = p4hir.const #[[$ATTR_FALSE]]
 // CHECK:               p4hir.yield %[[VAL_14]] : !p4hir.bool
-// CHECK:             }) : (!p4hir.bool) -> !p4hir.bool
+// CHECK:             }) : !p4hir.bool
 // CHECK:             p4hir.yield %[[VAL_12]] : !p4hir.bool
-// CHECK:           }) : (!p4hir.bool) -> !p4hir.bool
+// CHECK:           }) : !p4hir.bool
 // CHECK:           %[[VAL_15:.*]] = p4hir.const #[[$ATTR_FALSE]]
 // CHECK:           %[[VAL_16:.*]] = p4hir.cmp(eq, %[[VAL_6]] : !p4hir.bool, %[[VAL_15]] : !p4hir.bool)
 // CHECK:           p4hir.if %[[VAL_16]]
@@ -309,9 +309,9 @@ action equ_with_invalid_header_union() {
 // CHECK:             }, false {
 // CHECK:               %[[VAL_14:.*]] = p4hir.const #[[$ATTR_FALSE]]
 // CHECK:               p4hir.yield %[[VAL_14]] : !p4hir.bool
-// CHECK:             }) : (!p4hir.bool) -> !p4hir.bool
+// CHECK:             }) : !p4hir.bool
 // CHECK:             p4hir.yield %[[VAL_12]] : !p4hir.bool
-// CHECK:           }) : (!p4hir.bool) -> !p4hir.bool
+// CHECK:           }) : !p4hir.bool
 // CHECK:           %[[VAL_15:.*]] = p4hir.const #[[$ATTR_TRUE]]
 // CHECK:           %[[VAL_16:.*]] = p4hir.cmp(eq, %[[VAL_6]] : !p4hir.bool, %[[VAL_15]] : !p4hir.bool)
 // CHECK:           p4hir.if %[[VAL_16]]

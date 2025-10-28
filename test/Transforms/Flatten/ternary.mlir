@@ -21,7 +21,7 @@ module {
     }, false {
       %29 = p4hir.const #p4hir.bool<false> : !p4hir.bool
       p4hir.yield %29 : !p4hir.bool
-    }) : (!p4hir.bool) -> !p4hir.bool
+    }) : !p4hir.bool
     p4hir.return
   }
 
@@ -46,7 +46,7 @@ module {
     }, false {
       %29 = p4hir.const #p4hir.int<100500> : !p4hir.int<32>
       p4hir.yield %29 : !p4hir.int<32>
-    }) : (!p4hir.bool) -> !p4hir.int<32>
+    }) : !p4hir.int<32>
     p4hir.return
   }    
 }

@@ -65,7 +65,7 @@ bit<32> loop() {
 // CHECK:              %[[J_VAL:.*]] = p4hir.read %[[J]] : <!b8i>
 // CHECK:              %[[CMP_J:.*]] = p4hir.cmp(le, %[[J_VAL]] : !b8i, %[[CAST_5]] : !b8i)
 // CHECK:              p4hir.yield %[[CMP_J]] : !p4hir.bool
-// CHECK:            }) : (!p4hir.bool) -> !p4hir.bool
+// CHECK:            }) : !p4hir.bool
 // CHECK:          } body {
 // CHECK:          } updates {
 // CHECK:            %[[I_VAL_UPD:.*]] = p4hir.read %[[I]] : <!b8i>
