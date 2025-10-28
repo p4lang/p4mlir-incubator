@@ -11,7 +11,7 @@
 // CHECK:    }, false {
 // CHECK:      %[[TMP_1_VAL:.*]] = p4hir.read %[[TMP_1]] : <!p4hir.bool>
 // CHECK:      p4hir.yield %[[TMP_1_VAL]] : !p4hir.bool
-// CHECK:    }) : (!p4hir.bool) -> !p4hir.bool
+// CHECK:    }) : !p4hir.bool
 // CHECK:    p4hir.assign %[[MUX]], %[[TMP_1]] : <!p4hir.bool>
 
 action cond_0(bool in_b) {
