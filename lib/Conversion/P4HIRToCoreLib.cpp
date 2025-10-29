@@ -131,24 +131,6 @@ struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMet
     }
 };
 
-}  // end anonymous namespace
-
-class P4CoreLibTypeConverter : public P4HIRTypeConverter {
- public:
-    P4CoreLibTypeConverter() {
-        addConversion([&](P4HIR::ExternType extType) -> std::optional<Type> {
-            if (!extType.hasAnnotation("corelib")) return std::nullopt;
-
-            if (extType.getName() == "packet_in")
-                return P4CoreLib::PacketInType::get(extType.getContext());
-            else if (extType.getName() == "packet_out")
-                return P4CoreLib::PacketOutType::get(extType.getContext());
-
-            return std::nullopt;
-        });
-    }
-};
-
 void LowerToP4CoreLib::runOnOperation() {
     MLIRContext &context = getContext();
     mlir::ModuleOp module = getOperation();
@@ -157,14 +139,23 @@ void LowerToP4CoreLib::runOnOperation() {
     RewritePatternSet patterns(&context);
     SymbolTableCollection symTables;
 
-    P4CoreLibTypeConverter typeConverter;
+    P4HIRTypeConverter converter;
+    converter.addConversion([&](P4HIR::ExternType extType) -> std::optional<Type> {
+        if (!extType.hasAnnotation("corelib")) return std::nullopt;
+
+        if (extType.getName() == "packet_in")
+            return P4CoreLib::PacketInType::get(extType.getContext());
+        else if (extType.getName() == "packet_out")
+            return P4CoreLib::PacketOutType::get(extType.getContext());
+
+        return std::nullopt;
+    });
+
     target.addLegalDialect<P4CoreLib::P4CoreLibDialect>();
 
     target.addDynamicallyLegalOp<P4HIR::FuncOp>([&](P4HIR::FuncOp func) {
-        auto fnType = func.getFunctionType();
-
         // All corelib-annotated functions should be converted
-        return !func.hasAnnotation("corelib") && typeConverter.isLegal(fnType);
+        return !func.hasAnnotation("corelib") && converter.isLegal(func.getFunctionType());
     });
     target.addDynamicallyLegalOp<P4HIR::ExternOp>([](P4HIR::ExternOp ext) {
         // All corelib-annotated externs should be converted
@@ -192,25 +183,19 @@ void LowerToP4CoreLib::runOnOperation() {
         return true;
     });
 
-    target.markUnknownOpDynamicallyLegal([&](Operation *op) {
-        if (auto func = dyn_cast<FunctionOpInterface>(op)) {
-            auto fnType = func.getFunctionType();
-            return typeConverter.isLegal(fnType);
-        }
-
-        return typeConverter.isLegal(op->getOperandTypes()) &&
-               typeConverter.isLegal(op->getResultTypes());
-    });
+    configureUnknownOpDynamicallyLegalByTypes(target, converter);
 
     patterns.add<FuncOpConversionPattern, ExternOpConversionPattern, CallOpConversionPattern,
-                 CallMethodOpConversionPattern, OverloadSetOpConversionPattern>(typeConverter,
+                 CallMethodOpConversionPattern, OverloadSetOpConversionPattern>(converter,
                                                                                 &context);
 
     // Translate call operands and results via type converter
-    populateP4HIRAnyCallOpTypeConversionPattern(patterns, typeConverter);
+    populateOpInterfaceTypeConversionPattern<mlir::CallOpInterface>(patterns, converter);
     // Translate function-like ops signatures and types
-    populateP4HIRFunctionOpTypeConversionPattern<P4HIR::FuncOp, P4HIR::ParserOp, P4HIR::ControlOp>(
-        patterns, typeConverter);
+    populateOpTypeConversionPattern<P4HIR::FuncOp, P4HIR::ParserOp, P4HIR::ControlOp>(patterns,
+                                                                                      converter);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
+
+}  // end anonymous namespace
