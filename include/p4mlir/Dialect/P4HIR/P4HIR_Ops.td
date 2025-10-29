@@ -2020,10 +2020,10 @@ def InlineAsmOp : P4HIR_Op<"asm", [RecursiveMemoryEffects]> {
   let description = [{
     The `p4hir.asm` operation represents asm inline.
 
-    Constraints strings follow barelly the same rules that are established
+    Constraints strings follow barely the same rules that are established
     for the C/C++ level assembler constraints.
 
-    Thus, numbers that appears in the constraint string may also refer to:
+    Thus, numbers that appear in the constraint string may also refer to:
     - the output variable index referenced by the input operands.
     - the index of early-clobber operand
 
