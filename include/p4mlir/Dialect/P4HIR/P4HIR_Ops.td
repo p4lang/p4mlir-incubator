@@ -2033,7 +2033,7 @@ def InlineAsmOp : P4HIR_Op<"asm", [RecursiveMemoryEffects]> {
     output, input and then in/out operands.
 
     Note, when several output operands are present, the result type may be represented as
-    an anon record type. The examples below ar in C/C++ syntax as P4 mainline does
+    an anon struct type. The examples below are in C/C++ syntax as P4 mainline does
     not support inline assembler fully
 
     Example:
