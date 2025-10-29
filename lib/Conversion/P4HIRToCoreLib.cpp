@@ -189,11 +189,7 @@ void LowerToP4CoreLib::runOnOperation() {
                  CallMethodOpConversionPattern, OverloadSetOpConversionPattern>(converter,
                                                                                 &context);
 
-    // Translate call operands and results via type converter
-    populateOpInterfaceTypeConversionPattern<mlir::CallOpInterface>(patterns, converter);
-    // Translate function-like ops signatures and types
-    populateOpTypeConversionPattern<P4HIR::FuncOp, P4HIR::ParserOp, P4HIR::ControlOp>(patterns,
-                                                                                      converter);
+    populateTypeConversionPattern(patterns, converter);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
