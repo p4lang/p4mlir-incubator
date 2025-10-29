@@ -141,4 +141,54 @@ def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
+def RemoveParserControlFlow : Pass<"p4hir-remove-parser-control-flow", "mlir::ModuleOp"> {
+  let summary = "Replace control flow statements in parsers with transitions where possible";
+  let description = [{
+    Replace control flow statements by introducing new sub-states and appropriate transitions.
+
+    For example, this code snippet:
+    ```
+    state s {
+      statements1;
+      if (cond)
+          statements2;
+      else
+          statements3;
+      statements4;
+      transition selectExpression;
+    }
+    ```
+
+    Would be converted to the equivalent of:
+    ```
+    state s {
+      statements1;
+      transition select(cond) {
+          true: s_then;
+          false: s_else;
+      }
+    }
+
+    state s_then {
+      statements2;
+      transition s_join;
+    }
+
+    state s_else {
+      statements3;
+      transition s_join;
+    }
+
+    state s_join {
+      statements4;
+      transition selectExpression;
+    }
+    ```
+
+    A similar transformation is applied for switch statements.
+  }];
+  let constructor = "P4MLIR::createRemoveParserControlFlowPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
 #endif // P4MLIR_TRANSFORMS_PASSES_TD
