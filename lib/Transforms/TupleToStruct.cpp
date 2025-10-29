@@ -99,27 +99,14 @@ void TupleToStructPass::runOnOperation() {
     RewritePatternSet patterns(&context);
     ConversionTarget target(context);
 
+    populateTypeConversionPattern(patterns, typeConverter);
+
+    patterns.add<TupleOpConversion, TupleExtractOpConversion>(typeConverter, &context);
+
+    configureUnknownOpDynamicallyLegalByTypes(target, typeConverter);
+
     target.addDynamicallyLegalOp<P4HIR::ReturnOp>(
         [&](P4HIR::ReturnOp ret) { return typeConverter.isLegal(ret->getOperandTypes()); });
-
-    target.markUnknownOpDynamicallyLegal([&](Operation *op) {
-        if (auto func = dyn_cast<FunctionOpInterface>(op)) {
-            auto fnType = func.getFunctionType();
-            return typeConverter.isLegal(fnType);
-        }
-
-        return typeConverter.isLegal(op->getOperandTypes()) &&
-               typeConverter.isLegal(op->getResultTypes());
-    });
-
-    // Translate call operands and results via type converter
-    populateP4HIRAnyCallOpTypeConversionPattern(patterns, typeConverter);
-    // Translate function-like ops signatures and types
-    populateP4HIRFunctionOpTypeConversionPattern<P4HIR::FuncOp, P4HIR::ParserOp, P4HIR::ControlOp>(
-        patterns, typeConverter);
-
-    patterns.add<TypeConversionPattern>(typeConverter, &context);
-    patterns.add<TupleOpConversion, TupleExtractOpConversion>(typeConverter, &context);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
