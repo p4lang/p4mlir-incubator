@@ -1281,6 +1281,8 @@ def InstantiateOp : P4HIR_Op<"instantiate",
   ];
 
   let extraClassDeclaration = [{
+    P4HIR::ParserOp getCalleeParser();
+
     /// Return the callee of this operation.
     mlir::CallInterfaceCallable getCallableForCallee() {
       return (*this)->getAttrOfType<mlir::SymbolRefAttr>(getCalleeAttrName());
@@ -1440,6 +1442,8 @@ def ApplyOp : P4HIR_Op<"apply",
   ];
 
   let extraClassDeclaration = [{
+    P4HIR::InstantiateOp getInstantiateOp();
+
     /// Return the callee of this operation.
     mlir::CallInterfaceCallable getCallableForCallee() {
       return getCallee();

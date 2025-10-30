@@ -1,6 +1,8 @@
 add_mlir_dialect_library(P4MLIRTransforms
   EnumElimination.cpp
   FlattenCFG.cpp
+  IRUtils.cpp
+  InlineParsers.cpp
   PrintParsersGraph.cpp
   RemoveAliases.cpp
   SerEnumElimination.cpp

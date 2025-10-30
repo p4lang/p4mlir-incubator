@@ -2480,6 +2480,10 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
            << "' does not reference a valid P4 object (parser, extern, control or package)"; */
 }
 
+P4HIR::ParserOp P4HIR::InstantiateOp::getCalleeParser() {
+    return getParentModule(*this).lookupSymbol<P4HIR::ParserOp>(getCallee());
+}
+
 void P4HIR::ConstructOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), getCallee());
 }
@@ -2604,6 +2608,10 @@ LogicalResult P4HIR::ApplyOp::verifySymbolUses(SymbolTableCollection &symbolTabl
     }
 
     return success();
+}
+
+P4HIR::InstantiateOp P4HIR::ApplyOp::getInstantiateOp() {
+    return getParentModule(*this).lookupSymbol<P4HIR::InstantiateOp>(getCallee());
 }
 
 //===----------------------------------------------------------------------===//
