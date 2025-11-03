@@ -1,4 +1,4 @@
-// RUN: p4mlir-opt --p4hir-remove-soft-cf %s | FileCheck %s
+// RUN: p4mlir-opt --p4hir-remove-soft-cf --canonicalize %s | FileCheck %s
 
 !b8i = !p4hir.bit<8>
 #int-56_b8i = #p4hir.int<200> : !b8i
@@ -21,6 +21,7 @@ module {
   // }
   // CHECK-LABEL p4hir.func @f1
   p4hir.func @f1(%arg0: !p4hir.ref<!b8i>) {
+    // CHECK-NOT: p4hir.variable ["return_guard", init] : <!p4hir.bool>
     %c100_b8i = p4hir.const #int100_b8i
     %c2_b8i = p4hir.const #int2_b8i
     %c1_b8i = p4hir.const #int1_b8i
@@ -36,12 +37,12 @@ module {
     %add_2 = p4hir.binop(add, %val_1, %c2_b8i) : !b8i
     p4hir.assign %add_2, %arg0 : <!b8i>
 
-    // CHECK: p4hir.if %{{.*}} {
-    //          ...
+    // CHECK: p4hir.if %eq {
     // CHECK: } else {
-    // CHECK:   p4hir.assign %{{.*}}, %arg0 : <!b8i>
+    // CHECK:   %val_1 = p4hir.read %arg0 : <!b8i>
+    // CHECK:   %add_2 = p4hir.binop(add, %val_1, %c2_b8i) : !b8i
+    // CHECK:   p4hir.assign %add_2, %arg0 : <!b8i>
     // CHECK: }
-    // CHECK-NOT: p4hir.read %return_guard
     // CHECK: p4hir.return
 
     p4hir.return
@@ -59,6 +60,7 @@ module {
     // }
     // CHECK-LABEL p4hir.func @f2_0
     p4hir.func @f2_0(%arg0: !p4hir.ref<!b8i>) {
+      // CHECK-NOT: p4hir.variable ["return_guard", init] : <!p4hir.bool>
       %c-56_b8i = p4hir.const #int-56_b8i
       %c100_b8i = p4hir.const #int100_b8i
       %c2_b8i = p4hir.const #int2_b8i
@@ -80,16 +82,17 @@ module {
       %add_4 = p4hir.binop(add, %val_3, %c2_b8i) : !b8i
       p4hir.assign %add_4, %arg0 : <!b8i>
 
-      // CHECK: p4hir.if %{{.*}} {
-      //          ...
+      // CHECK: p4hir.if %eq {
       // CHECK: } else {
-      // CHECK:   p4hir.if %{{.*}} {
-      //            ...
+      // CHECK:   %val_1 = p4hir.read %arg0 : <!b8i>
+      // CHECK:   %eq_2 = p4hir.cmp(eq, %val_1 : !b8i, %c-56_b8i : !b8i)
+      // CHECK:   p4hir.if %eq_2 {
       // CHECK:   } else {
-      // CHECK:     p4hir.assign %{{.*}}, %arg0 : <!b8i>
+      // CHECK:     %val_3 = p4hir.read %arg0 : <!b8i>
+      // CHECK:     %add_4 = p4hir.binop(add, %val_3, %c2_b8i) : !b8i
+      // CHECK:     p4hir.assign %add_4, %arg0 : <!b8i>
       // CHECK:   }
       // CHECK: }
-      // CHECK-NOT: p4hir.read %return_guard
       // CHECK: p4hir.return
 
       p4hir.return
@@ -103,7 +106,8 @@ module {
     // }
     // CHECK-LABEL p4hir.func @f2_1
     p4hir.func @f2_1(%arg0: !p4hir.ref<!b8i>) -> !b8i {
-      // CHECK: %return_value = p4hir.variable ["return_value", init] : <!b8i>
+      // CHECK-NOT: p4hir.variable ["return_guard", init] : <!p4hir.bool>
+      // CHECK: %[[RETURN_VALUE:.*]] = p4hir.variable ["return_value", init] : <!b8i>
       %c2_b8i = p4hir.const #int2_b8i
       %c1_b8i = p4hir.const #int1_b8i
       %c100_b8i = p4hir.const #int100_b8i
@@ -114,13 +118,12 @@ module {
       }
       p4hir.soft_return %c2_b8i : !b8i
 
-      // CHECK: p4hir.if %{{.*}} {
-      // CHECK:   p4hir.assign %c1_b8i, %return_value : <!b8i>
+      // CHECK: p4hir.if %gt {
+      // CHECK:   p4hir.assign %c1_b8i, %[[RETURN_VALUE]] : <!b8i>
       // CHECK: } else {
-      // CHECK:   p4hir.assign %c2_b8i, %return_value : <!b8i>
+      // CHECK:   p4hir.assign %c2_b8i, %[[RETURN_VALUE]] : <!b8i>
       // CHECK: }
-      // CHECK-NOT: p4hir.read %return_guard
-      // CHECK: %[[RES:.*]] = p4hir.read %return_value : <!b8i>
+      // CHECK: %[[RES:.*]] = p4hir.read %[[RETURN_VALUE]] : <!b8i>
       // CHECK: p4hir.return %[[RES]] : !b8i
 
       p4hir.return
@@ -138,6 +141,8 @@ module {
   // }
   // CHECK-LABEL p4hir.func @f3
   p4hir.func @f3(%arg0: !p4hir.ref<!b8i>) -> !b8i {
+    // CHECK: %[[RETURN_GUARD:.*]] = p4hir.variable ["return_guard", init] : <!p4hir.bool>
+    // CHECK: %[[RETURN_VALUE:.*]] = p4hir.variable ["return_value", init] : <!b8i>
     %c-56_b8i = p4hir.const #int-56_b8i
     %c0_b8i = p4hir.const #int0_b8i
     %c100_b8i = p4hir.const #int100_b8i
@@ -154,12 +159,12 @@ module {
     %val_0 = p4hir.read %arg0 : <!b8i>
     p4hir.soft_return %val_0 : !b8i
 
-    // CHECK: %[[GUARD:.*]] = p4hir.read %return_guard : <!p4hir.bool>
+    // CHECK: %[[GUARD:.*]] = p4hir.read %[[RETURN_GUARD]] : <!p4hir.bool>
     // CHECK: p4hir.if %[[GUARD]] {
     // CHECK:   %[[A_VAR:.*]] = p4hir.read %arg0 : <!b8i>
-    // CHECK:   p4hir.assign %[[A_VAR]], %return_value : <!b8i>
+    // CHECK:   p4hir.assign %[[A_VAR]], %[[RETURN_VALUE]] : <!b8i>
     // CHECK: }
-    // CHECK: %[[RES:.*]] = p4hir.read %return_value : <!b8i>
+    // CHECK: %[[RES:.*]] = p4hir.read %[[RETURN_VALUE]] : <!b8i>
     // CHECK: p4hir.return %[[RES]] : !b8i
 
     p4hir.return
@@ -177,6 +182,8 @@ module {
   // }
   // CHECK-LABEL p4hir.func @f4
   p4hir.func @f4(%arg0: !p4hir.ref<!b8i>) -> !b8i {
+    // CHECK-NOT: p4hir.variable ["return_guard", init] : <!p4hir.bool>
+    // CHECK: %[[RETURN_VALUE:.*]] = p4hir.variable ["return_value", init] : <!b8i>
     %c11_b8i = p4hir.const #int11_b8i
     %c10_b8i = p4hir.const #int10_b8i
     %val = p4hir.read %arg0 : <!b8i>
@@ -199,18 +206,17 @@ module {
 
     // CHECK: p4hir.switch (%{{.*}}) {
     // CHECK:   p4hir.case(equal, [#int1_b8i]) {
-    // CHECK:     p4hir.assign %c10_b8i, %return_value : <!b8i>
+    // CHECK:     p4hir.assign %c10_b8i, %[[RETURN_VALUE]] : <!b8i>
     // CHECK:   }
     // CHECK:   p4hir.case(equal, [#int2_b8i]) {
     // CHECK:     %[[A_VAR:.*]] = p4hir.read %arg0 : <!b8i>
-    // CHECK:     p4hir.assign %[[A_VAR]], %return_value : <!b8i>
+    // CHECK:     p4hir.assign %[[A_VAR]], %[[RETURN_VALUE]] : <!b8i>
     // CHECK:   }
     // CHECK:   p4hir.case(default, []) {
-    // CHECK:     p4hir.assign %c11_b8i, %return_value : <!b8i>
+    // CHECK:     p4hir.assign %c11_b8i, %[[RETURN_VALUE]] : <!b8i>
     // CHECK:   }
     // CHECK: }
-    // CHECK-NOT: p4hir.read %return_guard
-    // CHECK: %[[RES:.*]] = p4hir.read %return_value : <!b8i>
+    // CHECK: %[[RES:.*]] = p4hir.read %[[RETURN_VALUE]] : <!b8i>
     // CHECK: p4hir.return %[[RES]] : !b8i
 
     p4hir.return
@@ -229,6 +235,8 @@ module {
   // }
   // CHECK-LABEL p4hir.func @f5
   p4hir.func @f5(%arg0: !p4hir.ref<!b8i>) -> !b8i {
+    // CHECK: %[[RETURN_GUARD:.*]] = p4hir.variable ["return_guard", init] : <!p4hir.bool>
+    // CHECK: %[[RETURN_VALUE:.*]] = p4hir.variable ["return_value", init] : <!b8i>
     %c20_b8i = p4hir.const #int20_b8i
     %c1_b8i = p4hir.const #int1_b8i
     %c10_b8i = p4hir.const #int10_b8i
@@ -256,12 +264,12 @@ module {
     %val_0 = p4hir.read %arg0 : <!b8i>
     p4hir.soft_return %val_0 : !b8i
 
-    // CHECK: %[[GUARD:.*]] = p4hir.read %return_guard : <!p4hir.bool>
+    // CHECK: %[[GUARD:.*]] = p4hir.read %[[RETURN_GUARD]] : <!p4hir.bool>
     // CHECK: p4hir.if %[[GUARD]] {
     // CHECK:   %[[A_VAR:.*]] = p4hir.read %arg0 : <!b8i>
-    // CHECK:   p4hir.assign %[[A_VAR]], %return_value : <!b8i>
+    // CHECK:   p4hir.assign %[[A_VAR]], %[[RETURN_VALUE]] : <!b8i>
     // CHECK: }
-    // CHECK: %[[RES:.*]] = p4hir.read %return_value : <!b8i>
+    // CHECK: %[[RES:.*]] = p4hir.read %[[RETURN_VALUE]] : <!b8i>
     // CHECK: p4hir.return %[[RES]] : !b8i
 
     p4hir.return
@@ -280,6 +288,8 @@ module {
   // }
   // CHECK-LABEL p4hir.func @f6
   p4hir.func @f6(%arg0: !p4hir.ref<!b8i>) -> !b8i {
+    // CHECK-NOT: p4hir.variable ["return_guard", init] : <!p4hir.bool>
+    // CHECK: %[[RETURN_VALUE:.*]] = p4hir.variable ["return_value", init] : <!b8i>
     %c20_b8i = p4hir.const #int20_b8i
     %c10_b8i = p4hir.const #int10_b8i
     %c2_b8i = p4hir.const #int2_b8i
@@ -287,10 +297,6 @@ module {
     %c100_b8i = p4hir.const #int100_b8i
     %val = p4hir.read %arg0 : <!b8i>
     %ne = p4hir.cmp(ne, %val : !b8i, %c100_b8i : !b8i)
-    // CHECK: p4hir.if
-    // CHECK-NOT: %c10_b8i
-    // CHECK-NOT: %c20_b8i
-    // CHECK: p4hir.return
     p4hir.if %ne {
       p4hir.soft_return %c1_b8i : !b8i
     } else {
@@ -298,6 +304,17 @@ module {
     }
     p4hir.assign %c10_b8i, %arg0 : <!b8i>
     p4hir.soft_return %c20_b8i : !b8i
+
+    // CHECK: p4hir.if %ne {
+    // CHECK:   p4hir.assign %c1_b8i, %[[RETURN_VALUE]] : <!b8i>
+    // CHECK: } else {
+    // CHECK:   p4hir.assign %c2_b8i, %[[RETURN_VALUE]] : <!b8i>
+    // CHECK: }
+    // CHECK-NOT: %c10_b8i
+    // CHECK-NOT: %c20_b8i
+    // CHECK: %[[RES:.*]] = p4hir.read %[[RETURN_VALUE]] : <!b8i>
+    // CHECK: p4hir.return %[[RES]] : !b8i
+
     p4hir.return
   }
 
@@ -321,12 +338,13 @@ module {
   // }
   // CHECK-LABEL p4hir.func @f7
   p4hir.func @f7(%arg0: !p4hir.ref<!b8i>) -> !b8i {
+    // CHECK-NOT: p4hir.variable ["return_guard", init] : <!p4hir.bool>
+    // CHECK: %[[RETURN_VALUE:.*]] = p4hir.variable ["return_value", init] : <!b8i>
     %c100_b8i = p4hir.const #int100_b8i
     %c1_b8i = p4hir.const #int1_b8i
     %c11_b8i = p4hir.const #int11_b8i
     %c10_b8i = p4hir.const #int10_b8i
     %val = p4hir.read %arg0 : <!b8i>
-    // CHECK-NOT: p4hir.read %return_guard
     p4hir.switch (%val : !b8i) {
       p4hir.case(equal, [#int1_b8i]) {
         p4hir.soft_return %c10_b8i : !b8i
@@ -357,6 +375,41 @@ module {
     p4hir.assign %c1_b8i, %arg0 : <!b8i>
     %val_1 = p4hir.read %arg0 : <!b8i>
     p4hir.soft_return %val_1 : !b8i
+
+    // CHECK: p4hir.switch (%val : !b8i) {
+    // CHECK:   p4hir.case(equal, [#int1_b8i]) {
+    // CHECK:     p4hir.assign %c10_b8i, %[[RETURN_VALUE]] : <!b8i>
+    // CHECK:     p4hir.yield
+    // CHECK:   }
+    // CHECK:   p4hir.case(equal, [#int2_b8i]) {
+    // CHECK:     %[[VAL1:.*]] = p4hir.read %arg0 : <!b8i>
+    // CHECK:     %[[GT:.*]] = p4hir.cmp(gt, %[[VAL1]] : !b8i, %c100_b8i : !b8i)
+    // CHECK:     p4hir.if %[[GT]] {
+    // CHECK:       %[[VAL2_1:.*]] = p4hir.read %arg0 : <!b8i>
+    // CHECK:       p4hir.assign %[[VAL2_1:.*]], %[[RETURN_VALUE]] : <!b8i>
+    // CHECK:     } else {
+    // CHECK:       %[[VAL2_2:.*]] = p4hir.read %arg0 : <!b8i>
+    // CHECK:       %[[LT:.*]] = p4hir.cmp(lt, %[[VAL2_2]] : !b8i, %c10_b8i : !b8i)
+    // CHECK:       p4hir.if %[[LT]] {
+    // CHECK:         %[[VAL3_1:.*]] = p4hir.read %arg0 : <!b8i>
+    // CHECK:         p4hir.assign %[[VAL3_1]], %[[RETURN_VALUE]] : <!b8i>
+    // CHECK:       } else {
+    // CHECK:         p4hir.assign %c1_b8i, %arg0 : <!b8i>
+    // CHECK:         %[[VAL3_2:.*]] = p4hir.read %arg0 : <!b8i>
+    // CHECK:         p4hir.assign %[[VAL3_2]], %[[RETURN_VALUE]] : <!b8i>
+    // CHECK:       }
+    // CHECK:     }
+    // CHECK:     p4hir.yield
+    // CHECK:   }
+    // CHECK:   p4hir.case(default, []) {
+    // CHECK:     p4hir.assign %c11_b8i, %[[RETURN_VALUE]] : <!b8i>
+    // CHECK:     p4hir.yield
+    // CHECK:   }
+    // CHECK:   p4hir.yield
+    // CHECK: }
+    // CHECK: %[[RES:.*]] = p4hir.read %[[RETURN_VALUE]] : <!b8i>
+    // CHECK: p4hir.return %[[RES]] : !b8i
+
     p4hir.return
   }
 }
