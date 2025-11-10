@@ -4,10 +4,11 @@
 !i32i = !p4hir.int<32>
 !_tupleToStruct = !p4hir.struct<"_tupleToStruct", element_0: !b32i, element_1: !i32i>
 
+// CHECK: ![[tupleToStructType:_tupleToStruct]] = !p4hir.struct<"_tupleToStruct", element_0: !b32i, element_1: !i32i>
 // CHECK-LABEL: module
 // CHECK-LABEL: p4hir.func @bid
-// CHECK-SAME: (%arg0: !_tupleToStruct) -> !_tupleToStruct
-// CHECK: p4hir.return %arg0 : !_tupleToStruct
+// CHECK-SAME: (%arg0: ![[tupleToStructType]]) -> ![[tupleToStructType]]
+// CHECK: p4hir.return %arg0 : ![[tupleToStructType]]
 // CHECK-NOT: tuple<
 // CHECK-NOT: p4hir.tuple
 // CHECK-NOT: p4hir.tuple_extract

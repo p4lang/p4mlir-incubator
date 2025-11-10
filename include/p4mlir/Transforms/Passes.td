@@ -152,6 +152,8 @@ def TupleToStruct : Pass<"p4hir-tuple-to-struct", "mlir::ModuleOp"> {
   }];
 
   let constructor = "P4MLIR::createTupleToStructPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
 // EnumElimination
 //===----------------------------------------------------------------------===//
 
