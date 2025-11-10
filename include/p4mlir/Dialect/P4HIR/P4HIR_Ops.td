@@ -1655,7 +1655,7 @@ def CallMethodOp : P4HIR_Op<"call_method",
 }
 
 def OverloadSetOp : P4HIR_Op<"overload_set",
-  [Symbol, SymbolTable, NoTerminator]> {
+  [Symbol, SymbolTable, IsolatedFromAbove, NoTerminator]> {
   let summary = "P4 extern method overload set";
   let description = [{
     Declares P4 a set of overloaded extern methods
