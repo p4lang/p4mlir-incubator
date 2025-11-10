@@ -4,6 +4,7 @@ set(LIBS
   P4MLIRConversion
   P4MLIRTransforms
   P4MLIRConversion
+  P4Pipelines
 
   MLIRFuncDialect
   MLIROptLib
