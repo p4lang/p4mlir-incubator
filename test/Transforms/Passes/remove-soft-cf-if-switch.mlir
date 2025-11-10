@@ -1,4 +1,4 @@
-// RUN: p4mlir-opt --p4hir-remove-soft-cf --canonicalize %s | FileCheck %s
+// RUN: p4mlir-opt --pass-pipeline='builtin.module(p4hir.func(p4hir-remove-soft-cf, canonicalize), p4hir.overload_set(p4hir.func(p4hir-remove-soft-cf, canonicalize)))' %s | FileCheck %s
 
 !b8i = !p4hir.bit<8>
 #int-56_b8i = #p4hir.int<200> : !b8i
