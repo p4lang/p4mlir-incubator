@@ -1,4 +1,4 @@
-// RUN: p4mlir-opt --p4hir-remove-soft-cf --canonicalize %s | FileCheck %s
+// RUN: p4mlir-opt --pass-pipeline='builtin.module(p4hir.func(p4hir-remove-soft-cf, canonicalize))' %s | FileCheck %s
 
 // Test combination of all soft control flow statements.
 

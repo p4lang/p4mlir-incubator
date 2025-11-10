@@ -1,4 +1,4 @@
-// RUN: p4mlir-opt --p4hir-remove-soft-cf %s | FileCheck %s
+// RUN: p4mlir-opt --pass-pipeline='builtin.module(p4hir.control(p4hir-remove-soft-cf))' %s | FileCheck %s
 
 !b16i = !p4hir.bit<16>
 !S = !p4hir.struct<"S", f: !b16i>
