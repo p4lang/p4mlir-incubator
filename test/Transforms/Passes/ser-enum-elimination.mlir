@@ -61,8 +61,8 @@ module {
   // CHECK: %[[val:.*]] = p4hir.read %[[var]] : <!b32i>
   %val = p4hir.read %var : <!Suits>
 
-  // CHECK: %[[eq:.*]] = p4hir.cmp(eq, %[[val]], %[[c2]]) : !b32i, !p4hir.bool
-  %eq = p4hir.cmp(eq, %val, %c2) : !Suits, !p4hir.bool
+  // CHECK: %[[eq:.*]] = p4hir.cmp(eq, %[[val]] : !b32i, %[[c2]] : !b32i)
+  %eq = p4hir.cmp(eq, %val : !Suits, %c2 : !Suits)
 
   // Test structs & extracts
   // CHECK:   #p4hir.aggregate<[#int1_b32i, #int0_b32i]> : !T

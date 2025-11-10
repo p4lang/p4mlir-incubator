@@ -152,6 +152,18 @@ def TupleToStruct : Pass<"p4hir-tuple-to-struct", "mlir::ModuleOp"> {
   }];
 
   let constructor = "P4MLIR::createTupleToStructPass()";
+// EnumElimination
+//===----------------------------------------------------------------------===//
+
+def EnumElimination : Pass<"p4hir-enum-elimination", "mlir::ModuleOp"> {
+  let summary = "Lower enums to serializable enums";
+  let description = [{
+    This pass converts instances of `!p4hir.enum` to `!p4hir.ser_enum`.
+    The underlying integer type and values for each enum are defined by
+    `EnumRepresentationInterface`.
+  }];
+
+  let constructor = "P4MLIR::createEnumEliminationPass()";
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 

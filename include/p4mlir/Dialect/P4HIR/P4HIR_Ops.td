@@ -502,7 +502,7 @@ def CmpOp : P4HIR_Op<"cmp",
     [lt,gt,ge,eq,ne]
 
     ```mlir
-    %7 = p4hir.cmp(gt, %1, %2) : !p4hir.bit<32>, !p4hir.bool
+    %7 = p4hir.cmp(gt, %1, %2) : !p4hir.bit<32>
     ```
   }];
 
@@ -511,7 +511,7 @@ def CmpOp : P4HIR_Op<"cmp",
                        AnyP4Type:$lhs, AnyP4Type:$rhs);
 
   let assemblyFormat = [{
-    `(` $kind `,` $lhs `,` $rhs  `)` `:` type($lhs) `,` type($result) attr-dict
+    `(` $kind `,` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` attr-dict
   }];
 
   // Already covered by the traits
@@ -638,7 +638,7 @@ def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
 
   // TODO: Need to allow externs plus any normal P4 type
   let arguments = (ins Variadic<AnyType>:$args);
-  let assemblyFormat = "($args^ `:` type($args))? attr-dict";
+  let assemblyFormat = [{($args^ `:` type($args))? attr-dict}];
   let builders = [
     OpBuilder<(ins), [{ /* nothing to do */ }]>,
   ];
@@ -689,7 +689,7 @@ def TernaryOp : P4HIR_Op<"ternary",
     `(` $cond `,`
       `true` $trueRegion `,`
       `false` $falseRegion
-    `)` `:` functional-type(operands, results) attr-dict
+    `)` `:` type($result) attr-dict
   }];
 }
 
@@ -2014,6 +2014,77 @@ def CondBrOp : P4HIR_Op<"cond_br",
     $destFalse (`(` $destOperandsFalse^ `:` type($destOperandsFalse) `)`)?
     attr-dict
   }];
+}
+
+def InlineAsmOp : P4HIR_Op<"asm", [RecursiveMemoryEffects]> {
+  let description = [{
+    The `p4hir.asm` operation represents asm inline.
+
+    Constraints strings follow barely the same rules that are established
+    for the C/C++ level assembler constraints.
+
+    Thus, numbers that appear in the constraint string may also refer to:
+    - the output variable index referenced by the input operands.
+    - the index of early-clobber operand
+
+    Operand attributes is a storage, where each element corresponds to the operand with
+    the same index. The first index relates to the operation result (if any).
+    Note, the operands themselves are stored as VariadicOfVariadic in the next order:
+    output, input and then in/out operands.
+
+    Note, when several output operands are present, the result type may be represented as
+    an anon struct type. The examples below are in C/C++ syntax as P4 mainline does
+    not support inline assembler fully
+
+    Example:
+    ```C++
+    __asm__("foo" : : : );
+    __asm__("bar $42 %[val]" : [val] "=r" (x), "+&r"(x));
+    __asm__("baz $42 %[val]" : [val] "=r" (x), "+&r"(x) : "[val]"(y));
+    ```
+
+    ```mlir
+    p4hir.asm(
+      out = [],
+      in = [],
+      in_out = [],
+      {"foo" "~{flags}"}) side_effects
+
+    p4hir.asm(
+      out = [],
+      in = [],
+      in_out = [%2 : !s32i],
+      {"bar $$42 $0" "=r,=&r,1,~{flags}"}) -> !some.type
+
+    p4hir.asm(
+      out = [],
+      in = [%3 : !s32i],
+      in_out = [%2 : !s32i],
+      {"baz $$42 $0" "=r,=&r,0,1,~{flags}"}) -> !some.type
+    ```
+  }];
+
+  let results = (outs Optional<AnyP4Type>:$res);
+
+  let arguments = (
+    ins VariadicOfVariadic<AnyType, "operands_segments">:$asm_operands,
+        StrAttr:$asm_string,
+        StrAttr:$constraints,
+        UnitAttr:$side_effects,
+        ArrayAttr:$operand_attrs,
+        DenseI32ArrayAttr:$operands_segments
+        );
+
+  let builders = [
+    OpBuilder<(ins
+      "llvm::ArrayRef<mlir::ValueRange>":$asm_operands,
+      "llvm::StringRef":$asm_string,
+      "llvm::StringRef":$constraints,
+      "bool":$side_effects,
+      "llvm::ArrayRef<mlir::Attribute>":$operand_attrs)>
+  ];
+
+  let hasCustomAssemblyFormat = 1;
 }
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_OPS_TD

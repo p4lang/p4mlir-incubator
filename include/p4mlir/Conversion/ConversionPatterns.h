@@ -38,9 +38,9 @@ struct TypeConversionPattern : public mlir::ConversionPattern {
     }
 };
 
-// Specialization of the above which targets a specific operation.
+// Specialization of `TypeConversionPattern` which targets a specific operation.
 template <typename OpTy>
-struct TypeOpConversionPattern : public mlir::OpConversionPattern<OpTy> {
+struct OpTypeConversionPattern : public mlir::OpConversionPattern<OpTy> {
     using mlir::OpConversionPattern<OpTy>::OpConversionPattern;
     using OpAdaptor = typename mlir::OpConversionPattern<OpTy>::OpAdaptor;
 
@@ -51,31 +51,42 @@ struct TypeOpConversionPattern : public mlir::OpConversionPattern<OpTy> {
     }
 };
 
-template <typename... OpTypes>
-void populateTypeOpConversionPattern(mlir::RewritePatternSet &patterns,
-                                     const mlir::TypeConverter &converter) {
-    (patterns.addWithLabel<TypeOpConversionPattern<OpTypes>>(
-         {"type op conversion", OpTypes::getOperationName()}, converter, patterns.getContext()),
-     ...);
-}
+// Specialization of `TypeConversionPattern` which targets a specific op interface.
+template <typename OpInterfaceTy>
+struct OpInterfaceTypeConversionPattern : public mlir::OpInterfaceConversionPattern<OpInterfaceTy> {
+    using mlir::OpInterfaceConversionPattern<OpInterfaceTy>::OpInterfaceConversionPattern;
 
-static inline void populateTypeConversionPattern(mlir::RewritePatternSet &patterns,
-                                                 const mlir::TypeConverter &converter) {
+    mlir::LogicalResult matchAndRewrite(OpInterfaceTy op, llvm::ArrayRef<mlir::Value> operands,
+                                        mlir::ConversionPatternRewriter &rewriter) const override {
+        return doTypeConversion(op, operands, rewriter, this->getTypeConverter());
+    }
+};
+
+inline void populateTypeConversionPattern(mlir::RewritePatternSet &patterns,
+                                          const mlir::TypeConverter &converter) {
     patterns.addWithLabel<TypeConversionPattern>({"generic type converter"}, converter,
                                                  patterns.getContext());
 }
 
 template <typename... OpTypes>
-void populateP4HIRFunctionOpTypeConversionPattern(mlir::RewritePatternSet &patterns,
-                                                  const mlir::TypeConverter &converter) {
-    (patterns.addWithLabel<TypeOpConversionPattern<OpTypes>>(
-         {"function op type conversion", OpTypes::getOperationName()}, converter,
-         patterns.getContext()),
+inline void populateOpTypeConversionPattern(mlir::RewritePatternSet &patterns,
+                                            const mlir::TypeConverter &converter) {
+    (patterns.addWithLabel<OpTypeConversionPattern<OpTypes>>(
+         {"op type conversion", OpTypes::getOperationName()}, converter, patterns.getContext()),
      ...);
 }
 
-void populateP4HIRAnyCallOpTypeConversionPattern(mlir::RewritePatternSet &patterns,
-                                                 const mlir::TypeConverter &converter);
+template <typename... OpTypes>
+inline void populateOpInterfaceTypeConversionPattern(mlir::RewritePatternSet &patterns,
+                                                     const mlir::TypeConverter &converter) {
+    (patterns.addWithLabel<OpInterfaceTypeConversionPattern<OpTypes>>(
+         {"interface op type conversion"}, converter, patterns.getContext()),
+     ...);
+}
+
+// Mark unknown operations legal if their types and attributes are valid for `converter`.
+void configureUnknownOpDynamicallyLegalByTypes(mlir::ConversionTarget &target,
+                                               const mlir::TypeConverter &converter);
 
 }  // namespace P4::P4MLIR
 
