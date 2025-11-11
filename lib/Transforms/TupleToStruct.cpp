@@ -103,10 +103,9 @@ void TupleToStructPass::runOnOperation() {
 
     patterns.add<TupleOpConversion, TupleExtractOpConversion>(typeConverter, &context);
 
-    configureUnknownOpDynamicallyLegalByTypes(target, typeConverter);
+    target.addIllegalOp<P4HIR::TupleOp, P4HIR::TupleExtractOp>();
 
-    target.addDynamicallyLegalOp<P4HIR::ReturnOp>(
-        [&](P4HIR::ReturnOp ret) { return typeConverter.isLegal(ret->getOperandTypes()); });
+    configureUnknownOpDynamicallyLegalByTypes(target, typeConverter);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) signalPassFailure();
 }
