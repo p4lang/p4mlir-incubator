@@ -15,3 +15,5 @@ add_mlir_dialect_library(P4MLIR_BMv2IR
   MLIRInferTypeOpInterface
   MLIRFuncDialect
 )
+
+add_subdirectory(Pipelines)
