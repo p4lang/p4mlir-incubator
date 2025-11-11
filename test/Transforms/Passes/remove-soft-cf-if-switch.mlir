@@ -1,6 +1,8 @@
 // RUN: p4mlir-opt --pass-pipeline='builtin.module(p4hir.func(p4hir-remove-soft-cf, canonicalize), p4hir.overload_set(p4hir.func(p4hir-remove-soft-cf, canonicalize)))' %s | FileCheck %s
 
 !b8i = !p4hir.bit<8>
+#false = #p4hir.bool<false> : !p4hir.bool
+#true = #p4hir.bool<true> : !p4hir.bool
 #int-56_b8i = #p4hir.int<200> : !b8i
 #int0_b8i = #p4hir.int<0> : !b8i
 #int100_b8i = #p4hir.int<100> : !b8i
@@ -411,5 +413,115 @@ module {
     // CHECK: p4hir.return %[[RES]] : !b8i
 
     p4hir.return
+  }
+
+  // Test that we don't generate guards in absence of complicated soft control flow.
+  // CHECK-LABEL p4hir.func @f8
+  p4hir.func @f8(%arg0: !p4hir.ref<!b8i> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "a"}) -> !b8i {
+    // CHECK-NOT: p4hir.variable ["return_guard", init] : <!p4hir.bool>
+    // CHECK-NOT: %{{.*}} = p4hir.variable ["return_value", init] : <!b8i>
+    %c10_b8i = p4hir.const #int10_b8i
+    %c0_b8i = p4hir.const #int0_b8i
+    %c2_b8i = p4hir.const #int2_b8i
+    %c1_b8i = p4hir.const #int1_b8i
+    %c100_b8i = p4hir.const #int100_b8i
+    %val = p4hir.read %arg0 : <!b8i>
+    %gt = p4hir.cmp(gt, %val : !b8i, %c100_b8i : !b8i)
+    p4hir.if %gt {
+      %val_1 = p4hir.read %arg0 : <!b8i>
+      %add = p4hir.binop(add, %val_1, %c1_b8i) : !b8i
+      p4hir.assign %add, %arg0 : <!b8i>
+    } else {
+      %val_1 = p4hir.read %arg0 : <!b8i>
+      %ne = p4hir.cmp(ne, %val_1 : !b8i, %c0_b8i : !b8i)
+      p4hir.if %ne {
+        %val_2 = p4hir.read %arg0 : <!b8i>
+        p4hir.switch (%val_2 : !b8i) {
+          p4hir.case(equal, [#int1_b8i]) {
+            %val_3 = p4hir.read %arg0 : <!b8i>
+            %add = p4hir.binop(add, %val_3, %c2_b8i) : !b8i
+            p4hir.assign %add, %arg0 : <!b8i>
+            p4hir.yield
+          }
+          p4hir.case(default, []) {
+            %val_3 = p4hir.read %arg0 : <!b8i>
+            %sub = p4hir.binop(sub, %val_3, %c1_b8i) : !b8i
+            p4hir.assign %sub, %arg0 : <!b8i>
+            p4hir.yield
+          }
+          p4hir.yield
+        }
+      }
+    }
+    %val_0 = p4hir.read %arg0 : <!b8i>
+    %lt = p4hir.cmp(lt, %val_0 : !b8i, %c10_b8i : !b8i)
+    p4hir.if %lt {
+      %val_1 = p4hir.read %arg0 : <!b8i>
+      %add = p4hir.binop(add, %val_1, %c2_b8i) : !b8i
+      p4hir.assign %add, %arg0 : <!b8i>
+    }
+    p4hir.soft_return %c0_b8i : !b8i
+    p4hir.return
+  }
+
+  // Test that we don't modify already transformed functions.
+  // CHECK-LABEL p4hir.func @f9
+  p4hir.func @f9(%arg0: !p4hir.ref<!b8i>) -> !b8i {
+    // CHECK:      %false = p4hir.const #false
+    // CHECK-NEXT: %c100_b8i = p4hir.const #int100_b8i
+    // CHECK-NEXT: %c0_b8i = p4hir.const #int0_b8i
+    // CHECK-NEXT: %c-56_b8i = p4hir.const #int-56_b8i
+    // CHECK-NEXT: %true = p4hir.const #true
+    // CHECK-NEXT: %return_guard = p4hir.variable ["return_guard", init] : <!p4hir.bool>
+    // CHECK-NEXT: p4hir.assign %true, %return_guard : <!p4hir.bool>
+    // CHECK-NEXT: %return_value = p4hir.variable ["return_value", init] : <!b8i>
+    // CHECK-NEXT: %val = p4hir.read %arg0 : <!b8i>
+    // CHECK-NEXT: %lt = p4hir.cmp(lt, %val : !b8i, %c100_b8i : !b8i)
+    // CHECK-NEXT: p4hir.if %lt {
+    // CHECK-NEXT: } else {
+    // CHECK-NEXT:   %val_2 = p4hir.read %arg0 : <!b8i>
+    // CHECK-NEXT:   %eq = p4hir.cmp(eq, %val_2 : !b8i, %c-56_b8i : !b8i)
+    // CHECK-NEXT:   p4hir.if %eq {
+    // CHECK-NEXT:     p4hir.assign %false, %return_guard : <!p4hir.bool>
+    // CHECK-NEXT:     p4hir.assign %c0_b8i, %return_value : <!b8i>
+    // CHECK-NEXT:   } else {
+    // CHECK-NEXT:   }
+    // CHECK-NEXT: }
+    // CHECK-NEXT: %val_0 = p4hir.read %return_guard : <!p4hir.bool>
+    // CHECK-NEXT: p4hir.if %val_0 {
+    // CHECK-NEXT:   %val_2 = p4hir.read %arg0 : <!b8i>
+    // CHECK-NEXT:   p4hir.assign %false, %return_guard : <!p4hir.bool>
+    // CHECK-NEXT:   p4hir.assign %val_2, %return_value : <!b8i>
+    // CHECK-NEXT: }
+    // CHECK-NEXT: %val_1 = p4hir.read %return_value : <!b8i>
+    // CHECK-NEXT: p4hir.return %val_1 : !b8i
+    %false = p4hir.const #false
+    %c100_b8i = p4hir.const #int100_b8i
+    %c0_b8i = p4hir.const #int0_b8i
+    %c-56_b8i = p4hir.const #int-56_b8i
+    %true = p4hir.const #true
+    %return_guard = p4hir.variable ["return_guard", init] : <!p4hir.bool>
+    p4hir.assign %true, %return_guard : <!p4hir.bool>
+    %return_value = p4hir.variable ["return_value", init] : <!b8i>
+    %val = p4hir.read %arg0 : <!b8i>
+    %lt = p4hir.cmp(lt, %val : !b8i, %c100_b8i : !b8i)
+    p4hir.if %lt {
+    } else {
+      %val_2 = p4hir.read %arg0 : <!b8i>
+      %eq = p4hir.cmp(eq, %val_2 : !b8i, %c-56_b8i : !b8i)
+      p4hir.if %eq {
+        p4hir.assign %false, %return_guard : <!p4hir.bool>
+        p4hir.assign %c0_b8i, %return_value : <!b8i>
+      } else {
+      }
+    }
+    %val_0 = p4hir.read %return_guard : <!p4hir.bool>
+    p4hir.if %val_0 {
+      %val_2 = p4hir.read %arg0 : <!b8i>
+      p4hir.assign %false, %return_guard : <!p4hir.bool>
+      p4hir.assign %val_2, %return_value : <!b8i>
+    }
+    %val_1 = p4hir.read %return_value : <!b8i>
+    p4hir.return %val_1 : !b8i
   }
 }

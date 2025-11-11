@@ -82,6 +82,13 @@ struct RemoveSoftCF {
         assert(region->hasOneBlock() && "Expected region with one block");
         mlir::Block *block = &region->front();
 
+        auto hasSoftCFWalk = block->walk([](mlir::Operation *op) -> mlir::WalkResult {
+            if (mlir::isa<P4HIR::SoftReturnOp, P4HIR::SoftBreakOp, P4HIR::SoftContinueOp>(op))
+                return WalkResult::interrupt();
+            return WalkResult::advance();
+        });
+        if (!hasSoftCFWalk.wasInterrupted()) return;
+
         rewriter.setInsertionPointToStart(block);
         returnGuard.init(rewriter, loc, "return_guard");
 
@@ -119,7 +126,13 @@ struct RemoveSoftCF {
     //   - Next: Execution continues normally to the next operations.
     //   - Nested: Execution continues in single nested point.
     //   - Multiple: Execution continues at multiple potential places.
-    enum ExecutionType { ET_None, ET_Next, ET_Nested, ET_Multiple };
+    enum ExecutionType : unsigned {
+        ET_None = 0,
+        ET_Next = 1,
+        ET_Nested = 2,
+        ET_Multiple = 3,
+        TotalExecurionTypes
+    };
 
     // Struct holding control flow information for an operation or block.
     struct CFInfo {
@@ -192,21 +205,33 @@ struct RemoveSoftCF {
     CFInfo visitConditional(SmallVectorImpl<mlir::Block *> &blocks) {
         // The "Continue Point" for the entire conditional statement is:
         //  - None, if all blocks are None.
+        //  - Next, if all blocks are Next.
         //  - Nested, if a single block is Next/Nested and all others are None.
         //  - Multiple, in all other cases.
         CFInfo condInfo;
-        condInfo.execType = ET_None;
+        mlir::Operation *potentialNestedPoint = nullptr;
+        std::array<unsigned, TotalExecurionTypes> counts = {};
+
         for (mlir::Block *block : blocks) {
             CFInfo caseInfo = visitBlock(block);
             condInfo.cfTypes |= caseInfo.cfTypes;
+            counts[caseInfo.execType]++;
 
-            if ((condInfo.execType == ET_None) &&
-                (caseInfo.execType == ET_Next || caseInfo.execType == ET_Nested)) {
-                condInfo.execPoint = caseInfo.execPoint;
-                condInfo.execType = ET_Nested;
-            } else if (caseInfo.execType != ET_None) {
-                condInfo.execType = ET_Multiple;
-            }
+            if (caseInfo.execType == ET_Next || caseInfo.execType == ET_Nested)
+                potentialNestedPoint = caseInfo.execPoint;
+        }
+
+        unsigned total = blocks.size();
+        if (counts[ET_None] == total) {
+            condInfo.execType = ET_None;
+        } else if (counts[ET_Next] == total) {
+            condInfo.execType = ET_Next;
+        } else if (counts[ET_None] == (total - 1) &&
+                   (counts[ET_Next] == 1 || counts[ET_Nested] == 1)) {
+            condInfo.execType = ET_Nested;
+            condInfo.execPoint = potentialNestedPoint;
+        } else {
+            condInfo.execType = ET_Multiple;
         }
 
         return condInfo;
