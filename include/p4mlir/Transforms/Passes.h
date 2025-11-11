@@ -27,6 +27,7 @@ namespace P4::P4MLIR {
 #define GEN_PASS_DECL_SERENUMELIMINATION
 #define GEN_PASS_DECL_REMOVEALIASES
 #define GEN_PASS_DECL_ENUMELIMINATION
+#define GEN_PASS_DECL_REMOVESOFTCF
 #include "p4mlir/Transforms/Passes.h.inc"
 
 std::unique_ptr<mlir::Pass> createPrintParsersGraphPass();
@@ -36,6 +37,7 @@ std::unique_ptr<mlir::Pass> createSerEnumEliminationPass();
 std::unique_ptr<mlir::Pass> createRemoveAliasesPass();
 std::unique_ptr<mlir::Pass> createTupleToStructPass();
 std::unique_ptr<mlir::Pass> createEnumEliminationPass();
+std::unique_ptr<mlir::Pass> createRemoveSoftCFPass();
 
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"

@@ -797,6 +797,44 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
   let hasVerifier = 1;
 }
 
+def SoftReturnOp : P4HIR_Op<"soft_return", [ParentOneOf<["ScopeOp", "IfOp",
+                                                         "FuncOp", "ControlApplyOp",
+                                                         "CaseOp",
+                                                         "ForOp", "ForInOp",
+                                                        ]>]> {
+  let summary = "Return from function or action";
+  let description = [{
+    Similar to p4hir.return but without being a terminator.
+  }];
+
+  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let assemblyFormat = "($input^ `:` type($input))? attr-dict ";
+
+  let builders = [
+    OpBuilder<(ins), [{ build($_builder, $_state, std::nullopt); }]>
+  ];
+
+  let extraClassDeclaration = [{
+    bool hasOperand() { return getNumOperands() != 0; }
+  }];
+
+  let hasVerifier = 1;
+}
+
+def SoftBreakOp : P4HIR_Op<"soft_break", [ParentOneOf<["ScopeOp", "IfOp", "CaseOp",
+                                                       "ForOp", "ForInOp",
+                                                      ]>]> {
+  let summary = "Break statement for loops";
+  let assemblyFormat = [{ attr-dict }];
+}
+
+def SoftContinueOp : P4HIR_Op<"soft_continue", [ParentOneOf<["ScopeOp", "IfOp", "CaseOp",
+                                                             "ForOp", "ForInOp",
+                                                            ]>]> {
+  let summary = "Continue statement for loops";
+  let assemblyFormat = [{ attr-dict }];
+}
+
 def FuncOp : P4HIR_Op<"func", [
   AutomaticAllocationScope, CallableOpInterface, FunctionOpInterface,
   Annotated,
@@ -1617,7 +1655,7 @@ def CallMethodOp : P4HIR_Op<"call_method",
 }
 
 def OverloadSetOp : P4HIR_Op<"overload_set",
-  [Symbol, SymbolTable, NoTerminator]> {
+  [Symbol, SymbolTable, IsolatedFromAbove, NoTerminator]> {
   let summary = "P4 extern method overload set";
   let description = [{
     Declares P4 a set of overloaded extern methods
@@ -1742,6 +1780,14 @@ def SwitchOp : P4HIR_Op<"switch",
   let extraClassDeclaration = [{
     /// Returns all select cases
     auto cases() { return getBody().back().getOps<CaseOp>(); }
+
+    P4HIR::CaseOp getDefaultCase() {
+      auto switchCases = cases();
+      auto it = llvm::find_if(switchCases, [](P4HIR::CaseOp caseOp) {
+        return caseOp.getKind() == P4HIR::CaseOpKind::Default;
+      });
+      return (it != switchCases.end()) ? *it : P4HIR::CaseOp();
+    }
   }];
 
   let hasVerifier = 1;
