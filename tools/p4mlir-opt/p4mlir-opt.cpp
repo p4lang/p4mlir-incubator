@@ -5,6 +5,7 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
+#include "p4mlir/Conversion/P4HIRToBMv2IR/Passes.h"
 #include "p4mlir/Conversion/P4HIRToCoreLib/Passes.h"
 #include "p4mlir/Dialect/BMv2IR/Pipelines/Passes.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
@@ -17,6 +18,7 @@ int main(int argc, char **argv) {
 
     P4::P4MLIR::registerPasses();
     P4::P4MLIR::registerP4MLIRConversionPasses();
+    P4::P4MLIR::registerP4HIRToBMv2IRPasses();
     P4::P4MLIR::registerCommonFrontEndPipeline();
     P4::P4MLIR::registerBMv2Pipeline();
 
