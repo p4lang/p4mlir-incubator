@@ -594,7 +594,7 @@ def ScopeOp : P4HIR_Op<"scope", [
   ];
 }
 
-def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
+def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator, NoMemoryEffect,
     ParentOneOf<["ScopeOp", "TernaryOp", "IfOp",
                  "ParserSelectCaseOp",
                  "TableEntryOp",
@@ -656,9 +656,9 @@ def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
   ];
 }
 
-// TODO: Refine recursive properties and constraints (e.g. we do not allow memory effects here, do we?)
 def TernaryOp : P4HIR_Op<"ternary",
       [DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       RecursiveMemoryEffects,
        RecursivelySpeculatable, AutomaticAllocationScope, NoRegionArguments]> {
   let summary = "The `cond ? a : b` C/C++ ternary operation";
   let description = [{
@@ -708,6 +708,7 @@ def TernaryOp : P4HIR_Op<"ternary",
 
 def IfOp : P4HIR_Op<"if",
       [DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       RecursiveMemoryEffects,
        RecursivelySpeculatable, AutomaticAllocationScope, NoRegionArguments]> {
   let summary = "The if-then-else operation";
   let description = [{
@@ -764,7 +765,7 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
                                                 "CaseOp",
                                                 "ForOp", "ForInOp",
                                              ]>,
-                                             ReturnLike, Terminator
+                                             ReturnLike, Terminator, NoMemoryEffect,
   // Currently there is no way to represent early exits in MLIR "properly"
   // See https://discourse.llvm.org/t/rfc-region-based-control-flow-with-early-exits-in-mlir/76998
   // For now we rely on RemoveReturns frontend pass to transform into SESE regions for us.
@@ -971,13 +972,8 @@ def FuncOp : P4HIR_Op<"func", [
 
     /// Return the `i`th argument direction.
     ParamDirection getArgumentDirection(unsigned i) {
-      mlir::ArrayAttr argAttrs = getArgAttrsAttr();
-      if (!argAttrs)
-        return ParamDirection::None;
-
-      if (auto dirAttr =
-            mlir::cast<mlir::DictionaryAttr>(argAttrs[i]).get(getDirectionAttrName()))
-         return mlir::cast<ParamDirectionAttr>(dirAttr).getValue();
+      if (auto dirAttr = getArgAttrOfType<ParamDirectionAttr>(i, getDirectionAttrName()))
+        return dirAttr.getValue();
 
       return ParamDirection::None;
     }
@@ -1750,6 +1746,7 @@ def PackageOp : P4HIR_Op<"package",
 def CaseOp : P4HIR_Op<"case", [
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursivelySpeculatable, AutomaticAllocationScope,
+       /*RecursiveMemoryEffects,*/
        ParentOneOf<["SwitchOp"]>,
      ]> {
   let summary = "Case operation";

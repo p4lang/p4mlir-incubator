@@ -8,6 +8,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -911,7 +912,8 @@ LogicalResult P4HIR::ScopeOp::verify() {
 
 LogicalResult P4HIR::ScopeOp::canonicalize(P4HIR::ScopeOp op, PatternRewriter &rewriter) {
     // Canonicalize scope: one without variables could be inlined
-    if (op.getOps<VariableOp>().empty()) {
+    if (op.getOps<VariableOp>().empty() && op.getScopeRegion().hasOneBlock() &&
+        !op.getAnnotations()) {
         mlir::Block *block = &op.getScopeRegion().front();
         mlir::Operation *terminator = block->getTerminator();
         mlir::ValueRange results = terminator->getOperands();
@@ -1583,7 +1585,7 @@ void P4HIR::CallOp::getEffects(
         effects.emplace_back(MemoryEffects::Read::get(), ExternResource::get());
     } else {
         // For now conservatively assume full effects for functions with bodies
-        // TODO: Infer recusrsive effects
+        // TODO: Infer recursive effects
         effects.emplace_back(MemoryEffects::Write::get(), ExternResource::get());
         effects.emplace_back(MemoryEffects::Read::get(), ExternResource::get());
     }
@@ -2257,12 +2259,9 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
 }
 
 P4HIR::ParamDirection P4HIR::ParserOp::getArgumentDirection(unsigned i) {
-    mlir::ArrayAttr argAttrs = getArgAttrsAttr();
-    if (!argAttrs) return ParamDirection::None;
-
-    if (auto dirAttr = mlir::cast<mlir::DictionaryAttr>(argAttrs[i])
-                           .get(P4HIR::FuncOp::getDirectionAttrName()))
-        return mlir::cast<ParamDirectionAttr>(dirAttr).getValue();
+    if (auto dirAttr =
+            getArgAttrOfType<ParamDirectionAttr>(i, P4HIR::FuncOp::getDirectionAttrName()))
+        return dirAttr.getValue();
 
     return ParamDirection::None;
 }
@@ -2766,12 +2765,12 @@ void P4HIR::ApplyOp::getEffects(
         if (!mlir::isa<P4HIR::ReferenceType>(arg.get().getType())) continue;
 
         P4HIR::ParamDirection dir = ParamDirection::None;
-        if (auto parser = mlir::dyn_cast<P4HIR::ParserOp>(callee)) {
+        if (auto parser = mlir::dyn_cast<P4HIR::ParserOp>(callee))
             dir = parser.getArgumentDirection(index);
-        } else if (auto control = mlir::dyn_cast<P4HIR::ControlOp>(callee)) {
+        else if (auto control = mlir::dyn_cast<P4HIR::ControlOp>(callee))
             dir = control.getArgumentDirection(index);
-        } else
-            assert(0 && "invalid apply");
+        else
+            llvm_unreachable("invalid apply");
 
         // Reference arguments cannot be direction-less. Conservatively assume
         // full effects here. This includes case when direction attribute is
@@ -2785,6 +2784,11 @@ void P4HIR::ApplyOp::getEffects(
             effects.emplace_back(MemoryEffects::Write::get(), &arg);
         }
     }
+
+    // For now conservatively assume full external resource effects for controls &
+    // subparsers TODO: Infer recusrsive effects
+    effects.emplace_back(MemoryEffects::Write::get(), ExternResource::get());
+    effects.emplace_back(MemoryEffects::Read::get(), ExternResource::get());
 }
 
 //===----------------------------------------------------------------------===//
@@ -3193,12 +3197,9 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
 }
 
 P4HIR::ParamDirection P4HIR::ControlOp::getArgumentDirection(unsigned i) {
-    mlir::ArrayAttr argAttrs = getArgAttrsAttr();
-    if (!argAttrs) return ParamDirection::None;
-
-    if (auto dirAttr = mlir::cast<mlir::DictionaryAttr>(argAttrs[i])
-                           .get(P4HIR::FuncOp::getDirectionAttrName()))
-        return mlir::cast<ParamDirectionAttr>(dirAttr).getValue();
+    if (auto dirAttr =
+            getArgAttrOfType<ParamDirectionAttr>(i, P4HIR::FuncOp::getDirectionAttrName()))
+        return dirAttr.getValue();
 
     return ParamDirection::None;
 }
