@@ -5,7 +5,7 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
-#include "p4mlir/Conversion/Passes.h"
+#include "p4mlir/Conversion/P4HIRToCoreLib/Passes.h"
 #include "p4mlir/Dialect/BMv2IR/Pipelines/Passes.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"

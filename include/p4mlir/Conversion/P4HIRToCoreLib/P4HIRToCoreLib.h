@@ -13,7 +13,7 @@
 namespace P4::P4MLIR {
 
 #define GEN_PASS_DECL_LOWERTOP4CORELIB
-#include "p4mlir/Conversion/Passes.h.inc"
+#include "p4mlir/Conversion/P4HIRToCoreLib/Passes.h.inc"
 }  // namespace P4::P4MLIR
 
 #endif  // P4MLIR_CONVERSION_P4HIRTOCORELIB_H
