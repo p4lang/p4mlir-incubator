@@ -1166,14 +1166,46 @@ mlir::LogicalResult P4HIR::SoftReturnOp::verify() {
     return verifyReturnLike(getOperation(), false);
 }
 
+static mlir::LogicalResult verifyLoopSoftControlFlow(mlir::Operation *op) {
+    if (op->getParentOfType<P4HIR::ForOp>() == nullptr &&
+        op->getParentOfType<P4HIR::ForInOp>() == nullptr)
+        return op->emitOpError() << "Loop control flow operation is outside loop";
+    return success();
+}
+
+mlir::LogicalResult P4HIR::SoftBreakOp::verify() {
+    return verifyLoopSoftControlFlow(getOperation());
+}
+
+mlir::LogicalResult P4HIR::SoftContinueOp::verify() {
+    return verifyLoopSoftControlFlow(getOperation());
+}
+
 //===----------------------------------------------------------------------===//
 // FuncOp
 //===----------------------------------------------------------------------===//
 
+static LogicalResult verifyFunctionLike(mlir::Region *body) {
+    if (body->empty()) return success();
+
+    auto hasSoftReturnOpWalk = body->walk([](mlir::Operation *op) -> mlir::WalkResult {
+        return mlir::isa<P4HIR::SoftReturnOp>(op) ? WalkResult::interrupt() : WalkResult::advance();
+    });
+
+    if (hasSoftReturnOpWalk.wasInterrupted() && body->back().mightHaveTerminator()) {
+        auto returnOp = mlir::cast<P4HIR::ReturnOp>(body->back().getTerminator());
+        if (returnOp->getNumOperands() > 0)
+            return returnOp->emitOpError()
+                   << "Return terminator with arguments in function with soft control flow";
+    }
+
+    return success();
+}
+
 // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
 // attribute is present.  This can check for preconditions of the
 // getNumArguments hook not failing.
-LogicalResult P4HIR::FuncOp::verifyType() {
+mlir::LogicalResult P4HIR::FuncOp::verifyType() {
     auto type = getFunctionType();
     if (!isa<P4HIR::FuncType>(type))
         return emitOpError("requires '" + getFunctionTypeAttrName().str() +
@@ -1189,7 +1221,7 @@ LogicalResult P4HIR::FuncOp::verifyType() {
 LogicalResult P4HIR::FuncOp::verify() {
     // TODO: Check that all reference-typed arguments have direction indicated
     // TODO: Check that actions do have body
-    return success();
+    return verifyFunctionLike(&getBody());
 }
 
 void P4HIR::FuncOp::build(OpBuilder &builder, OperationState &result, llvm::StringRef name,
@@ -2977,6 +3009,8 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
     return mlir::success();
 }
 
+mlir::LogicalResult P4HIR::ControlApplyOp::verify() { return verifyFunctionLike(&getBody()); }
+
 //===----------------------------------------------------------------------===//
 // TableOp
 //===----------------------------------------------------------------------===//
@@ -3939,8 +3973,7 @@ struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
     bool isLegalToInline(Operation *op, Region *, bool, IRMapping &) const final {
         // We can't inline callables that return values but haven't had their soft control flow
         // converted yet.
-        if (auto softReturnOp = mlir::dyn_cast<P4HIR::SoftReturnOp>(op))
-            return softReturnOp.getNumOperands() == 0;
+        if (mlir::isa<P4HIR::SoftReturnOp>(op)) return false;
 
         // Not all other operations are possible to inline, but they are excluded by
         // `isLegalToInline` above.
