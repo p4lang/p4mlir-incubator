@@ -10,10 +10,12 @@ module {
     // CHECK:   p4hir.const #true
     // CHECK:   p4hir.br ^[[bb2]]
     // CHECK: ^[[bb2]]:
-    // CHECK:  p4hir.return    
+    // CHECK:  p4hir.return
+    %a = p4hir.variable ["a", init] : <!p4hir.bool>
     %0 = p4hir.const #p4hir.bool<false> : !p4hir.bool
     p4hir.if %0 {
       %29 = p4hir.const #p4hir.bool<true> : !p4hir.bool
+      p4hir.assign %29, %a :  <!p4hir.bool>
     }
     p4hir.return
   }   
@@ -30,12 +32,15 @@ module {
     // CHECK:   p4hir.const #false
     // CHECK:   p4hir.br ^[[bb3]]
     // CHECK: ^[[bb3]]:    
-    // CHECK:  p4hir.return  
+    // CHECK:  p4hir.return
+    %a = p4hir.variable ["a", init] : <!p4hir.bool>
     %0 = p4hir.const #p4hir.bool<false> : !p4hir.bool  
     p4hir.if %0 {
       %29 = p4hir.const #p4hir.bool<true> : !p4hir.bool
+      p4hir.assign %29, %a :  <!p4hir.bool>
     } else {
       %29 = p4hir.const #p4hir.bool<false> : !p4hir.bool
+      p4hir.assign %29, %a :  <!p4hir.bool>
     }
     p4hir.return
   }

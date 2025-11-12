@@ -221,7 +221,7 @@ def CopyInCopyOutElimination : Pass<"p4hir-copyin-copyout-elimination", "mlir::M
 
     This pass aims to match particular copy-in / copy-out argument passing patterns
     and remove extra variables ("de-alias") when we can prove that the callee
-    access their arguments in compatible manner.
+    accesses their arguments in compatible manner.
 
     E.g. the following code:
     ```mlir

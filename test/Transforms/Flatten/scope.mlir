@@ -3,7 +3,6 @@
 !bit32 = !p4hir.bit<32>
 
 module {
-  // Should properly print/parse scope with implicit empty yield.
   // CHECK-LABEL: implicit_yield
   p4hir.func @implicit_yield() {
     p4hir.scope {
@@ -13,10 +12,9 @@ module {
     p4hir.return
   }
 
-  // Should properly print/parse scope with explicit yield.
   // CHECK-LABEL: explicit_yield
   // CHECK-NOT: p4hir.scope    
-  p4hir.func @explicit_yield() {
+  p4hir.func @explicit_yield() -> !bit32 {
     %0 = p4hir.scope {
       %a = p4hir.variable ["a", init] : <!bit32>
       %1 = p4hir.read %a : <!bit32>
@@ -28,6 +26,6 @@ module {
     // CHECK: p4hir.br ^[[bb2:.*]](%[[val]] : !b32i)
     // CHECK: ^[[bb2]](%0: !b32i):
     // CHECK: p4hir.return
-    p4hir.return
+    p4hir.return %0 : !bit32
   }
 }

@@ -3,7 +3,7 @@
 module {
   // CHECK-LABEL: @ternary.bool
   // CHECK-NOT: p4hir.ternary
-  p4hir.func @ternary.bool() {
+  p4hir.func @ternary.bool() -> !p4hir.bool {
     // CHECK: %[[false:.*]] = p4hir.const #false
     // CHECK: p4hir.cond_br %[[false]] ^[[bb1:.*]], ^[[bb2:.*]]
     // CHECK: ^[[bb1]]:
@@ -22,13 +22,13 @@ module {
       %29 = p4hir.const #p4hir.bool<false> : !p4hir.bool
       p4hir.yield %29 : !p4hir.bool
     }) : !p4hir.bool
-    p4hir.return
+    p4hir.return %1 : !p4hir.bool
   }
 
   // CHECK-LABEL: @ternary.int
   // CHECK-NOT: p4hir.ternary
 
-  p4hir.func @ternary.int() {
+  p4hir.func @ternary.int()  -> !p4hir.int<32>{
     // CHECKL %[[false:.*]] = p4hir.const #false
     // CHECK: p4hir.cond_br %[[false]] ^[[bb1:.*]], ^[[bb2:.*]]
     // CHECK: ^[[bb1]]:
@@ -47,6 +47,6 @@ module {
       %29 = p4hir.const #p4hir.int<100500> : !p4hir.int<32>
       p4hir.yield %29 : !p4hir.int<32>
     }) : !p4hir.int<32>
-    p4hir.return
+    p4hir.return %2 : !p4hir.int<32>
   }    
 }
