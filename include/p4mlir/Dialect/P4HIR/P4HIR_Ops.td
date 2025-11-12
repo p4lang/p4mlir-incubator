@@ -826,6 +826,7 @@ def SoftBreakOp : P4HIR_Op<"soft_break", [ParentOneOf<["ScopeOp", "IfOp", "CaseO
                                                       ]>]> {
   let summary = "Break statement for loops";
   let assemblyFormat = [{ attr-dict }];
+  let hasVerifier = 1;
 }
 
 def SoftContinueOp : P4HIR_Op<"soft_continue", [ParentOneOf<["ScopeOp", "IfOp", "CaseOp",
@@ -833,6 +834,7 @@ def SoftContinueOp : P4HIR_Op<"soft_continue", [ParentOneOf<["ScopeOp", "IfOp", 
                                                             ]>]> {
   let summary = "Continue statement for loops";
   let assemblyFormat = [{ attr-dict }];
+  let hasVerifier = 1;
 }
 
 def FuncOp : P4HIR_Op<"func", [
