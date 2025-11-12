@@ -1,9 +1,11 @@
 set(LIBS
   P4MLIR_P4HIR
   P4MLIR_P4CoreLib
+  P4MLIR_BMv2IR
   P4MLIRConversion
   P4MLIRTransforms
   P4MLIRConversion
+  P4HIRToBMv2IR
   P4Pipelines
   BMv2Pipelines
 
