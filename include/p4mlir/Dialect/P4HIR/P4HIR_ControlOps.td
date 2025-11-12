@@ -54,6 +54,7 @@ def ControlApplyOp : P4HIR_Op<"control_apply",
  let assemblyFormat = [{
    $body attr-dict
  }];
+ let hasVerifier = 1;
 }
 
 def TableOp : P4HIR_Op<"table",
