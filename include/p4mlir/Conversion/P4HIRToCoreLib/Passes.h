@@ -14,13 +14,13 @@
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
-#include "p4mlir/Conversion/P4HIRToCoreLib.h"
+#include "p4mlir/Conversion/P4HIRToCoreLib/P4HIRToCoreLib.h"
 
 namespace P4::P4MLIR {
 
 // Generate the code for registering conversion passes.
 #define GEN_PASS_REGISTRATION
-#include "p4mlir/Conversion/Passes.h.inc"
+#include "p4mlir/Conversion/P4HIRToCoreLib/Passes.h.inc"
 
 }  // namespace P4::P4MLIR
 

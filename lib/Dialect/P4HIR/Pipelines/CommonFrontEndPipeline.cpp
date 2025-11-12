@@ -2,7 +2,7 @@
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
-#include "p4mlir/Conversion/Passes.h"
+#include "p4mlir/Conversion/P4HIRToCoreLib/Passes.h"
 #include "p4mlir/Dialect/P4HIR/Pipelines/Passes.h"
 #include "p4mlir/Transforms/Passes.h"
 
