@@ -212,7 +212,8 @@ class CopyOutElimination : public mlir::OpRewritePattern<P4HIR::VariableOp> {
             // Skip non-default resources, these never affect / alias normal values
             if (effect.getResource() != SideEffects::DefaultResource::get()) continue;
 
-            // <writeOp> should only write to %alias
+            // <writeOp> should only write to %alias, reading is disallowed as it will be
+            // an uninitialized read
             if (effect.getValue() == alias) {
                 if (!mlir::isa<MemoryEffects::Write>(effect.getEffect()))
                     return rewriter.notifyMatchFailure(alias, "unsupported alias value write op");
@@ -223,9 +224,6 @@ class CopyOutElimination : public mlir::OpRewritePattern<P4HIR::VariableOp> {
                 return rewriter.notifyMatchFailure(alias, [&](auto &diag) {
                     diag << aliasee << " may alias " << effect.getValue();
                 });
-
-            // TODO: Do not support anything else for now :)
-            // return rewriter.notifyMatchFailure(alias, "NYI");
         }
 
         // Check for intervening memory effects on %aliasee
@@ -291,7 +289,7 @@ class CopyInOutElimination : public mlir::OpRewritePattern<P4HIR::VariableOp> {
         auto aliasee = writeAliaseeOp.getRef();
 
         // Ensure that read in originates from aliasee
-        auto readAliaseeOp = dyn_cast<P4HIR::ReadOp>(readInOp.getValue().getDefiningOp());
+        auto readAliaseeOp = readInOp.getValue().getDefiningOp<P4HIR::ReadOp>();
         if (!readAliaseeOp || !readAliaseeOp->hasOneUse() || readAliaseeOp.getRef() != aliasee)
             return rewriter.notifyMatchFailure(alias, "invalid aliasee value read");
 
@@ -322,17 +320,12 @@ class CopyInOutElimination : public mlir::OpRewritePattern<P4HIR::VariableOp> {
         // Check for aliasing & memory effects of <writeOp>
         SmallVector<MemoryEffects::EffectInstance, 1> effects;
         writeAliasOp.getEffects(effects);
-        bool readsAlias = false, writesAlias = false;
         for (const auto &effect : effects) {
             // Skip non-default resources, these never affect / alias normal values
             if (effect.getResource() != SideEffects::DefaultResource::get()) continue;
 
             if (effect.getValue() == alias) {
-                if (mlir::isa<MemoryEffects::Write>(effect.getEffect()))
-                    writesAlias = true;
-                else if (mlir::isa<MemoryEffects::Read>(effect.getEffect()))
-                    readsAlias = true;
-                else
+                if (!mlir::isa<MemoryEffects::Write, MemoryEffects::Read>(effect.getEffect()))
                     return rewriter.notifyMatchFailure(alias, "unsupported alias value write op");
                 continue;
             }
@@ -343,10 +336,6 @@ class CopyInOutElimination : public mlir::OpRewritePattern<P4HIR::VariableOp> {
                 });
             }
         }
-
-        // <writeOp> should both read and write to %alias
-        if (!readsAlias || !writesAlias)
-            return rewriter.notifyMatchFailure(alias, "unsupported alias value write op");
 
         // Check for intervening memory effects on %aliasee
         if (!hasNoInterveningEffect<MemoryEffects::Write, MemoryEffects::Read>(

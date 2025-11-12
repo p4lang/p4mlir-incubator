@@ -21,6 +21,7 @@ class P4CoreLib_Op<string mnemonic, list<Trait> traits = []> :
 def P4CoreLib_PacketResource : Resource<"::mlir::P4MLIR::P4CoreLib::PacketResource">;
 
 def PacketInRead : MemRead<P4CoreLib_PacketResource>;
+def PacketInWrite : MemWrite<P4CoreLib_PacketResource>;
 def PacketOutWrite : MemWrite<P4CoreLib_PacketResource>;
 
 //===----------------------------------------------------------------------===//
@@ -74,7 +75,7 @@ def PacketLookAheadOp : P4CoreLib_Op<"packet_lookahead",
 }
 
 def PacketAdvanceOp : P4CoreLib_Op<"packet_advance"> {
-    let arguments = (ins Arg<PacketInType, "packet buffer", [PacketInRead]>:$packet_in,
+    let arguments = (ins Arg<PacketInType, "packet buffer", [PacketInRead, PacketInWrite]>:$packet_in,
                          Bit<32>:$bits);
     let assemblyFormat = [{
       $packet_in `:` type($packet_in) `by` $bits attr-dict
@@ -85,7 +86,7 @@ def FullMemRead : MemRead<DefaultResource, 0, FullEffect>;
 def FullMemWrite : MemWrite<DefaultResource, 0, FullEffect>;
 
 def PacketExtractOp : P4CoreLib_Op<"extract_header"> {
-    let arguments = (ins Arg<PacketInType, "packet buffer", [PacketInRead]>:$packet_in,
+    let arguments = (ins Arg<PacketInType, "packet buffer", [PacketInRead, PacketInWrite]>:$packet_in,
                          Arg<HeaderRefType, "reference to header to extract", [FullMemWrite]>:$hdr);
     let assemblyFormat = [{
       $hdr `:` type($hdr) `from` $packet_in `:` type($packet_in) attr-dict
@@ -93,7 +94,7 @@ def PacketExtractOp : P4CoreLib_Op<"extract_header"> {
 }
 
 def PacketExtractVariableOp : P4CoreLib_Op<"extract_header_variable"> {
-    let arguments = (ins Arg<PacketInType, "packet buffer", [PacketInRead]>:$packet_in,
+    let arguments = (ins Arg<PacketInType, "packet buffer", [PacketInRead, PacketInWrite]>:$packet_in,
                          Arg<HeaderRefType, "reference to header to extract", [MemWrite]>:$hdr,
                          Bit<32>:$variableFieldSizeInBits);
     let assemblyFormat = [{
