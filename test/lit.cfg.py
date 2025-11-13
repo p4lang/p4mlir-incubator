@@ -1,13 +1,11 @@
-# -*- Python -*-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 import os
 import platform
-import re
-import subprocess
-import tempfile
 
-import lit.formats
 import lit.util
+import lit.formats
 
 from lit.llvm import llvm_config
 from lit.llvm.subst import ToolSubst
@@ -18,7 +16,9 @@ from lit.llvm.subst import FindTool
 # name: The name of this test suite.
 config.name = "P4MLIR"
 
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+# Check if use_lit_shell exists, fallback to True if not
+use_lit_shell = getattr(llvm_config, "use_lit_shell", True)
+config.test_format = lit.formats.ShTest(not use_lit_shell)
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".mlir", ".p4"]
@@ -55,7 +55,8 @@ tool_dirs = [config.p4mlir_tools_dir, config.llvm_tools_dir]
 tools = [
     "mlir-opt",
     "p4mlir-opt",
-    "p4mlir-translate"
+    "p4mlir-translate",
+    "p4mlir-export-bmv2"
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
