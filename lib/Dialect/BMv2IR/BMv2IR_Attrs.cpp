@@ -12,6 +12,7 @@
 using namespace mlir;
 using namespace P4::P4MLIR::BMv2IR;
 
+#include "p4mlir/Dialect/BMv2IR/BMv2IR_EnumAttrs.cpp.inc"
 void BMv2IRDialect::registerAttributes() {
     addAttributes<
 #define GET_ATTRDEF_LIST
