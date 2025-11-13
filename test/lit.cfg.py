@@ -55,6 +55,7 @@ tool_dirs = [config.p4mlir_tools_dir, config.llvm_tools_dir]
 tools = [
     "mlir-opt",
     "p4mlir-opt",
+    "p4mlir-to-json",
     "p4mlir-translate"
 ]
 
