@@ -15,4 +15,47 @@ class BMv2IR_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
+// P4HeaderType represents a complete header type definition
+def BMv2_HeaderType : BMv2IR_Type<"Header", "header"> {
+  let summary = "BMv2 header type";
+  let description = [{
+    Represents a P4 header according to the
+    [BMv2 JSON spec](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#header_types)
+    
+    The type encodes:
+    - A unique name for the header type
+    - An array of fields (name, bitwidth, optional signed flag)
+    - Optional maximum length for variable-length headers
+    
+    Variable-length fields are represented with bitwidth = -1.
+    At most one field can be variable-length.
+  }];
+  
+  let parameters = (ins
+    StringRefParameter<"struct name">:$name,
+    ArrayRefParameter<"BMv2IR::FieldInfo", "struct fields">:$fields,
+    OptionalParameter<"unsigned">:$max_length
+  );
+  
+  let assemblyFormat = [{
+    `<` $name `,` `[` $fields `]`
+    (`,` `max_length` `=` $max_length^)?
+    `>`
+  }];
+  
+  let genVerifyDecl = 1;
+  let skipDefaultBuilders = 1;
+  let builders = [
+     TypeBuilder<(ins "llvm::StringRef":$name, "llvm::ArrayRef<BMv2IR::FieldInfo>":$fields), [{
+      return $_get($_ctxt, name, fields, computeMaxLength(fields));
+    }]>,
+  ];
+  
+  // Add verification for constraints
+  let extraClassDeclaration = [{
+    static unsigned computeMaxLength(llvm::ArrayRef<BMv2IR::FieldInfo>);
+    static bool isAllowedFieldType(mlir::Type ty);
+  }];
+}
+
 #endif // P4MLIR_DIALECT_BMv2IR_BMv2IR_TYPES_TD
