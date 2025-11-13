@@ -1,7 +1,9 @@
 #include "p4mlir/Targets/BMv2/Target.h"
 
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+#include "p4mlir/Common/Registration.h"
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Dialect.h"
 
 using namespace mlir;
@@ -18,11 +20,16 @@ void P4::P4MLIR::registerToBMv2JSONTranslation() {
         [](Operation *op, raw_ostream &output) {
             auto moduleOp = dyn_cast<ModuleOp>(op);
             if (!moduleOp) return failure();
-            auto maybeJsonModule = bmv2irToJson(moduleOp);
-            if (failed(maybeJsonModule)) return failure();
-
-            output << *maybeJsonModule;
+            if (failed(bmv2irToJson(moduleOp, output))) return failure();
             return success();
         },
-        [](DialectRegistry &registry) { registry.insert<BMv2IR::BMv2IRDialect>(); });
+        [](DialectRegistry &registry) { P4::P4MLIR::registerAllDialects(registry); });
+}
+
+LogicalResult P4::P4MLIR::bmv2irToJson(ModuleOp moduleOp, raw_ostream &output) {
+    auto maybeJsonModule = bmv2irToJson(moduleOp);
+    if (failed(maybeJsonModule)) return failure();
+
+    output << *maybeJsonModule;
+    return success();
 }
