@@ -1,0 +1,27 @@
+error: loc("test/Translate/Ops/for.p4":21:4): Unsupported operation 'p4hir.for' in common statement context: 
+note: loc("test/Translate/Ops/for.p4":21:4): see current operation: 
+"p4hir.for"() ({
+  %66 = "p4hir.const"() <{value = #p4hir.int<10> : !p4hir.infint}> : () -> !p4hir.infint
+  %67 = "p4hir.cast"(%66) : (!p4hir.infint) -> !p4hir.bit<32>
+  %68 = "p4hir.read"(%59) : (!p4hir.ref<!p4hir.bit<32>>) -> !p4hir.bit<32>
+  %69 = "p4hir.cmp"(%68, %67) <{kind = 1 : i32}> : (!p4hir.bit<32>, !p4hir.bit<32>) -> !p4hir.bool
+  "p4hir.condition"(%69) : (!p4hir.bool) -> ()
+}, {
+  %63 = "p4hir.const"() <{value = #p4hir.int<1> : !p4hir.bit<32>}> : () -> !p4hir.bit<32>
+  %64 = "p4hir.read"(%53) : (!p4hir.ref<!p4hir.bit<32>>) -> !p4hir.bit<32>
+  %65 = "p4hir.binop"(%64, %63) <{kind = 4 : i32}> : (!p4hir.bit<32>, !p4hir.bit<32>) -> !p4hir.bit<32>
+  "p4hir.assign"(%65, %53) : (!p4hir.bit<32>, !p4hir.ref<!p4hir.bit<32>>) -> ()
+  "p4hir.yield"() : () -> ()
+}, {
+  %60 = "p4hir.const"() <{value = #p4hir.int<1> : !p4hir.bit<32>}> : () -> !p4hir.bit<32>
+  %61 = "p4hir.read"(%59) : (!p4hir.ref<!p4hir.bit<32>>) -> !p4hir.bit<32>
+  %62 = "p4hir.binop"(%61, %60) <{kind = 4 : i32}> : (!p4hir.bit<32>, !p4hir.bit<32>) -> !p4hir.bit<32>
+  "p4hir.assign"(%62, %59) : (!p4hir.bit<32>, !p4hir.ref<!p4hir.bit<32>>) -> ()
+  "p4hir.yield"() : () -> ()
+}) : () -> ()
+  19 |         // CHECK:      } body {
+  20 |         // CHECK:        %[[CONST_1:.*]] = p4hir.const #int1_b32i
+  21 |         // CHECK:        %[[CURR_SUM:.*]] = p4hir.read %[[SUM]] : <!b32i>
+     |    ^
+  22 |         // CHECK:        %[[NEW_SUM:.*]] = p4hir.binop(add, %[[CURR_SUM]], %[[CONST_1]]) : !b32i
+  23 |         // CHECK:        p4hir.assign %[[NEW_SUM]], %[[SUM]] : <!b32i>

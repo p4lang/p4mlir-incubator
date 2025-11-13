@@ -1,4 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | diff -u - %s.ref
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | p4test -
 
 // CHECK: #[[$ATTR_FALSE:.+]] = #p4hir.bool<false> : !p4hir.bool
 // CHECK: #[[$ATTR_TRUE:.+]] = #p4hir.bool<true> : !p4hir.bool

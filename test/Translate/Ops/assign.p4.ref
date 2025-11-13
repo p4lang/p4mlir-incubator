@@ -1,0 +1,277 @@
+enum bit<10> Serenum {
+    first = 10w42
+}
+action assign() {
+    bit<10> a;
+    bit<10> b;
+    bit<10> res;
+
+    res = a;
+    res = (a + b);
+    return;
+}
+
+action mul_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs * rhs);
+    return;
+}
+
+action mul_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs * (bit<10>)(10w3));
+    return;
+}
+
+action mul_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs * (bit<10>)(Serenum.first));
+    return;
+}
+
+action div_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs / rhs);
+    return;
+}
+
+action div_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs / (bit<10>)(10w3));
+    return;
+}
+
+action div_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs / (bit<10>)(Serenum.first));
+    return;
+}
+
+action mod_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs % rhs);
+    return;
+}
+
+action mod_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs % (bit<10>)(10w3));
+    return;
+}
+
+action mod_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs % (bit<10>)(Serenum.first));
+    return;
+}
+
+action add_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs + rhs);
+    return;
+}
+
+action add_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs + (bit<10>)(10w3));
+    return;
+}
+
+action add_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs + (bit<10>)(Serenum.first));
+    return;
+}
+
+action sub_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs - rhs);
+    return;
+}
+
+action sub_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs - (bit<10>)(10w3));
+    return;
+}
+
+action sub_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs - (bit<10>)(Serenum.first));
+    return;
+}
+
+action sadd_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs |+| rhs);
+    return;
+}
+
+action sadd_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs |+| (bit<10>)(10w3));
+    return;
+}
+
+action sadd_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs |+| (bit<10>)(Serenum.first));
+    return;
+}
+
+action ssub_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs |-| rhs);
+    return;
+}
+
+action ssub_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs |-| (bit<10>)(10w3));
+    return;
+}
+
+action ssub_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs |-| (bit<10>)(Serenum.first));
+    return;
+}
+
+action shl_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs << rhs);
+    return;
+}
+
+action shl_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs << (bit<10>)(3));
+    return;
+}
+
+action shl_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs << (bit<10>)(Serenum.first));
+    return;
+}
+
+action shr_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs >> rhs);
+    return;
+}
+
+action shr_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs >> (bit<10>)(3));
+    return;
+}
+
+action shr_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs >> (bit<10>)(Serenum.first));
+    return;
+}
+
+action and_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs & rhs);
+    return;
+}
+
+action and_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs & (bit<10>)(10w3));
+    return;
+}
+
+action and_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs & (bit<10>)(Serenum.first));
+    return;
+}
+
+action or_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs | rhs);
+    return;
+}
+
+action or_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs | (bit<10>)(10w3));
+    return;
+}
+
+action or_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs | (bit<10>)(Serenum.first));
+    return;
+}
+
+action xor_assign_with_var() {
+    bit<10> lhs;
+    bit<10> rhs;
+
+    lhs = (lhs ^ rhs);
+    return;
+}
+
+action xor_assign_with_const() {
+    bit<10> lhs;
+
+    lhs = (lhs ^ (bit<10>)(10w3));
+    return;
+}
+
+action xor_assign_with_serenum() {
+    bit<10> lhs;
+
+    lhs = (lhs ^ (bit<10>)(Serenum.first));
+    return;
+}
+

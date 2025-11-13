@@ -1,0 +1,30 @@
+header MyHeader {
+    int<16> f1;
+}
+control InnerPipe(bit<10> arg1, in int<16> arg2, out int<16> arg3)(bool flag) {
+    apply {
+    }
+}
+control Pipe(bit<10> arg1, in int<16> arg2, out int<16> arg3, inout int<16> arg4)(int<16> ctr_arg1, MyHeader hdr_arg) {
+    InnerPipe(true) inner1;
+    InnerPipe(false) inner2;
+    action bar() {
+        bool hasReturned = false;
+        int<16> x1;
+
+        {
+            hasReturned = true;
+        }
+        return;
+    }
+    apply {
+        int<16> x1;
+
+        bar();
+        {
+            int<16> arg3_out_arg;
+            inner1(true).apply(10w1, ctr_arg1, arg3_out_arg);
+            x1 = arg3_out_arg;
+        }
+    }
+}
