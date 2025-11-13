@@ -2087,8 +2087,12 @@ void P4HIR::ParserOp::createEntryBlock() {
     for (auto argType : getArgumentTypes()) first.addArgument(argType, loc);
 }
 
+P4HIR::ParserTransitionOp P4HIR::ParserOp::getStartTransition() {
+    return llvm::cast<ParserTransitionOp>(getBody().back().getTerminator());
+}
+
 P4HIR::ParserStateOp P4HIR::ParserOp::getStartState() {
-    auto transition = llvm::cast<ParserTransitionOp>(getBody().back().getTerminator());
+    auto transition = getStartTransition();
     return lookupParserState(getOperation(), transition.getStateAttr());
 }
 
