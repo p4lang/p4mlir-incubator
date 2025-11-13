@@ -2030,8 +2030,6 @@ LogicalResult P4HIR::SliceRefOp::verify() {
     return success();
 }
 
-Value P4HIR::SliceRefOp::getViewSource() { return getInput(); }
-
 LogicalResult P4HIR::AssignSliceOp::verify() {
     auto sourceType = getValue().getType();
     auto resultType = llvm::cast<P4HIR::BitsType>(

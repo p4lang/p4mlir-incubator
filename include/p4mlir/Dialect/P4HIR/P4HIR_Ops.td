@@ -1261,14 +1261,14 @@ def SliceOp : P4HIR_Op<"slice",
 
 def SliceRefOp : P4HIR_Op<"slice_ref",
     [Pure,
-     DeclareOpInterfaceMethods<ViewLikeOpInterface>,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Extract a range or single bits from a referenced value";
   let description = [{
     It's used to select from a value with a constant low bit.
 
   }];
-  let arguments = (ins BitsRefType:$input, I32Attr:$highBit, I32Attr:$lowBit);
+  let arguments = (ins Arg<BitsRefType, "the reference to load from", [MemRead]>:$input,
+                       I32Attr:$highBit, I32Attr:$lowBit);
   let results = (outs BitsType:$result);
   let assemblyFormat = [{
     $input`[`$highBit `:` $lowBit`]` attr-dict `:` type($input) `->` type($result)
