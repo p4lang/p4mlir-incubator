@@ -22,7 +22,7 @@ module {
     %1 = p4hir.slice %0[2 : 1] : !b3i -> !b2i
     %b = p4hir.variable ["b", init] : <!b2i>
     p4hir.assign %1, %b : <!b2i>
-    %2 = p4hir.slice_ref %arg1[7 : 1] : <!i8i> -> !b7i
+    %2 = p4hir.read_slice %arg1[7 : 1] : <!i8i> -> !b7i
     %d = p4hir.variable ["d", init] : <!b7i>
     p4hir.assign %2, %d : <!b7i>
     %e = p4hir.const ["e"] #int42_infint

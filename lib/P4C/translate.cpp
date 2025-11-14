@@ -1726,8 +1726,8 @@ bool P4HIRConverter::preorder(const P4::IR::Slice *slice) {
     mlir::Value sliceVal;
     if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(maybeRef.getType());
         refType && mlir::isa<P4HIR::BitsType>(refType.getObjectType())) {
-        sliceVal = builder.create<P4HIR::SliceRefOp>(getLoc(builder, slice), destType, maybeRef,
-                                                     slice->getH(), slice->getL());
+        sliceVal = builder.create<P4HIR::ReadSliceOp>(getLoc(builder, slice), destType, maybeRef,
+                                                      slice->getH(), slice->getL());
     } else {
         sliceVal = builder.create<P4HIR::SliceOp>(getLoc(builder, slice), destType,
                                                   getValue(slice->e0, getIntType(slice->e0->type)),
@@ -2448,8 +2448,8 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                             copyIn.setInit(true);
                             b.create<P4HIR::AssignOp>(
                                 loc,
-                                b.create<P4HIR::SliceRefOp>(loc, sliceType, ref, slice->getH(),
-                                                            slice->getL()),
+                                b.create<P4HIR::ReadSliceOp>(loc, sliceType, ref, slice->getH(),
+                                                             slice->getL()),
                                 copyIn);
                         }
                         argVal = copyIn;
@@ -3006,13 +3006,12 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
     // Materialize values to select over. Select is always a ListExpression,
     // even if it contains a single value. Unpack the top-level select tuple
     // to its individual components for p4hir.transition_select.
-    const auto& comps = select->select->components;
+    const auto &comps = select->select->components;
     llvm::SmallVector<mlir::Value, 4> operands;
-    for (const P4::IR::Node *comp : comps)
-        operands.push_back(convert(comp));
+    for (const P4::IR::Node *comp : comps) operands.push_back(convert(comp));
 
-    auto transitionSelectOp = builder.create<P4HIR::ParserTransitionSelectOp>(
-        getLoc(builder, select), operands);
+    auto transitionSelectOp =
+        builder.create<P4HIR::ParserTransitionSelectOp>(getLoc(builder, select), operands);
     mlir::Block &first = transitionSelectOp.getBody().emplaceBlock();
 
     mlir::OpBuilder::InsertionGuard guard(builder);
