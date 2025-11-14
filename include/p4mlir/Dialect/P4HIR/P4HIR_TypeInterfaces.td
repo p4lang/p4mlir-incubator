@@ -96,6 +96,10 @@ def StructLikeTypeInterface : TypeInterface<"StructLikeTypeInterface", [FieldIDT
       Get all types of the fields.
     }],
      "void", "getInnerTypes", (ins "mlir::SmallVectorImpl<mlir::Type> &":$types)>,
+   InterfaceMethod<[{
+      Get the field given the ID.
+    }],
+     "FieldInfo", "getFieldByID", (ins "unsigned":$fieldID)>,
   ];
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
