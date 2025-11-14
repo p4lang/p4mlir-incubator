@@ -48,18 +48,18 @@ module {
 // CHECK-SAME:      %[[ARG1:.*]]: !p4hir.ref<!Parsed_packet> {p4hir.dir = #[[$DIR_OUT]], p4hir.param_name = "hdr"})() {
 // CHECK:           p4hir.state @start {
 // CHECK:             p4hir.scope {
-// CHECK:               %[[VAL_5:.*]] = p4hir.struct_extract_ref %[[ARG1]]["ethernet"] : <!Parsed_packet>
+// CHECK:               %[[VAL_5:.*]] = p4hir.struct_field_ref %[[ARG1]]["ethernet"] : <!Parsed_packet>
 // CHECK:               p4hir.call_method @packet_in::@extract<[!Ethernet_h]> of %[[ARG0]] : !packet_in (%[[VAL_5]]) : (!p4hir.ref<!Ethernet_h>) -> ()
 // CHECK:             }
 // CHECK:           p4hir.state @parse_ipv4 {
 // CHECK:             p4hir.scope {
-// CHECK:               %[[VAL_9:.*]] = p4hir.struct_extract_ref %[[ARG1]]["ipv4"] : <!Parsed_packet>
+// CHECK:               %[[VAL_9:.*]] = p4hir.struct_field_ref %[[ARG1]]["ipv4"] : <!Parsed_packet>
 // CHECK:               p4hir.call_method @packet_in::@extract<[!ipv4_t]> of %[[ARG0]] : !packet_in (%[[VAL_9]]) : (!p4hir.ref<!ipv4_t>) -> ()
 // CHECK:             }
   p4hir.parser @parserI(%arg0: !packet_in {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "pkt"}, %arg1: !p4hir.ref<!Parsed_packet> {p4hir.dir = #out, p4hir.param_name = "hdr"})() {
     p4hir.state @start {
       p4hir.scope {
-        %ethernet_field_ref = p4hir.struct_extract_ref %arg1["ethernet"] : <!Parsed_packet>
+        %ethernet_field_ref = p4hir.struct_field_ref %arg1["ethernet"] : <!Parsed_packet>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!Ethernet_h>
         p4hir.call_method @packet_in::@extract<[!Ethernet_h]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!Ethernet_h>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!Ethernet_h>
@@ -82,7 +82,7 @@ module {
     }
     p4hir.state @parse_ipv4 {
       p4hir.scope {
-        %ipv4_field_ref = p4hir.struct_extract_ref %arg1["ipv4"] : <!Parsed_packet>
+        %ipv4_field_ref = p4hir.struct_field_ref %arg1["ipv4"] : <!Parsed_packet>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!ipv4_t>
         p4hir.call_method @packet_in::@extract<[!ipv4_t]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!ipv4_t>) -> ()
         %val_2 = p4hir.read %hdr_out_arg : <!ipv4_t>

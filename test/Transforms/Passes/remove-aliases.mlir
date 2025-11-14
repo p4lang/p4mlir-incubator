@@ -68,7 +68,7 @@ module {
   // CHECK: %struct_S = p4hir.struct (%[[c0_b32i]], %[[c2_b32i]]) : !S
   %struct_S = p4hir.struct (%c0_b32i, %c2_N32) : !S
   p4hir.assign %struct_S, %var_s : <!S>
-  %struct_extract = p4hir.struct_extract_ref %var_s["n"] : <!S>
+  %struct_extract = p4hir.struct_field_ref %var_s["n"] : <!S>
 
   // Test arrays
   // CHECK: %{{.*}} = p4hir.const ["agg"] #p4hir.aggregate<[#int0_b32i, #int2_b32i]> : !arr_2xb32i
@@ -182,10 +182,10 @@ module {
         %cast_21 = p4hir.cast(%c2_b32i : !b32i) : !b32i
         p4hir.assign %cast_21, %arg0 : <!b32i>
       }
-      %b_field_ref = p4hir.struct_extract_ref %s["b"] : <!S>
+      %b_field_ref = p4hir.struct_field_ref %s["b"] : <!S>
       %val_13 = p4hir.read %b : <!b32i>
       p4hir.assign %val_13, %b_field_ref : <!b32i>
-      %n_field_ref = p4hir.struct_extract_ref %s["n"] : <!S>
+      %n_field_ref = p4hir.struct_field_ref %s["n"] : <!S>
       %val_14 = p4hir.read %n : <!N32>
       p4hir.assign %val_14, %n_field_ref : <!N32>
       %t_apply_result = p4hir.table_apply @c::@t : !t

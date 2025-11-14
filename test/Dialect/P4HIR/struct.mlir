@@ -17,7 +17,7 @@ module {
   %t = p4hir.const ["t"] #p4hir.aggregate<[#int10_i32i, #int20_i32i]> : !T
 
   p4hir.func action @test2(%arg0: !p4hir.ref<!PortId_t> {p4hir.dir = #p4hir<dir inout>}) {
-    %_v = p4hir.struct_extract_ref %arg0["_v"] : <!PortId_t>
+    %_v = p4hir.struct_field_ref %arg0["_v"] : <!PortId_t>
     %val = p4hir.read %arg0 : <!PortId_t>
     %_v_0 = p4hir.struct_extract %val["_v"] : !PortId_t
     %c1_b9i = p4hir.const #int1_b9i

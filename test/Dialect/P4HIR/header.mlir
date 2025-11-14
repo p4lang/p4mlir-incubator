@@ -22,19 +22,19 @@ module {
     p4hir.assign %hdr_H, %h : <!H>
     
     %invalid = p4hir.const #invalid
-    %__valid_field_ref = p4hir.struct_extract_ref %h["__valid"] : <!H>
+    %__valid_field_ref = p4hir.struct_field_ref %h["__valid"] : <!H>
     p4hir.assign %invalid, %__valid_field_ref : <!validity_bit>
 
     %val = p4hir.read %h : <!H>
     %__valid = p4hir.struct_extract %val["__valid"] : !H
     %eq = p4hir.cmp(eq, %__valid : !validity_bit, %invalid : !validity_bit)
     p4hir.if %eq {
-      %x_field_ref = p4hir.struct_extract_ref %h["x"] : <!H>
+      %x_field_ref = p4hir.struct_field_ref %h["x"] : <!H>
       %c42_b32i = p4hir.const #int42_b32i
       %cast = p4hir.cast(%c42_b32i : !b32i) : !b32i
       p4hir.assign %cast, %x_field_ref : <!b32i>
     } else {
-      %y_field_ref = p4hir.struct_extract_ref %h["y"] : <!H>
+      %y_field_ref = p4hir.struct_field_ref %h["y"] : <!H>
       %c36_b32i = p4hir.const #int36_b32i
       %cast = p4hir.cast(%c36_b32i : !b32i) : !b32i
       p4hir.assign %cast, %y_field_ref : <!b32i>

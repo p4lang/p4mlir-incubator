@@ -22,14 +22,14 @@ module {
       %c11_b16i = p4hir.const #int11_b16i
       %c2_b16i = p4hir.const #int2_b16i
       %__local_C_s_0 = p4hir.symbol_ref @C::@__local_C_s_0 : !p4hir.ref<!S>
-      %f_field_ref = p4hir.struct_extract_ref %__local_C_s_0["f"] : <!S>
+      %f_field_ref = p4hir.struct_field_ref %__local_C_s_0["f"] : <!S>
       %val = p4hir.read %f_field_ref : <!b16i>
       %gt = p4hir.cmp(gt, %val : !b16i, %c11_b16i : !b16i)
 
       // CHECK: p4hir.if %{{.*}} {
       // CHECK: } else {
       // CHECK:   %[[LOCAL:.*]] = p4hir.symbol_ref @C::@__local_C_s_0 : !p4hir.ref<!S>
-      // CHECK:   %[[FIELD_REF:.*]] = p4hir.struct_extract_ref %[[LOCAL]]["f"] : <!S>
+      // CHECK:   %[[FIELD_REF:.*]] = p4hir.struct_field_ref %[[LOCAL]]["f"] : <!S>
       // CHECK:   p4hir.assign %[[CONST_2]], %[[FIELD_REF]] : <!b16i>
       // CHECK: }
 
@@ -37,26 +37,26 @@ module {
         p4hir.soft_return
       }
       %__local_C_s_0_0 = p4hir.symbol_ref @C::@__local_C_s_0 : !p4hir.ref<!S>
-      %f_field_ref_1 = p4hir.struct_extract_ref %__local_C_s_0_0["f"] : <!S>
+      %f_field_ref_1 = p4hir.struct_field_ref %__local_C_s_0_0["f"] : <!S>
       p4hir.assign %c2_b16i, %f_field_ref_1 : <!b16i>
       p4hir.return
     }
 
     // CHECK-LABEL: p4hir.control_apply
     p4hir.control_apply {
-      %f_field_ref = p4hir.struct_extract_ref %arg0["f"] : <!S>
+      %f_field_ref = p4hir.struct_field_ref %arg0["f"] : <!S>
       %val = p4hir.read %f_field_ref : <!b16i>
       %gt = p4hir.cmp(gt, %val : !b16i, %c10_b16i : !b16i)
 
       // CHECK: p4hir.if %{{.*}} {
       // CHECK: } else {
-      // CHECK:   %[[FIELD_REF:.*]] = p4hir.struct_extract_ref %arg0["f"] : <!S>
+      // CHECK:   %[[FIELD_REF:.*]] = p4hir.struct_field_ref %arg0["f"] : <!S>
       // CHECK:   p4hir.assign %[[CONST_1]], %[[FIELD_REF]] : <!b16i>
       // CHECK: }
       p4hir.if %gt {
         p4hir.soft_return
       }
-      %f_field_ref_0 = p4hir.struct_extract_ref %arg0["f"] : <!S>
+      %f_field_ref_0 = p4hir.struct_field_ref %arg0["f"] : <!S>
       p4hir.assign %c1_b16i, %f_field_ref_0 : <!b16i>
     }
   }

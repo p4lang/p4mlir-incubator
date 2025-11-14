@@ -13,9 +13,9 @@ parser p() {
         // CHECK: %[[stack:.*]] = p4hir.variable ["stack"] : <!hs_4xh>
         h[4] stack;
 
-        // CHECK: %[[data_field_ref:.*]] = p4hir.struct_extract_ref %[[stack]]["data"] : <!hs_4xh>
+        // CHECK: %[[data_field_ref:.*]] = p4hir.struct_field_ref %[[stack]]["data"] : <!hs_4xh>
         // CHECK: %[[elt_ref:.*]] = p4hir.array_element_ref %[[data_field_ref]][%{{.*}}] : !p4hir.ref<!arr_4xh>, !b32i
-        // CHECK: %[[__valid_field_ref:.*]] = p4hir.struct_extract_ref %[[elt_ref]]["__valid"] : <!h>
+        // CHECK: %[[__valid_field_ref:.*]] = p4hir.struct_field_ref %[[elt_ref]]["__valid"] : <!h>
         // CHECK: p4hir.assign %{{.*}}, %[[__valid_field_ref]] : <!validity_bit>
         stack[3].setValid();
 
@@ -24,8 +24,8 @@ parser p() {
         // CHECK: %[[array_elt:.*]] = p4hir.array_get %[[data]][{{.*}}] : !arr_4xh, !b32i
         h b = stack[3];
         
-        // CHECK: %[[data_field_ref:.*]] = p4hir.struct_extract_ref %[[stack]]["data"] : <!hs_4xh>
-        // CHECK: %[[nextIndex_field_ref:.*]] = p4hir.struct_extract_ref %[[stack]]["nextIndex"] : <!hs_4xh>
+        // CHECK: %[[data_field_ref:.*]] = p4hir.struct_field_ref %[[stack]]["data"] : <!hs_4xh>
+        // CHECK: %[[nextIndex_field_ref:.*]] = p4hir.struct_field_ref %[[stack]]["nextIndex"] : <!hs_4xh>
         // CHECK: %[[val:.*]] = p4hir.read %[[nextIndex_field_ref]] : <!b32i>
         // CHECK: %[[elt_ref:.*]] = p4hir.array_element_ref %[[data_field_ref]][%[[val]]] : !p4hir.ref<!arr_4xh>, !b32i        
         stack.next = b;
