@@ -76,7 +76,7 @@ module {
   // CHECK: p4hir.struct (%{{.*}}, %[[c2]], %{{.*}}) : !H
   %hdr_H = p4hir.struct (%c0_b32i, %c2, %valid) : !H
   p4hir.assign %hdr_H, %h : <!H>
-  %serenum_field_ref = p4hir.struct_extract_ref %h["suits"] : <!H>
+  %serenum_field_ref = p4hir.struct_field_ref %h["suits"] : <!H>
   %h2 = p4hir.variable ["h2"] : <!H2>
 
   // Test arrays

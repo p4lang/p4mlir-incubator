@@ -22,10 +22,10 @@ module {
     p4hir.state @start {
       %stack = p4hir.variable ["stack"] : <!hs_4xh>
       %c3_b32i = p4hir.const #int3_b32i
-      %data_field_ref = p4hir.struct_extract_ref %stack["data"] : <!hs_4xh>
+      %data_field_ref = p4hir.struct_field_ref %stack["data"] : <!hs_4xh>
       %elt_ref = p4hir.array_element_ref %data_field_ref[%c3_b32i] : !p4hir.ref<!arr_4xh>, !b32i
       %valid = p4hir.const #valid
-      %__valid_field_ref = p4hir.struct_extract_ref %elt_ref["__valid"] : <!h>
+      %__valid_field_ref = p4hir.struct_field_ref %elt_ref["__valid"] : <!h>
       p4hir.assign %valid, %__valid_field_ref : <!validity_bit>
       %c3_b32i_0 = p4hir.const #int3_b32i
       %val = p4hir.read %stack : <!hs_4xh>
@@ -41,12 +41,12 @@ module {
       %array_elt_3 = p4hir.array_get %data_2[%sub] : !arr_4xh, !b32i
       p4hir.assign %array_elt_3, %b : <!h>
       %c3_b32i_4 = p4hir.const #int3_b32i
-      %data_field_ref_5 = p4hir.struct_extract_ref %stack["data"] : <!hs_4xh>
+      %data_field_ref_5 = p4hir.struct_field_ref %stack["data"] : <!hs_4xh>
       %elt_ref_6 = p4hir.array_element_ref %data_field_ref_5[%c3_b32i_4] : !p4hir.ref<!arr_4xh>, !b32i
       %val_7 = p4hir.read %b : <!h>
       p4hir.assign %val_7, %elt_ref_6 : <!h>
-      %data_field_ref_8 = p4hir.struct_extract_ref %stack["data"] : <!hs_4xh>
-      %nextIndex_field_ref = p4hir.struct_extract_ref %stack["nextIndex"] : <!hs_4xh>
+      %data_field_ref_8 = p4hir.struct_field_ref %stack["data"] : <!hs_4xh>
+      %nextIndex_field_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs_4xh>
       %val_9 = p4hir.read %nextIndex_field_ref : <!b32i>
       %elt_ref_10 = p4hir.array_element_ref %data_field_ref_8[%val_9] : !p4hir.ref<!arr_4xh>, !b32i
       %val_11 = p4hir.read %b : <!h>
@@ -72,10 +72,10 @@ module {
       %stack = p4hir.variable ["stack"] : <!hs_4xh>
       %hustack = p4hir.variable ["hustack"] : <!hs_2xhu>
       %c3_b32i = p4hir.const #int3_b32i
-      %data_field_ref = p4hir.struct_extract_ref %stack["data"] : <!hs_4xh>
+      %data_field_ref = p4hir.struct_field_ref %stack["data"] : <!hs_4xh>
       %elt_ref = p4hir.array_element_ref %data_field_ref[%c3_b32i] : !p4hir.ref<!arr_4xh>, !b32i
       %valid = p4hir.const #valid
-      %__valid_field_ref = p4hir.struct_extract_ref %elt_ref["__valid"] : <!h>
+      %__valid_field_ref = p4hir.struct_field_ref %elt_ref["__valid"] : <!h>
       p4hir.assign %valid, %__valid_field_ref : <!validity_bit>
       %c3_b32i_0 = p4hir.const #int3_b32i
       %val = p4hir.read %stack : <!hs_4xh>
@@ -84,17 +84,17 @@ module {
       %b = p4hir.variable ["b", init] : <!h>
       p4hir.assign %array_elt, %b : <!h>
       %c1_b32i = p4hir.const #int1_b32i
-      %data_field_ref_1 = p4hir.struct_extract_ref %hustack["data"] : <!hs_2xhu>
+      %data_field_ref_1 = p4hir.struct_field_ref %hustack["data"] : <!hs_2xhu>
       %elt_ref_2 = p4hir.array_element_ref %data_field_ref_1[%c1_b32i] : !p4hir.ref<!arr_2xhu>, !b32i
-      %h1_field_ref = p4hir.struct_extract_ref %elt_ref_2["h1"] : <!hu>
+      %h1_field_ref = p4hir.struct_field_ref %elt_ref_2["h1"] : <!hu>
       %invalid = p4hir.const #invalid
-      %__valid_field_ref_3 = p4hir.struct_extract_ref %h1_field_ref["__valid"] : <!h>
+      %__valid_field_ref_3 = p4hir.struct_field_ref %h1_field_ref["__valid"] : <!h>
       p4hir.assign %invalid, %__valid_field_ref_3 : <!validity_bit>
-      %h2_field_ref = p4hir.struct_extract_ref %elt_ref_2["h2"] : <!hu>
+      %h2_field_ref = p4hir.struct_field_ref %elt_ref_2["h2"] : <!hu>
       %invalid_4 = p4hir.const #invalid
-      %__valid_field_ref_5 = p4hir.struct_extract_ref %h2_field_ref["__valid"] : <!hh>
+      %__valid_field_ref_5 = p4hir.struct_field_ref %h2_field_ref["__valid"] : <!hh>
       p4hir.assign %invalid_4, %__valid_field_ref_5 : <!validity_bit>
-      %h1_field_ref_6 = p4hir.struct_extract_ref %elt_ref_2["h1"] : <!hu>
+      %h1_field_ref_6 = p4hir.struct_field_ref %elt_ref_2["h1"] : <!hu>
       %c0_b32i = p4hir.const #int0_b32i
       %val_7 = p4hir.read %hustack : <!hs_2xhu>
       %data_8 = p4hir.struct_extract %val_7["data"] : !hs_2xhu
@@ -102,7 +102,7 @@ module {
       %h1 = p4hir.struct_extract %array_elt_9["h1"] : !hu
       p4hir.assign %h1, %h1_field_ref_6 : <!h>
       %c2_b32i = p4hir.const #int2_b32i
-      %data_field_ref_10 = p4hir.struct_extract_ref %stack["data"] : <!hs_4xh>
+      %data_field_ref_10 = p4hir.struct_field_ref %stack["data"] : <!hs_4xh>
       %elt_ref_11 = p4hir.array_element_ref %data_field_ref_10[%c2_b32i] : !p4hir.ref<!arr_4xh>, !b32i
       %val_12 = p4hir.read %b : <!h>
       p4hir.assign %val_12, %elt_ref_11 : <!h>

@@ -1152,7 +1152,7 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
   }];
 }
 
-def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
+def StructFieldRefOp : P4HIR_Op<"struct_field_ref",
     [Pure,
      DeclareOpInterfaceMethods<ViewLikeOpInterface>,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
@@ -1160,9 +1160,9 @@ def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
   let summary = "Project from a struct reference to a reference to a named struct field";
   let description = [{
     ```
-    %result = p4hir.struct_extract_ref %input["field"] : <!p4hir.struct<field: type>>
+    %result = p4hir.struct_field_ref %input["field"] : <!p4hir.struct<field: type>>
     TODO: Support the nested extractions
-    %result2 = p4hir.struct_extract_ref %input["field1", "field2"] : <!p4hir.struct<field1: !p4hir.struct<field2: type>>>
+    %result2 = p4hir.struct_field_ref %input["field1", "field2"] : <!p4hir.struct<field1: !p4hir.struct<field2: type>>>
 
     ```
   }];
@@ -1598,7 +1598,7 @@ def CallMethodOp : P4HIR_Op<"call_method",
     ```mlir
       p4hir.parser @parserI(%arg0: !p4hir.extern<"packet_in">, %arg1: !p4hir.ref<!Parsed_packet>)() {
         p4hir.state @start {
-          %ethernet_field_ref = p4hir.struct_extract_ref %arg1["ethernet"] : <!Parsed_packet>
+          %ethernet_field_ref = p4hir.struct_field_ref %arg1["ethernet"] : <!Parsed_packet>
           %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!Ethernet_h>
           p4hir.call_method @packet_in::@extract<[!Ethernet_h]> (%arg0, %hdr_out_arg) : !p4hir.extern<"packet_in">, (!p4hir.ref<!Ethernet_h>) -> ()
           ...

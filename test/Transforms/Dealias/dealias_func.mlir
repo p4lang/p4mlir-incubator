@@ -138,7 +138,7 @@ module {
 // CHECK-LABEL:   p4hir.func action @test4() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["a"] : <!S>
 // CHECK:           p4hir.scope {
-// CHECK:             %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["x"] : <!S>
+// CHECK:             %[[VAL_1:.*]] = p4hir.struct_field_ref %[[VAL_0]]["x"] : <!S>
 // CHECK:             %[[VAL_2:.*]] = p4hir.variable ["x_inout_arg", init] : <!b1i>
 // CHECK:             %[[VAL_3:.*]] = p4hir.read %[[VAL_1]] : <!b1i>
 // CHECK:             p4hir.assign %[[VAL_3]], %[[VAL_2]] : <!b1i>
@@ -154,7 +154,7 @@ module {
       %s_inout_arg = p4hir.variable ["s_inout_arg", init] : <!S>
       %val = p4hir.read %a : <!S>
       p4hir.assign %val, %s_inout_arg : <!S>
-      %x_field_ref = p4hir.struct_extract_ref %a["x"] : <!S>
+      %x_field_ref = p4hir.struct_field_ref %a["x"] : <!S>
       %x_inout_arg = p4hir.variable ["x_inout_arg", init] : <!b1i>
       %val_0 = p4hir.read %x_field_ref : <!b1i>
       p4hir.assign %val_0, %x_inout_arg : <!b1i>
@@ -175,7 +175,7 @@ module {
 // CHECK-LABEL:   p4hir.func action @test5() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["a"] : <!T>
 // CHECK:           p4hir.scope {
-// CHECK:             %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["x"] : <!T>
+// CHECK:             %[[VAL_1:.*]] = p4hir.struct_field_ref %[[VAL_0]]["x"] : <!T>
 // CHECK:             %[[VAL_2:.*]] = p4hir.read %[[VAL_0]] : <!T>
 // CHECK:             %[[VAL_3:.*]] = p4hir.struct_extract %[[VAL_2]]["y"] : !T
 // CHECK:             p4hir.call @f (%[[VAL_1]], %[[VAL_3]]) : (!p4hir.ref<!b1i>, !b1i) -> ()
@@ -185,7 +185,7 @@ module {
   p4hir.func action @test5() {
     %a = p4hir.variable ["a"] : <!T>
     p4hir.scope {
-      %x_field_ref = p4hir.struct_extract_ref %a["x"] : <!T>
+      %x_field_ref = p4hir.struct_field_ref %a["x"] : <!T>
       %x_inout_arg = p4hir.variable ["x_inout_arg", init] : <!b1i>
       %val = p4hir.read %x_field_ref : <!b1i>
       p4hir.assign %val, %x_inout_arg : <!b1i>
@@ -208,8 +208,8 @@ module {
 // CHECK-LABEL:   p4hir.func action @test6() {
 // CHECK:           %[[VAL_0:.*]] = p4hir.variable ["a"] : <!T>
 // CHECK:           p4hir.scope {
-// CHECK:             %[[VAL_1:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["x"] : <!T>
-// CHECK:             %[[VAL_2:.*]] = p4hir.struct_extract_ref %[[VAL_0]]["y"] : <!T>
+// CHECK:             %[[VAL_1:.*]] = p4hir.struct_field_ref %[[VAL_0]]["x"] : <!T>
+// CHECK:             %[[VAL_2:.*]] = p4hir.struct_field_ref %[[VAL_0]]["y"] : <!T>
 // CHECK:             %[[VAL_3:.*]] = p4hir.variable ["y_inout_arg", init] : <!b1i>
 // CHECK:             %[[VAL_4:.*]] = p4hir.read %[[VAL_2]] : <!b1i>
 // CHECK:             p4hir.assign %[[VAL_4]], %[[VAL_3]] : <!b1i>
@@ -222,11 +222,11 @@ module {
   p4hir.func action @test6() {
     %a = p4hir.variable ["a"] : <!T>
     p4hir.scope {
-      %x_field_ref = p4hir.struct_extract_ref %a["x"] : <!T>
+      %x_field_ref = p4hir.struct_field_ref %a["x"] : <!T>
       %x_inout_arg = p4hir.variable ["x_inout_arg", init] : <!b1i>
       %val = p4hir.read %x_field_ref : <!b1i>
       p4hir.assign %val, %x_inout_arg : <!b1i>
-      %y_field_ref = p4hir.struct_extract_ref %a["y"] : <!T>
+      %y_field_ref = p4hir.struct_field_ref %a["y"] : <!T>
       %y_inout_arg = p4hir.variable ["y_inout_arg", init] : <!b1i>
       %val_0 = p4hir.read %y_field_ref : <!b1i>
       p4hir.assign %val_0, %y_inout_arg : <!b1i>
