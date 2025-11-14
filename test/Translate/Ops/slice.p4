@@ -5,7 +5,7 @@ action foo(in bit<32> a, inout int<8> c) {
   // CHECK: %[[s10_8:.*]] = p4hir.slice %arg0[10 : 8] : !b32i -> !b3i
   // CHECK: p4hir.slice %[[s10_8]][2 : 1] : !b3i -> !b2i
   bit<2> b = a[10:8][2:1];
-  // CHECK: p4hir.slice_ref %arg1[7 : 1] : <!i8i> -> !b7i
+  // CHECK: p4hir.read_slice %arg1[7 : 1] : <!i8i> -> !b7i
   bit<7> d = c[7:1];
 
   const int e = 42;
