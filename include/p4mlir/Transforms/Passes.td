@@ -141,9 +141,6 @@ def RemoveAliases : Pass<"p4hir-remove-aliases", "mlir::ModuleOp"> {
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
-//===----------------------------------------------------------------------===//
-  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
-}
 // EnumElimination
 //===----------------------------------------------------------------------===//
 
