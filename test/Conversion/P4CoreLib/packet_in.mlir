@@ -30,7 +30,7 @@ module {
   // CHECK-SAME: !p4corelib.packet_in
   p4hir.parser @prs(%arg0: !packet_in {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "p"}, %arg1: !p4hir.ref<!Headers_t> {p4hir.dir = #out, p4hir.param_name = "headers"})() {
     p4hir.state @start {
-      %top_field_ref = p4hir.struct_extract_ref %arg1["top"] : <!Headers_t>
+      %top_field_ref = p4hir.struct_field_ref %arg1["top"] : <!Headers_t>
       // CHECK: p4corelib.extract_header
       p4hir.call_method @packet_in::@extract<[!header_top]> of %arg0 : !packet_in (%top_field_ref) : (!p4hir.ref<!header_top>) -> ()
       %val = p4hir.read %arg1 : <!Headers_t>
@@ -62,12 +62,12 @@ module {
       }
     }
     p4hir.state @parse_one {
-      %one_field_ref = p4hir.struct_extract_ref %arg1["one"] : <!Headers_t>
+      %one_field_ref = p4hir.struct_field_ref %arg1["one"] : <!Headers_t>
       p4hir.call_method @packet_in::@extract<[!header_one]> of %arg0 : !packet_in (%one_field_ref) : (!p4hir.ref<!header_one>) -> ()
       p4hir.transition to @prs::@parse_headers
     }
     p4hir.state @parse_two {
-      %two_field_ref = p4hir.struct_extract_ref %arg1["two"] : <!Headers_t>
+      %two_field_ref = p4hir.struct_field_ref %arg1["two"] : <!Headers_t>
       p4hir.call_method @packet_in::@extract<[!header_two]> of %arg0 : !packet_in (%two_field_ref) : (!p4hir.ref<!header_two>) -> ()
       p4hir.transition to @prs::@parse_headers
     }
@@ -80,7 +80,7 @@ module {
       %div = p4hir.binop(div, %1, %c256_b32i) : !b32i
       %cast = p4hir.cast(%div : !b32i) : !b8i
       %add = p4hir.binop(add, %0, %cast) : !b8i
-      %bottom_field_ref = p4hir.struct_extract_ref %arg1["bottom"] : <!Headers_t>
+      %bottom_field_ref = p4hir.struct_field_ref %arg1["bottom"] : <!Headers_t>
       %cast_0 = p4hir.cast(%add : !b8i) : !b32i
       // CHECK: p4corelib.extract_header_variable
       p4hir.call_method @packet_in::@extract<[!header_bottom]> of %arg0 : !packet_in (%bottom_field_ref, %cast_0) : (!p4hir.ref<!header_bottom>, !b32i) -> ()

@@ -234,7 +234,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
                                        P4HIR::ValidityBit validityConstValue) {
         auto validityBitConstant = emitValidityConstant(loc, validityConstValue);
         auto validityBitRef =
-            builder.create<P4HIR::StructExtractRefOp>(loc, header, P4HIR::HeaderType::validityBit);
+            builder.create<P4HIR::StructFieldRefOp>(loc, header, P4HIR::HeaderType::validityBit);
         builder.create<P4HIR::AssignOp>(loc, validityBitConstant, validityBitRef);
     }
 
@@ -242,7 +242,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
                                         P4HIR::ValidityBit compareWith) {
         mlir::Value validityBitValue;
         if (mlir::isa<P4HIR::ReferenceType>(header.getType())) {
-            auto validityBitRef = builder.create<P4HIR::StructExtractRefOp>(
+            auto validityBitRef = builder.create<P4HIR::StructFieldRefOp>(
                 loc, header, P4HIR::HeaderType::validityBit);
             validityBitValue = builder.create<P4HIR::ReadOp>(loc, validityBitRef);
         } else {
@@ -268,8 +268,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             auto fieldInfo = headerUnionType.getFields()[fieldIndex];
             mlir::Value header;
             if (mlir::isa<P4HIR::ReferenceType>(headerUnion.getType())) {
-                header =
-                    builder.create<P4HIR::StructExtractRefOp>(loc, headerUnion, fieldInfo.name);
+                header = builder.create<P4HIR::StructFieldRefOp>(loc, headerUnion, fieldInfo.name);
             } else {
                 header = builder.create<P4HIR::StructExtractOp>(loc, headerUnion, fieldInfo.name);
             }
@@ -308,7 +307,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         llvm::for_each(headerUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
             if (headerNameToSkip != fieldInfo.name.getValue()) {
                 auto header =
-                    builder.create<P4HIR::StructExtractRefOp>(loc, headerUnion, fieldInfo.name);
+                    builder.create<P4HIR::StructFieldRefOp>(loc, headerUnion, fieldInfo.name);
                 emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
             }
         });
@@ -1400,9 +1399,9 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
         mlir::Value fieldRef;
         auto base = resolveReference(m->expr, unchecked);
         if (m->expr->type->is<P4::IR::Type_Array>()) {
-            auto arrayRef = builder.create<P4HIR::StructExtractRefOp>(
+            auto arrayRef = builder.create<P4HIR::StructFieldRefOp>(
                 loc, base, P4HIR::HeaderStackType::dataFieldName);
-            auto nextIndexRef = builder.create<P4HIR::StructExtractRefOp>(
+            auto nextIndexRef = builder.create<P4HIR::StructFieldRefOp>(
                 loc, base, P4HIR::HeaderStackType::nextIndexFieldName);
             auto nextIndexVal = getValue(nextIndexRef);
             if (m->member == P4::IR::Type_Array::next) {
@@ -1418,7 +1417,7 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
         } else {
             if (mlir::isa<P4HIR::ReferenceType>(base.getType()))
                 fieldRef =
-                    builder.create<P4HIR::StructExtractRefOp>(loc, base, m->member.string_view())
+                    builder.create<P4HIR::StructFieldRefOp>(loc, base, m->member.string_view())
                         .getResult();
             else
                 fieldRef =
@@ -1432,7 +1431,7 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
         if (a->left->type->is<P4::IR::Type_Array>()) {
             visit(a->right);
             auto arrayRef = builder
-                                .create<P4HIR::StructExtractRefOp>(
+                                .create<P4HIR::StructFieldRefOp>(
                                     loc, base, P4HIR::HeaderStackType::dataFieldName)
                                 .getResult();
             auto eltRef = builder.create<P4HIR::ArrayElementRefOp>(

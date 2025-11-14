@@ -64,7 +64,7 @@ action test3() {
   H h1 = ...;
   // CHECK:  %[[h1:.*]] = p4hir.variable ["h1", init] : <!H>
   // CHECK:  %[[invalid:.*]] = p4hir.const #invalid
-  // CHECK:  %[[__valid_field_ref:.*]] = p4hir.struct_extract_ref %[[h1]]["__valid"] : <!H>
+  // CHECK:  %[[__valid_field_ref:.*]] = p4hir.struct_field_ref %[[h1]]["__valid"] : <!H>
   // CHECK:  p4hir.assign %[[invalid]], %[[__valid_field_ref]] : <!validity_bit>  
   H h2 = { y=5, ... };   // initialize h2 with a header that is valid, field x 0,
                          // field y 5
@@ -73,8 +73,8 @@ action test3() {
 
 // CHECK-LABEL: p4hir.func action @test1
 action test1(inout Headers h) {
-    // CHECK: %[[eth_field_ref:.*]] = p4hir.struct_extract_ref %arg0["eth"] : <!Headers>
-    // CHECK: %[[__valid_field_ref:.*]] = p4hir.struct_extract_ref %[[eth_field_ref]]["__valid"] : <!Ethernet>
+    // CHECK: %[[eth_field_ref:.*]] = p4hir.struct_field_ref %arg0["eth"] : <!Headers>
+    // CHECK: %[[__valid_field_ref:.*]] = p4hir.struct_field_ref %[[eth_field_ref]]["__valid"] : <!Ethernet>
     // CHECK: %[[val:.*]] = p4hir.read %[[__valid_field_ref]] : <!validity_bit>
     // CHECK: %[[valid:.*]] = p4hir.const #valid
     // CHECK: %[[eq:.*]] = p4hir.cmp(eq, %[[val]] : !validity_bit, %[[valid]] : !validity_bit)
@@ -120,7 +120,7 @@ action assign_header() {
 action assign_invalid_header() {
   // CHECK:           %[[e:.*]] = p4hir.variable ["e"] : <!Ethernet>
   // CHECK:           %[[invalid:.*]] = p4hir.const #invalid
-  // CHECK:           %[[__valid_field_ref:.*]] = p4hir.struct_extract_ref %[[e]]["__valid"] : <!Ethernet>
+  // CHECK:           %[[__valid_field_ref:.*]] = p4hir.struct_field_ref %[[e]]["__valid"] : <!Ethernet>
   // CHECK:           p4hir.assign %[[invalid]], %[[__valid_field_ref]] : <!validity_bit>
   // CHECK:           p4hir.return
 

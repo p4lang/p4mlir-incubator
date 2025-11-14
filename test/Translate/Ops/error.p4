@@ -13,7 +13,7 @@ struct S {
 
 action test(inout S s) {
 // CHECK-LABEL: test
-// CHECK: %[[e_field_ref:.*]] = p4hir.struct_extract_ref %arg0["e"] : <!S>
+// CHECK: %[[e_field_ref:.*]] = p4hir.struct_field_ref %arg0["e"] : <!S>
 // CHECK: %[[error_Foo:.*]] = p4hir.const #error_Foo
 // CHECK: p4hir.assign %[[error_Foo]], %[[e_field_ref]] : <!error>
   s.e = error.Foo;

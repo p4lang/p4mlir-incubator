@@ -1812,7 +1812,7 @@ LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
     if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>(); readOp && readOp->hasOneUse()) {
         auto ref = readOp.getRef();
         rewriter.setInsertionPoint(readOp);
-        auto fieldRef = rewriter.create<P4HIR::StructExtractRefOp>(
+        auto fieldRef = rewriter.create<P4HIR::StructFieldRefOp>(
             op.getLoc(), P4HIR::ReferenceType::get(op.getType()), ref, op.getFieldIndexAttr());
         rewriter.replaceOpWithNewOp<P4HIR::ReadOp>(op, fieldRef);
         rewriter.eraseOp(readOp);
@@ -1822,26 +1822,26 @@ LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
     return failure();
 }
 
-void P4HIR::StructExtractRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+void P4HIR::StructFieldRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
     llvm::SmallString<16> name = getFieldName();
     name += "_field_ref";
     setNameFn(getResult(), name);
 }
 
-ParseResult P4HIR::StructExtractRefOp::parse(OpAsmParser &parser, OperationState &result) {
+ParseResult P4HIR::StructFieldRefOp::parse(OpAsmParser &parser, OperationState &result) {
     return parseExtractRefOp(parser, result);
 }
 
-void P4HIR::StructExtractRefOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
+void P4HIR::StructFieldRefOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
 
-LogicalResult P4HIR::StructExtractRefOp::verify() {
+LogicalResult P4HIR::StructFieldRefOp::verify() {
     auto type = mlir::cast<StructLikeTypeInterface>(
         mlir::cast<ReferenceType>(getInput().getType()).getObjectType());
     return verifyAggregateFieldIndexAndType(*this, type, getType().getObjectType());
 }
 
-void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
-                                      P4HIR::FieldInfo field) {
+void P4HIR::StructFieldRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
+                                    P4HIR::FieldInfo field) {
     auto structLikeType = mlir::cast<ReferenceType>(input.getType()).getObjectType();
     auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(structLikeType);
     auto fieldIndex = structType.getFieldIndex(field.name);
@@ -1849,8 +1849,8 @@ void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsSta
     build(builder, odsState, ReferenceType::get(field.type), input, *fieldIndex);
 }
 
-void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
-                                      StringAttr fieldName) {
+void P4HIR::StructFieldRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
+                                    StringAttr fieldName) {
     auto structLikeType = mlir::cast<ReferenceType>(input.getType()).getObjectType();
     auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(structLikeType);
     auto fieldIndex = structType.getFieldIndex(fieldName);
@@ -1859,7 +1859,7 @@ void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsSta
     build(builder, odsState, ReferenceType::get(fieldType), input, *fieldIndex);
 }
 
-Value P4HIR::StructExtractRefOp::getViewSource() { return getInput(); }
+Value P4HIR::StructFieldRefOp::getViewSource() { return getInput(); }
 
 //===----------------------------------------------------------------------===//
 // TupleOp
@@ -3203,7 +3203,6 @@ P4HIR::ParamDirection P4HIR::ControlOp::getArgumentDirection(unsigned i) {
 }
 
 mlir::LogicalResult P4HIR::ControlApplyOp::verify() { return verifyFunctionLike(&getBody()); }
-
 
 //===----------------------------------------------------------------------===//
 // TableOp
