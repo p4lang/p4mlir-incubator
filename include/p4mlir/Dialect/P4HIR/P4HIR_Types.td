@@ -405,6 +405,24 @@ class StructLikeType<string name, string typeMnemonic>
       for (const auto &field : getElements()) types.push_back(field.type);
     }
 
+    P4HIR::FieldInfo getFieldByID(unsigned fieldID) {
+      assert((fieldID != 0) && "invalid fieldID");
+      mlir::Type type = *this;
+      const P4HIR::FieldInfo *nestedField = nullptr;
+      while (fieldID) {
+        auto stype = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(type);
+        if (stype) {
+          auto [index, newFieldID] = stype.getIndexAndSubfieldID(fieldID);
+          nestedField = &stype.getFields()[index];
+          type = nestedField->type;
+          fieldID = newFieldID;
+        } else {
+          llvm::report_fatal_error("fieldID indexing into a non-struct type");
+        }
+      }
+      return *nestedField;
+    }
+
     std::optional<unsigned> getFieldIndex(mlir::StringRef fieldName) {
       llvm::ArrayRef<P4HIR::FieldInfo> elems = getElements();
       for (size_t idx = 0, numElems = elems.size(); idx < numElems; ++idx)
