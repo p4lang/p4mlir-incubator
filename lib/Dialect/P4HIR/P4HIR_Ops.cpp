@@ -1965,7 +1965,7 @@ void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, 
 }
 
 //===----------------------------------------------------------------------===//
-// SliceOp, SliceRefOp
+// SliceOp, ReadSliceOp
 //===----------------------------------------------------------------------===//
 
 void P4HIR::SliceOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
@@ -1976,7 +1976,7 @@ void P4HIR::SliceOp::getAsmResultNames(function_ref<void(Value, StringRef)> setN
     setNameFn(getResult(), name);
 }
 
-void P4HIR::SliceRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+void P4HIR::ReadSliceOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
     llvm::SmallString<16> name;
     llvm::raw_svector_ostream specialName(name);
     specialName << 's' << getHighBit() << "_" << getLowBit();
@@ -2012,7 +2012,7 @@ OpFoldResult P4HIR::SliceOp::fold(FoldAdaptor adaptor) {
     return {};
 }
 
-LogicalResult P4HIR::SliceRefOp::verify() {
+LogicalResult P4HIR::ReadSliceOp::verify() {
     auto resultType = getResult().getType();
     auto sourceType = llvm::cast<P4HIR::ReferenceType>(getInput().getType()).getObjectType();
     if (resultType.isSigned()) return emitOpError() << "slice result type is always unsigned";

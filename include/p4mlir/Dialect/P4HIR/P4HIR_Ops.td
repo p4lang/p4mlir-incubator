@@ -1259,7 +1259,7 @@ def SliceOp : P4HIR_Op<"slice",
   let hasVerifier = 1;
 }
 
-def SliceRefOp : P4HIR_Op<"slice_ref",
+def ReadSliceOp : P4HIR_Op<"read_slice",
     [Pure,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Extract a range or single bits from a referenced value";
