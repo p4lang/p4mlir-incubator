@@ -362,7 +362,6 @@ class StructLikeType<string name, string typeMnemonic>
   : P4HIR_Type<name, typeMnemonic,  [
   StructLikeTypeInterface,
   DestructurableTypeInterface,
-  FieldIDTypeInterface,
   AnnotatedType,
   HasDefaultValue
 ]> {
@@ -385,8 +384,7 @@ class StructLikeType<string name, string typeMnemonic>
     }]>
   ];
 
-  string extra2ClassDeclaration = "";
-  let extraClassDeclaration = !strconcat([{
+  string commonClassDeclaration = [{
     mlir::Type getFieldType(mlir::StringRef fieldName) {
       for (const auto &field : getElements())
         if (field.name == fieldName) return field.type;
@@ -494,7 +492,8 @@ class StructLikeType<string name, string typeMnemonic>
     }
 
     mlir::TypedAttr getDefaultValue() { return getStructLikeDefaultValue(*this); }
-  }], "\n", extra2ClassDeclaration);
+  }];
+  let extraClassDeclaration = commonClassDeclaration;
 }
 
 // A packed struct. Declares the P4HIR::StructType in C++.
@@ -550,7 +549,7 @@ def HeaderType : StructLikeType<"Header", "header"> {
   ];
 
   // This adds more C++ stuff into parent extraClassDeclaration
-  let extra2ClassDeclaration = [{
+  let extraClassDeclaration = commonClassDeclaration # [{
     static constexpr llvm::StringRef validityBit = "__valid";
   }];
 }
@@ -589,7 +588,7 @@ def HeaderStackType : StructLikeType<"HeaderStack", "header_stack"> {
     TypeBuilder<(ins "size_t":$size, "P4HIR::StructLikeTypeInterface":$elementType)>
   ];
 
-  let extra2ClassDeclaration = [{
+  let extraClassDeclaration = commonClassDeclaration # [{
     static constexpr llvm::StringRef dataFieldName = "data";
     static constexpr llvm::StringRef nextIndexFieldName = "nextIndex";
 
