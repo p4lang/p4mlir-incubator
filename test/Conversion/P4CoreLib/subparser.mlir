@@ -38,7 +38,7 @@ module {
   p4hir.parser @subParserImpl(%arg0: !packet_in {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !p4hir.ref<!headers> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "hdr"}, %arg2: !p4hir.ref<!b8i> {p4hir.dir = #out, p4hir.param_name = "ret_next_hdr_type"})() {
     p4hir.state @start {
       p4hir.scope {
-        %h2_field_ref = p4hir.struct_extract_ref %arg1["h2"] : <!headers>
+        %h2_field_ref = p4hir.struct_field_ref %arg1["h2"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h2_t>
         p4hir.call_method @packet_in::@extract<[!h2_t]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!h2_t>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!h2_t>
@@ -65,7 +65,7 @@ module {
     %my_next_hdr_type = p4hir.variable ["my_next_hdr_type"] : <!b8i>
     p4hir.state @start {
       p4hir.scope {
-        %h1_field_ref = p4hir.struct_extract_ref %arg1["h1"] : <!headers>
+        %h1_field_ref = p4hir.struct_field_ref %arg1["h1"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h1_t>
         p4hir.call_method @packet_in::@extract<[!h1_t]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!h1_t>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!h1_t>
@@ -118,7 +118,7 @@ module {
     }
     p4hir.state @parse_h3 {
       p4hir.scope {
-        %h3_field_ref = p4hir.struct_extract_ref %arg1["h3"] : <!headers>
+        %h3_field_ref = p4hir.struct_field_ref %arg1["h3"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h3_t>
         p4hir.call_method @packet_in::@extract<[!h3_t]> of %arg0: !packet_in (%hdr_out_arg) : (!p4hir.ref<!h3_t>) -> ()
         %val = p4hir.read %hdr_out_arg : <!h3_t>

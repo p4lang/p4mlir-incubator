@@ -1,4 +1,4 @@
-#include "p4mlir/Conversion/P4HIRToCoreLib.h"
+#include "p4mlir/Conversion/P4HIRToCoreLib/P4HIRToCoreLib.h"
 
 #include <optional>
 
@@ -9,7 +9,7 @@
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "p4mlir/Conversion/ConversionPatterns.h"
+#include "p4mlir/Conversion/P4HIRToCoreLib/ConversionPatterns.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Ops.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Types.h"
@@ -23,7 +23,7 @@ using namespace mlir;
 
 namespace P4::P4MLIR {
 #define GEN_PASS_DEF_LOWERTOP4CORELIB
-#include "p4mlir/Conversion/Passes.cpp.inc"
+#include "p4mlir/Conversion/P4HIRToCoreLib/Passes.cpp.inc"
 }  // namespace P4::P4MLIR
 
 using namespace P4::P4MLIR;

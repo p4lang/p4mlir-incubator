@@ -16,12 +16,18 @@
 #include "mlir/Interfaces/MemorySlotInterfaces.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 namespace P4::P4MLIR::P4HIR {
+struct ExternResource
+    : public mlir::SideEffects::Resource::Base<ExternResource> {
+  mlir::StringRef getName() final { return "P4 Extern"; }
+};
+
 void buildTerminatedBody(mlir::OpBuilder &builder, mlir::Location loc);
 bool isUniversalSetValue(mlir::Value value);
 }  // namespace  P4::P4MLIR::P4HIR

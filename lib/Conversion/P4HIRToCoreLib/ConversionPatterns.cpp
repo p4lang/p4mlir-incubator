@@ -1,4 +1,4 @@
-#include "p4mlir/Conversion/ConversionPatterns.h"
+#include "p4mlir/Conversion/P4HIRToCoreLib/ConversionPatterns.h"
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Transforms/DialectConversion.h"

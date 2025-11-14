@@ -8,6 +8,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -27,6 +28,7 @@
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
@@ -907,6 +909,23 @@ LogicalResult P4HIR::ScopeOp::verify() {
         return emitOpError() << "last block of p4hir.scope must be terminated";
     return success();
 }
+
+LogicalResult P4HIR::ScopeOp::canonicalize(P4HIR::ScopeOp op, PatternRewriter &rewriter) {
+    // Canonicalize scope: one without variables could be inlined
+    if (op.getOps<VariableOp>().empty() && op.getScopeRegion().hasOneBlock() &&
+        !op.getAnnotations()) {
+        mlir::Block *block = &op.getScopeRegion().front();
+        mlir::Operation *terminator = block->getTerminator();
+        mlir::ValueRange results = terminator->getOperands();
+        rewriter.inlineBlockBefore(block, op, /*blockArgs=*/{});
+        rewriter.replaceOp(op, results);
+        rewriter.eraseOp(terminator);
+        return success();
+    }
+
+    return failure();
+}
+
 //===----------------------------------------------------------------------===//
 // Custom Parsers & Printers
 //===----------------------------------------------------------------------===//
@@ -1166,14 +1185,46 @@ mlir::LogicalResult P4HIR::SoftReturnOp::verify() {
     return verifyReturnLike(getOperation(), false);
 }
 
+static mlir::LogicalResult verifyLoopSoftControlFlow(mlir::Operation *op) {
+    if (op->getParentOfType<P4HIR::ForOp>() == nullptr &&
+        op->getParentOfType<P4HIR::ForInOp>() == nullptr)
+        return op->emitOpError() << "Loop control flow operation is outside loop";
+    return success();
+}
+
+mlir::LogicalResult P4HIR::SoftBreakOp::verify() {
+    return verifyLoopSoftControlFlow(getOperation());
+}
+
+mlir::LogicalResult P4HIR::SoftContinueOp::verify() {
+    return verifyLoopSoftControlFlow(getOperation());
+}
+
 //===----------------------------------------------------------------------===//
 // FuncOp
 //===----------------------------------------------------------------------===//
 
+static LogicalResult verifyFunctionLike(mlir::Region *body) {
+    if (body->empty()) return success();
+
+    auto hasSoftReturnOpWalk = body->walk([](mlir::Operation *op) -> mlir::WalkResult {
+        return mlir::isa<P4HIR::SoftReturnOp>(op) ? WalkResult::interrupt() : WalkResult::advance();
+    });
+
+    if (hasSoftReturnOpWalk.wasInterrupted() && body->back().mightHaveTerminator()) {
+        auto returnOp = mlir::cast<P4HIR::ReturnOp>(body->back().getTerminator());
+        if (returnOp->getNumOperands() > 0)
+            return returnOp->emitOpError()
+                   << "Return terminator with arguments in function with soft control flow";
+    }
+
+    return success();
+}
+
 // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
 // attribute is present.  This can check for preconditions of the
 // getNumArguments hook not failing.
-LogicalResult P4HIR::FuncOp::verifyType() {
+mlir::LogicalResult P4HIR::FuncOp::verifyType() {
     auto type = getFunctionType();
     if (!isa<P4HIR::FuncType>(type))
         return emitOpError("requires '" + getFunctionTypeAttrName().str() +
@@ -1189,7 +1240,7 @@ LogicalResult P4HIR::FuncOp::verifyType() {
 LogicalResult P4HIR::FuncOp::verify() {
     // TODO: Check that all reference-typed arguments have direction indicated
     // TODO: Check that actions do have body
-    return success();
+    return verifyFunctionLike(&getBody());
 }
 
 void P4HIR::FuncOp::build(OpBuilder &builder, OperationState &result, llvm::StringRef name,
@@ -1346,6 +1397,13 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
     return success();
 }
 
+bool P4HIR::FuncOp::canDiscardOnUseEmpty() {
+    // Declarations inside overload sets are a bit special, while they have private
+    // visibility we cannot delete them unless the top-level overload is gone
+    if ((*this)->getParentOfType<P4HIR::OverloadSetOp>() != nullptr) return false;
+    return isExternal();
+}
+
 void P4HIR::CallOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     if (getResult()) setNameFn(getResult(), "call");
 }
@@ -1387,24 +1445,31 @@ static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs
 //  - Normal functions. They are defined at top-level only. Top-level actions are also here.
 //  - Actions defined at control level. Check for them first.
 // This largely duplicates verifySymbolUses() below, though the latter emits diagnostics
-mlir::Operation *P4HIR::CallOp::resolveCallableInTable(mlir::SymbolTableCollection *symbolTable) {
-    auto sym = (*this)->getAttrOfType<SymbolRefAttr>("callee");
+static mlir::Operation *resolveCallCallableImpl(
+    P4HIR::CallOp callOp, mlir::SymbolTableCollection *symbolTable = nullptr) {
+    auto sym = callOp.getCallee();
     if (!sym) return nullptr;
 
-    if (auto *decl = symbolTable->lookupSymbolIn(getParentModule(*this), sym)) {
-        if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
-            return fn;
-        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
-            // Find the FuncOp with the correct # of operands
-            for (Operation &nestedOp : ovl.getBody().front()) {
-                auto f = llvm::cast<FuncOp>(nestedOp);
-                if (f.getNumArguments() == getNumOperands()) return f;
-            }
+    Operation *decl = symbolTable ? symbolTable->lookupSymbolIn(getParentModule(callOp), sym)
+                                  : SymbolTable::lookupSymbolIn(getParentModule(callOp), sym);
+    if (!decl) return nullptr;
+
+    if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
+        return fn;
+    } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
+        // Find the FuncOp with the correct # of operands
+        for (Operation &nestedOp : ovl.getBody().front()) {
+            auto f = llvm::cast<P4HIR::FuncOp>(nestedOp);
+            if (f.getNumArguments() == callOp.getNumOperands()) return f;
         }
     }
-
-    return nullptr;
 }
+
+mlir::Operation *P4HIR::CallOp::resolveCallableInTable(mlir::SymbolTableCollection *symbolTable) {
+    return resolveCallCallableImpl(*this, symbolTable);
+}
+
+mlir::Operation *P4HIR::CallOp::resolveCallable() { return resolveCallCallableImpl(*this); }
 
 LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
@@ -1480,6 +1545,50 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
                << fnType.getReturnType() << ", but provided " << getResult().getType();
 
     return success();
+}
+
+void P4HIR::CallOp::getEffects(
+    llvm::SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>> &effects) {
+    // Get the callee. Note that it already resolves the overload sets.
+    auto callee = mlir::dyn_cast_if_present<P4HIR::FuncOp>(resolveCallable());
+    assert(callee && "failed to resolve callee");
+
+    // Infer memory effects for arguments
+    for (auto [index, arg] : llvm::enumerate(getArgOperandsMutable())) {
+        // Non-reference operands do not have memory effects semantics
+        if (!mlir::isa<P4HIR::ReferenceType>(arg.get().getType())) continue;
+
+        // Reference arguments cannot be direction-less. Conservatively assume
+        // full effects here. This includes case when direction attribute is
+        // somehow missed.
+        auto dir = callee.getArgumentDirection(index);
+        if (dir == ParamDirection::In) {
+            effects.emplace_back(MemoryEffects::Read::get(), &arg);
+        } else if (dir == ParamDirection::Out) {
+            effects.emplace_back(MemoryEffects::Write::get(), &arg);
+        } else {
+            effects.emplace_back(MemoryEffects::Read::get(), &arg);
+            effects.emplace_back(MemoryEffects::Write::get(), &arg);
+        }
+    }
+
+    // Infer the state for function itself
+    if (callee.hasAnnotation("pure")) {
+        // no effects
+    } else if (callee.hasAnnotation("noSideEffects")) {
+        // can dependent on hidden state, could read from P4 extern resource
+        effects.emplace_back(MemoryEffects::Read::get(), ExternResource::get());
+    } else if (callee.isExternal()) {
+        // External functions are considered to reading / writing for P4 extern resource
+        // (so they could not be trivially DCE'd)
+        effects.emplace_back(MemoryEffects::Write::get(), ExternResource::get());
+        effects.emplace_back(MemoryEffects::Read::get(), ExternResource::get());
+    } else {
+        // For now conservatively assume full effects for functions with bodies
+        // TODO: Infer recursive effects
+        effects.emplace_back(MemoryEffects::Write::get(), ExternResource::get());
+        effects.emplace_back(MemoryEffects::Read::get(), ExternResource::get());
+    }
 }
 
 //===----------------------------------------------------------------------===//
@@ -1703,7 +1812,7 @@ LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
     if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>(); readOp && readOp->hasOneUse()) {
         auto ref = readOp.getRef();
         rewriter.setInsertionPoint(readOp);
-        auto fieldRef = rewriter.create<P4HIR::StructExtractRefOp>(
+        auto fieldRef = rewriter.create<P4HIR::StructFieldRefOp>(
             op.getLoc(), P4HIR::ReferenceType::get(op.getType()), ref, op.getFieldIndexAttr());
         rewriter.replaceOpWithNewOp<P4HIR::ReadOp>(op, fieldRef);
         rewriter.eraseOp(readOp);
@@ -1713,26 +1822,26 @@ LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
     return failure();
 }
 
-void P4HIR::StructExtractRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+void P4HIR::StructFieldRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
     llvm::SmallString<16> name = getFieldName();
     name += "_field_ref";
     setNameFn(getResult(), name);
 }
 
-ParseResult P4HIR::StructExtractRefOp::parse(OpAsmParser &parser, OperationState &result) {
+ParseResult P4HIR::StructFieldRefOp::parse(OpAsmParser &parser, OperationState &result) {
     return parseExtractRefOp(parser, result);
 }
 
-void P4HIR::StructExtractRefOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
+void P4HIR::StructFieldRefOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
 
-LogicalResult P4HIR::StructExtractRefOp::verify() {
+LogicalResult P4HIR::StructFieldRefOp::verify() {
     auto type = mlir::cast<StructLikeTypeInterface>(
         mlir::cast<ReferenceType>(getInput().getType()).getObjectType());
     return verifyAggregateFieldIndexAndType(*this, type, getType().getObjectType());
 }
 
-void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
-                                      P4HIR::FieldInfo field) {
+void P4HIR::StructFieldRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
+                                    P4HIR::FieldInfo field) {
     auto structLikeType = mlir::cast<ReferenceType>(input.getType()).getObjectType();
     auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(structLikeType);
     auto fieldIndex = structType.getFieldIndex(field.name);
@@ -1740,8 +1849,8 @@ void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsSta
     build(builder, odsState, ReferenceType::get(field.type), input, *fieldIndex);
 }
 
-void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
-                                      StringAttr fieldName) {
+void P4HIR::StructFieldRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
+                                    StringAttr fieldName) {
     auto structLikeType = mlir::cast<ReferenceType>(input.getType()).getObjectType();
     auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(structLikeType);
     auto fieldIndex = structType.getFieldIndex(fieldName);
@@ -1749,6 +1858,8 @@ void P4HIR::StructExtractRefOp::build(OpBuilder &builder, OperationState &odsSta
     assert(fieldIndex.has_value() && "field name not found in aggregate type");
     build(builder, odsState, ReferenceType::get(fieldType), input, *fieldIndex);
 }
+
+Value P4HIR::StructFieldRefOp::getViewSource() { return getInput(); }
 
 //===----------------------------------------------------------------------===//
 // TupleOp
@@ -1854,7 +1965,7 @@ void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, 
 }
 
 //===----------------------------------------------------------------------===//
-// SliceOp, SliceRefOp
+// SliceOp, ReadSliceOp
 //===----------------------------------------------------------------------===//
 
 void P4HIR::SliceOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
@@ -1865,7 +1976,7 @@ void P4HIR::SliceOp::getAsmResultNames(function_ref<void(Value, StringRef)> setN
     setNameFn(getResult(), name);
 }
 
-void P4HIR::SliceRefOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+void P4HIR::ReadSliceOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
     llvm::SmallString<16> name;
     llvm::raw_svector_ostream specialName(name);
     specialName << 's' << getHighBit() << "_" << getLowBit();
@@ -1901,7 +2012,7 @@ OpFoldResult P4HIR::SliceOp::fold(FoldAdaptor adaptor) {
     return {};
 }
 
-LogicalResult P4HIR::SliceRefOp::verify() {
+LogicalResult P4HIR::ReadSliceOp::verify() {
     auto resultType = getResult().getType();
     auto sourceType = llvm::cast<P4HIR::ReferenceType>(getInput().getType()).getObjectType();
     if (resultType.isSigned()) return emitOpError() << "slice result type is always unsigned";
@@ -1935,6 +2046,7 @@ LogicalResult P4HIR::AssignSliceOp::verify() {
 
     return success();
 }
+
 //===----------------------------------------------------------------------===//
 // ParserOp
 //===----------------------------------------------------------------------===//
@@ -2142,6 +2254,14 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
     if (body->empty()) return parser.emitError(loc, "expected non-empty parser body");
 
     return mlir::success();
+}
+
+P4HIR::ParamDirection P4HIR::ParserOp::getArgumentDirection(unsigned i) {
+    if (auto dirAttr =
+            getArgAttrOfType<ParamDirectionAttr>(i, P4HIR::FuncOp::getDirectionAttrName()))
+        return dirAttr.getValue();
+
+    return ParamDirection::None;
 }
 
 static mlir::LogicalResult verifyStateTarget(mlir::Operation *op, mlir::SymbolRefAttr stateName,
@@ -2579,7 +2699,6 @@ void P4HIR::SymToValueOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 //===----------------------------------------------------------------------===//
 // ApplyOp
 //===----------------------------------------------------------------------===//
-
 LogicalResult P4HIR::ApplyOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
     auto calleeAttr = (*this)->getAttrOfType<SymbolRefAttr>(getCalleeAttrName());
@@ -2624,6 +2743,50 @@ LogicalResult P4HIR::ApplyOp::verifySymbolUses(SymbolTableCollection &symbolTabl
     }
 
     return success();
+}
+
+void P4HIR::ApplyOp::getEffects(
+    llvm::SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>> &effects) {
+    auto calleeAttr = getCallee();
+    assert(calleeAttr && "expected callee to be present");
+    auto inst = dyn_cast_or_null<P4HIR::InstantiateOp>(
+        SymbolTable::lookupSymbolIn(getParentModule(*this), calleeAttr));
+    assert(inst && "failed to resolve instantiation");
+
+    // Get the callee. Note that it already resolves the overload sets.
+    auto callee = SymbolTable::lookupSymbolIn(getParentModule(*this), inst.getCalleeAttr());
+    assert(callee && "failed to resolve callee");
+
+    // Infer memory effects for arguments
+    for (auto [index, arg] : llvm::enumerate(getArgOperandsMutable())) {
+        // Non-reference operands do not have memory effects semantics
+        if (!mlir::isa<P4HIR::ReferenceType>(arg.get().getType())) continue;
+
+        P4HIR::ParamDirection dir = ParamDirection::None;
+        if (auto parser = mlir::dyn_cast<P4HIR::ParserOp>(callee))
+            dir = parser.getArgumentDirection(index);
+        else if (auto control = mlir::dyn_cast<P4HIR::ControlOp>(callee))
+            dir = control.getArgumentDirection(index);
+        else
+            llvm_unreachable("invalid apply");
+
+        // Reference arguments cannot be direction-less. Conservatively assume
+        // full effects here. This includes case when direction attribute is
+        // somehow missed.
+        if (dir == ParamDirection::In) {
+            effects.emplace_back(MemoryEffects::Read::get(), &arg);
+        } else if (dir == ParamDirection::Out) {
+            effects.emplace_back(MemoryEffects::Write::get(), &arg);
+        } else {
+            effects.emplace_back(MemoryEffects::Read::get(), &arg);
+            effects.emplace_back(MemoryEffects::Write::get(), &arg);
+        }
+    }
+
+    // For now conservatively assume full external resource effects for controls &
+    // subparsers TODO: Infer recusrsive effects
+    effects.emplace_back(MemoryEffects::Write::get(), ExternResource::get());
+    effects.emplace_back(MemoryEffects::Read::get(), ExternResource::get());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2778,22 +2941,23 @@ mlir::StringAttr P4HIR::CallMethodOp::getMethodName() { return getCallee().getLe
 // Callee might be:
 //  - Overload set, then we need to look for a particular overload
 //  - Normal methods
-mlir::Operation *P4HIR::CallMethodOp::resolveCallableInTable(
-    mlir::SymbolTableCollection *symbolTable) {
-    auto sym = getCallee();
+static mlir::Operation *resolveCallMethodCallableImpl(
+    P4HIR::CallMethodOp callMethodOp, mlir::SymbolTableCollection *symbolTable = nullptr) {
+    auto sym = callMethodOp.getCallee();
     if (!sym) return nullptr;
 
     // Grab the extern
-    if (auto ext = getExtern()) {
+    if (auto ext = callMethodOp.getExtern(symbolTable)) {
         // Now perform a method lookup
-        auto *decl = ext.lookupSymbol(getMethodName());
+        auto *decl = symbolTable ? symbolTable->lookupSymbolIn(ext, callMethodOp.getMethodName())
+                                 : ext.lookupSymbol(callMethodOp.getMethodName());
         if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
             return fn;
         } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
             // Find the FuncOp with the correct # of operands
             for (Operation &nestedOp : ovl.getBody().front()) {
-                auto f = llvm::cast<FuncOp>(nestedOp);
-                if (f.getNumArguments() == getArgOperands().size()) return f;
+                auto f = llvm::cast<P4HIR::FuncOp>(nestedOp);
+                if (f.getNumArguments() == callMethodOp.getArgOperands().size()) return f;
             }
         }
     }
@@ -2801,7 +2965,16 @@ mlir::Operation *P4HIR::CallMethodOp::resolveCallableInTable(
     return nullptr;
 }
 
-P4HIR::ExternOp P4HIR::CallMethodOp::getExtern() {
+mlir::Operation *P4HIR::CallMethodOp::resolveCallableInTable(
+    mlir::SymbolTableCollection *symbolTable) {
+    return resolveCallMethodCallableImpl(*this, symbolTable);
+}
+
+mlir::Operation *P4HIR::CallMethodOp::resolveCallable() {
+    return resolveCallMethodCallableImpl(*this);
+}
+
+P4HIR::ExternOp P4HIR::CallMethodOp::getExtern(mlir::SymbolTableCollection *symbolTable) {
     auto sym = getCallee();
 
     // Symbol ref should be pair of extern + method name
@@ -2810,14 +2983,58 @@ P4HIR::ExternOp P4HIR::CallMethodOp::getExtern() {
     auto extSymAttr = mlir::SymbolRefAttr::get(sym.getRootReference(), nestedRefs.drop_back());
 
     if (!isIndirect()) {
-        auto inst = getParentModule(*this).lookupSymbol<P4HIR::InstantiateOp>(extSymAttr);
+        auto inst = symbolTable
+                        ? symbolTable->lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this),
+                                                                            extSymAttr)
+                        : getParentModule(*this).lookupSymbol<P4HIR::InstantiateOp>(extSymAttr);
         assert(inst && "expected a valid instantiation");
         extSymAttr = mlir::SymbolRefAttr::get(inst.getCalleeAttr().getRootReference());
     }
 
-    auto res = getParentModule(*this).lookupSymbol<P4HIR::ExternOp>(extSymAttr);
+    auto res = symbolTable ? symbolTable->lookupSymbolIn<P4HIR::ExternOp>(getParentModule(*this),
+                                                                          extSymAttr)
+                           : getParentModule(*this).lookupSymbol<P4HIR::ExternOp>(extSymAttr);
     assert(res && "expected valid extern reference");
     return res;
+}
+
+void P4HIR::CallMethodOp::getEffects(
+    llvm::SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>> &effects) {
+    // Get the callee. Note that it already resolves the overload sets.
+    auto callee = dyn_cast_if_present<P4HIR::FuncOp>(resolveCallable());
+    assert(callee && "failed to resolve callee");
+
+    // Infer memory effects for arguments. Note that object itself is an extern, so we do not bother
+    // with its effects here.
+    for (auto [index, arg] : llvm::enumerate(getArgOperandsMutable())) {
+        // Non-reference operands do not have memory effects semantics
+        if (!mlir::isa<P4HIR::ReferenceType>(arg.get().getType())) continue;
+        auto dir = callee.getArgumentDirection(index);
+
+        // Reference arguments cannot be direction-less. Conservatively assume
+        // full effects here. This includes case when direction attribute is
+        // somehow missed.
+        if (dir == ParamDirection::In) {
+            effects.emplace_back(MemoryEffects::Read::get(), &arg);
+        } else if (dir == ParamDirection::Out) {
+            effects.emplace_back(MemoryEffects::Write::get(), &arg);
+        } else {
+            effects.emplace_back(MemoryEffects::Read::get(), &arg);
+            effects.emplace_back(MemoryEffects::Write::get(), &arg);
+        }
+    }
+
+    // Externs are considered to reading / writing for P4 extern resource
+    // (so they could not be trivially DCE'd) via their object argument
+    if (isIndirect()) {
+        effects.emplace_back(MemoryEffects::Write::get(), &*getObjMutable().begin(),
+                             ExternResource::get());
+        effects.emplace_back(MemoryEffects::Read::get(), &*getObjMutable().begin(),
+                             ExternResource::get());
+    } else {
+        effects.emplace_back(MemoryEffects::Write::get(), getCallee(), ExternResource::get());
+        effects.emplace_back(MemoryEffects::Read::get(), getCallee(), ExternResource::get());
+    }
 }
 
 //===----------------------------------------------------------------------===//
@@ -2976,6 +3193,16 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
 
     return mlir::success();
 }
+
+P4HIR::ParamDirection P4HIR::ControlOp::getArgumentDirection(unsigned i) {
+    if (auto dirAttr =
+            getArgAttrOfType<ParamDirectionAttr>(i, P4HIR::FuncOp::getDirectionAttrName()))
+        return dirAttr.getValue();
+
+    return ParamDirection::None;
+}
+
+mlir::LogicalResult P4HIR::ControlApplyOp::verify() { return verifyFunctionLike(&getBody()); }
 
 //===----------------------------------------------------------------------===//
 // TableOp
@@ -3613,6 +3840,8 @@ void P4HIR::ArrayElementRefOp::getAsmResultNames(function_ref<void(Value, String
     setNameFn(getResult(), "elt_ref");
 }
 
+Value P4HIR::ArrayElementRefOp::getViewSource() { return getInput(); }
+
 //===----------------------------------------------------------------------===//
 // BrOp
 //===----------------------------------------------------------------------===//
@@ -3939,8 +4168,7 @@ struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
     bool isLegalToInline(Operation *op, Region *, bool, IRMapping &) const final {
         // We can't inline callables that return values but haven't had their soft control flow
         // converted yet.
-        if (auto softReturnOp = mlir::dyn_cast<P4HIR::SoftReturnOp>(op))
-            return softReturnOp.getNumOperands() == 0;
+        if (mlir::isa<P4HIR::SoftReturnOp>(op)) return false;
 
         // Not all other operations are possible to inline, but they are excluded by
         // `isLegalToInline` above.

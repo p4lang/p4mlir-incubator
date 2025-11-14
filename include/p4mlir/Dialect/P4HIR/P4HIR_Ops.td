@@ -10,6 +10,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/MemorySlotInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 
 include "p4mlir/Dialect/P4HIR/P4HIR_OpInterfaces.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.td"
@@ -22,6 +23,9 @@ include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.td"
 
 class P4HIR_Op<string mnemonic, list<Trait> traits = []> :
         Op<P4HIR_Dialect, mnemonic, traits>;
+
+// Define a resource for the P4 externs side effects
+def P4_ExternResource : Resource<"::mlir::P4MLIR::P4HIR::ExternResource">;
 
 //===----------------------------------------------------------------------===//
 // P4HIR operation definitions.
@@ -84,6 +88,9 @@ def ConstOp : P4HIR_Op<"const",
     let hasFolder = 1;
 }
 
+def FullMemRead : MemRead<DefaultResource, 0, FullEffect>;
+def FullMemWrite : MemWrite<DefaultResource, 0, FullEffect>;
+
 def VariableOp : P4HIR_Op<"variable", [
                  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
                  Annotated
@@ -112,8 +119,8 @@ def VariableOp : P4HIR_Op<"variable", [
   let arguments = (ins OptionalAttr<StrAttr>:$name, UnitAttr:$init,
                        OptionalAttr<DictionaryAttr>:$annotations);
 
-  let results = (outs Res<ReferenceType, ""/*,
-                      [MemAlloc<AutomaticAllocationScopeResource>]*/>:$ref);
+  let results = (outs Res<ReferenceType, "",
+                      [MemAlloc<AutomaticAllocationScopeResource>]>:$ref);
 
   let assemblyFormat = [{
     ` ` `[` $name
@@ -173,8 +180,8 @@ def ReadOp : P4HIR_Op<"read", [
     ```
   }];
 
-  let arguments = (ins Arg<ReferenceType, "the reference to load from"/*,
-                           [MemRead]*/>:$ref);
+  let arguments = (ins Arg<ReferenceType, "the reference to load from",
+                           [FullMemRead]>:$ref);
   // FIXME: Constraint result type
   let results = (outs LoadableP4Type:$result);
 
@@ -205,8 +212,8 @@ def AssignOp : P4HIR_Op<"assign", [
   }];
 
   let arguments = (ins LoadableP4Type:$value,
-                       Arg<ReferenceType, "the object to store the value"/*,
-                           [MemWrite]*/>:$ref);
+                       Arg<ReferenceType, "the object to store the value",
+                           [FullMemWrite]>:$ref);
 
   let assemblyFormat = [{
     $value `,` $ref attr-dict `:` type($ref)
@@ -220,7 +227,9 @@ def AssignSliceOp : P4HIR_Op<"assign_slice", []> {
   let description = [{
     ..
   }];
-  let arguments = (ins BitsType:$value, BitsRefType:$ref, I32Attr:$highBit, I32Attr:$lowBit);
+  let arguments = (ins BitsType:$value,
+                       Arg<BitsRefType, "the base object to modify the slice", [MemWrite]>:$ref,
+                       I32Attr:$highBit, I32Attr:$lowBit);
   let assemblyFormat = [{
     $value  `,` $ref`[`$highBit `:` $lowBit`]` attr-dict `:` type($value) `->` type($ref)
   }];
@@ -521,7 +530,8 @@ def CmpOp : P4HIR_Op<"cmp",
 
 def ScopeOp : P4HIR_Op<"scope", [
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
-       RecursivelySpeculatable, AutomaticAllocationScope,
+       RecursivelySpeculatable,
+       RecursiveMemoryEffects, AutomaticAllocationScope,
        NoRegionArguments, Annotated]> {
   let summary = "Represents a P4 scope";
   let description = [{
@@ -552,6 +562,8 @@ def ScopeOp : P4HIR_Op<"scope", [
 
   let hasVerifier = 1;
   let skipDefaultBuilders = 1;
+  let hasCanonicalizeMethod = 1;
+
   let assemblyFormat = [{
     (`annotations` $annotations^)? custom<OmittedTerminatorRegion>($scopeRegion) (`:` type($results)^)? attr-dict
   }];
@@ -582,7 +594,7 @@ def ScopeOp : P4HIR_Op<"scope", [
   ];
 }
 
-def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
+def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator, NoMemoryEffect,
     ParentOneOf<["ScopeOp", "TernaryOp", "IfOp",
                  "ParserSelectCaseOp",
                  "TableEntryOp",
@@ -646,6 +658,7 @@ def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator,
 
 def TernaryOp : P4HIR_Op<"ternary",
       [DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       RecursiveMemoryEffects,
        RecursivelySpeculatable, AutomaticAllocationScope, NoRegionArguments]> {
   let summary = "The `cond ? a : b` C/C++ ternary operation";
   let description = [{
@@ -695,6 +708,7 @@ def TernaryOp : P4HIR_Op<"ternary",
 
 def IfOp : P4HIR_Op<"if",
       [DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       RecursiveMemoryEffects,
        RecursivelySpeculatable, AutomaticAllocationScope, NoRegionArguments]> {
   let summary = "The if-then-else operation";
   let description = [{
@@ -751,7 +765,7 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
                                                 "CaseOp",
                                                 "ForOp", "ForInOp",
                                              ]>,
-                                             ReturnLike, Terminator
+                                             ReturnLike, Terminator, NoMemoryEffect,
   // Currently there is no way to represent early exits in MLIR "properly"
   // See https://discourse.llvm.org/t/rfc-region-based-control-flow-with-early-exits-in-mlir/76998
   // For now we rely on RemoveReturns frontend pass to transform into SESE regions for us.
@@ -826,6 +840,7 @@ def SoftBreakOp : P4HIR_Op<"soft_break", [ParentOneOf<["ScopeOp", "IfOp", "CaseO
                                                       ]>]> {
   let summary = "Break statement for loops";
   let assemblyFormat = [{ attr-dict }];
+  let hasVerifier = 1;
 }
 
 def SoftContinueOp : P4HIR_Op<"soft_continue", [ParentOneOf<["ScopeOp", "IfOp", "CaseOp",
@@ -833,6 +848,7 @@ def SoftContinueOp : P4HIR_Op<"soft_continue", [ParentOneOf<["ScopeOp", "IfOp", 
                                                             ]>]> {
   let summary = "Continue statement for loops";
   let assemblyFormat = [{ attr-dict }];
+  let hasVerifier = 1;
 }
 
 def FuncOp : P4HIR_Op<"func", [
@@ -956,13 +972,8 @@ def FuncOp : P4HIR_Op<"func", [
 
     /// Return the `i`th argument direction.
     ParamDirection getArgumentDirection(unsigned i) {
-      mlir::ArrayAttr argAttrs = getArgAttrsAttr();
-      if (!argAttrs)
-        return ParamDirection::None;
-
-      if (auto dirAttr =
-            mlir::cast<mlir::DictionaryAttr>(argAttrs[i]).get(getDirectionAttrName()))
-         return mlir::cast<ParamDirectionAttr>(dirAttr).getValue();
+      if (auto dirAttr = getArgAttrOfType<ParamDirectionAttr>(i, getDirectionAttrName()))
+        return dirAttr.getValue();
 
       return ParamDirection::None;
     }
@@ -981,6 +992,8 @@ def FuncOp : P4HIR_Op<"func", [
 
     bool isDeclaration() { return isExternal(); }
 
+    bool canDiscardOnUseEmpty();
+
     void createEntryBlock();
   }];
 
@@ -991,6 +1004,7 @@ def FuncOp : P4HIR_Op<"func", [
 def CallOp : P4HIR_Op<"call",
   [NoRegionArguments, CallOpInterface,
    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "call operation";
   let description = [{
@@ -1071,6 +1085,7 @@ def CallOp : P4HIR_Op<"call",
     }
 
     mlir::Operation *resolveCallableInTable(mlir::SymbolTableCollection *symbolTable);
+    mlir::Operation *resolveCallable();
 
     void setArg(unsigned index, mlir::Value value) {
       setOperand(index, value);
@@ -1137,16 +1152,17 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
   }];
 }
 
-def StructExtractRefOp : P4HIR_Op<"struct_extract_ref",
+def StructFieldRefOp : P4HIR_Op<"struct_field_ref",
     [Pure,
+     DeclareOpInterfaceMethods<ViewLikeOpInterface>,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]> {
   let summary = "Project from a struct reference to a reference to a named struct field";
   let description = [{
     ```
-    %result = p4hir.struct_extract_ref %input["field"] : <!p4hir.struct<field: type>>
+    %result = p4hir.struct_field_ref %input["field"] : <!p4hir.struct<field: type>>
     TODO: Support the nested extractions
-    %result2 = p4hir.struct_extract_ref %input["field1", "field2"] : <!p4hir.struct<field1: !p4hir.struct<field2: type>>>
+    %result2 = p4hir.struct_field_ref %input["field1", "field2"] : <!p4hir.struct<field1: !p4hir.struct<field2: type>>>
 
     ```
   }];
@@ -1243,7 +1259,7 @@ def SliceOp : P4HIR_Op<"slice",
   let hasVerifier = 1;
 }
 
-def SliceRefOp : P4HIR_Op<"slice_ref",
+def ReadSliceOp : P4HIR_Op<"read_slice",
     [Pure,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Extract a range or single bits from a referenced value";
@@ -1251,7 +1267,8 @@ def SliceRefOp : P4HIR_Op<"slice_ref",
     It's used to select from a value with a constant low bit.
 
   }];
-  let arguments = (ins BitsRefType:$input, I32Attr:$highBit, I32Attr:$lowBit);
+  let arguments = (ins Arg<BitsRefType, "the reference to load from", [MemRead]>:$input,
+                       I32Attr:$highBit, I32Attr:$lowBit);
   let results = (outs BitsType:$result);
   let assemblyFormat = [{
     $input`[`$highBit `:` $lowBit`]` attr-dict `:` type($input) `->` type($result)
@@ -1410,6 +1427,7 @@ def ConstructOp : P4HIR_Op<"construct",
 }
 
 
+// TODO: Decide on effects / traits here
 def SymToValueOp : P4HIR_Op<"symbol_ref",
   [NoRegionArguments,
    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
@@ -1434,6 +1452,12 @@ def ControlLocalOp : P4HIR_Op<"control_local",
   // TODO: Add verifier
   let hasVerifier = 0;
 
+  let extraClassDeclaration = [{
+    // TODO: Remove after https://github.com/llvm/llvm-project/pull/151036 would be in third-party
+    bool isPrivate() { return true; }
+    Visibility getVisibility() { return Visibility::Private;  }
+  }];
+
   let assemblyFormat = [{
     $sym_name `=` $val `:` type($val) attr-dict
   }];
@@ -1441,6 +1465,7 @@ def ControlLocalOp : P4HIR_Op<"control_local",
 
 def ApplyOp : P4HIR_Op<"apply",
   [NoRegionArguments, CallOpInterface,
+   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
    DeclareOpInterfaceMethods<SymbolUserOpInterface>
     //TypesMatchWith<
     //   "the apply type of the object matches the types of operands",
@@ -1562,6 +1587,7 @@ def ExternOp : P4HIR_Op<"extern",
 def CallMethodOp : P4HIR_Op<"call_method",
   [NoRegionArguments, AttrSizedOperandSegments,
    CallOpInterface,
+   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
    DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call method of an P4 extern";
   let description = [{
@@ -1572,7 +1598,7 @@ def CallMethodOp : P4HIR_Op<"call_method",
     ```mlir
       p4hir.parser @parserI(%arg0: !p4hir.extern<"packet_in">, %arg1: !p4hir.ref<!Parsed_packet>)() {
         p4hir.state @start {
-          %ethernet_field_ref = p4hir.struct_extract_ref %arg1["ethernet"] : <!Parsed_packet>
+          %ethernet_field_ref = p4hir.struct_field_ref %arg1["ethernet"] : <!Parsed_packet>
           %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!Ethernet_h>
           p4hir.call_method @packet_in::@extract<[!Ethernet_h]> (%arg0, %hdr_out_arg) : !p4hir.extern<"packet_in">, (!p4hir.ref<!Ethernet_h>) -> ()
           ...
@@ -1644,8 +1670,9 @@ def CallMethodOp : P4HIR_Op<"call_method",
     }
 
     mlir::Operation *resolveCallableInTable(mlir::SymbolTableCollection *symbolTable);
+    mlir::Operation *resolveCallable();
 
-    P4HIR::ExternOp getExtern();
+    P4HIR::ExternOp getExtern(mlir::SymbolTableCollection *symbolTable = nullptr);
     mlir::StringAttr getMethodName();
 
     mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
@@ -1719,6 +1746,7 @@ def PackageOp : P4HIR_Op<"package",
 def CaseOp : P4HIR_Op<"case", [
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursivelySpeculatable, AutomaticAllocationScope,
+       /*RecursiveMemoryEffects,*/
        ParentOneOf<["SwitchOp"]>,
      ]> {
   let summary = "Case operation";
@@ -1762,6 +1790,7 @@ def SwitchOp : P4HIR_Op<"switch",
       [SameVariadicOperandSize,
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursivelySpeculatable, AutomaticAllocationScope,
+       RecursiveMemoryEffects,
        SingleBlockImplicitTerminator<"P4HIR::YieldOp">,
       ]> {
   let summary = "Switch operation";
@@ -1974,6 +2003,7 @@ def ArrayGetOp : P4HIR_Op<"array_get",
 
 def ArrayElementRefOp : P4HIR_Op<"array_element_ref",
     [Pure, ArrayRefElementResultTypeConstraint<"result", "input">,
+     DeclareOpInterfaceMethods<ViewLikeOpInterface>,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Project from an array reference to a reference to array element";
   let arguments = (ins ArrayRefType:$input, AnyIntP4Type:$index);
