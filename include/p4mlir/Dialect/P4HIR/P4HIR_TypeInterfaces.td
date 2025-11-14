@@ -3,37 +3,6 @@
 
 include "mlir/IR/OpBase.td"
 
-def StructLikeTypeInterface : TypeInterface<"StructLikeTypeInterface"> {
-  let description = [{
-    Common methods for struct-like types that could be viewed as a collection
-    of named fields
-  }];
-
-  let methods = [
-    InterfaceMethod<[{
-      Get the type of the field at a given index
-    }],
-      "mlir::Type", "getFieldType", (ins "mlir::StringRef":$fieldName)>,
-   InterfaceMethod<[{
-      Get the field index given the name in StringRef
-    }],
-     "std::optional<unsigned>", "getFieldIndex", (ins "mlir::StringRef":$fieldName)>,
-   InterfaceMethod<[{
-      Get the field given the name in StringRef
-    }],
-     "std::optional<FieldInfo>", "getField", (ins "mlir::StringRef":$fieldName)>,
-   InterfaceMethod<[{
-      Get all the fields.
-    }],
-     "llvm::ArrayRef<FieldInfo>", "getFields">,
-   InterfaceMethod<[{
-      Get all types of the fields.
-    }],
-     "void", "getInnerTypes", (ins "mlir::SmallVectorImpl<mlir::Type> &":$types)>,
-  ];
-  let cppNamespace = "::P4::P4MLIR::P4HIR";
-}
-
 def FieldIDTypeInterface : TypeInterface<"FieldIDTypeInterface"> {
   let description = [{
     Common methods for types which can be indexed by a FieldID.
@@ -99,6 +68,38 @@ def FieldIDTypeInterface : TypeInterface<"FieldIDTypeInterface"> {
 
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
+
+def StructLikeTypeInterface : TypeInterface<"StructLikeTypeInterface", [FieldIDTypeInterface]> {
+  let description = [{
+    Common methods for struct-like types that could be viewed as a collection
+    of named fields
+  }];
+
+  let methods = [
+    InterfaceMethod<[{
+      Get the type of the field at a given index
+    }],
+      "mlir::Type", "getFieldType", (ins "mlir::StringRef":$fieldName)>,
+   InterfaceMethod<[{
+      Get the field index given the name in StringRef
+    }],
+     "std::optional<unsigned>", "getFieldIndex", (ins "mlir::StringRef":$fieldName)>,
+   InterfaceMethod<[{
+      Get the field given the name in StringRef
+    }],
+     "std::optional<FieldInfo>", "getField", (ins "mlir::StringRef":$fieldName)>,
+   InterfaceMethod<[{
+      Get all the fields.
+    }],
+     "llvm::ArrayRef<FieldInfo>", "getFields">,
+   InterfaceMethod<[{
+      Get all types of the fields.
+    }],
+     "void", "getInnerTypes", (ins "mlir::SmallVectorImpl<mlir::Type> &":$types)>,
+  ];
+  let cppNamespace = "::P4::P4MLIR::P4HIR";
+}
+
 
 def AnnotatedType : TypeInterface<"AnnotatedType"> {
   let description = [{
