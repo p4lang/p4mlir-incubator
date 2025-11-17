@@ -840,10 +840,12 @@ LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewri
         if (!mlir::isa<ReadOp>(user) || user->isBeforeInBlock(uniqueAssignOp)) return failure();
     }
 
-    // Remove the assign op and replace all reads with the new assigned var op.
+    // Replace all reads with the assigned value and remove the assignment.
     mlir::Value assignedValue = uniqueAssignOp.getValue();
+    for (auto *user : llvm::make_early_inc_range(users))
+        if (user != uniqueAssignOp)
+            rewriter.replaceOp(user, assignedValue);
     rewriter.eraseOp(uniqueAssignOp);
-    for (auto *user : llvm::make_early_inc_range(users)) rewriter.replaceOp(user, assignedValue);
 
     // Remove the original variable.
     rewriter.eraseOp(op);
