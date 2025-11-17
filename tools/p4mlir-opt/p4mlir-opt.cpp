@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
     mlir::registerTransformsPasses();
 
     P4::P4MLIR::registerPasses();
-    P4::P4MLIR::registerP4MLIRConversionPasses();
+    P4::P4MLIR::registerP4HIRToCoreLibPasses();
     P4::P4MLIR::registerP4HIRToBMv2IRPasses();
     P4::P4MLIR::registerCommonFrontEndPipeline();
     P4::P4MLIR::registerBMv2Pipeline();
