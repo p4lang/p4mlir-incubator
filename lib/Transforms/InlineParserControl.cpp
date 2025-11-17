@@ -1,5 +1,6 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -82,6 +83,9 @@ struct RemapLocationHelper {
 
 template <typename OpTy>
 struct InstantiateOpInlineHelper {
+    using updateAttrNameCb =
+        llvm::function_ref<std::string(mlir::Operation *, llvm::StringRef, llvm::StringRef)>;
+
     InstantiateOpInlineHelper(mlir::RewriterBase &rewriter, P4HIR::InstantiateOp instOp)
         : rewriter(rewriter), instOp(instOp) {}
 
@@ -89,17 +93,10 @@ struct InstantiateOpInlineHelper {
         callee = instOp.getCallee<OpTy>();
         if (!callee) return mlir::failure();
 
-        if (!instOp.getArgOperands().empty())
-            return rewriter.notifyMatchFailure(instOp.getLoc(),
-                                               "Cannot inline object with constructor arguments.");
-
-        if (!callee.getCallableRegion()->hasOneBlock())
-            return rewriter.notifyMatchFailure(instOp.getLoc(),
-                                               "Cannot inline callable with multiple blocks.");
-
+        assert(callee.getCallableRegion()->hasOneBlock() &&
+               "Expected single-block callable region");
         calleeBlock = &callee.getCallableRegion()->front();
         caller = instOp->getParentOfType<OpTy>();
-        setPrefix(instOp.getSymName());
 
         // Collect all ApplyOps for this InstantiateOp.
         caller.walk([&](P4HIR::ApplyOp applyOp) {
@@ -111,30 +108,65 @@ struct InstantiateOpInlineHelper {
         return mlir::success();
     }
 
-    void adjustClonedOp(mlir::Operation *op) {
-        op->walk([&](mlir::Operation *nestedOp) { updateNamesAndRefs(nestedOp); });
-        remapLocationHelper.updateLocations(op);
-    }
+    // If `op` is a constructor param constant of `callee` then create, map and return the
+    // corresponding instantiated constant value from `instOp`, otherwise return null.
+    mlir::Operation *inlineCloneCtorParamOp(mlir::Operation *op, updateAttrNameCb renameCb,
+                                            mlir::IRMapping &mapper) {
+        auto constOp = mlir::dyn_cast<P4HIR::ConstOp>(op);
+        if (!constOp) return nullptr;
 
-    mlir::Operation *inlineCloneOp(mlir::Operation *op, mlir::IRMapping &mapper) {
-        mlir::Operation *newOp = rewriter.clone(*op, mapper);
-        adjustClonedOp(newOp);
+        auto ctorParam = mlir::dyn_cast<P4HIR::CtorParamAttr>(constOp.getValue());
+        if (!ctorParam) return nullptr;
+
+        if (ctorParam.getParent().getLeafReference() != callee.getSymName()) return nullptr;
+
+        // Find the constant that corresponds to this ctor param from `instOp`.
+        auto ctorInputs = callee.getCtorType().getInputs();
+        auto it = llvm::find_if(ctorInputs, [&](const auto &input) {
+            const auto &[paramName, paramType] = input;
+            assert((paramType == ctorParam.getType()) && "Unexpected ctor param type");
+            return paramName == ctorParam.getName();
+        });
+        assert((it != ctorInputs.end()) && "Cannot find ctor input");
+        auto index = std::distance(ctorInputs.begin(), it);
+        auto ctorArg = instOp.getArgOperands()[index];
+
+        // Create and map the ctor param replacement.
+        mlir::Operation *newOp = rewriter.clone(*ctorArg.getDefiningOp(), mapper);
+        adjustClonedOp(newOp, renameCb);
+        mapper.map(op->getResults(), newOp->getResults());
         return newOp;
     }
 
-    mlir::StringAttr updateName(mlir::StringAttr attr) {
-        if (attr.getValue().empty()) return attr;
-        auto newName = (prefix + "." + attr.getValue()).str();
-        return mlir::StringAttr::get(attr.getContext(), newName);
+    // Clone and adjust an operation that is being inlined from `callee` to `caller`.
+    mlir::Operation *inlineCloneOp(mlir::Operation *op, updateAttrNameCb renameCb,
+                                   mlir::IRMapping &mapper) {
+        if (auto *ctorParamConstOp = inlineCloneCtorParamOp(op, renameCb, mapper))
+            return ctorParamConstOp;
+
+        mlir::Operation *newOp = rewriter.clone(*op, mapper);
+        adjustClonedOp(newOp, renameCb);
+        return newOp;
     }
 
-    // Append the instantiated control's name as a prefix to names and refs in `op`, which is an
-    // operation cloned from the callee object.
-    void updateNamesAndRefs(mlir::Operation *op) {
+    // Adjust names, symbols and locations for an operation cloned from `callee` to `caller`.
+    void adjustClonedOp(mlir::Operation *op, updateAttrNameCb renameCb) {
+        op->walk([&](mlir::Operation *nestedOp) { updateNamesAndRefs(nestedOp, renameCb); });
+        remapLocationHelper.updateLocations(op);
+    }
+
+    // Update the names and refs in `op` using `renameCb`.
+    void updateNamesAndRefs(mlir::Operation *op, updateAttrNameCb renameCb) {
+        auto updateName = [&](llvm::StringRef attrName, mlir::StringAttr attr) {
+            if (attr.getValue().empty()) return attr;
+            return mlir::StringAttr::get(attr.getContext(),
+                                         renameCb(op, attrName, attr.getValue()));
+        };
+
         llvm::SmallVector<llvm::StringRef> attrsToUpdate = {"name", "sym_name"};
         for (auto attrName : attrsToUpdate) {
             if (auto attr = op->getAttrOfType<mlir::StringAttr>(attrName))
-                op->setAttr(attrName, updateName(attr));
+                op->setAttr(attrName, updateName(attrName, attr));
         }
 
         // Rewrite SymbolRefAttrs that have as `callee` as root.
@@ -150,8 +182,8 @@ struct InstantiateOpInlineHelper {
             bool first = true;
             for (auto flatRefAttr : symbolAttr.getNestedReferences()) {
                 if (first)
-                    newNestedRefs.push_back(
-                        mlir::FlatSymbolRefAttr::get(updateName(flatRefAttr.getAttr())));
+                    newNestedRefs.push_back(mlir::FlatSymbolRefAttr::get(
+                        updateName(namedAttr.getName(), flatRefAttr.getAttr())));
                 else
                     newNestedRefs.push_back(flatRefAttr);
                 first = false;
@@ -162,8 +194,6 @@ struct InstantiateOpInlineHelper {
         }
     }
 
-    void setPrefix(llvm::StringRef newPrefix) { prefix = newPrefix; }
-
     mlir::RewriterBase &rewriter;
     P4HIR::InstantiateOp instOp;
     OpTy caller;
@@ -171,13 +201,24 @@ struct InstantiateOpInlineHelper {
     mlir::Block *calleeBlock;
     llvm::SmallVector<P4HIR::ApplyOp, 4> calls;
     RemapLocationHelper remapLocationHelper;
-    std::string prefix;
 };
 
 struct ParserOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ParserOp> {
     using InstantiateOpInlineHelper<P4HIR::ParserOp>::InstantiateOpInlineHelper;
 
     mlir::LogicalResult doInlining() {
+        size_t applyIndex = 0;
+        auto renameCb = [&](mlir::Operation *op, llvm::StringRef name,
+                            llvm::StringRef value) -> std::string {
+            llvm::SmallString<32> res = instOp.getSymName();
+            if (calls.size() > 1)
+                if (name == "state" || (name == "sym_name" && mlir::isa<P4HIR::ParserStateOp>(op)))
+                    res += "#" + std::to_string(applyIndex);
+            res += ".";
+            res += value;
+            return static_cast<std::string>(res);
+        };
+
         auto initStatus = init();
         if (initStatus.failed()) return initStatus;
 
@@ -208,7 +249,7 @@ struct ParserOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ParserOp> 
         rewriter.setInsertionPoint(instOp);
         for (mlir::Operation &op : *calleeBlock) {
             if (mlir::isa<P4HIR::ConstOp, P4HIR::VariableOp, P4HIR::InstantiateOp>(op)) {
-                inlineCloneOp(&op, mapper);
+                inlineCloneOp(&op, renameCb, mapper);
             } else if (auto parserState = mlir::dyn_cast<P4HIR::ParserStateOp>(op)) {
                 states.push_back(parserState);
             } else if (auto transitionOp = mlir::dyn_cast<P4HIR::ParserTransitionOp>(op)) {
@@ -221,7 +262,6 @@ struct ParserOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ParserOp> 
             }
         }
 
-        size_t index = 0;
         for (auto [applyOp, ssr] : llvm::zip_equal(calls, splitStateRewriters)) {
             mlir::IRMapping callMapper = mapper;
 
@@ -233,16 +273,12 @@ struct ParserOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ParserOp> 
                 callMapper.map(formalArg, actualArg);
             }
 
-            std::string prefix = instOp.getSymName().str();
-            if (calls.size() > 1) prefix += std::string("#") + std::to_string(++index);
-            setPrefix(prefix);
-
             // Clone states.
             rewriter.setInsertionPointAfter(ssr->getPreState());
 
             for (P4HIR::ParserStateOp state : states) {
                 auto newStateOp =
-                    mlir::cast<P4HIR::ParserStateOp>(inlineCloneOp(state, callMapper));
+                    mlir::cast<P4HIR::ParserStateOp>(inlineCloneOp(state, renameCb, callMapper));
 
                 if (newStateOp.isAccept()) {
                     // Make the subparser's accept transition to the "post" state.
@@ -258,10 +294,12 @@ struct ParserOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ParserOp> 
 
             // Clone local variable initialization code in the "pre" state.
             rewriter.setInsertionPointToEnd(ssr->getPreState().getBlock());
-            for (mlir::Operation *op : initOps) inlineCloneOp(op, callMapper);
+            for (mlir::Operation *op : initOps) inlineCloneOp(op, renameCb, callMapper);
 
             // Clone transition to callee's start state as terminator.
-            inlineCloneOp(calleeStartTransition, callMapper);
+            inlineCloneOp(calleeStartTransition, renameCb, callMapper);
+
+            applyIndex++;
         }
 
         for (auto &ssr : splitStateRewriters) ssr->finalize();
@@ -275,6 +313,11 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
     using InstantiateOpInlineHelper<P4HIR::ControlOp>::InstantiateOpInlineHelper;
 
     mlir::LogicalResult doInlining() {
+        auto renameCb = [&](mlir::Operation *op, llvm::StringRef name,
+                            llvm::StringRef value) -> std::string {
+            return (instOp.getSymName() + "." + value).str();
+        };
+
         auto initStatus = init();
         if (initStatus.failed()) return initStatus;
 
@@ -298,7 +341,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
         for (mlir::Operation &op : *calleeBlock) {
             if (mlir::isa<P4HIR::ConstOp, P4HIR::VariableOp, P4HIR::FuncOp, P4HIR::TableOp,
                           P4HIR::InstantiateOp>(op)) {
-                auto *newOp = inlineCloneOp(&op, mapper);
+                auto *newOp = inlineCloneOp(&op, renameCb, mapper);
 
                 if (mlir::isa<P4HIR::FuncOp>(newOp)) {
                     // Introduce new reads for control locals that were promoted.
@@ -331,7 +374,8 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
 
                 if (controlLocalOp.getVal().getDefiningOp<P4HIR::VariableOp>()) {
                     // Don't create a backing variable if there was one already.
-                    newControlLocal = mlir::cast<P4HIR::ControlLocalOp>(inlineCloneOp(&op, mapper));
+                    newControlLocal =
+                        mlir::cast<P4HIR::ControlLocalOp>(inlineCloneOp(&op, renameCb, mapper));
                     info.isStorageOrigVar = true;
                     info.localStorage = newControlLocal.getVal().getDefiningOp<P4HIR::VariableOp>();
                 } else {
@@ -346,7 +390,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
                                                                            newVarType, newVarName);
                     newControlLocal = rewriter.create<P4HIR::ControlLocalOp>(
                         controlLocalOp.getLoc(), controlLocalOp.getSymName(), info.localStorage);
-                    adjustClonedOp(newControlLocal);
+                    adjustClonedOp(newControlLocal, renameCb);
                 }
 
                 [[maybe_unused]] auto [it, ins] =
@@ -374,7 +418,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
             }
 
             // Clone local variable initialization code.
-            for (mlir::Operation *op : initOps) inlineCloneOp(op, callMapper);
+            for (mlir::Operation *op : initOps) inlineCloneOp(op, renameCb, callMapper);
 
             // Initialize cloned p4hir.control_locals from scope-local variables and values.
             for (auto &[sym, info] : controlLocalMap) {
@@ -405,7 +449,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
             // Clone callee's control apply block.
             if (!calleeControlApplyRegion->empty())
                 for (mlir::Operation &op : calleeControlApplyRegion->front())
-                    inlineCloneOp(&op, callMapper);
+                    inlineCloneOp(&op, renameCb, callMapper);
 
             // Copy values from p4hir.control_locals back to scope-local variables.
             for (auto &[sym, info] : controlLocalMap) {
@@ -430,7 +474,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
     }
 };
 
-template<typename InlinerT>
+template <typename InlinerT>
 static void inlineIteratively(mlir::ModuleOp mod) {
     mlir::IRRewriter rewriter(mod.getContext());
 
@@ -440,12 +484,10 @@ static void inlineIteratively(mlir::ModuleOp mod) {
         madeChanges = false;
 
         llvm::SmallVector<P4HIR::InstantiateOp, 8> instOps;
-        mod->walk(
-            [&](P4HIR::InstantiateOp instOp) { instOps.push_back(instOp); });
+        mod->walk([&](P4HIR::InstantiateOp instOp) { instOps.push_back(instOp); });
 
         for (P4HIR::InstantiateOp instOp : instOps)
-            if (InlinerT(rewriter, instOp).doInlining().succeeded())
-                madeChanges = true;
+            if (InlinerT(rewriter, instOp).doInlining().succeeded()) madeChanges = true;
     } while (madeChanges);
 }
 
