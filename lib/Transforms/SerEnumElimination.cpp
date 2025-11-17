@@ -5,7 +5,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
-#include "p4mlir/Conversion/P4HIRToCoreLib/ConversionPatterns.h"
+#include "p4mlir/Conversion/ConversionPatterns.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Transforms/Passes.h"
 
