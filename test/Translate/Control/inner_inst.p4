@@ -16,8 +16,13 @@ control Pipe(bit<10> arg1, in int<16> arg2, out int<16> arg3, inout int<16> arg4
     // CHECK: p4hir.instantiate @InnerPipe (%true : !p4hir.bool) as @inner1
     // CHECK: p4hir.instantiate @InnerPipe (%false : !p4hir.bool) as @inner2
     
+    // CHECK-LABEL: action @bar
     action bar() {
-        int<16> x1;
+        // CHECK-DAG: %[[CTR_ARG1:.*]] = p4hir.const ["ctr_arg1"] #Pipe_ctr_arg1
+        // CHECK-DAG: %{{.*}} = p4hir.const ["hdr_arg"] #Pipe_hdr_arg
+        // CHECK-DAG: %[[X:.*]] = p4hir.variable ["x1", init] : <!i16i>
+        // CHECK-DAG: p4hir.assign %[[CTR_ARG1]], %[[X]] : <!i16i>
+        int<16> x1 = ctr_arg1;
         return;
     }
 
