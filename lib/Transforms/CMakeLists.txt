@@ -7,6 +7,7 @@ add_mlir_dialect_library(P4MLIRTransforms
   SerEnumElimination.cpp
   SimplifyParsers.cpp
   CopyInCopyOutElimination.cpp
+  TupleToStruct.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/p4mlir/Transforms
