@@ -1158,9 +1158,15 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Array *type) {
     ConversionTracer trace("TypeConverting ", type);
     llvm::SmallVector<P4HIR::FieldInfo, 4> fields;
 
-    auto elementType = mlir::cast<P4HIR::StructLikeTypeInterface>(convert(type->elementType));
     auto sz = mlir::cast<P4HIR::IntAttr>(converter.getOrCreateConstantExpr(type->size)).getUInt();
-    auto mlirType = P4HIR::HeaderStackType::get(converter.context(), sz, elementType);
+    auto elementType = convert(type->elementType);
+    mlir::Type mlirType;
+    // Header stack are arrays over headers or header unions.
+    if (mlir::isa<P4HIR::HeaderType, P4HIR::HeaderUnionType>(elementType))
+        mlirType = P4HIR::HeaderStackType::get(
+            converter.context(), sz, mlir::cast<P4HIR::StructLikeTypeInterface>(elementType));
+    else
+        mlirType = P4HIR::ArrayType::get(converter.context(), sz, elementType);
 
     return setType(type, mlirType);
 }
@@ -1430,10 +1436,13 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
         auto base = resolveReference(a->left, unchecked);
         if (a->left->type->is<P4::IR::Type_Array>()) {
             visit(a->right);
-            auto arrayRef = builder
-                                .create<P4HIR::StructFieldRefOp>(
-                                    loc, base, P4HIR::HeaderStackType::dataFieldName)
-                                .getResult();
+            auto arrayRef = base;
+            auto arrayType = mlir::cast<P4HIR::ReferenceType>(arrayRef.getType()).getObjectType();
+            if (mlir::isa<P4HIR::HeaderStackType>(arrayType))
+                arrayRef = builder
+                               .create<P4HIR::StructFieldRefOp>(
+                                   loc, base, P4HIR::HeaderStackType::dataFieldName)
+                               .getResult();
             auto eltRef = builder.create<P4HIR::ArrayElementRefOp>(
                 loc, arrayRef, getValue(a->right, getB32Type()));
             return setValue(a, eltRef);
@@ -2864,6 +2873,10 @@ void P4HIRConverter::postorder(const P4::IR::ArrayIndex *arr) {
     if (mlir::isa<mlir::TupleType>(lhs.getType())) {
         auto idx = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(arr->right));
         setValue(arr, builder.create<P4HIR::TupleExtractOp>(loc, lhs, idx).getResult());
+        return;
+    } else if (mlir::isa<P4HIR::ArrayType>(lhs.getType())) {
+        auto idx = getValue(arr->right, getB32Type());
+        setValue(arr, builder.create<P4HIR::ArrayGetOp>(loc, lhs, idx).getResult());
         return;
     } else if (mlir::isa<P4HIR::HeaderStackType>(lhs.getType())) {
         auto idx = getValue(arr->right, getB32Type());

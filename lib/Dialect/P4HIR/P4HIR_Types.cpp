@@ -437,6 +437,8 @@ LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, S
             auto fieldType = elt.type;
             if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(fieldType))
                 fieldType = aliasType.getCanonicalType();
+            while (auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(fieldType))
+                fieldType = arrayType.getElementType();
 
             // varbit and validity bit are allowed at the top (header) level only
             if (isHeader && mlir::isa<P4HIR::VarBitsType, P4HIR::ValidBitType>(fieldType)) {
