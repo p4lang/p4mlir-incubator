@@ -2257,6 +2257,16 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
 
 bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
     ConversionTracer trace("Converting ", act);
+
+    const auto *control = findContext<P4::IR::P4Control>();
+    llvm::SmallVector<mlir::TypedAttr, 2> ctorParamAttrs;
+    if (control) {
+        for (const auto *param : control->getConstructorParameters()->parameters) {
+            auto attr = getValue(param).getDefiningOp<P4HIR::ConstOp>().getValue();
+            ctorParamAttrs.push_back(attr);
+        }
+    }
+
     ValueTable actionValues, *savedValues = p4Values;
     p4Values = &actionValues;
     ValueScope scope(actionValues);
@@ -2285,6 +2295,18 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
     {
         mlir::OpBuilder::InsertionGuard guard(builder);
         builder.setInsertionPointToStart(&body.front());
+
+        if (control) {
+            // Actions could refer to control's constructor arguments. Materialize them as
+            // constants.
+            for (auto [param, attr] :
+                 llvm::zip_equal(control->getConstructorParameters()->parameters, ctorParamAttrs)) {
+                llvm::StringRef paramName = param->name.string_view();
+                auto val = builder.create<P4HIR::ConstOp>(getLoc(builder, param), attr, paramName);
+                setValue(param, val);
+            }
+        }
+
         visit(act->body);
 
         // Check if body's last block is not terminated.
