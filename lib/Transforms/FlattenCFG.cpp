@@ -24,49 +24,54 @@ struct IfOpFlattening : public OpRewritePattern<P4HIR::IfOp> {
 
     mlir::LogicalResult matchAndRewrite(P4HIR::IfOp ifOp,
                                         mlir::PatternRewriter &rewriter) const override {
+        // Start by splitting the block containing the if into two parts. The part before will
+        // contain the condition, the part after will be the continuation point.
         mlir::OpBuilder::InsertionGuard guard(rewriter);
         auto loc = ifOp.getLoc();
-        auto emptyElse = ifOp.getElseRegion().empty();
-
-        auto *currentBlock = rewriter.getInsertionBlock();
-        auto *afterBlock = rewriter.splitBlock(currentBlock, rewriter.getInsertionPoint());
-
-        // Inline then region
-        auto *thenBeforeBody = &ifOp.getThenRegion().front();
-        auto *thenAfterBody = &ifOp.getThenRegion().back();
-        rewriter.inlineRegionBefore(ifOp.getThenRegion(), afterBlock);
-
-        rewriter.setInsertionPointToEnd(thenAfterBody);
-        if (auto thenYieldOp = dyn_cast<P4HIR::YieldOp>(thenAfterBody->getTerminator())) {
-            rewriter.replaceOpWithNewOp<P4HIR::BrOp>(thenYieldOp, thenYieldOp.getArgs(),
-                                                     afterBlock);
-        }
-
-        rewriter.setInsertionPointToEnd(afterBlock);
-
-        // Has else region: inline it.
-        mlir::Block *elseBeforeBody = nullptr;
-        mlir::Block *elseAfterBody = nullptr;
-        if (!emptyElse) {
-            elseBeforeBody = &ifOp.getElseRegion().front();
-            elseAfterBody = &ifOp.getElseRegion().back();
-            rewriter.inlineRegionBefore(ifOp.getElseRegion(), afterBlock);
+        auto *condBlock = rewriter.getInsertionBlock();
+        auto opPosition = rewriter.getInsertionPoint();
+        auto *remainingOpsBlock = rewriter.splitBlock(condBlock, opPosition);
+        mlir::Block *continueBlock;
+        if (ifOp.getNumResults() == 0) {
+            continueBlock = remainingOpsBlock;
         } else {
-            elseBeforeBody = elseAfterBody = afterBlock;
+            continueBlock =
+                rewriter.createBlock(remainingOpsBlock, ifOp.getResultTypes(),
+                                     llvm::SmallVector<mlir::Location>(ifOp.getNumResults(), loc));
+            rewriter.create<P4HIR::BrOp>(loc, remainingOpsBlock);
         }
 
-        rewriter.setInsertionPointToEnd(currentBlock);
-        rewriter.create<P4HIR::CondBrOp>(loc, ifOp.getCondition(), thenBeforeBody, elseBeforeBody);
+        // Move blocks from the "then" region to the region containing if, place it before the
+        // continuation block, and branch to it.
+        auto &thenRegion = ifOp.getThenRegion();
+        auto *thenBlock = &thenRegion.front();
+        mlir::Operation *thenTerminator = thenRegion.back().getTerminator();
+        mlir::ValueRange thenTerminatorOperands = thenTerminator->getOperands();
+        rewriter.setInsertionPointToEnd(&thenRegion.back());
+        rewriter.create<P4HIR::BrOp>(loc, continueBlock, thenTerminatorOperands);
+        rewriter.eraseOp(thenTerminator);
+        rewriter.inlineRegionBefore(thenRegion, continueBlock);
 
-        if (!emptyElse) {
-            rewriter.setInsertionPointToEnd(elseAfterBody);
-            if (auto elseYieldOp = dyn_cast<P4HIR::YieldOp>(elseAfterBody->getTerminator())) {
-                rewriter.replaceOpWithNewOp<P4HIR::BrOp>(elseYieldOp, elseYieldOp.getArgs(),
-                                                         afterBlock);
-            }
+        // Move blocks from the "else" region (if present) to the region containing if, place it
+        // before the continuation block and branch to it. It will be placed after the "then"
+        // regions.
+        auto *elseBlock = continueBlock;
+        auto &elseRegion = ifOp.getElseRegion();
+        if (!elseRegion.empty()) {
+            elseBlock = &elseRegion.front();
+            mlir::Operation *elseTerminator = elseRegion.back().getTerminator();
+            mlir::ValueRange elseTerminatorOperands = elseTerminator->getOperands();
+            rewriter.setInsertionPointToEnd(&elseRegion.back());
+            rewriter.create<P4HIR::BrOp>(loc, continueBlock, elseTerminatorOperands);
+            rewriter.eraseOp(elseTerminator);
+            rewriter.inlineRegionBefore(elseRegion, continueBlock);
         }
 
-        rewriter.replaceOp(ifOp, afterBlock->getArguments());
+        rewriter.setInsertionPointToEnd(condBlock);
+        rewriter.create<P4HIR::CondBrOp>(loc, ifOp.getCondition(), thenBlock, elseBlock);
+
+        // Ok, we're done!
+        rewriter.replaceOp(ifOp, continueBlock->getArguments());
         return mlir::success();
     }
 };
@@ -114,61 +119,15 @@ class ScopeOpFlattening : public mlir::OpRewritePattern<P4HIR::ScopeOp> {
     }
 };
 
-class TernaryOpFlattening : public mlir::OpRewritePattern<P4HIR::TernaryOp> {
- public:
-    using OpRewritePattern<P4HIR::TernaryOp>::OpRewritePattern;
-
-    mlir::LogicalResult matchAndRewrite(P4HIR::TernaryOp op,
-                                        mlir::PatternRewriter &rewriter) const override {
-        auto loc = op->getLoc();
-        auto *condBlock = rewriter.getInsertionBlock();
-        auto opPosition = rewriter.getInsertionPoint();
-        auto *afterBlock = rewriter.splitBlock(condBlock, opPosition);
-        llvm::SmallVector<mlir::Location, 2> locs;
-        // Ternary result is optional, make sure to populate the location only
-        // when relevant.
-        if (op->getNumResults()) locs.push_back(loc);
-        auto *continueBlock = rewriter.createBlock(afterBlock, op->getResultTypes(), locs);
-        rewriter.create<P4HIR::BrOp>(loc, afterBlock);
-
-        auto &trueRegion = op.getTrueRegion();
-        auto *trueBlock = &trueRegion.front();
-        mlir::Operation *trueTerminator = trueRegion.back().getTerminator();
-        rewriter.setInsertionPointToEnd(&trueRegion.back());
-        auto trueYieldOp = mlir::cast<P4HIR::YieldOp>(trueTerminator);
-
-        rewriter.replaceOpWithNewOp<P4HIR::BrOp>(trueYieldOp, trueYieldOp.getArgs(), continueBlock);
-        rewriter.inlineRegionBefore(trueRegion, continueBlock);
-
-        auto *falseBlock = continueBlock;
-        auto &falseRegion = op.getFalseRegion();
-
-        falseBlock = &falseRegion.front();
-        mlir::Operation *falseTerminator = falseRegion.back().getTerminator();
-        rewriter.setInsertionPointToEnd(&falseRegion.back());
-        auto falseYieldOp = mlir::cast<P4HIR::YieldOp>(falseTerminator);
-        rewriter.replaceOpWithNewOp<P4HIR::BrOp>(falseYieldOp, falseYieldOp.getArgs(),
-                                                 continueBlock);
-        rewriter.inlineRegionBefore(falseRegion, continueBlock);
-
-        rewriter.setInsertionPointToEnd(condBlock);
-        rewriter.create<P4HIR::CondBrOp>(loc, op.getCond(), trueBlock, falseBlock);
-
-        rewriter.replaceOp(op, continueBlock->getArguments());
-
-        return mlir::success();
-    }
-};
-
 void FlattenCFGPass::runOnOperation() {
     RewritePatternSet patterns(&getContext());
 
-    patterns.add<IfOpFlattening, ScopeOpFlattening, TernaryOpFlattening>(patterns.getContext());
+    patterns.add<IfOpFlattening, ScopeOpFlattening>(patterns.getContext());
 
     // Collect operations to apply patterns.
     llvm::SmallVector<Operation *, 16> ops;
     getOperation()->walk<mlir::WalkOrder::PostOrder>([&](Operation *op) {
-        if (mlir::isa<P4HIR::IfOp, P4HIR::ScopeOp, P4HIR::TernaryOp>(op)) ops.push_back(op);
+        if (mlir::isa<P4HIR::IfOp, P4HIR::ScopeOp>(op)) ops.push_back(op);
     });
 
     // Apply patterns.

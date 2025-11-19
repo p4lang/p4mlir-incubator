@@ -387,8 +387,8 @@ struct RemoveSoftCF {
 
                 rewriter.setInsertionPoint(loopCond);
                 auto guardVal = rewriter.create<P4HIR::ReadOp>(loc, guard.getVar());
-                auto newCond = rewriter.create<P4HIR::TernaryOp>(
-                    loc, guardVal,
+                auto newCond = rewriter.create<P4HIR::IfOp>(
+                    loc, guardVal, true,
                     [&](mlir::OpBuilder &b, mlir::Location) {
                         b.create<P4HIR::YieldOp>(loc, mlir::ValueRange(loopCond.getCondition()));
                     },
@@ -400,7 +400,7 @@ struct RemoveSoftCF {
 
                 auto opsToMove = llvm::make_range(condBlock->begin(), guardVal->getIterator());
                 auto trueRegionTerminator =
-                    getSingleBlock(newCond.getTrueRegion())->getTerminator();
+                    getSingleBlock(newCond.getThenRegion())->getTerminator();
                 for (mlir::Operation &op : llvm::make_early_inc_range(opsToMove))
                     rewriter.moveOpBefore(&op, trueRegionTerminator);
 

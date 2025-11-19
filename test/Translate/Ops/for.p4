@@ -62,16 +62,16 @@ void empty_statements() {
 // CHECK:            %[[CAST_10:.*]] = p4hir.cast(%[[CONST_10]] : !infint) : !b8i
 // CHECK:            %[[I_VAL:.*]] = p4hir.read %[[I]] : <!b8i>
 // CHECK:            %[[CMP_I:.*]] = p4hir.cmp(le, %[[I_VAL]] : !b8i, %[[CAST_10]] : !b8i)
-// CHECK:            %[[TERNARY:.*]] = p4hir.ternary(%[[CMP_I]], true {
+// CHECK:            %[[TERNARY:.*]] = p4hir.if %[[CMP_I]] -> !p4hir.bool {
 // CHECK:              %[[TRUE:.*]] = p4hir.const #true
 // CHECK:              p4hir.yield %[[TRUE]] : !p4hir.bool
-// CHECK:            }, false {
+// CHECK:            } else {
 // CHECK:              %[[CONST_5:.*]] = p4hir.const #int5_infint
 // CHECK:              %[[CAST_5:.*]] = p4hir.cast(%[[CONST_5]] : !infint) : !b8i
 // CHECK:              %[[J_VAL:.*]] = p4hir.read %[[J]] : <!b8i>
 // CHECK:              %[[CMP_J:.*]] = p4hir.cmp(le, %[[J_VAL]] : !b8i, %[[CAST_5]] : !b8i)
 // CHECK:              p4hir.yield %[[CMP_J]] : !p4hir.bool
-// CHECK:            }) : !p4hir.bool
+// CHECK:            }
 // CHECK:          } body {
 // CHECK:          } updates {
 // CHECK:            %[[I_VAL_UPD:.*]] = p4hir.read %[[I]] : <!b8i>

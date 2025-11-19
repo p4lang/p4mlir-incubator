@@ -200,13 +200,13 @@ module {
     //        ...
     // CHECK:   p4hir.for : cond {
     // CHECK:     %[[GUARD_VAL:.*]] = p4hir.read %[[RETURN_GUARD]] : <!p4hir.bool>
-    // CHECK:     %[[NEW_COND:.*]] = p4hir.ternary(%[[GUARD_VAL]], true {
+    // CHECK:     %[[NEW_COND:.*]] = p4hir.if %[[GUARD_VAL]] -> !p4hir.bool {
     //              ...
     // CHECK:       %[[ORIG_COND:.*]] = p4hir.cmp(lt, %{{.*}} : !b8i, %{{.*}} : !b8i)
     // CHECK:       p4hir.yield %[[ORIG_COND]] : !p4hir.bool
-    // CHECK:     }, false {
+    // CHECK:     } else {
     // CHECK:       p4hir.yield %false : !p4hir.bool
-    // CHECK:     }) : !p4hir.bool
+    // CHECK:     }
     // CHECK:     p4hir.condition %[[NEW_COND]]
     // CHECK:   } body {
     //            ...
@@ -330,24 +330,24 @@ module {
     // CHECK: %[[RETURN_GUARD:.*]] = p4hir.variable ["return_guard", init] : <!p4hir.bool>
     // CHECK: p4hir.for : cond {
     // CHECK:   %[[GUARD_VAL_1:.*]] = p4hir.read %[[RETURN_GUARD]] : <!p4hir.bool>
-    // CHECK:   %[[NEW_COND_1:.*]] = p4hir.ternary(%[[GUARD_VAL_1]], true {
+    // CHECK:   %[[NEW_COND_1:.*]] = p4hir.if %[[GUARD_VAL_1]] -> !p4hir.bool {
     //            ...
     // CHECK:     %[[ORIG_COND_1:.*]] = p4hir.cmp(lt, %{{.*}} : !b8i, %{{.*}} : !b8i)
     // CHECK:     p4hir.yield %[[ORIG_COND_1]] : !p4hir.bool
-    // CHECK:   }, false {
+    // CHECK:   } else {
     // CHECK:     p4hir.yield %false : !p4hir.bool
-    // CHECK:   }) : !p4hir.bool
+    // CHECK:   }
     // CHECK:   p4hir.condition %[[NEW_COND_1]]
     // CHECK: } body {
     // CHECK:   p4hir.for : cond {
     // CHECK:     %[[GUARD_VAL_2:.*]] = p4hir.read %[[RETURN_GUARD]] : <!p4hir.bool>
-    // CHECK:     %[[NEW_COND_2:.*]] = p4hir.ternary(%[[GUARD_VAL_2]], true {
+    // CHECK:     %[[NEW_COND_2:.*]] = p4hir.if %[[GUARD_VAL_2]] -> !p4hir.bool {
     //              ...
     // CHECK:       %[[ORIG_COND_2:.*]] = p4hir.cmp(lt, %{{.*}} : !b8i, %{{.*}} : !b8i)
     // CHECK:       p4hir.yield %[[ORIG_COND_2]] : !p4hir.bool
-    // CHECK:     }, false {
+    // CHECK:     } else {
     // CHECK:       p4hir.yield %false : !p4hir.bool
-    // CHECK:     }) : !p4hir.bool
+    // CHECK:     }
     // CHECK:     p4hir.condition %[[NEW_COND_2]]
     // CHECK:   } body {
     //            ...
@@ -432,7 +432,7 @@ module {
     // CHECK:   %[[BREAK_GUARD:.*]] = p4hir.variable ["loop_break_guard", init] : <!p4hir.bool>
     // CHECK:   p4hir.for : cond {
     // CHECK:     p4hir.read %[[BREAK_GUARD]]
-    // CHECK:     %[[NEW_COND:.*]] = p4hir.ternary
+    // CHECK:     %[[NEW_COND:.*]] = p4hir.if
     //            ...
     // CHECK:     p4hir.condition %[[NEW_COND]]
     // CHECK:   } body {

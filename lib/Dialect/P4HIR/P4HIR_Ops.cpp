@@ -981,40 +981,6 @@ static void printOmittedTerminatorRegion(mlir::OpAsmPrinter &printer, P4HIR::Sco
 }
 
 //===----------------------------------------------------------------------===//
-// TernaryOp
-//===----------------------------------------------------------------------===//
-
-void P4HIR::TernaryOp::getSuccessorRegions(mlir::RegionBranchPoint point,
-                                           SmallVectorImpl<RegionSuccessor> &regions) {
-    // The `true` and the `false` region branch back to the parent operation.
-    if (!point.isParent()) {
-        regions.push_back(RegionSuccessor(this->getODSResults(0)));
-        return;
-    }
-
-    // If the condition isn't constant, both regions may be executed.
-    regions.push_back(RegionSuccessor(&getTrueRegion()));
-    regions.push_back(RegionSuccessor(&getFalseRegion()));
-}
-
-void P4HIR::TernaryOp::build(OpBuilder &builder, OperationState &result, Value cond,
-                             function_ref<void(OpBuilder &, Location)> trueBuilder,
-                             function_ref<void(OpBuilder &, Location)> falseBuilder) {
-    result.addOperands(cond);
-    OpBuilder::InsertionGuard guard(builder);
-    Region *trueRegion = result.addRegion();
-    auto *block = builder.createBlock(trueRegion);
-    trueBuilder(builder, result.location);
-    Region *falseRegion = result.addRegion();
-    builder.createBlock(falseRegion);
-    falseBuilder(builder, result.location);
-
-    auto yield = dyn_cast<YieldOp>(block->getTerminator());
-    assert((yield && yield.getNumOperands() <= 1) && "expected zero or one result type");
-    if (yield.getNumOperands() == 1) result.addTypes(TypeRange{yield.getOperandTypes().front()});
-}
-
-//===----------------------------------------------------------------------===//
 // IfOp
 //===----------------------------------------------------------------------===//
 
@@ -1030,7 +996,8 @@ ParseResult P4HIR::IfOp::parse(OpAsmParser &parser, OperationState &result) {
 
     if (parser.parseOperand(cond) || parser.resolveOperand(cond, boolType, result.operands))
         return failure();
-
+    // Parse optional results type list.
+    if (parser.parseOptionalArrowTypeList(result.types)) return failure();
     // Parse annotations
     mlir::DictionaryAttr thenAnnotations;
     if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
@@ -1039,16 +1006,13 @@ ParseResult P4HIR::IfOp::parse(OpAsmParser &parser, OperationState &result) {
     }
 
     // Parse the 'then' region.
-    auto parseThenLoc = parser.getCurrentLocation();
     if (parser.parseRegion(*thenRegion, /*arguments=*/{},
                            /*argTypes=*/{}))
         return failure();
-    if (ensureRegionTerm(parser, *thenRegion, parseThenLoc).failed()) return failure();
+    IfOp::ensureTerminator(*thenRegion, parser.getBuilder(), result.location);
 
     // If we find an 'else' keyword, parse the 'else' region.
     if (!parser.parseOptionalKeyword("else")) {
-        auto parseElseLoc = parser.getCurrentLocation();
-
         // Parse annotations
         mlir::DictionaryAttr elseAnnotations;
         if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
@@ -1057,7 +1021,7 @@ ParseResult P4HIR::IfOp::parse(OpAsmParser &parser, OperationState &result) {
         }
 
         if (parser.parseRegion(*elseRegion, /*arguments=*/{}, /*argTypes=*/{})) return failure();
-        if (ensureRegionTerm(parser, *elseRegion, parseElseLoc).failed()) return failure();
+        IfOp::ensureTerminator(*elseRegion, parser.getBuilder(), result.location);
     }
 
     // Parse the optional attribute list.
@@ -1065,19 +1029,24 @@ ParseResult P4HIR::IfOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void P4HIR::IfOp::print(OpAsmPrinter &p) {
+    bool printBlockTerminators = false;
     p << " " << getCondition();
+    if (!getResults().empty()) {
+        p << " -> " << getResultTypes();
+        // Print yield explicitly if the op defines values.
+        printBlockTerminators = true;
+    }
     if (auto ann = getThenAnnotations(); ann && !ann->empty()) {
         p << " annotations ";
         p.printAttributeWithoutType(*ann);
     }
     p << ' ';
-    auto &thenRegion = this->getThenRegion();
-    p.printRegion(thenRegion,
+    p.printRegion(getThenRegion(),
                   /*printEntryBlockArgs=*/false,
-                  /*printBlockTerminators=*/!omitRegionTerm(thenRegion));
+                  /*printBlockTerminators=*/printBlockTerminators);
 
     // Print the 'else' regions if it exists and has a block.
-    auto &elseRegion = this->getElseRegion();
+    auto &elseRegion = getElseRegion();
     if (!elseRegion.empty()) {
         p << " else";
         if (auto ann = getElseAnnotations(); ann && !ann->empty()) {
@@ -1087,11 +1056,17 @@ void P4HIR::IfOp::print(OpAsmPrinter &p) {
         p << ' ';
         p.printRegion(elseRegion,
                       /*printEntryBlockArgs=*/false,
-                      /*printBlockTerminators=*/!omitRegionTerm(elseRegion));
+                      /*printBlockTerminators=*/printBlockTerminators);
     }
 
     p.printOptionalAttrDict(getOperation()->getAttrs(),
                             {getThenAnnotationsAttrName(), getElseAnnotationsAttrName()});
+}
+
+LogicalResult P4HIR::IfOp::verify() {
+    if (getNumResults() != 0 && getElseRegion().empty())
+        return emitOpError("must have an else block if defining values");
+    return success();
 }
 
 /// Default callback for IfOp builders.
@@ -1109,18 +1084,33 @@ void P4HIR::IfOp::getSuccessorRegions(mlir::RegionBranchPoint point,
                                       SmallVectorImpl<RegionSuccessor> &regions) {
     // The `then` and the `else` region branch back to the parent operation.
     if (!point.isParent()) {
-        regions.push_back(RegionSuccessor());
+        regions.push_back(RegionSuccessor(getResults()));
         return;
     }
 
+    regions.push_back(RegionSuccessor(&getThenRegion()));
+
     // Don't consider the else region if it is empty.
     Region *elseRegion = &this->getElseRegion();
-    if (elseRegion->empty()) elseRegion = nullptr;
+    if (elseRegion->empty())
+        regions.push_back(RegionSuccessor());
+    else
+        regions.push_back(RegionSuccessor(elseRegion));
+}
 
-    // If the condition isn't constant, both regions may be executed.
-    regions.push_back(RegionSuccessor(&getThenRegion()));
-    // If the else region does not exist, it is not a viable successor.
-    if (elseRegion) regions.push_back(RegionSuccessor(elseRegion));
+mlir::LogicalResult P4HIR::IfOp::inferReturnTypes(
+    mlir::MLIRContext *ctx, std::optional<Location> loc, P4HIR::IfOp::Adaptor adaptor,
+    llvm::SmallVectorImpl<Type> &inferredReturnTypes) {
+    if (adaptor.getRegions().empty()) return failure();
+    mlir::Region *r = &adaptor.getThenRegion();
+    if (r->empty()) return failure();
+    mlir::Block &b = r->front();
+    if (b.empty()) return failure();
+    auto yieldOp = llvm::dyn_cast<P4HIR::YieldOp>(b.back());
+    if (!yieldOp) return failure();
+    mlir::TypeRange types = yieldOp.getOperandTypes();
+    llvm::append_range(inferredReturnTypes, types);
+    return success();
 }
 
 void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, bool withElseRegion,
@@ -1140,13 +1130,22 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
     thenBuilder(builder, result.location);
 
     Region *elseRegion = result.addRegion();
-    if (!withElseRegion) return;
+    if (withElseRegion) {
+        if (elseAnnotations && !elseAnnotations.empty())
+            result.addAttribute(getElseAnnotationsAttrName(result.name), elseAnnotations);
 
-    if (elseAnnotations && !elseAnnotations.empty())
-        result.addAttribute(getElseAnnotationsAttrName(result.name), elseAnnotations);
+        builder.createBlock(elseRegion);
+        elseBuilder(builder, result.location);
+    }
 
-    builder.createBlock(elseRegion);
-    elseBuilder(builder, result.location);
+    // Infer result types.
+    llvm::SmallVector<Type> inferredReturnTypes;
+    mlir::MLIRContext *ctx = builder.getContext();
+    auto attrDict = mlir::DictionaryAttr::get(ctx, result.attributes);
+    if (succeeded(inferReturnTypes(ctx, std::nullopt, result.operands, attrDict,
+                                   /*properties=*/nullptr, result.regions, inferredReturnTypes))) {
+        result.addTypes(inferredReturnTypes);
+    }
 }
 
 static mlir::LogicalResult verifyReturnLike(mlir::Operation *op, bool mayHaveNoOperands) {
