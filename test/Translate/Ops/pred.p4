@@ -5,13 +5,13 @@
 // CHECK:    %[[TMP_1:.*]] = p4hir.variable ["tmp_1"] : <!p4hir.bool>
 // CHECK:    %[[TMP_2:.*]] = p4hir.variable ["tmp_2"] : <!p4hir.bool>
 // CHECK:    %[[NB:.*]] = p4hir.unary(not, %arg0) : !p4hir.bool
-// CHECK:    %[[MUX:.*]] = p4hir.ternary(%[[NB]], true {
+// CHECK:    %[[MUX:.*]] = p4hir.if %[[NB]] -> !p4hir.bool {
 // CHECK:      %[[TMP_2_VAL:.*]] = p4hir.read %[[TMP_2]] : <!p4hir.bool>
 // CHECK:      p4hir.yield %[[TMP_2_VAL]] : !p4hir.bool
-// CHECK:    }, false {
+// CHECK:    } else {
 // CHECK:      %[[TMP_1_VAL:.*]] = p4hir.read %[[TMP_1]] : <!p4hir.bool>
 // CHECK:      p4hir.yield %[[TMP_1_VAL]] : !p4hir.bool
-// CHECK:    }) : !p4hir.bool
+// CHECK:    }
 // CHECK:    p4hir.assign %[[MUX]], %[[TMP_1]] : <!p4hir.bool>
 
 action cond_0(bool in_b) {
