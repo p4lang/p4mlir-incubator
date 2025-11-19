@@ -1,6 +1,7 @@
 // RUN: p4mlir-opt --canonicalize %s | FileCheck %s
 
 !i32i = !p4hir.int<32>
+!b32i = !p4hir.bit<32>
 
 !A = !p4hir.array<2 x !i32i>
 
@@ -50,4 +51,28 @@ module {
 
   p4hir.call @blackhole(%v23) : (!i32i) -> ()
 
+  // CHECK-DAG: %[[ARR_VAR:.*]] = p4hir.variable ["arr"] : <!arr_2xi32i>
+  // CHECK-DAG: %[[IDX_VAR:.*]] = p4hir.variable ["idx"] : <!i32i>
+  %arr = p4hir.variable ["arr"] : <!A>
+  %arr_idx = p4hir.variable ["idx"] : <!i32i>
+
+  // Check that we can't canonicalize to ref when index is after read.
+  // CHECK-DAG: %[[ARR1:.*]] = p4hir.read %[[ARR_VAR]] : <!arr_2xi32i>
+  // CHECK-DAG: %[[IDX1:.*]] = p4hir.read %[[IDX_VAR]] : <!i32i>
+  // CHECK-DAG: %[[RES1:.*]] = p4hir.array_get %val_5[%val_6] : !arr_2xi32i, !i32i
+  // CHECK-DAG: p4hir.call @blackhole (%[[RES1]]) : (!i32i) -> ()
+  %val_0 = p4hir.read %arr : <!A>
+  %val_1 = p4hir.read %arr_idx : <!i32i>
+  %array_elt_1 = p4hir.array_get %val_0[%val_1] : !A, !i32i
+  p4hir.call @blackhole(%array_elt_1) : (!i32i) -> ()
+
+  // Check that we can canonicalize to ref when index is before read.
+  // CHECK-DAG: %[[IDX2:.*]] = p4hir.read %[[IDX_VAR]] : <!i32i>
+  // CHECK-DAG: %[[ARR_REF2:.*]] = p4hir.array_element_ref %[[ARR_VAR]][%[[IDX2]]] : !p4hir.ref<!arr_2xi32i>, !i32i
+  // CHECK-DAG: %[[RES2:.*]] = p4hir.read %[[ARR_REF2]] : <!i32i>
+  // CHECK-DAG: p4hir.call @blackhole (%[[RES2]]) : (!i32i) -> ()
+  %val_2 = p4hir.read %arr_idx : <!i32i>
+  %val_3 = p4hir.read %arr : <!A>
+  %array_elt_2 = p4hir.array_get %val_3[%val_2] : !A, !i32i
+  p4hir.call @blackhole(%array_elt_2) : (!i32i) -> ()
 }

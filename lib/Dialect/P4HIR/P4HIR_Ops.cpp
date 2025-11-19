@@ -3824,13 +3824,19 @@ LogicalResult P4HIR::ArrayGetOp::canonicalize(P4HIR::ArrayGetOp op, PatternRewri
     // not do complete SROA here as it would require tracking writes as well as
     // reads.
     if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>(); readOp && readOp->hasOneUse()) {
-        auto ref = readOp.getRef();
-        rewriter.setInsertionPoint(readOp);
-        auto eltRef = rewriter.create<P4HIR::ArrayElementRefOp>(
-            op.getLoc(), P4HIR::ReferenceType::get(op.getType()), ref, op.getIndex());
-        rewriter.replaceOpWithNewOp<P4HIR::ReadOp>(op, eltRef);
-        rewriter.eraseOp(readOp);
-        return success();
+        auto indexOp = op.getIndex().getDefiningOp();
+        // We can only do this canonicalization if the index is defined before the read because
+        // otherwise we would use index before it's defined.
+        if (indexOp && indexOp->getBlock() == readOp->getBlock() &&
+            indexOp->isBeforeInBlock(readOp)) {
+            auto ref = readOp.getRef();
+            rewriter.setInsertionPoint(readOp);
+            auto eltRef = rewriter.create<P4HIR::ArrayElementRefOp>(
+                op.getLoc(), P4HIR::ReferenceType::get(op.getType()), ref, op.getIndex());
+            rewriter.replaceOpWithNewOp<P4HIR::ReadOp>(op, eltRef);
+            rewriter.eraseOp(readOp);
+            return success();
+        }
     }
 
     return failure();
