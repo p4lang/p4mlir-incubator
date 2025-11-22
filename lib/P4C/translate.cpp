@@ -279,8 +279,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
             // Create a ternary operation:
             // if this header is valid, return true,
             // otherwise check the next header in the header union
-            auto ternaryOp = builder.create<P4HIR::TernaryOp>(
-                loc, headerIsValid.getResult(),
+            auto ternaryOp = builder.create<P4HIR::IfOp>(
+                loc, headerIsValid.getResult(), true,
                 [&](mlir::OpBuilder &b, mlir::Location loc) {
                     // If this header is valid, return true
                     b.create<P4HIR::YieldOp>(loc, getBoolConstant(loc, true));
@@ -1976,8 +1976,8 @@ bool P4HIRConverter::preorder(const P4::IR::LOr *lor) {
     // Lower a || b into a ? true : b
     auto lhs = convert(lor->left);
 
-    auto value = builder.create<P4HIR::TernaryOp>(
-        getLoc(builder, lor), lhs,
+    auto value = builder.create<P4HIR::IfOp>(
+        getLoc(builder, lor), lhs, true,
         [&](mlir::OpBuilder &b, mlir::Location loc) {
             b.create<P4HIR::YieldOp>(getEndLoc(builder, lor->left), getBoolConstant(loc, true));
         },
@@ -1995,8 +1995,8 @@ bool P4HIRConverter::preorder(const P4::IR::LAnd *land) {
     // Lower a && b into a ? b : false
     auto lhs = convert(land->left);
 
-    auto value = builder.create<P4HIR::TernaryOp>(
-        getLoc(builder, land), lhs,
+    auto value = builder.create<P4HIR::IfOp>(
+        getLoc(builder, land), lhs, true,
         [&](mlir::OpBuilder &b, mlir::Location) {
             b.create<P4HIR::YieldOp>(getEndLoc(builder, land->right), convert(land->right));
         },
@@ -2015,8 +2015,8 @@ bool P4HIRConverter::preorder(const P4::IR::Mux *mux) {
     auto cond = convert(mux->e0);
 
     // Make the value itself
-    auto value = builder.create<P4HIR::TernaryOp>(
-        getLoc(builder, mux), cond,
+    auto value = builder.create<P4HIR::IfOp>(
+        getLoc(builder, mux), cond, true,
         [&](mlir::OpBuilder &b, mlir::Location) {
             b.create<P4HIR::YieldOp>(getEndLoc(builder, mux->e1), convert(mux->e1));
         },
@@ -2257,6 +2257,16 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
 
 bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
     ConversionTracer trace("Converting ", act);
+
+    const auto *control = findContext<P4::IR::P4Control>();
+    llvm::SmallVector<mlir::TypedAttr, 2> ctorParamAttrs;
+    if (control) {
+        for (const auto *param : control->getConstructorParameters()->parameters) {
+            auto attr = getValue(param).getDefiningOp<P4HIR::ConstOp>().getValue();
+            ctorParamAttrs.push_back(attr);
+        }
+    }
+
     ValueTable actionValues, *savedValues = p4Values;
     p4Values = &actionValues;
     ValueScope scope(actionValues);
@@ -2285,6 +2295,18 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
     {
         mlir::OpBuilder::InsertionGuard guard(builder);
         builder.setInsertionPointToStart(&body.front());
+
+        if (control) {
+            // Actions could refer to control's constructor arguments. Materialize them as
+            // constants.
+            for (auto [param, attr] :
+                 llvm::zip_equal(control->getConstructorParameters()->parameters, ctorParamAttrs)) {
+                llvm::StringRef paramName = param->name.string_view();
+                auto val = builder.create<P4HIR::ConstOp>(getLoc(builder, param), attr, paramName);
+                setValue(param, val);
+            }
+        }
+
         visit(act->body);
 
         // Check if body's last block is not terminated.
@@ -3585,7 +3607,8 @@ bool P4HIRConverter::preorder(const P4::IR::ForStatement *fstmt) {
                 ValueScope scope(*p4Values);
 
                 visit(fstmt->updates);
-                P4HIR::buildTerminatedBody(b, getEndLoc(builder, fstmt->updates.back()));
+                const auto *locNode = fstmt->updates.empty() ? fstmt : fstmt->updates.back();
+                P4HIR::buildTerminatedBody(b, getEndLoc(builder, locNode));
             });
     };
 

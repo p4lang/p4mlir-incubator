@@ -18,11 +18,11 @@ module {
       %true = p4hir.const #true
       p4hir.assign %true, %hasReturned : <!p4hir.bool>
       %gt = p4hir.cmp(gt, %arg0 : !b32i, %arg1 : !b32i)
-      %0 = p4hir.ternary(%gt, true {
+      %0 = p4hir.if %gt -> !b32i {
         p4hir.yield %arg1 : !b32i
-      }, false {
+      } else {
         p4hir.yield %arg0 : !b32i
-      }) : !b32i
+      }
       p4hir.assign %0, %retval : <!b32i>
     }
     %val = p4hir.read %retval : <!b32i>

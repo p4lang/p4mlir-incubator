@@ -72,12 +72,12 @@ module {
 
   p4hir.parser @p3(%arg0: !i10i)(ctorval: !p4hir.bool) {
     %ctorval = p4hir.const ["ctorval"] #p3_ctorval
-    %0 = p4hir.ternary(%ctorval, true {
+    %0 = p4hir.if %ctorval -> !i10i {
       %c0_i10i = p4hir.const #int0_i10i
       p4hir.yield %c0_i10i : !i10i
-    }, false {
+    } else {
       p4hir.yield %arg0 : !i10i
-    }) : !i10i
+    }
     %s = p4hir.variable ["s", init] : <!i10i>
     p4hir.assign %0, %s : <!i10i>
     p4hir.state @start {
