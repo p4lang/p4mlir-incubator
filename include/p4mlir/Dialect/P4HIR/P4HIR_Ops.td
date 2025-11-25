@@ -1379,10 +1379,10 @@ def ConstructOp : P4HIR_Op<"construct",
 }
 
 
-// TODO: Decide on effects / traits here
 def SymToValueOp : P4HIR_Op<"symbol_ref",
-  [NoRegionArguments,
+  [Pure, NoRegionArguments,
    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+   DeclareOpInterfaceMethods<ViewLikeOpInterface>,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]> {
 

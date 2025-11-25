@@ -2688,11 +2688,22 @@ LogicalResult P4HIR::SymToValueOp::verifySymbolUses(SymbolTableCollection &symbo
     auto decl = symbolTable.lookupSymbolIn(getParentModule(*this), declAttr);
     if (!decl) return emitOpError("cannot resolve symbol '") << declAttr << "' to declaration";
 
+    if (!mlir::isa<P4HIR::ControlLocalOp, P4HIR::InstantiateOp>(decl))
+        return emitOpError("invalid symbol reference: ") << decl << ", expected control local";
+
     return mlir::success();
 }
 
 void P4HIR::SymToValueOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), getDecl().getLeafReference());
+}
+
+Value P4HIR::SymToValueOp::getViewSource() {
+    auto decl = SymbolTable::lookupSymbolIn(getParentModule(*this), getDecl());
+    if (auto controlLocalOp = mlir::dyn_cast<P4HIR::ControlLocalOp>(decl))
+        return controlLocalOp.getVal();
+    assert(mlir::isa<P4HIR::InstantiateOp>(decl));
+    return Value();
 }
 
 //===----------------------------------------------------------------------===//
