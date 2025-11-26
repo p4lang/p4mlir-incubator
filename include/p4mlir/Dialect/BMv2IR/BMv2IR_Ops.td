@@ -1,8 +1,11 @@
 #ifndef P4MLIR_DIALECT_BMv2IR_BMv2IR_OPS_TD
 #define P4MLIR_DIALECT_BMv2IR_BMv2IR_OPS_TD
 
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 
 
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Dialect.td"
@@ -10,12 +13,56 @@ include "p4mlir/Dialect/BMv2IR/BMv2IR_Types.td"
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Attrs.td"
 include "p4mlir/Dialect/BMv2IR/BMv2IR_OpInterfaces.td"
 
+include "p4mlir/Dialect/P4HIR/P4HIR_Types.td"
+
+
 //===----------------------------------------------------------------------===//
 // Base BMv2IR operation definition.
 //===----------------------------------------------------------------------===//
 
 class BMv2IR_Op<string mnemonic, list<Trait> traits = []> :
         Op<BMv2IR_Dialect, mnemonic, traits>;
+
+def BMv2IR_HeaderInstanceOp : BMv2IR_Op<"header_instance", [
+    Symbol
+  ]> {
+  let summary = "Declares a header instance as a global variable";
+  let description = [{
+    Represents a header instance in a P4 program. Header instances
+    are modeled similarly to global variables, and referenced by Symbol name by other ops.
+    
+    The operation has a symbol name and references a header type. It can be
+    marked as metadata to distinguish metadata instances from regular header
+    instances.
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    TypeAttr:$header_type,
+    DefaultValuedAttr<BoolAttr, "false">:$metadata
+  );
+
+  let assemblyFormat = [{
+    $sym_name `:` $header_type attr-dict
+  }];
+}
+
+def BMv2IR_SymToValueOp : BMv2IR_Op<"symbol_ref",
+  [Pure, NoRegionArguments, AllowedParserOp,
+   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
+
+  let results = (outs AnyType:$result);
+  let arguments = (ins SymbolRefAttr:$decl);
+
+  // TODO: Add verifier
+  let hasVerifier = 0;
+
+  let assemblyFormat = [{
+    $decl attr-dict `:` type($result)
+  }];
+}
 
 def BMv2IR_ParserOp : BMv2IR_Op<"parser", [
     Symbol, SymbolTable,
@@ -118,12 +165,45 @@ def BMv2_ExtractOp : BMv2IR_Op<"extract", [HasParent<"ParserStateOp">, AllowedPa
   
   let arguments = (ins
     BMv2IR_ExtractKindAttr:$extract_type,
-    StrAttr:$value,
+    SymbolRefAttr:$header_instance,
     OptionalAttr<StrAttr>:$union_member
   );
   
   let assemblyFormat = [{
-    $extract_type $value (`union_member` $union_member^)? attr-dict
+    $extract_type $header_instance (`union_member` $union_member^)? attr-dict
+  }];
+}
+
+def BMv2_AssignHeaderOp : BMv2IR_Op<"assign_header", [AllowedParserOp]> {
+  let summary = "Assign header operation";
+  let description = [{
+    Assigns one header instance to another.
+  }];
+
+  
+  let arguments = (ins
+    SymbolRefAttr:$src,
+    SymbolRefAttr:$dst
+  );
+  
+  let assemblyFormat = [{
+    $src `to` $dst attr-dict
+  }];
+}
+
+def BMv2_AssignOp : BMv2IR_Op<"assign", [AllowedParserOp]> {
+  let summary = "Assign operation";
+  let description = [{
+    Assigns the first argument to the second argument.
+    Arguments can be arbitrary expressions.
+  }];
+
+  // TODO: refine types
+  let arguments = (ins AnyType:$src,
+                       AnyType:$dst);
+  
+  let assemblyFormat = [{
+    $src `:` type($src) `to` $dst `:` type($dst) attr-dict
   }];
 }
 
@@ -132,19 +212,23 @@ def BMv2_ExtractOp : BMv2IR_Op<"extract", [HasParent<"ParserStateOp">, AllowedPa
 // see https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#the-type-value-object
 //===-------------------------------------------------------------------------------------------===//
 
-def BMv2IR_FieldOp : BMv2IR_Op<"field", [AllowedTransitionKey]> {
+def BMv2IR_FieldOp : BMv2IR_Op<"field", [AllowedTransitionKey, AllowedParserOp]> {
   let summary = "BMv2 header field access";
   let description = [{
     Represents access to a field within a header instance.
+    Since in BMv2 header instances can contain only bits, this op can return only bits.
     Contains a 2-tuple: (header_instance_name, field_member_name)
   }];
   
   let arguments = (ins
-    StrAttr:$headerInstance,
+    SymbolRefAttr:$headerInstance,
     StrAttr:$fieldMember
   );
   
-  let assemblyFormat = "`<` $headerInstance `,` $fieldMember `>` attr-dict";
+  let results = (outs 
+    BMv2IR_FieldType:$res); 
+  
+  let assemblyFormat = "$headerInstance `[` $fieldMember `]` `->` type($res) attr-dict";
 }
 
 def BMv2_StackFieldOp : BMv2IR_Op<"stack_field", [AllowedTransitionKey]> {
