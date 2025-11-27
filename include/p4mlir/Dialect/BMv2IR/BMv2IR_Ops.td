@@ -106,9 +106,9 @@ def BMv2IR_ParserStateOp : BMv2IR_Op<"state",
   }];
   
   let regions = (region 
-      SizedRegion<1>:$parser_ops,
-      SizedRegion<1>:$transitions,
-      SizedRegion<1>:$transition_keys);
+      MaxSizedRegion<1>:$parser_ops,
+      MaxSizedRegion<1>:$transitions,
+      MaxSizedRegion<1>:$transition_keys);
   
   let assemblyFormat = [{
     $sym_name
