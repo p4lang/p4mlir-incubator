@@ -64,7 +64,7 @@ struct RemapLocationHelper {
     static mlir::LocationAttr stackLocations(mlir::Location callee, mlir::Location caller) {
         mlir::Location lastCallee = callee;
         llvm::SmallVector<mlir::CallSiteLoc> calleeInliningStack;
-        while (auto nextCallSite = dyn_cast<mlir::CallSiteLoc>(lastCallee)) {
+        while (auto nextCallSite = mlir::dyn_cast<mlir::CallSiteLoc>(lastCallee)) {
             calleeInliningStack.push_back(nextCallSite);
             lastCallee = nextCallSite.getCaller();
         }
@@ -335,7 +335,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
         mlir::IRMapping mapper;
         llvm::MapVector<mlir::StringAttr, ControlLocalInfo> controlLocalMap;
         llvm::SmallVector<mlir::Operation *> initOps;
-        mlir::Region *calleeControlApplyRegion;
+        mlir::Region *calleeControlApplyRegion = nullptr;
 
         rewriter.setInsertionPoint(instOp);
         for (mlir::Operation &op : *calleeBlock) {
