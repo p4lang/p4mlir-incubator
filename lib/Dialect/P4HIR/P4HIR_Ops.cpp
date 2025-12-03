@@ -1464,6 +1464,8 @@ static mlir::Operation *resolveCallCallableImpl(
             if (f.getNumArguments() == callOp.getNumOperands()) return f;
         }
     }
+
+    return nullptr;
 }
 
 mlir::Operation *P4HIR::CallOp::resolveCallableInTable(mlir::SymbolTableCollection *symbolTable) {
