@@ -18,6 +18,9 @@ def BMv2IR_Dialect : Dialect {
     }];
     let cppNamespace = "::P4::P4MLIR::BMv2IR";
 
+    let useDefaultTypePrinterParser = 1;
+    let useDefaultAttributePrinterParser = 1;
+
     let extraClassDeclaration = [{
         void registerAttributes();
         void registerTypes();
