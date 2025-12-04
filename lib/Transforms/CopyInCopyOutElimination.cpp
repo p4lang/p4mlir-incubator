@@ -1,6 +1,7 @@
 // We explicitly do not use push / pop for diagnostic in
 // order to propagate pragma further on
 #include "mlir/Analysis/AliasAnalysis.h"
+#include "mlir/IR/Dominance.h"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include "mlir/Interfaces/SideEffectInterfaces.h"
@@ -148,8 +149,8 @@ bool hasNoInterveningEffect(Operation *start, Operation *end, Value ref,
 
 class CopyOutElimination : public mlir::OpRewritePattern<P4HIR::VariableOp> {
  public:
-    CopyOutElimination(MLIRContext *context, AliasAnalysis &aliasAnalysis)
-        : OpRewritePattern(context), aliasAnalysis(aliasAnalysis) {}
+    CopyOutElimination(MLIRContext *context, AliasAnalysis &aliasAnalysis, DominanceInfo &domInfo)
+        : OpRewritePattern(context), aliasAnalysis(aliasAnalysis), domInfo(domInfo) {}
 
     mlir::LogicalResult matchAndRewrite(P4HIR::VariableOp alias,
                                         mlir::PatternRewriter &rewriter) const override {
@@ -185,6 +186,11 @@ class CopyOutElimination : public mlir::OpRewritePattern<P4HIR::VariableOp> {
 
         // Ensure that writeOp really writes to alias
         auto aliasee = writeAliaseeOp.getRef();
+
+        // Ensure that aliasee dominates writeAliasOp
+        if (!domInfo.dominates(aliasee, writeAliasOp))
+            return rewriter.notifyMatchFailure(aliasee.getDefiningOp(),
+                                               "aliasee does not dominate write op");
 
         // Now we are having the following set of ops:
         //  %alias = p4hir.variable
@@ -244,11 +250,12 @@ class CopyOutElimination : public mlir::OpRewritePattern<P4HIR::VariableOp> {
 
  private:
     AliasAnalysis &aliasAnalysis;
+    DominanceInfo &domInfo;
 };
 
 class CopyInOutElimination : public mlir::OpRewritePattern<P4HIR::VariableOp> {
  public:
-    CopyInOutElimination(MLIRContext *context, AliasAnalysis &aliasAnalysis)
+    CopyInOutElimination(MLIRContext *context, AliasAnalysis &aliasAnalysis, DominanceInfo &)
         : OpRewritePattern(context), aliasAnalysis(aliasAnalysis) {}
 
     mlir::LogicalResult matchAndRewrite(P4HIR::VariableOp alias,
@@ -367,8 +374,8 @@ class CopyInOutElimination : public mlir::OpRewritePattern<P4HIR::VariableOp> {
 
 void CopyInCopyOutEliminationPass::runOnOperation() {
     RewritePatternSet patterns(&getContext());
-    patterns.add<CopyOutElimination, CopyInOutElimination>(patterns.getContext(),
-                                                           getAnalysis<AliasAnalysis>());
+    patterns.add<CopyOutElimination, CopyInOutElimination>(
+        patterns.getContext(), getAnalysis<AliasAnalysis>(), getAnalysis<DominanceInfo>());
 
     if (applyPatternsGreedily(getOperation(), std::move(patterns)).failed()) signalPassFailure();
 }
