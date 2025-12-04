@@ -1,5 +1,6 @@
 set(LIBS
   P4MLIR_P4C_TRANSLATE
+  P4Pipelines
 )
 
 set(P4MLIR_TRANSLATE_SRCS

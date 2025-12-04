@@ -45,4 +45,11 @@ TranslateOptions::TranslateOptions() {
             return true;
         },
         "do not dump module on exit");
+    registerOption(
+        "--run-mlir-frontend", nullptr,
+        [this](const char *) {
+            mlirFrontend = true;
+            return true;
+        },
+        "run MLIR frontend passes");
 }
