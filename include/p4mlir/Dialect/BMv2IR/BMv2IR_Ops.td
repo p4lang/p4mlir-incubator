@@ -5,8 +5,6 @@ include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir/Interfaces/ViewLikeInterface.td"
-
 
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Dialect.td"
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Types.td"
@@ -151,7 +149,7 @@ def BMv2IR_TransitionOp : BMv2IR_Op<"transition", [HasParent<"ParserStateOp">]> 
 }
 
 
-def BMv2_ExtractOp : BMv2IR_Op<"extract", [HasParent<"ParserStateOp">, AllowedParserOp]> {
+def BMv2IR_ExtractOp : BMv2IR_Op<"extract", [HasParent<"ParserStateOp">, AllowedParserOp]> {
   let summary = "Extract header operation";
   let description = [{
     Extracts the field of a header instance, header stack, or union stack element.
@@ -173,7 +171,7 @@ def BMv2_ExtractOp : BMv2IR_Op<"extract", [HasParent<"ParserStateOp">, AllowedPa
   }];
 }
 
-def BMv2_AssignHeaderOp : BMv2IR_Op<"assign_header", [AllowedParserOp]> {
+def BMv2IR_AssignHeaderOp : BMv2IR_Op<"assign_header", [AllowedParserOp]> {
   let summary = "Assign header operation";
   let description = [{
     Assigns one header instance to another.
@@ -190,7 +188,7 @@ def BMv2_AssignHeaderOp : BMv2IR_Op<"assign_header", [AllowedParserOp]> {
   }];
 }
 
-def BMv2_AssignOp : BMv2IR_Op<"assign", [AllowedParserOp]> {
+def BMv2IR_AssignOp : BMv2IR_Op<"assign", [AllowedParserOp]> {
   let summary = "Assign operation";
   let description = [{
     Assigns the first argument to the second argument.
