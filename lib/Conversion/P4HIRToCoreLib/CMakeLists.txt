@@ -8,6 +8,8 @@ add_mlir_dialect_library(P4HIRToCoreLib
   P4HIRToCoreLibPassIncGen
 
   LINK_LIBS PUBLIC
+  P4MLIRConversion
+  P4MLIR_P4CoreLib
   MLIRIR
   MLIRSupport
   MLIRTransforms
