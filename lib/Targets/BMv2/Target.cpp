@@ -14,6 +14,7 @@
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
@@ -21,6 +22,7 @@
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Dialect.h"
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -30,11 +32,13 @@ namespace {
 constexpr StringRef id_attrname = "bmv2_id";
 
 template <typename OpTy>
-void setID(Operation *rootOp) {
+void setID(Operation *rootOp, std::function<bool(OpTy)> conditionF = [](OpTy) { return true; }) {
     int64_t id = 0;
     rootOp->walk([&](OpTy op) {
-        op->setAttr(id_attrname, IntegerAttr::get(op.getContext(), APSInt::get(id)));
-        id++;
+        if (conditionF(op)) {
+            op->setAttr(id_attrname, IntegerAttr::get(op.getContext(), APSInt::get(id)));
+            id++;
+        }
     });
 }
 
@@ -48,8 +52,10 @@ void setUniqueIDS(ModuleOp moduleOp) {
     setID<BMv2IR::HeaderInstanceOp>(moduleOp);
     setID<BMv2IR::ParserOp>(moduleOp);
     setID<BMv2IR::ParserStateOp>(moduleOp);
+    setID<P4HIR::FuncOp>(moduleOp, [](P4HIR::FuncOp funcOp) { return funcOp.getAction(); });
 }
 
+json::Value to_JSON(Value val);
 json::Value to_JSON(Operation *op);
 
 json::Value to_JSON(BMv2IR::HeaderType headerTy, int64_t id) {
@@ -170,8 +176,8 @@ json::Value to_JSON(BMv2IR::AssignOp assignOp) {
     json::Object res;
     res["op"] = "assign";
     json::Array params;
-    params.push_back(to_JSON(assignOp.getDst().getDefiningOp()));
-    params.push_back(to_JSON(assignOp.getSrc().getDefiningOp()));
+    params.push_back(to_JSON(assignOp.getDst()));
+    params.push_back(to_JSON(assignOp.getSrc()));
     res["parameters"] = std::move(params);
     return res;
 }
@@ -193,6 +199,10 @@ json::Value to_JSON(BMv2IR::ExtractOp extractOp) {
     res["parameters"] = std::move(parameters);
     return res;
 }
+
+// Returns true for Operations that we don't want to emit directly
+// when emitting lists of primitives
+static bool skipOpEmission(Operation *op) { return isa<BMv2IR::FieldOp, P4HIR::ReturnOp>(op); }
 
 json::Value to_JSON(BMv2IR::ParserStateOp stateOp) {
     json::Object res;
@@ -218,7 +228,7 @@ json::Value to_JSON(BMv2IR::ParserStateOp stateOp) {
     json::Array ops;
     if (!stateOp.getParserOps().empty()) {
         for (auto &op : stateOp.getParserOps().front()) {
-            if (!isa<BMv2IR::FieldOp>(op)) ops.push_back(to_JSON(&op));
+            if (!skipOpEmission(&op)) ops.push_back(to_JSON(&op));
         }
     }
     res["parser_ops"] = std::move(ops);
@@ -240,6 +250,33 @@ json::Value to_JSON(BMv2IR::ParserOp parserOp) {
     return res;
 }
 
+json::Value actionToJSON(P4HIR::FuncOp actionOp) {
+    json::Object res;
+    res["name"] = actionOp.getSymName();
+    res["id"] = getId(actionOp);
+
+    json::Array params;
+    for (auto arg : actionOp.getArguments()) {
+        json::Object paramDesc;
+        paramDesc["name"] = actionOp.getArgumentName(arg.getArgNumber()).getValue();
+        paramDesc["bitwidth"] = cast<P4HIR::BitsType>(arg.getType()).getWidth();
+        params.push_back(std::move(paramDesc));
+    }
+    res["runtime_data"] = std::move(params);
+
+    json::Array ops;
+    for (auto &op : actionOp.getOps()) {
+        if (!skipOpEmission(&op)) ops.push_back(to_JSON(&op));
+    }
+    res["primitives"] = std::move(ops);
+    return res;
+}
+
+json::Value to_JSON(P4HIR::FuncOp funcOp) {
+    if (funcOp.getAction()) return actionToJSON(funcOp);
+    llvm_unreachable("Only Actions JSON conversion supported");
+}
+
 json::Value to_JSON(Operation *op) {
     return llvm::TypeSwitch<Operation *, json::Value>(op)
         .Case([](BMv2IR::AssignHeaderOp assignOp) { return to_JSON(assignOp); })
@@ -251,6 +288,23 @@ json::Value to_JSON(Operation *op) {
             llvm::errs() << "Unsupported op: " << op->getName().getIdentifier() << "\n";
             llvm_unreachable("Unsupported op");
         });
+}
+
+json::Value to_JSON(BlockArgument arg) {
+    auto parent = arg.getParentBlock()->getParentOp();
+    assert(parent && "Expected blockarg parentOp");
+    auto funcOp = cast<P4HIR::FuncOp>(parent);
+    assert(funcOp.getAction() && "Expected action");
+    json::Object res;
+
+    res["type"] = "runtime_data";
+    res["value"] = arg.getArgNumber();
+    return res;
+}
+
+static json::Value to_JSON(Value val) {
+    if (auto op = val.getDefiningOp()) return to_JSON(op);
+    return to_JSON(cast<BlockArgument>(val));
 }
 }  // anonymous namespace
 
@@ -284,8 +338,15 @@ mlir::FailureOr<json::Value> P4::P4MLIR::bmv2irToJson(ModuleOp moduleOp) {
 
     // Emit parsers
     json::Array parsers;
-    moduleOp.walk([&parsers](BMv2IR::ParserOp parserOp) { parsers.push_back(to_JSON(parserOp)); });
+    moduleOp.walk([&](BMv2IR::ParserOp parserOp) { parsers.push_back(to_JSON(parserOp)); });
     root["parsers"] = std::move(parsers);
+
+    // Emit actions
+    json::Array actions;
+    moduleOp.walk([&](P4HIR::FuncOp funcOp) {
+        if (funcOp.getAction()) actions.push_back(to_JSON(funcOp));
+    });
+    root["actions"] = std::move(actions);
 
     json::Value res(std::move(root));
 

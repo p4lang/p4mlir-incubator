@@ -4,14 +4,15 @@
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Dialect.td"
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Types.td"
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Attrs.td"
 include "p4mlir/Dialect/BMv2IR/BMv2IR_OpInterfaces.td"
-
 include "p4mlir/Dialect/P4HIR/P4HIR_Types.td"
+include "p4mlir/Dialect/P4HIR/P4HIR_OpInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // Base BMv2IR operation definition.
