@@ -50,12 +50,15 @@ limitations under the License.
 #include "lib/error.h"
 #include "lib/gc.h"
 #include "options.h"
+#include "p4mlir/Common/Registration.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass/PassManager.h"
+#include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
+#include "p4mlir/Dialect/P4HIR/Pipelines/Passes.h"
 #include "p4mlir/P4C/translate.h"
 #pragma GCC diagnostic pop
 
@@ -190,11 +193,26 @@ int main(int argc, char *const argv[]) {
     GC_disable();
 #endif
 
-    mlir::MLIRContext context;
-    context.getOrLoadDialect<P4::P4MLIR::P4HIR::P4HIRDialect>();
+    mlir::DialectRegistry registry;
+    registry.insert<P4::P4MLIR::P4HIR::P4HIRDialect, P4::P4MLIR::P4CoreLib::P4CoreLibDialect>();
+    P4::P4MLIR::registerCommonFrontEndPipeline();
+
+    mlir::MLIRContext context(registry);
+    context.loadAllAvailableDialects();
 
     auto mod = P4::P4MLIR::toMLIR(context, program, &typeMap);
     if (!mod) return EXIT_FAILURE;
+
+    if (options.mlirFrontend) {
+        P4::P4MLIR::CommonFrontEndPipelineOpts mlirFEOptions;
+        mlir::PassManager pm(&context);
+        P4::P4MLIR::buildCommonFrontEndPassPipeline(pm, mlirFEOptions);
+
+        if (failed(pm.run(*mod))) {
+            llvm::errs() << "Failed to run MLIR passes\n";
+            return EXIT_FAILURE;
+        }
+    }
 
     mlir::OpPrintingFlags flags;
     if (!options.noDump) mod->print(llvm::outs(), flags.enableDebugInfo(options.printLoc));
