@@ -1901,7 +1901,7 @@ def ConditionOp : P4HIR_Op<"condition",
 }
 
 def UninitializedOp : P4HIR_Op<"uninitialized",
-  [ConstantLike, Pure,
+  [Pure,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Materialize an uninitialized value";
   let description = [{
