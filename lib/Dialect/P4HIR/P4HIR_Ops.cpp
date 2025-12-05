@@ -843,8 +843,7 @@ LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewri
     // Replace all reads with the assigned value and remove the assignment.
     mlir::Value assignedValue = uniqueAssignOp.getValue();
     for (auto *user : llvm::make_early_inc_range(users))
-        if (user != uniqueAssignOp)
-            rewriter.replaceOp(user, assignedValue);
+        if (user != uniqueAssignOp) rewriter.replaceOp(user, assignedValue);
     rewriter.eraseOp(uniqueAssignOp);
 
     // Remove the original variable.
@@ -3223,6 +3222,100 @@ P4HIR::ParamDirection P4HIR::ControlOp::getArgumentDirection(unsigned i) {
 mlir::LogicalResult P4HIR::ControlApplyOp::verify() { return verifyFunctionLike(&getBody()); }
 
 //===----------------------------------------------------------------------===//
+// TableKeyOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::TableKeyOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
+                              P4HIR::FuncType applyType, ArrayRef<DictionaryAttr> argAttrs,
+                              mlir::DictionaryAttr annotations) {
+    result.addRegion();
+
+    result.addAttribute(::SymbolTable::getSymbolAttrName(), builder.getStringAttr("table_key"));
+    result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(applyType));
+
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+    call_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                              /*resultAttrs=*/{}, getArgAttrsAttrName(result.name),
+                                              {});
+}
+
+void P4HIR::TableKeyOp::createEntryBlock() {
+    assert(empty() && "can only create entry block for empty control");
+    Block &first = getFunctionBody().emplaceBlock();
+    auto loc = getFunctionBody().getLoc();
+    for (auto argType : getFunctionType().getInputs()) first.addArgument(argType, loc);
+}
+
+void P4HIR::TableKeyOp::print(mlir::OpAsmPrinter &printer) {
+    // Print function signature
+    function_interface_impl::printFunctionSignature(printer, *this, getApplyType().getInputs(),
+                                                    false, {});
+
+    function_interface_impl::printFunctionAttributes(
+        printer, *this,
+        // These are all omitted since they are custom printed already.
+        {getApplyTypeAttrName(), getAnnotationsAttrName(), getArgAttrsAttrName()});
+
+    if (auto ann = getAnnotations(); ann && !ann->empty()) {
+        printer << " annotations ";
+        printer.printAttributeWithoutType(*ann);
+    }
+
+    printer << ' ';
+    printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false, /*printBlockTerminators=*/true);
+}
+
+mlir::ParseResult P4HIR::TableKeyOp::parse(mlir::OpAsmParser &parser,
+                                           mlir::OperationState &result) {
+    llvm::SMLoc loc = parser.getCurrentLocation();
+    auto &builder = parser.getBuilder();
+
+    result.addAttribute(::SymbolTable::getSymbolAttrName(), builder.getStringAttr("table_key"));
+
+    llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
+    llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
+    llvm::SmallVector<Type, 8> argTypes;
+    llvm::SmallVector<Type, 0> resultTypes;
+    bool isVariadic = false;
+    if (function_interface_impl::parseFunctionSignatureWithArguments(
+            parser, /*allowVariadic=*/false, arguments, isVariadic, resultTypes, resultAttrs))
+        return mlir::failure();
+
+    // Table key op has no results
+    if (!resultTypes.empty() || !resultAttrs.empty())
+        return parser.emitError(loc, "table keys should not produce any results");
+
+    // Build the function type.
+    for (auto &arg : arguments) argTypes.push_back(arg.type);
+
+    if (auto fnType = P4HIR::FuncType::get(builder.getContext(), argTypes)) {
+        result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(fnType));
+    } else
+        return mlir::failure();
+
+    // If additional attributes are present, parse them.
+    if (parser.parseOptionalAttrDictWithKeyword(result.attributes)) return failure();
+
+    // Parse annotations
+    mlir::DictionaryAttr annotations;
+    if (::mlir::succeeded(parser.parseOptionalKeyword("annotations"))) {
+        if (parser.parseAttribute<mlir::DictionaryAttr>(annotations)) return failure();
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+    }
+
+    // Add the attributes to the arguments.
+    call_interface_impl::addArgAndResultAttrs(builder, result, arguments, resultAttrs,
+                                              getArgAttrsAttrName(result.name), {});
+
+    // Parse the table key body.
+    auto *body = result.addRegion();
+    if (parser.parseRegion(*body, arguments, /*enableNameShadowing=*/false)) return mlir::failure();
+
+    return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // TableOp
 //===----------------------------------------------------------------------===//
 
@@ -3329,23 +3422,6 @@ void P4HIR::TableDefaultActionOp::build(
 //===----------------------------------------------------------------------===//
 void P4HIR::TableSizeOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "size");
-}
-
-//===----------------------------------------------------------------------===//
-// TableKeyOp
-//===----------------------------------------------------------------------===//
-
-void P4HIR::TableKeyOp::build(
-    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::DictionaryAttr annotations,
-    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> keyBuilder) {
-    if (annotations && !annotations.empty())
-        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
-
-    OpBuilder::InsertionGuard guard(builder);
-
-    Region *entryRegion = result.addRegion();
-    builder.createBlock(entryRegion);
-    keyBuilder(builder, result.location);
 }
 
 //===----------------------------------------------------------------------===//

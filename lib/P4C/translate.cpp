@@ -37,6 +37,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Types.h"
@@ -173,6 +174,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     //                                const P4::IR::Expression *>;
     // llvm::DenseMap<CTVOrExpr, mlir::TypedAttr> p4Constants;
     llvm::DenseMap<const P4::IR::Expression *, mlir::TypedAttr> p4Constants;
+
+    llvm::DenseMap<const P4::IR::P4Table *, llvm::SmallVector<mlir::Value>> tableKeyArgsMap;
 
     using ValueTable = llvm::ScopedHashTable<const P4::IR::Node *, mlir::Value>;
     // We temporary swap value table inside function / action to ensure everything
@@ -2573,10 +2576,14 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 BUG_CHECK(dSym, "expected applied declaration to be converted: %1%", decl);
                 b.create<P4HIR::ApplyOp>(loc, dSym, operands);
             } else if (auto *table = aCall->object->to<P4::IR::P4Table>()) {
+                mlir::ValueRange tableKeyArgs;
+                if (auto it = tableKeyArgsMap.find(table); it != tableKeyArgsMap.end())
+                    tableKeyArgs = it->second;
                 auto tSym = p4Symbols.lookup(table);
                 BUG_CHECK(tSym, "expected applied table to be converted: %1%", table);
                 auto applyResultType = getOrCreateType(instance->actualMethodType->returnType);
-                callResult = b.create<P4HIR::TableApplyOp>(loc, applyResultType, tSym).getResult();
+                callResult = b.create<P4HIR::TableApplyOp>(loc, applyResultType, tSym, tableKeyArgs)
+                                 .getResult();
             } else
                 BUG("Unsuported apply: %1% (aka %2%)", aCall->object, dbp(aCall->object));
         } else if (const auto *fCall = instance->to<P4::ExternMethod>()) {
@@ -3470,21 +3477,58 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
                 }
             });
     } else if (prop->name == P4::IR::TableProperties::keyPropertyName) {
-        builder.create<P4HIR::TableKeyOp>(
-            loc, annotations, [&](mlir::OpBuilder &b, mlir::Location) {
-                ValueScope scope(*p4Values);
+        auto emptyFuncType = P4HIR::FuncType::get(builder.getContext(), {});
+        auto tableKeyOp = builder.create<P4HIR::TableKeyOp>(
+            loc, emptyFuncType, llvm::SmallVector<mlir::DictionaryAttr>{}, annotations);
+        tableKeyOp.createEntryBlock();
+        mlir::Block *tableKeyBlock = &tableKeyOp.getBody().front();
 
-                const auto *key = prop->value->checkedTo<P4::IR::Key>();
-                for (const auto *kel : key->keyElements) {
-                    auto kAnnotations = convert(kel->annotations);
-                    auto kExpr = convert(kel->expression);
-                    const auto *match_kind = resolvePath(kel->matchType->path, false)
-                                                 ->checkedTo<P4::IR::Declaration_ID>();
-                    b.create<P4HIR::TableKeyEntryOp>(
-                        getLoc(b, kel), b.getStringAttr(match_kind->name.string_view()), kExpr,
-                        kAnnotations);
-                }
-            });
+        mlir::OpBuilder::InsertionGuard guard(builder);
+        builder.setInsertionPointToStart(tableKeyBlock);
+
+        ValueScope scope(*p4Values);
+
+        const auto *key = prop->value->checkedTo<P4::IR::Key>();
+        for (const auto *kel : key->keyElements) {
+            auto kAnnotations = convert(kel->annotations);
+            auto kExpr = convert(kel->expression);
+            const auto *match_kind =
+                resolvePath(kel->matchType->path, false)->checkedTo<P4::IR::Declaration_ID>();
+            builder.create<P4HIR::TableKeyEntryOp>(
+                getLoc(builder, kel), builder.getStringAttr(match_kind->name.string_view()), kExpr,
+                kAnnotations);
+        }
+
+        // Create new block arguments on-demand for values coming from an outter scope.
+        llvm::MapVector<mlir::Value, mlir::Value> argMapping;
+        auto adjustVal = [&](mlir::Value val) {
+            bool outterVal =
+                !val.getDefiningOp() || !tableKeyBlock->findAncestorOpInBlock(*val.getDefiningOp());
+            if (!outterVal) return val;
+
+            auto [it, ins] = argMapping.insert({val, {}});
+            if (ins) it->second = tableKeyBlock->addArgument(val.getType(), loc);
+
+            return it->second;
+        };
+
+        tableKeyBlock->walk([&](mlir::Operation *op) {
+            for (mlir::OpOperand &operand : op->getOpOperands())
+                operand.assign(adjustVal(operand.get()));
+        });
+
+        // Update function type based on the used outter values.
+        auto inputTypes = llvm::map_to_vector(tableKeyBlock->getArguments(),
+                                              [](auto arg) { return arg.getType(); });
+        auto funcType = P4HIR::FuncType::get(builder.getContext(), inputTypes);
+        tableKeyOp.setFunctionTypeAttr(mlir::TypeAttr::get(funcType));
+
+        // Store the original values used in order to build the table apply call.
+        const P4::IR::P4Table *table = getParent<P4::IR::P4Table>();
+        assert(table && "Expected to find outter table for table key");
+        auto tableKeyArgs = llvm::map_to_vector(argMapping, [](const auto &p) { return p.first; });
+        [[maybe_unused]] auto [it, ins] = tableKeyArgsMap.insert({table, tableKeyArgs});
+        assert(ins && "Expected unique table key");
     } else if (prop->name == P4::IR::TableProperties::defaultActionPropertyName) {
         builder.create<P4HIR::TableDefaultActionOp>(
             loc, annotations, [&](mlir::OpBuilder &b, mlir::Location) {

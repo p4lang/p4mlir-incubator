@@ -71,7 +71,7 @@ module {
       %val_0 = p4hir.read %z : <!b32i>
       %add_1 = p4hir.binop(add, %val_0, %c1_b32i) : !b32i
       p4hir.assign %add_1, %z : <!b32i>
-      %t_apply_result = p4hir.table_apply @c::@t : !t
+      %t_apply_result = p4hir.table_apply @c::@t with key() : () -> !t
       %action_run = p4hir.struct_extract %t_apply_result["action_run"] : !t
       p4hir.switch (%action_run : !anon) {
         p4hir.case(anyof, [#anon_a1, #anon_a2]) {
@@ -149,7 +149,7 @@ module {
 
     // CHECK-LABEL: p4hir.control_apply
     p4hir.control_apply {
-      // CHECK: %[[INST1_APPLY_TABLE_1:.*]] = p4hir.table_apply @d::@cinst1.t : !t
+      // CHECK: %[[INST1_APPLY_TABLE_1:.*]] = p4hir.table_apply @d::@cinst1.t with key() : () -> !t
       // CHECK: %[[ACTION_RUN_1:.*]] = p4hir.struct_extract %[[INST1_APPLY_TABLE_1]]["action_run"] : !t
       // CHECK: p4hir.switch (%[[ACTION_RUN_1]] : !anon) {
       //          ...
@@ -158,7 +158,7 @@ module {
       // CHECK:     %{{.*}} = p4hir.binop(add, %[[Z_VAL_1]], %[[CONST_2]]) : !b32i
       //        ...
 
-      // CHECK: %[[INST1_APPLY_TABLE_2:.*]] = p4hir.table_apply @d::@cinst1.t : !t
+      // CHECK: %[[INST1_APPLY_TABLE_2:.*]] = p4hir.table_apply @d::@cinst1.t with key() : () -> !t
       // CHECK: %[[ACTION_RUN_2:.*]] = p4hir.struct_extract %[[INST1_APPLY_TABLE_2]]["action_run"] : !t
       // CHECK: p4hir.switch (%[[ACTION_RUN_2]] : !anon) {
       //          ...
@@ -167,7 +167,7 @@ module {
       // CHECK:     %{{.*}} = p4hir.binop(add, %[[Z_VAL_2]], %[[CONST_54]]) : !b32i
       //        ...
 
-      // CHECK: %[[INST2_APPLY_TABLE_3:.*]] = p4hir.table_apply @d::@cinst2.t : !t
+      // CHECK: %[[INST2_APPLY_TABLE_3:.*]] = p4hir.table_apply @d::@cinst2.t with key() : () -> !t
       // CHECK: %[[ACTION_RUN_3:.*]] = p4hir.struct_extract %[[INST2_APPLY_TABLE_3]]["action_run"] : !t
       // CHECK: p4hir.switch (%[[ACTION_RUN_3]] : !anon) {
       //          ...

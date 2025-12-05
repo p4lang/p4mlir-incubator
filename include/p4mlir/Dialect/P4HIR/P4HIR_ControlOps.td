@@ -61,7 +61,7 @@ def ControlApplyOp : P4HIR_Op<"control_apply",
 }
 
 def TableOp : P4HIR_Op<"table",
-   [Symbol, NoTerminator, Annotated,
+   [SymbolTable, Symbol, NoTerminator, Annotated,
     ParentOneOf<["ControlOp"]>]> {
   let arguments = (ins SymbolNameAttr:$sym_name, OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
@@ -93,7 +93,8 @@ def TableApplyOp : P4HIR_Op<"table_apply",
   }];
 
   let results = (outs StructType:$apply_result);
-  let arguments = (ins SymbolRefAttr:$callee);
+  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs);
 
   // TODO: Add verifier
   let hasVerifier = 0;
@@ -109,25 +110,20 @@ def TableApplyOp : P4HIR_Op<"table_apply",
       (*this)->setAttr("callee", mlir::cast<mlir::SymbolRefAttr>(callee));
     }
 
-    mlir::OperandRange getArgOperands() {
-      return { getOperation()->operand_end(), getOperation()->operand_end() };
-    }
-
-    mlir::MutableOperandRange getArgOperandsMutable() {
-      llvm_unreachable("no operands for table apply");
-    }
-
-    mlir::ArrayAttr getArgAttrsAttr() { return nullptr; }
-    mlir::ArrayAttr removeArgAttrsAttr() { return nullptr; }
-    void setArgAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no arg attributes"); }
-
     mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
     mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
     void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
   }];
 
+  let builders = [
+      OpBuilder<(ins "mlir::Type":$applyResult, "mlir::SymbolRefAttr":$callee,
+                 "mlir::ValueRange":$arg_operands), [{
+        build($_builder, $_state, applyResult, callee, arg_operands, nullptr);
+      }]>
+  ];
+
   let assemblyFormat = [{
-    $callee attr-dict `:` type($apply_result)
+    $callee `with` `key` `(` $arg_operands `)` attr-dict `:` functional-type($arg_operands, results)
   }];
 }
 
@@ -244,26 +240,52 @@ def TableSizeOp : P4HIR_Op<"table_size",
 }
 
 def TableKeyOp : P4HIR_Op<"table_key",
-  [Annotated, NoRegionArguments, NoTerminator]> {
+  [Annotated, FunctionOpInterface, IsolatedFromAbove,
+   NoTerminator]> {
   let summary = "Represents a P4 table key";
   let description = [{
 
   }];
 
-  let arguments = (ins OptionalAttr<DictionaryAttr>:$annotations);
+  let arguments = (ins TypeAttrOf<FuncType>:$applyType,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
 
   // TODO: Check
   let hasVerifier = 0;
   let skipDefaultBuilders = 1;
-  let assemblyFormat = [{
-    (`annotations` $annotations^)? $body attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::DictionaryAttr":$annotations,
-                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$keyBuilder)>,
+    OpBuilder<(ins "P4HIR::FuncType":$applyType,
+               CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs,
+               CArg<"mlir::DictionaryAttr", "{}">:$annotations)>
   ];
+
+  let extraClassDeclaration = [{
+    mlir::Region *getCallableRegion() { return &getBody(); }
+
+    auto getFunctionType() { return getApplyType(); }
+
+    llvm::ArrayRef<mlir::Type> getArgumentTypes() {
+      return getApplyType().getInputs();
+    }
+
+    void setFunctionTypeAttr(mlir::TypeAttr attr) {
+      getProperties().applyType = attr;
+    }
+
+    llvm::ArrayRef<mlir::Type> getResultTypes() {
+      return {};
+    }
+
+    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
+    mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
+    void setResAttrsAttr(mlir::ArrayAttr) { llvm_unreachable("expected no result attributes"); }
+
+    void createEntryBlock();
+  }];
 }
 
 def TableKeyEntryOp : P4HIR_Op<"match_key", [Annotated]> {
