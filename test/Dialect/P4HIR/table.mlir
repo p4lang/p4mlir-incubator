@@ -44,8 +44,8 @@ module {
       }
     }
     p4hir.table @t2 {
-      p4hir.table_key {
-        p4hir.match_key #exact %arg0 : !b32i
+      p4hir.table_key(%arg1 : !b32i) {
+        p4hir.match_key #exact %arg1 : !b32i
         %false = p4hir.const #false
         p4hir.match_key #lpm %false : !p4hir.bool
       }
@@ -83,10 +83,10 @@ module {
       } : !ActionProfile
     }
     p4hir.control_apply {
-      %t1_apply_result = p4hir.table_apply @c::@t1 : !t1_
+      %t1_apply_result = p4hir.table_apply @c::@t1 with key() : () -> !t1_
       %hit = p4hir.struct_extract %t1_apply_result["hit"] : !t1_
       p4hir.if %hit {
-        %t2_apply_result = p4hir.table_apply @c::@t2 : !t2_
+        %t2_apply_result = p4hir.table_apply @c::@t2 with key(%arg0) : (!b32i) -> !t2_
       }
     }
   }

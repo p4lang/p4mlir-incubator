@@ -40,8 +40,8 @@ control c(in bit<32> arg) {
 
     // CHECK-LABEL: p4hir.table @t2 {
     table t2 {
-    // CHECK:  p4hir.table_key {
-    // CHECK:    p4hir.match_key #exact %arg0 : !b32i annotations {name = "arg.key"}
+    // CHECK:  p4hir.table_key(%arg1: !b32i) {
+    // CHECK:    p4hir.match_key #exact %arg1 : !b32i annotations {name = "arg.key"}
     // CHECK:    %false = p4hir.const #false
     // CHECK:    p4hir.match_key #lpm %false : !p4hir.bool annotations {name = "false.key"}
     // CHECK:  }
@@ -68,9 +68,9 @@ control c(in bit<32> arg) {
         }
     }
     // CHECK: p4hir.control_apply {
-    // CHECK:   %[[t1_apply_result:.*]] = p4hir.table_apply @c::@t1 : !t1
+    // CHECK:   %[[t1_apply_result:.*]] = p4hir.table_apply @c::@t1 with key() : () -> !t1
     // CHECK:   %[[hit:.*]] = p4hir.struct_extract %[[t1_apply_result]]["hit"] : !t1
     // CHECK:   p4hir.if %[[hit]] {
-    // CHECK:     %{{.*}}= p4hir.table_apply @c::@t2 : !t2
+    // CHECK:     %{{.*}}= p4hir.table_apply @c::@t2 with key(%arg0) : (!b32i) -> !t2
     // CHECK:   }
 }

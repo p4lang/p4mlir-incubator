@@ -135,8 +135,8 @@ module {
           p4hir.call @NoAction () : () -> ()
         }
       }
-      p4hir.table_key {
-        %val = p4hir.read %k : <!N32>
+      p4hir.table_key(%arg1: !p4hir.ref<!N32>) {
+        %val = p4hir.read %arg1 : <!N32>
         p4hir.match_key #exact %val : !N32 annotations {name = "k"}
       }
       p4hir.table_default_action {
@@ -188,7 +188,7 @@ module {
       %n_field_ref = p4hir.struct_field_ref %s["n"] : <!S>
       %val_14 = p4hir.read %n : <!N32>
       p4hir.assign %val_14, %n_field_ref : <!N32>
-      %t_apply_result = p4hir.table_apply @c::@t : !t
+      %t_apply_result = p4hir.table_apply @c::@t with key(%k) : (!p4hir.ref<!N32>) -> !t
       %val_15 = p4hir.read %s : <!S>
       %b_16 = p4hir.struct_extract %val_15["b"] : !S
       %val_17 = p4hir.read %s : <!S>
