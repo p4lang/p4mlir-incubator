@@ -30,6 +30,7 @@ namespace P4::P4MLIR {
 #define GEN_PASS_DECL_REMOVESOFTCF
 #define GEN_PASS_DECL_INLINEPARSERS
 #define GEN_PASS_DECL_INLINECONTROLS
+#define GEN_PASS_DECL_EXPANDEMIT
 #include "p4mlir/Transforms/Passes.h.inc"
 
 std::unique_ptr<mlir::Pass> createPrintParsersGraphPass();
@@ -43,6 +44,7 @@ std::unique_ptr<mlir::Pass> createRemoveSoftCFPass();
 std::unique_ptr<mlir::Pass> createCopyInCopyOutEliminationPass();
 std::unique_ptr<mlir::Pass> createInlineParsersPass();
 std::unique_ptr<mlir::Pass> createInlineControlsPass();
+std::unique_ptr<mlir::Pass> createExpandEmitPass();
 
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"

@@ -157,6 +157,20 @@ def EnumElimination : Pass<"p4hir-enum-elimination", "mlir::ModuleOp"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ExpandEmit
+//===----------------------------------------------------------------------===//
+
+def ExpandEmit : Pass<"p4hir-expand-emit", "mlir::ModuleOp"> {
+  let summary = "Expand struct emits";
+  let description = [{
+    This pass recursively converts `!p4corelib.emit` of `!p4hir.struct` to
+    the sequence of emits of its fields.
+  }];
+
+  let constructor = "P4MLIR::createExpandEmitPass()";
+}
+
+//===----------------------------------------------------------------------===//
 // Inline Parsers
 //===----------------------------------------------------------------------===//
 
