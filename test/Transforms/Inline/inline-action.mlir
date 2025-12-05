@@ -54,7 +54,7 @@ module {
       }
     }
     p4hir.control_apply {
-      %t_apply_result = p4hir.table_apply @p::@t : !t
+      %t_apply_result = p4hir.table_apply @p::@t with key() : () -> !t
     }
   }
   p4hir.package @m<[!type_T]>("pipe" : !simple_type_T {p4hir.dir = #undir, p4hir.param_name = "pipe"})

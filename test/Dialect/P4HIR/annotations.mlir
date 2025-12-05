@@ -83,7 +83,7 @@ module {
       p4hir.return
     }
     p4hir.table @t annotations {name = "table.t"} {
-      p4hir.table_key {
+      p4hir.table_key() {
         %c42_b10i = p4hir.const #int42_b10i
         p4hir.match_key #exact %c42_b10i : !b10i annotations {name = "exact.key"}
         %false = p4hir.const #false
