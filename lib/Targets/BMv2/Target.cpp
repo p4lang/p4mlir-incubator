@@ -14,6 +14,7 @@
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
@@ -53,6 +54,9 @@ void setUniqueIDS(ModuleOp moduleOp) {
     setID<BMv2IR::ParserOp>(moduleOp);
     setID<BMv2IR::ParserStateOp>(moduleOp);
     setID<P4HIR::FuncOp>(moduleOp, [](P4HIR::FuncOp funcOp) { return funcOp.getAction(); });
+    setID<BMv2IR::ConditionalOp>(moduleOp);
+    setID<BMv2IR::TableOp>(moduleOp);
+    setID<BMv2IR::PipelineOp>(moduleOp);
 }
 
 json::Value to_JSON(Value val);
@@ -131,7 +135,7 @@ json::Value to_JSON(BMv2IR::TransitionOp transitionOp) {
             break;
         }
         case BMv2IR::TransitionKind::Parse_vset: {
-            llvm_unreachable("JSON translation for parse_vsets NYE");
+            llvm_unreachable("JSON translation for parse_vsets NYI");
         }
     }
     return res;
@@ -202,7 +206,7 @@ json::Value to_JSON(BMv2IR::ExtractOp extractOp) {
 
 // Returns true for Operations that we don't want to emit directly
 // when emitting lists of primitives
-static bool skipOpEmission(Operation *op) { return isa<BMv2IR::FieldOp, P4HIR::ReturnOp>(op); }
+bool skipOpEmission(Operation *op) { return isa<BMv2IR::FieldOp, P4HIR::ReturnOp>(op); }
 
 json::Value to_JSON(BMv2IR::ParserStateOp stateOp) {
     json::Object res;
@@ -277,6 +281,165 @@ json::Value to_JSON(P4HIR::FuncOp funcOp) {
     llvm_unreachable("Only Actions JSON conversion supported");
 }
 
+json::Value to_JSON(BMv2IR::ConditionalOp conditional) {
+    json::Object res;
+    res["name"] = conditional.getSymName();
+    res["id"] = getId(conditional);
+    res["true_next"] = conditional.getThenRef().getLeafReference().getValue();
+    auto elseVal = conditional.getElseRef();
+    if (elseVal.has_value())
+        res["false_next"] = elseVal->getLeafReference().getValue();
+    else
+        res["false_next"] = json::Value(nullptr);
+    res["expression"] = to_JSON(conditional.getConditionRegion().front().getTerminator());
+    return res;
+}
+
+json::Value to_JSON(BMv2IR::TableOp tableOp) {
+    json::Object res;
+    res["name"] = tableOp.getSymName();
+    res["id"] = getId(tableOp);
+    res["max_size"] = tableOp.getSize();
+    res["match_type"] = BMv2IR::stringifyTableMatchKind(tableOp.getMatchType());
+    res["type"] = BMv2IR::stringifyTableType(tableOp.getTableType());
+    res["support_timeout"] = tableOp.getSupportTimeout();
+
+    json::Array key;
+    for (auto attr : tableOp.getKeys()) {
+        auto keyAttr = cast<BMv2IR::TableKeyAttr>(attr);
+        json::Object keyEntry;
+        auto matchTy = keyAttr.getMatchType();
+        keyEntry["match_type"] = BMv2IR::stringifyTableMatchKind(matchTy);
+        auto fieldNameAttr = keyAttr.getFieldName();
+        auto headerName = keyAttr.getHeader().getLeafReference().getValue();
+        auto fieldAttr = keyAttr.getFieldName();
+        if (matchTy == BMv2IR::TableMatchKind::Valid) {
+            assert(fieldAttr == nullptr && "Valid match kind expects only header name");
+            keyEntry["target"] = json::Array{headerName};
+        } else {
+            keyEntry["target"] = json::Array{headerName, fieldNameAttr.getValue()};
+        }
+        auto mask = keyAttr.getMask();
+        if (mask) keyEntry["mask"] = mask.getInt();
+        key.push_back(std::move(keyEntry));
+    }
+    res["key"] = std::move(key);
+
+    json::Array actions;
+    for (auto attr : tableOp.getActions()) {
+        auto actionRef = cast<SymbolRefAttr>(attr);
+        actions.emplace_back(actionRef.getLeafReference().getValue());
+    }
+    res["actions"] = std::move(actions);
+
+    json::Object nextTables;
+    for (auto attr : tableOp.getNextTables()) {
+        auto actionTable = cast<BMv2IR::ActionTableAttr>(attr);
+        auto action = actionTable.getAction().getLeafReference().getValue();
+        auto nextTableAttr = actionTable.getTable();
+        auto table =
+            nextTableAttr ? nextTableAttr.getLeafReference().getValue() : json::Value(nullptr);
+        nextTables[action] = table;
+    }
+    res["next_tables"] = std::move(nextTables);
+
+    auto moduleOp = tableOp->getParentOfType<ModuleOp>();
+    assert(moduleOp && "Expected ModuleOp parent");
+    auto getIdForAction = [&](SymbolRefAttr ref) {
+        auto defOp = SymbolTable::lookupSymbolIn(moduleOp, ref);
+        assert(defOp && "Can't find symbol def");
+        auto funcOp = cast<P4HIR::FuncOp>(defOp);
+        return getId(funcOp);
+    };
+    auto defaultEntryAttr = tableOp.getDefaultEntry();
+    if (defaultEntryAttr.has_value()) {
+        json::Object defaultEntry;
+        defaultEntry["action_id"] = getIdForAction(defaultEntryAttr->getAction());
+        defaultEntry["action_const"] = defaultEntryAttr->getActionConst();
+        defaultEntry["action_entry_const"] = defaultEntryAttr->getActionEntryConst();
+        json::Array actionData;
+        for (auto &data : defaultEntryAttr->getActionData()) {
+            actionData.push_back(data);
+        }
+        defaultEntry["action_data"] = std::move(actionData);
+        res["default_entry"] = std::move(defaultEntry);
+    }
+
+    return res;
+}
+
+json::Value to_JSON(BMv2IR::PipelineOp pipeline) {
+    json::Object res;
+    res["name"] = pipeline.getSymName();
+    res["id"] = getId(pipeline);
+    auto maybeInitTable = pipeline.getInitTable();
+    if (maybeInitTable.has_value())
+        res["init_table"] = maybeInitTable->getLeafReference().getValue();
+    else
+        res["init_table"] = json::Value(nullptr);
+
+    json::Array tables;
+    pipeline.walk([&](BMv2IR::TableOp table) { tables.push_back(to_JSON(table)); });
+    res["tables"] = std::move(tables);
+
+    json::Array conditionals;
+    pipeline.walk(
+        [&](BMv2IR::ConditionalOp conditional) { conditionals.push_back(to_JSON(conditional)); });
+    res["conditionals"] = std::move(conditionals);
+
+    return res;
+}
+
+json::Value to_JSON(P4HIR::ConstOp constOp) {
+    json::Object res;
+    // FIXME: implement conversion to the actual hexstr
+    res["type"] = "hexstr";
+    json::Value val =
+        llvm::TypeSwitch<TypedAttr, json::Value>(constOp.getValue())
+            .Case([](P4HIR::IntAttr intAttr) { return intAttr.getValue().getSExtValue(); });
+    res["value"] = val;
+    return res;
+}
+
+json::Value asExpressionNode(json::Value val) {
+    json::Object res;
+    res["type"] = "expression";
+    res["value"] = std::move(val);
+    return res;
+}
+
+json::Value to_JSON(P4HIR::BinOp binOp) {
+    json::Object res;
+    json::Object value;
+    auto kindToString = [](P4HIR::BinOpKind kind) {
+        switch (kind) {
+            case P4HIR::BinOpKind::Add:
+                return "+";
+            default:
+                llvm_unreachable("Unhandled opkind");
+        }
+    };
+    StringRef op = kindToString(binOp.getKind());
+    value["op"] = op;
+    value["left"] = to_JSON(binOp.getLhs());
+    value["right"] = to_JSON(binOp.getRhs());
+    return asExpressionNode(std::move(res));
+}
+
+json::Value to_JSON(BMv2IR::YieldOp yieldOp) {
+    auto args = yieldOp.getArgs();
+    assert(args.size() == 1 && "Unhandled number of yield args");
+    return to_JSON(args[0]);
+}
+
+json::Value to_JSON(BMv2IR::DataToBoolOp d2b) {
+    json::Object res;
+    res["op"] = "d2b";
+    res["left"] = json::Value(nullptr);
+    res["right"] = to_JSON(d2b.getInput());
+    return asExpressionNode(std::move(res));
+}
+
 json::Value to_JSON(Operation *op) {
     return llvm::TypeSwitch<Operation *, json::Value>(op)
         .Case([](BMv2IR::AssignHeaderOp assignOp) { return to_JSON(assignOp); })
@@ -284,6 +447,10 @@ json::Value to_JSON(Operation *op) {
         .Case([](BMv2IR::AssignOp assignOp) { return to_JSON(assignOp); })
         .Case([](BMv2IR::ExtractOp extractOp) { return to_JSON(extractOp); })
         .Case([](BMv2IR::FieldOp fieldOp) { return to_JSON(fieldOp); })
+        .Case([](P4HIR::ConstOp constOp) { return to_JSON(constOp); })
+        .Case([](P4HIR::BinOp binOp) { return to_JSON(binOp); })
+        .Case([](BMv2IR::YieldOp yieldOp) { return to_JSON(yieldOp); })
+        .Case([](BMv2IR::DataToBoolOp d2bOp) { return to_JSON(d2bOp); })
         .Default([](Operation *op) -> json::Value {
             llvm::errs() << "Unsupported op: " << op->getName().getIdentifier() << "\n";
             llvm_unreachable("Unsupported op");
@@ -347,6 +514,11 @@ mlir::FailureOr<json::Value> P4::P4MLIR::bmv2irToJson(ModuleOp moduleOp) {
         if (funcOp.getAction()) actions.push_back(to_JSON(funcOp));
     });
     root["actions"] = std::move(actions);
+
+    // Emit pipelines
+    json::Array pipelines;
+    moduleOp.walk([&](BMv2IR::PipelineOp pipeline) { pipelines.push_back(to_JSON(pipeline)); });
+    root["pipelines"] = std::move(pipelines);
 
     json::Value res(std::move(root));
 

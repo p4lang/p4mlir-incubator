@@ -249,6 +249,95 @@ def BMv2IR_DataToBoolOp : BMv2IR_Op<"d2b"> {
   ];
 }
 
+def BMv2IR_YieldOp : BMv2IR_Op<"yield", [ReturnLike, Terminator, NoMemoryEffect,
+    ParentOneOf<["ConditionalOp"]>]> {
+  let summary = "BMv2 region terminator";
+
+  let arguments = (ins Variadic<AnyType>:$args);
+  let assemblyFormat = [{($args^ `:` type($args))? attr-dict}];
+  let builders = [
+    OpBuilder<(ins), [{ /* nothing to do */ }]>,
+  ];
+}
+
+def BMv2IR_ConditionalOp : BMv2IR_Op<"conditional", [Symbol, SingleBlockImplicitTerminator<"BMv2IR::YieldOp">]> {
+  let summary = "BMv2 conditional op";
+  let description = [{
+    The bm2ir.conditional op models if/else blocks according to the
+    [BMv2 JSON spec](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#pipelines).
+    Conditionals have a SymbolName, and based on the boolean `condition`, jumps to either `thenRef`
+    or `elseRef`. `thenRef` and `elseRef` must refer to either tables, conditionals or action calls. 
+  }];
+  let arguments = (ins SymbolNameAttr:$sym_name,
+                       SymbolRefAttr:$thenRef,
+                       OptionalAttr<SymbolRefAttr>:$elseRef);
+  let regions = (region 
+      MaxSizedRegion<1>:$conditionRegion);
+
+  let assemblyFormat = [{
+    $sym_name `then` $thenRef (`else` $elseRef^)? `expr` $conditionRegion attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def BMv2IR_TableOp : BMv2IR_Op<"table",
+   [Symbol]> {
+  let summary = "BMv2 Table definition";
+  let description = [{
+    Represents a BMv2 Table.
+    `next_tables` is an array of `<action, next_table>` pairs, indicating that `next_table` is the
+    next table if `action` is taken.
+    `keys` can be of one of the `TableMatchKind` attributes (as decribed by the BMv2 spec).
+    `match_type` is set based on the `keys`, following the BMv2 spec.
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name,
+                       SymbolRefArrayAttr:$actions,
+                       BMv2IR_ActionTableArrayAttr:$next_tables,
+                       BMv2IR_TableTypeAttr:$tableType,
+                       BMv2IR_TableMatchKindAttr:$match_type,
+                       BMv2IR_TableKeyArrayAttr:$keys,
+                       BoolAttr:$support_timeout,
+                       OptionalAttr<BMv2IR_TableDefaultEntryAttr>:$default_entry,
+                       I32Attr:$size
+  );
+
+  let assemblyFormat = [{
+    $sym_name `\n` `actions` $actions
+    `\n` `next_tables` $next_tables
+    `\n` `type` $tableType
+    `\n` `match_type` $match_type
+    `\n` `keys` $keys
+    `\n` `support_timeout` $support_timeout
+    (`\n` `default_entry` $default_entry^)?
+    `\n` `size` $size attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def BMv2IR_PipelineOp : BMv2IR_Op<"pipeline", [
+    Symbol, SymbolTable,
+    SingleBlock, NoTerminator
+  ]> {
+  let summary = "BMv2 pipeline definition";
+  let description = [{
+    Represents a BMv2 [Pipeline](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#pipelines).
+    A Pipeline in BMv2 is a top control flow (ingress/egress).
+    Tables and Conditionals for the pipeline are in this operation's body.
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    OptionalAttr<SymbolRefAttr>:$init_table
+  );
+  
+  let regions = (region SizedRegion<1>:$body);
+  
+  let assemblyFormat = [{
+    $sym_name (`init_table` $init_table^)? $body attr-dict
+  }];
+}
+
 //===-------------------------------------------------------------------------------------------===//
 // BMv2 type-value fields
 // see https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#the-type-value-object

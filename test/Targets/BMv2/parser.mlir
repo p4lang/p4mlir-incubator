@@ -69,7 +69,6 @@ module {
 }
 
 
-// CHECK:{
 // CHECK:  "header_types": [
 // CHECK-NEXT:    {
 // CHECK-NEXT:      "fields": [
@@ -303,7 +302,6 @@ module {
 // CHECK-NEXT:      ]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  ]
-// CHECK-NEXT:}
 
 // -----
 
@@ -338,7 +336,6 @@ module {
   }
 }
 
-// CHECK: {
 // CHECK:   "header_types": [
 // CHECK:     {
 // CHECK:       "fields": [
@@ -468,4 +465,3 @@ module {
 // CHECK:       ]
 // CHECK:     }
 // CHECK:   ]
-// CHECK: }
