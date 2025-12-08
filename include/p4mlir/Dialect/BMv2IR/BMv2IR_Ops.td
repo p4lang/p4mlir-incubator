@@ -226,7 +226,27 @@ def BMv2IR_V1SwitchOp : BMv2IR_Op<"v1switch", [Symbol]> {
   let assemblyFormat = [{
     $sym_name `parser` $parser `,` `verify_checksum` $verify_checksum `,` `ingress` $ingress `,` `egress` $egress `,` `compute_checksum` $compute_checksum `,` `deparser` $deparser attr-dict
   }];
+}
     
+def BMv2IR_DataToBoolOp : BMv2IR_Op<"d2b"> {
+  let summary = "Data to Boolean operation";
+  let description = [{
+    Unary operation which can be used to explicitly convert a data value (i.e. a value that can
+    be read from / written to a field, or a value obtained from runtime action data,
+    or a value obtained from a JSON hexstr) to a boolean value.
+  }];
+
+  let arguments = (ins BMv2IR_FieldType:$input);
+  let results = (outs BooleanType:$result);
+  let assemblyFormat = [{
+    $input `:` type($input) attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$input), [{
+      build($_builder, $_state, ::P4::P4MLIR::P4HIR::BoolType::get($_state.getContext()), input);
+    }]>
+  ];
 }
 
 //===-------------------------------------------------------------------------------------------===//

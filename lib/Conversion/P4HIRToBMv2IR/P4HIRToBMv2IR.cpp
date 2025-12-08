@@ -148,6 +148,30 @@ struct AssignOpPattern : public OpConversionPattern<P4HIR::AssignOp> {
     static constexpr unsigned benefit = 1;
 };
 
+// Converts CmpOps that check for the Validity Bit to just a conversion of the validty
+// field to a boolean
+struct CompareValidityToD2BPattern : public OpConversionPattern<P4HIR::CmpOp> {
+    CompareValidityToD2BPattern(TypeConverter &typeConverter, MLIRContext *context)
+        : OpConversionPattern<P4HIR::CmpOp>(typeConverter, context, benefit) {}
+
+    LogicalResult matchAndRewrite(P4HIR::CmpOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto cmpKind = op.getKind();
+        if (cmpKind != P4HIR::CmpOpKind::Eq)
+          return failure();
+        auto lhs = op.getLhs();
+        auto rhs = op.getRhs();
+        bool isValidLhs = isa<P4HIR::ConstOp>(lhs.getDefiningOp()) && isa<P4HIR::ValidBitType>(lhs.getType());
+        bool isValidRhs = isa<P4HIR::ConstOp>(rhs.getDefiningOp()) && isa<P4HIR::ValidBitType>(lhs.getType());
+        if (!(isValidLhs || isValidRhs))
+          return failure();
+        Value field = isValidLhs ? operands.getRhs() : operands.getLhs();
+        rewriter.replaceOpWithNewOp<BMv2IR::DataToBoolOp>(op, field);
+        return success();
+    }
+    static constexpr unsigned benefit = 1;
+};
+
 // Drops ReadOps since we don't have the reference type in BMv2IR
 struct ReadOpConversionPattern : public OpConversionPattern<P4HIR::ReadOp> {
     using OpConversionPattern<P4HIR::ReadOp>::OpConversionPattern;
@@ -368,7 +392,7 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         patterns.add<HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
                      ParserStateOpConversionPattern, ExtractOpConversionPattern,
                      AssignOpToAssignHeaderPattern, AssignOpPattern, ReadOpConversionPattern,
-                     FieldRefConversionPattern, SymToValConversionPattern>(converter, &context);
+                     FieldRefConversionPattern, SymToValConversionPattern, CompareValidityToD2BPattern>(converter, &context);
 
         target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
 
@@ -389,6 +413,7 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         target.addIllegalOp<P4HIR::AssignOp>();
         target.addIllegalOp<P4HIR::StructFieldRefOp>();
         target.addIllegalOp<P4HIR::ReadOp>();
+        target.addIllegalOp<P4HIR::CmpOp>();
 
         if (failed(applyPartialConversion(module, target, std::move(patterns))))
             signalPassFailure();
