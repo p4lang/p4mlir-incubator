@@ -117,26 +117,35 @@ module {
     // CHECK-DAG: %[[INST1_Z_VAR:.*]] = p4hir.variable ["cinst1.z", init] : <!b32i>
     // CHECK-DAG: p4hir.control_local @[[INST1_Z:.*]] = %[[INST1_Z_VAR]] : !p4hir.ref<!b32i>
 
-    // CHECK: p4hir.func action @cinst1.a2() {
+    // CHECK-DAG: %[[INST2_X_VAR:.*]] = p4hir.variable ["cinst2.__local_c_x_0_var"] : <!b32i>
+    // CHECK-DAG: p4hir.control_local @[[INST2_X:.*]] = %[[INST2_X_VAR]] : !p4hir.ref<!b32i>
+    // CHECK-DAG: p4hir.instantiate @Y (%c10_b32i : !b32i) as @cinst2.ext
+    // CHECK-DAG: %[[INST2_Z_VAR:.*]] = p4hir.variable ["cinst2.z", init] : <!b32i>
+    // CHECK-DAG: p4hir.control_local @[[INST2_Z:.*]] = %[[INST2_Z_VAR]] : !p4hir.ref<!b32i>
+
+    // CHECK-NOT: p4hir.instantiate @c
+
+    // CHECK-LABEL: p4hir.func action @cinst1.a2() {
     // CHECK:   %[[Z_VAR_1:.*]] = p4hir.symbol_ref @d::@[[INST1_Z]] : !p4hir.ref<!b32i>
     // CHECK:   %[[Z_VAR_2:.*]] = p4hir.symbol_ref @d::@[[INST1_Z]] : !p4hir.ref<!b32i>
     // CHECK:   %[[Z_VAL:.*]] = p4hir.read %[[Z_VAR_2]] : <!b32i>
     // CHECK:   %[[Y_VAR:.*]] = p4hir.symbol_ref @d::@[[INST1_Y]] : !p4hir.ref<!b32i>
     // CHECK:   %[[Y_VAL:.*]] = p4hir.read %[[Y_VAR]] : <!b32i>
-    // CHECK:   %add = p4hir.binop(add, %[[Z_VAL]], %[[Y_VAL]]) : !b32i
-    // CHECK:   p4hir.assign %add, %[[Z_VAR_1]] : <!b32i>
+    // CHECK:   %[[ADD:.*]] = p4hir.binop(add, %[[Z_VAL]], %[[Y_VAL]]) : !b32i
+    // CHECK:   p4hir.assign %[[ADD]], %[[Z_VAR_1]] : <!b32i>
     // CHECK:   p4hir.return
     // CHECK: }
 
-    // CHECK-NOT: p4hir.instantiate @c
-
-    // CHECK-DAG: %[[INST2_X_VAR:.*]] = p4hir.variable ["cinst2.__local_c_x_0_var"] : <!b32i>
-    // CHECK-DAG: p4hir.control_local @[[INST2_X:.*]] = %[[INST2_X_VAR]] : !p4hir.ref<!b32i>
-    // CHECK-DAG: %[[INST2_Y_VAR:.*]] = p4hir.variable ["cinst2.__local_c_y_0_var"] : <!b32i>
-    // CHECK-DAG: p4hir.control_local @[[INST2_Y:.*]] = %[[INST2_Y_VAR]] : !p4hir.ref<!b32i>
-    // CHECK-DAG: p4hir.instantiate @Y (%c10_b32i : !b32i) as @cinst2.ext
-    // CHECK-DAG: %[[INST2_Z_VAR:.*]] = p4hir.variable ["cinst2.z", init] : <!b32i>
-    // CHECK-DAG: p4hir.control_local @[[INST2_Z:.*]] = %[[INST2_Z_VAR]] : !p4hir.ref<!b32i>
+    // Value passthrough for 50.
+    // CHECK-LABEL: p4hir.func action @cinst2.a2() {
+    // CHECK:   %[[ACTION_CONST_50:.*]] = p4hir.const #int50_b32i
+    // CHECK:   %[[Z_VAR_1:.*]] = p4hir.symbol_ref @d::@[[INST2_Z]] : !p4hir.ref<!b32i>
+    // CHECK:   %[[Z_VAR_2:.*]] = p4hir.symbol_ref @d::@[[INST2_Z]] : !p4hir.ref<!b32i>
+    // CHECK:   %[[Z_VAL:.*]] = p4hir.read %[[Z_VAR_2]] : <!b32i>
+    // CHECK:   %[[ADD:.*]] = p4hir.binop(add, %[[Z_VAL]], %[[ACTION_CONST_50]]) : !b32i
+    // CHECK:   p4hir.assign %[[ADD]], %[[Z_VAR_1]] : <!b32i>
+    // CHECK:   p4hir.return
+    // CHECK: }
 
     %c50_b32i = p4hir.const #int50_b32i
     %c54_b32i = p4hir.const #int54_b32i

@@ -4,6 +4,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -86,8 +87,9 @@ struct InstantiateOpInlineHelper {
     using updateAttrNameCb =
         llvm::function_ref<std::string(mlir::Operation *, llvm::StringRef, llvm::StringRef)>;
 
-    InstantiateOpInlineHelper(mlir::RewriterBase &rewriter, P4HIR::InstantiateOp instOp)
-        : rewriter(rewriter), instOp(instOp) {}
+    InstantiateOpInlineHelper(mlir::RewriterBase &rewriter, P4HIR::InstantiateOp instOp,
+                              mlir::DominanceInfo *domInfo = nullptr)
+        : rewriter(rewriter), instOp(instOp), domInfo(domInfo) {}
 
     mlir::LogicalResult init() {
         callee = instOp.getCallee<OpTy>();
@@ -124,7 +126,8 @@ struct InstantiateOpInlineHelper {
         auto ctorInputs = callee.getCtorType().getInputs();
         auto it = llvm::find_if(ctorInputs, [&](const auto &input) {
             const auto &[paramName, paramType] = input;
-            assert((paramType == ctorParam.getType()) && "Unexpected ctor param type");
+            assert((paramName != ctorParam.getName() || paramType == ctorParam.getType()) &&
+                   "Unexpected ctor param type");
             return paramName == ctorParam.getName();
         });
         assert((it != ctorInputs.end()) && "Cannot find ctor input");
@@ -159,8 +162,7 @@ struct InstantiateOpInlineHelper {
     void updateNamesAndRefs(mlir::Operation *op, updateAttrNameCb renameCb) {
         auto updateName = [&](llvm::StringRef attrName, mlir::StringAttr attr) {
             if (attr.getValue().empty()) return attr;
-            return mlir::StringAttr::get(attr.getContext(),
-                                         renameCb(op, attrName, attr.getValue()));
+            return rewriter.getStringAttr(renameCb(op, attrName, attr.getValue()));
         };
 
         llvm::SmallVector<llvm::StringRef> attrsToUpdate = {"name", "sym_name"};
@@ -196,6 +198,7 @@ struct InstantiateOpInlineHelper {
 
     mlir::RewriterBase &rewriter;
     P4HIR::InstantiateOp instOp;
+    mlir::DominanceInfo *domInfo;
     OpTy caller;
     OpTy callee;
     mlir::Block *calleeBlock;
@@ -219,8 +222,7 @@ struct ParserOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ParserOp> 
             return static_cast<std::string>(res);
         };
 
-        auto initStatus = init();
-        if (initStatus.failed()) return initStatus;
+        if (init().failed()) return mlir::failure();
 
         mlir::IRMapping mapper;
         llvm::SmallVector<mlir::Operation *> initOps;
@@ -318,8 +320,69 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
             return (instOp.getSymName() + "." + value).str();
         };
 
-        auto initStatus = init();
-        if (initStatus.failed()) return initStatus;
+        if (init().failed()) return mlir::failure();
+
+        unsigned argCount = callee.getNumArguments();
+        bool hasApply = !calls.empty();
+        llvm::SmallVector<mlir::StringAttr> passthroughBySymbol;
+        llvm::SmallVector<mlir::Value> passthroughByValue;
+        passthroughBySymbol.resize(argCount);
+        passthroughByValue.resize(argCount);
+
+        if (hasApply) {
+            assert(domInfo && "Expected dominance info for control inlining");
+            for (unsigned i = 0; i < argCount; i++) {
+                mlir::Value rep = calls[0].getArgOperands()[i];
+
+                bool allSame = llvm::all_equal(
+                    llvm::map_range(calls, [&](auto apply) { return apply.getArgOperands()[i]; }));
+
+                // If a value is equal across all applies then it is a candidate for
+                // passthrough.
+                if (allSame && domInfo->dominates(rep, instOp)) {
+                    // If we can find an existing control local in the caller for that value
+                    // then we can promote to symbol passthrough.
+                    for (mlir::Operation &op : caller.getBody().front()) {
+                        auto controlLocal = mlir::dyn_cast<P4HIR::ControlLocalOp>(op);
+                        if (!controlLocal) continue;
+
+                        if (controlLocal.getVal() == rep) {
+                            passthroughBySymbol[i] = controlLocal.getSymNameAttr();
+                            break;
+                        }
+                    }
+
+                    if (!passthroughBySymbol[i] && (mlir::isa<mlir::BlockArgument>(rep) ||
+                                                    mlir::isa<P4HIR::ConstOp>(rep.getDefiningOp())))
+                        passthroughByValue[i] = rep;
+                }
+
+                // Specifically for locally instantiated externs we need to look through
+                // SymToValueOp.
+                if (mlir::isa<P4HIR::ExternType>(rep.getType())) {
+                    auto getExternDecl = [](mlir::Value val) -> mlir::SymbolRefAttr {
+                        if (auto symToVal = val.getDefiningOp<P4HIR::SymToValueOp>())
+                            return symToVal.getDecl();
+                        return {};
+                    };
+
+                    bool allSameDecl = llvm::all_equal(llvm::map_range(calls, [&](auto apply) {
+                        return getExternDecl(apply.getArgOperands()[i]);
+                    }));
+                    if (allSameDecl)
+                        if (auto externDecl = getExternDecl(rep))
+                            passthroughBySymbol[i] = externDecl.getLeafReference();
+                }
+
+                // If an extern is used as an argument it must be the same in all applies and
+                // can only be inlined with symbol passthrough.
+                if (!passthroughBySymbol[i] && !passthroughByValue[i] &&
+                    mlir::isa<P4HIR::ExternType>(rep.getType()))
+                    return calls[0].emitOpError(
+                        "Cannot use different extern argument in apply call of the same "
+                        "control instance");
+            }
+        }
 
         struct ControlLocalInfo {
             // The underlying storage for the cloned control local.
@@ -328,33 +391,79 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
             mlir::Value origVal;
             // The new value that should be used after inlining.
             mlir::Value newVal;
-            // True iff `localStorage` is an existing variable cloned from callee.
-            bool isStorageOrigVar;
+            // A symbol referring to a control local that can be used instead.
+            mlir::StringAttr passthroughSym;
+            // True iff `localStorage` is a newly introduced variable that is not cloned.
+            bool hasNewLocalStorage = false;
+            // True if the control local was promoted from a value to a variable.
+            bool promoted = false;
         };
 
-        mlir::IRMapping mapper;
+        // Map that holds information for control locals of callee that are inlined.
         llvm::MapVector<mlir::StringAttr, ControlLocalInfo> controlLocalMap;
+        // Top-level IR mapper.
+        mlir::IRMapping mapper;
+        // Holds callee's top-level initialization ops.
         llvm::SmallVector<mlir::Operation *> initOps;
         mlir::Region *calleeControlApplyRegion = nullptr;
 
+        // Inline passthrough values directly.
+        for (auto [formalArg, valPassthrough] :
+             llvm::zip_equal(calleeBlock->getArguments(), passthroughByValue)) {
+            if (valPassthrough) mapper.map(formalArg, valPassthrough);
+        }
+
+        mlir::Operation *callerControlApply = caller.getBody().back().getTerminator();
         rewriter.setInsertionPoint(instOp);
         for (mlir::Operation &op : *calleeBlock) {
+            if (!hasApply) {
+                if (mlir::isa<P4HIR::ConstOp, P4HIR::InstantiateOp>(op))
+                    inlineCloneOp(&op, renameCb, mapper);
+                continue;
+            }
+
             if (mlir::isa<P4HIR::ConstOp, P4HIR::VariableOp, P4HIR::FuncOp, P4HIR::TableOp,
                           P4HIR::InstantiateOp>(op)) {
-                auto *newOp = inlineCloneOp(&op, renameCb, mapper);
+                mlir::Operation *newOp;
+
+                if (mlir::isa<P4HIR::FuncOp, P4HIR::TableOp>(op)) {
+                    mlir::OpBuilder::InsertionGuard guard(rewriter);
+                    rewriter.setInsertionPoint(callerControlApply);
+                    newOp = inlineCloneOp(&op, renameCb, mapper);
+                } else {
+                    newOp = inlineCloneOp(&op, renameCb, mapper);
+                }
 
                 if (mlir::isa<P4HIR::FuncOp>(newOp)) {
-                    // Introduce new reads for control locals that were promoted.
+                    // Adjust control locals after inlining.
                     newOp->walk([&](P4HIR::SymToValueOp symbolRefOp) {
+                        mlir::OpBuilder::InsertionGuard guard(rewriter);
+                        rewriter.setInsertionPoint(symbolRefOp);
+
                         auto controlLocalSym = symbolRefOp.getDecl().getLeafReference();
                         auto it = controlLocalMap.find(controlLocalSym);
-                        assert((it != controlLocalMap.end()) &&
-                               "Control local must be declared before use");
+                        assert((it != controlLocalMap.end()) && "Cannot find control local info");
                         auto &info = it->second;
-                        bool addedRef = !mlir::isa<P4HIR::ReferenceType>(info.origVal.getType());
-                        if (addedRef) {
-                            mlir::OpBuilder::InsertionGuard guard(rewriter);
-                            rewriter.setInsertionPoint(symbolRefOp);
+
+                        if (info.passthroughSym) {
+                            // Replace symbol_ref with passthrough symbol.
+                            auto *ctx = rewriter.getContext();
+                            auto leafSymbol =
+                                mlir::FlatSymbolRefAttr::get(ctx, info.passthroughSym);
+                            auto newSymbolRef =
+                                mlir::SymbolRefAttr::get(ctx, caller.getSymName(), {leafSymbol});
+                            rewriter.replaceOpWithNewOp<P4HIR::SymToValueOp>(
+                                symbolRefOp, symbolRefOp.getType(), newSymbolRef);
+                        } else if (info.newVal) {
+                            // Replace symbol_ref with passthrough value.
+                            mlir::Value newVal = info.newVal;
+                            if (auto constOp = info.newVal.getDefiningOp<P4HIR::ConstOp>())
+                                newVal = rewriter.clone(*constOp)->getResult(0);
+
+                            rewriter.replaceOp(symbolRefOp, newVal);
+                        } else if (info.promoted) {
+                            // Control local was promoted from value to reference.
+                            // We need to introduce a read operation.
                             auto newSymbolRefOp = rewriter.create<P4HIR::SymToValueOp>(
                                 symbolRefOp.getLoc(), info.localStorage.getType(),
                                 symbolRefOp.getDecl());
@@ -365,37 +474,52 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
                     });
                 }
             } else if (auto controlLocalOp = mlir::dyn_cast<P4HIR::ControlLocalOp>(op)) {
-                // Once a control is inlined the values of control local ops need to be updated at
-                // each call site. Hence we need to create adjusted control locals with mutable
-                // variables as underlying storage.
-                ControlLocalInfo info;
-                info.origVal = controlLocalOp.getVal();
-                P4HIR::ControlLocalOp newControlLocal;
+                auto newName = renameCb(controlLocalOp, "sym_name", controlLocalOp.getSymName());
+                auto [it, ins] =
+                    controlLocalMap.insert({rewriter.getStringAttr(newName), ControlLocalInfo{}});
+                assert(ins && "Expected all inlined names to be unique");
 
-                if (controlLocalOp.getVal().getDefiningOp<P4HIR::VariableOp>()) {
-                    // Don't create a backing variable if there was one already.
-                    newControlLocal =
+                ControlLocalInfo &info = it->second;
+                auto origVal = controlLocalOp.getVal();
+                info.origVal = origVal;
+
+                // Check for passthrough by symbol. We don't clone the control local in this case.
+                if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(origVal)) {
+                    if (auto passthroughSym = passthroughBySymbol[blockArg.getArgNumber()]) {
+                        info.passthroughSym = passthroughSym;
+                        continue;
+                    }
+
+                    if (auto passthroughVal = passthroughByValue[blockArg.getArgNumber()]) {
+                        info.newVal = passthroughVal;
+                        continue;
+                    }
+                }
+
+                // Once a control is inlined the values of control local ops need to be updated at
+                // each call site. Hence we need to ensure the inlined control locals use mutable
+                // variables as the underlying storage.
+                if (origVal.getDefiningOp<P4HIR::VariableOp>()) {
+                    // Don't create a new backing variable if there was one already.
+                    auto newControlLocal =
                         mlir::cast<P4HIR::ControlLocalOp>(inlineCloneOp(&op, renameCb, mapper));
-                    info.isStorageOrigVar = true;
                     info.localStorage = newControlLocal.getVal().getDefiningOp<P4HIR::VariableOp>();
                 } else {
-                    auto newVarType = controlLocalOp.getVal().getType();
+                    auto newVarType = origVal.getType();
                     // If a control local was read-only we need to promote it to read-write.
-                    if (!mlir::isa<P4HIR::ReferenceType>(newVarType))
+                    if (!mlir::isa<P4HIR::ReferenceType>(newVarType)) {
                         newVarType = P4HIR::ReferenceType::get(newVarType);
+                        info.promoted = true;
+                    }
                     auto newVarName =
                         (instOp.getSymName() + "." + controlLocalOp.getSymName() + "_var").str();
-                    info.isStorageOrigVar = false;
+                    info.hasNewLocalStorage = true;
                     info.localStorage = rewriter.create<P4HIR::VariableOp>(controlLocalOp.getLoc(),
                                                                            newVarType, newVarName);
-                    newControlLocal = rewriter.create<P4HIR::ControlLocalOp>(
+                    auto newControlLocal = rewriter.create<P4HIR::ControlLocalOp>(
                         controlLocalOp.getLoc(), controlLocalOp.getSymName(), info.localStorage);
                     adjustClonedOp(newControlLocal, renameCb);
                 }
-
-                [[maybe_unused]] auto [it, ins] =
-                    controlLocalMap.insert({newControlLocal.getSymNameAttr(), info});
-                assert(ins && "Expected all inlined names to be unique");
             } else if (auto controlApplyOp = mlir::dyn_cast<P4HIR::ControlApplyOp>(op)) {
                 calleeControlApplyRegion = &controlApplyOp.getBody();
             } else {
@@ -424,7 +548,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
             for (auto &[sym, info] : controlLocalMap) {
                 // If we didn't introduce an additional variable, then this local should be
                 // initialized by operations in `initOps`.
-                if (info.isStorageOrigVar) continue;
+                if (!info.hasNewLocalStorage) continue;
 
                 assert(callMapper.contains(info.origVal) &&
                        "Missing mapping for control local value");
@@ -455,7 +579,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
             for (auto &[sym, info] : controlLocalMap) {
                 // If we didn't introduce an additional variable, then this local should be updated
                 // by callee's control action.
-                if (info.isStorageOrigVar) continue;
+                if (!info.hasNewLocalStorage) continue;
 
                 if (mlir::isa<P4HIR::ReferenceType>(info.newVal.getType())) {
                     auto updatedLocalVal =
@@ -475,7 +599,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
 };
 
 template <typename InlinerT>
-static void inlineIteratively(mlir::ModuleOp mod) {
+static void inlineIteratively(mlir::ModuleOp mod, mlir::DominanceInfo *domInfo = nullptr) {
     mlir::IRRewriter rewriter(mod.getContext());
 
     // Inline iteratively until we cannot inline any more.
@@ -487,7 +611,7 @@ static void inlineIteratively(mlir::ModuleOp mod) {
         mod->walk([&](P4HIR::InstantiateOp instOp) { instOps.push_back(instOp); });
 
         for (P4HIR::InstantiateOp instOp : instOps)
-            if (InlinerT(rewriter, instOp).doInlining().succeeded()) madeChanges = true;
+            if (InlinerT(rewriter, instOp, domInfo).doInlining().succeeded()) madeChanges = true;
     } while (madeChanges);
 }
 
@@ -498,7 +622,7 @@ void InlineParsersPass::runOnOperation() {
 }
 
 void InlineControlsPass::runOnOperation() {
-    inlineIteratively<ControlOpInlineHelper>(getOperation());
+    inlineIteratively<ControlOpInlineHelper>(getOperation(), &getAnalysis<mlir::DominanceInfo>());
 }
 
 std::unique_ptr<mlir::Pass> P4::P4MLIR::createInlineParsersPass() {

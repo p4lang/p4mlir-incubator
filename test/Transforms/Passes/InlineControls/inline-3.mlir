@@ -47,6 +47,7 @@ module {
     // CHECK-DAG: %[[CONST_4:.*]] = p4hir.const #int4_b8i
     // CHECK-DAG: %[[CONST_5:.*]] = p4hir.const #int5_b8i
 
+    %c3_b8i = p4hir.const #int3_b8i
     %c4_b8i = p4hir.const #int4_b8i
     p4hir.instantiate @Callee () as @c
  
@@ -89,6 +90,7 @@ module {
       // CHECK-DAG: %[[ADD:.*]] = p4hir.binop(add, %[[LOCAL_Z_VAL]], %[[CONST_3]]) : !b8i
       // CHECK-DAG: p4hir.assign %[[ADD]], %[[CALLEE_LOCAL_Z_VAR]] : <!b8i>
 
+      p4hir.apply @Caller::@c(%c3_b8i) : (!b8i) -> ()
       p4hir.apply @Caller::@c(%c4_b8i) : (!b8i) -> ()
     }
   }
