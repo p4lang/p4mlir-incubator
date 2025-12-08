@@ -3499,12 +3499,12 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
                 kAnnotations);
         }
 
-        // Create new block arguments on-demand for values coming from an outter scope.
+        // Create new block arguments on-demand for values coming from an outer scope.
         llvm::MapVector<mlir::Value, mlir::Value> argMapping;
         auto adjustVal = [&](mlir::Value val) {
-            bool outterVal =
+            bool outerVal =
                 !val.getDefiningOp() || !tableKeyBlock->findAncestorOpInBlock(*val.getDefiningOp());
-            if (!outterVal) return val;
+            if (!outerVal) return val;
 
             auto [it, ins] = argMapping.insert({val, {}});
             if (ins) it->second = tableKeyBlock->addArgument(val.getType(), loc);
@@ -3517,7 +3517,7 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
                 operand.assign(adjustVal(operand.get()));
         });
 
-        // Update function type based on the used outter values.
+        // Update function type based on the used outer values.
         auto inputTypes = llvm::map_to_vector(tableKeyBlock->getArguments(),
                                               [](auto arg) { return arg.getType(); });
         auto funcType = P4HIR::FuncType::get(builder.getContext(), inputTypes);
@@ -3525,7 +3525,7 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
 
         // Store the original values used in order to build the table apply call.
         const P4::IR::P4Table *table = getParent<P4::IR::P4Table>();
-        assert(table && "Expected to find outter table for table key");
+        assert(table && "Expected to find outer table for table key");
         auto tableKeyArgs = llvm::map_to_vector(argMapping, [](const auto &p) { return p.first; });
         [[maybe_unused]] auto [it, ins] = tableKeyArgsMap.insert({table, tableKeyArgs});
         assert(ins && "Expected unique table key");

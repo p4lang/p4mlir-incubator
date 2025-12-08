@@ -61,7 +61,7 @@ def ControlApplyOp : P4HIR_Op<"control_apply",
 }
 
 def TableOp : P4HIR_Op<"table",
-   [SymbolTable, Symbol, NoTerminator, Annotated,
+   [Symbol, NoTerminator, Annotated,
     ParentOneOf<["ControlOp"]>]> {
   let arguments = (ins SymbolNameAttr:$sym_name, OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
@@ -93,21 +93,29 @@ def TableApplyOp : P4HIR_Op<"table_apply",
   }];
 
   let results = (outs StructType:$apply_result);
-  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
+  let arguments = (ins SymbolRefAttr:$table, Variadic<AnyType>:$key_operands,
                        OptionalAttr<DictArrayAttr>:$arg_attrs);
 
   // TODO: Add verifier
   let hasVerifier = 0;
 
   let extraClassDeclaration = [{
-    /// Return the callee of this operation.
+    /// Return the table of this operation.
     mlir::CallInterfaceCallable getCallableForCallee() {
-      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("table");
     }
 
-    /// Set the callee for this operation.
-    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", mlir::cast<mlir::SymbolRefAttr>(callee));
+    /// Set the table for this operation.
+    void setCalleeFromCallable(mlir::CallInterfaceCallable table) {
+      (*this)->setAttr("table", mlir::cast<mlir::SymbolRefAttr>(table));
+    }
+
+    operand_range getArgOperands() {
+      return getKeyOperands();
+    }
+
+    mlir::MutableOperandRange getArgOperandsMutable() {
+      return getKeyOperandsMutable();
     }
 
     mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
@@ -116,14 +124,14 @@ def TableApplyOp : P4HIR_Op<"table_apply",
   }];
 
   let builders = [
-      OpBuilder<(ins "mlir::Type":$applyResult, "mlir::SymbolRefAttr":$callee,
-                 "mlir::ValueRange":$arg_operands), [{
-        build($_builder, $_state, applyResult, callee, arg_operands, nullptr);
+      OpBuilder<(ins "mlir::Type":$applyResult, "mlir::SymbolRefAttr":$table,
+                 "mlir::ValueRange":$key_operands), [{
+        build($_builder, $_state, applyResult, table, key_operands, nullptr);
       }]>
   ];
 
   let assemblyFormat = [{
-    $callee `with` `key` `(` $arg_operands `)` attr-dict `:` functional-type($arg_operands, results)
+    $table `with` `key` `(` $key_operands `)` attr-dict `:` functional-type($key_operands, results)
   }];
 }
 
@@ -240,7 +248,7 @@ def TableSizeOp : P4HIR_Op<"table_size",
 }
 
 def TableKeyOp : P4HIR_Op<"table_key",
-  [Annotated, FunctionOpInterface, IsolatedFromAbove,
+  [Annotated, IsolatedFromAbove,
    NoTerminator]> {
   let summary = "Represents a P4 table key";
   let description = [{
@@ -264,25 +272,9 @@ def TableKeyOp : P4HIR_Op<"table_key",
   ];
 
   let extraClassDeclaration = [{
-    mlir::Region *getCallableRegion() { return &getBody(); }
-
-    auto getFunctionType() { return getApplyType(); }
-
-    llvm::ArrayRef<mlir::Type> getArgumentTypes() {
-      return getApplyType().getInputs();
-    }
-
     void setFunctionTypeAttr(mlir::TypeAttr attr) {
       getProperties().applyType = attr;
     }
-
-    llvm::ArrayRef<mlir::Type> getResultTypes() {
-      return {};
-    }
-
-    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
-    mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
-    void setResAttrsAttr(mlir::ArrayAttr) { llvm_unreachable("expected no result attributes"); }
 
     void createEntryBlock();
   }];
