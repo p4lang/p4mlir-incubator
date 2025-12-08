@@ -3230,7 +3230,6 @@ void P4HIR::TableKeyOp::build(mlir::OpBuilder &builder, mlir::OperationState &re
                               mlir::DictionaryAttr annotations) {
     result.addRegion();
 
-    result.addAttribute(::SymbolTable::getSymbolAttrName(), builder.getStringAttr("table_key"));
     result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(applyType));
 
     if (annotations && !annotations.empty())
@@ -3241,16 +3240,17 @@ void P4HIR::TableKeyOp::build(mlir::OpBuilder &builder, mlir::OperationState &re
 }
 
 void P4HIR::TableKeyOp::createEntryBlock() {
-    assert(empty() && "can only create entry block for empty control");
-    Block &first = getFunctionBody().emplaceBlock();
-    auto loc = getFunctionBody().getLoc();
-    for (auto argType : getFunctionType().getInputs()) first.addArgument(argType, loc);
+    assert(getBody().empty() && "can only create entry block for empty control");
+    Block &first = getBody().emplaceBlock();
+    auto loc = getBody().getLoc();
+    for (auto argType : getApplyType().getInputs()) first.addArgument(argType, loc);
 }
 
 void P4HIR::TableKeyOp::print(mlir::OpAsmPrinter &printer) {
     // Print function signature
-    function_interface_impl::printFunctionSignature(printer, *this, getApplyType().getInputs(),
-                                                    false, {});
+    call_interface_impl::printFunctionSignature(printer, getApplyType().getInputs(),
+                                                getArgAttrsAttr(), false, {}, {}, &getBody(),
+                                                /*printEmptyResult=*/false);
 
     function_interface_impl::printFunctionAttributes(
         printer, *this,
@@ -3270,8 +3270,6 @@ mlir::ParseResult P4HIR::TableKeyOp::parse(mlir::OpAsmParser &parser,
                                            mlir::OperationState &result) {
     llvm::SMLoc loc = parser.getCurrentLocation();
     auto &builder = parser.getBuilder();
-
-    result.addAttribute(::SymbolTable::getSymbolAttrName(), builder.getStringAttr("table_key"));
 
     llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
     llvm::SmallVector<DictionaryAttr, 1> resultAttrs;
@@ -3340,17 +3338,17 @@ void P4HIR::TableOp::build(
 //===----------------------------------------------------------------------===//
 LogicalResult P4HIR::TableApplyOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
-    auto calleeAttr = (*this)->getAttrOfType<SymbolRefAttr>(getCalleeAttrName());
-    if (!calleeAttr) return emitOpError("requires a 'decl' symbol reference attribute");
+    auto tableAttr = (*this)->getAttrOfType<SymbolRefAttr>(getTableAttrName());
+    if (!tableAttr) return emitOpError("requires a 'table' symbol reference attribute");
 
-    auto table = symbolTable.lookupSymbolIn<P4HIR::TableOp>(getParentModule(*this), calleeAttr);
-    if (!table) return emitOpError("cannot resolve symbol '") << calleeAttr << "' to a valid table";
+    auto table = symbolTable.lookupSymbolIn<P4HIR::TableOp>(getParentModule(*this), tableAttr);
+    if (!table) return emitOpError("cannot resolve symbol '") << tableAttr << "' to a valid table";
 
     return mlir::success();
 }
 
 void P4HIR::TableApplyOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
-    llvm::SmallString<32> result(getCallee().getLeafReference());
+    llvm::SmallString<32> result(getTable().getLeafReference());
     result += "_apply_result";
     setNameFn(getResult(), result);
 }
@@ -3459,17 +3457,9 @@ void P4HIR::TableActionOp::print(mlir::OpAsmPrinter &printer) {
     printer << " ";
     printer << actName;
 
-    printer << '(';
-    const auto argTypes = getCplaneType().getInputs();
-    mlir::ArrayAttr argAttrs = getArgAttrsAttr();
-    for (unsigned i = 0, e = argTypes.size(); i < e; ++i) {
-        if (i > 0) printer << ", ";
-
-        ArrayRef<NamedAttribute> attrs;
-        if (argAttrs) attrs = llvm::cast<DictionaryAttr>(argAttrs[i]).getValue();
-        printer.printRegionArgument(getBody().front().getArgument(i), attrs);
-    }
-    printer << ')';
+    call_interface_impl::printFunctionSignature(printer, getCplaneType().getInputs(),
+                                                getArgAttrsAttr(), false, {}, {}, &getBody(),
+                                                /*printEmptyResult=*/false);
 
     function_interface_impl::printFunctionAttributes(
         printer, *this,
