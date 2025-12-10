@@ -383,11 +383,10 @@ static Attribute constFoldBinOp(llvm::ArrayRef<Attribute> operands, mlir::Type r
 
     if (!lhs || !rhs) return {};
 
-    auto isInfInt = [](Attribute attr) {
-        return mlir::isa<P4HIR::InfIntType>(mlir::cast<TypedAttr>(attr).getType());
-    };
-
-    if (isInfInt(operands[0]) || isInfInt(operands[1])) {
+    bool infIntCalc = mlir::isa<P4HIR::InfIntType>(resultType) ||
+                      (mlir::isa<P4HIR::BoolType>(resultType) &&
+                       mlir::isa<P4HIR::InfIntType>(mlir::cast<TypedAttr>(operands[0]).getType()));
+    if (infIntCalc) {
         unsigned lhsBits = lhs->getActiveBits() + 1;
         unsigned rhsBits = rhs->getActiveBits() + 1;
 
