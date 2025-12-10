@@ -8,13 +8,28 @@
 !header_two = !p4hir.header<"header_two", type: !b8i, data: !b16i, __valid: !validity_bit>
 !hs_2ht = !p4hir.header_stack<2x!header_two>
 !arr_int = !p4hir.array<2 x !header_two>
-!struct_int = !p4hir.struct<"headers_int", t3: !header_one, t5: !arr_int>
+!hu = !p4hir.header_union<"hu", h1: !header_one, h2: !header_two>
+!struct_int = !p4hir.struct<"headers_int", t3: !hu, t5: !arr_int>
 !headers_t = !p4hir.struct<"headers_t", t1: !header_one, t2: !header_two, t3: !struct_int, t4: !hs_2ht>
 module {
   // CHECK-LABEL: emitTest
   p4hir.control @emitTest(%arg0: !p4corelib.packet_out {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "packet"}, %arg1: !headers_t {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "hdr"})() {
     p4hir.control_apply {
-      // CHECK-COUNT-7: p4corelib.emit
+      // CHECK: p4corelib.emit %t1 : !header_one
+      // CHECK: p4corelib.emit %t2 : !header_two
+      // CHECK: %h1 = p4hir.struct_extract %t3_0["h1"]
+      // CHECK: p4corelib.emit %h1 : !header_one
+      // CHECK: %h2 = p4hir.struct_extract %t3_0["h2"]
+      // CHECK: p4corelib.emit %h2 : !header_two
+      // CHECK: %array_elt = p4hir.array_get %t5[%c0_b32i]
+      // CHECK: p4corelib.emit %array_elt : !header_two
+      // CHECK: %array_elt_1 = p4hir.array_get %t5[%c1_b32i]
+      // CHECK: p4corelib.emit %array_elt_1 : !header_two
+      // CHECK: %data = p4hir.struct_extract %t4["data"]
+      // CHECK: %array_elt_2 = p4hir.array_get %data[%c0_b32i]
+      // CHECK: p4corelib.emit %array_elt_2 : !header_two
+      // CHECK: %array_elt_3 = p4hir.array_get %data[%c1_b32i]
+      // CHECK: p4corelib.emit %array_elt_3 : !header_two
       p4corelib.emit %arg1 : !headers_t to %arg0 : !p4corelib.packet_out
     }
   }

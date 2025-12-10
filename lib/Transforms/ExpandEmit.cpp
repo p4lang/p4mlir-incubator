@@ -32,7 +32,7 @@ struct ExpandEmitPattern : public mlir::OpRewritePattern<P4CoreLib::PacketEmitOp
         auto emitArg = emitOp.getHdr();
         auto loc = emitOp.getLoc();
         return llvm::TypeSwitch<mlir::Type, mlir::LogicalResult>(emitArg.getType())
-            .Case<P4HIR::StructType>([&](P4HIR::StructType tp) {
+            .Case<P4HIR::HeaderUnionType, P4HIR::StructType>([&](auto tp) {
                 auto elements = tp.getFields();
                 for (const auto &elt : elements) {
                     auto extrData = rewriter.create<P4HIR::StructExtractOp>(loc, emitArg, elt.name);
