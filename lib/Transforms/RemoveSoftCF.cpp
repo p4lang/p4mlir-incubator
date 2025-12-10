@@ -161,9 +161,10 @@ struct RemoveSoftCF {
 
             // Rest of the block is unreachable, erase ops.
             if (blockInfo.execType == ET_None) {
+                auto endIter = block->mightHaveTerminator() ? block->getTerminator()->getIterator()
+                                                            : block->end();
                 SmallVector<Operation *> restOps;
-                for (mlir::Operation &op :
-                     llvm::make_range(op.getIterator(), block->getTerminator()->getIterator()))
+                for (mlir::Operation &op : llvm::make_range(op.getIterator(), endIter))
                     restOps.push_back(&op);
                 for (mlir::Operation *op : llvm::make_early_inc_range(llvm::reverse(restOps)))
                     rewriter.eraseOp(op);

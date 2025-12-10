@@ -60,4 +60,12 @@ module {
       p4hir.assign %c1_b16i, %f_field_ref_0 : <!b16i>
     }
   }
+
+  // Check that we don't crash.
+  p4hir.control @D()() {
+    p4hir.control_apply {
+      p4hir.soft_return
+      p4hir.exit
+    }
+  }
 }
