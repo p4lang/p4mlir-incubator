@@ -24,6 +24,7 @@
 #int62_infint = #p4hir.int<62> : !infint
 #int500_infint = #p4hir.int<500> : !infint
 #int128000_infint = #p4hir.int<128000> : !infint
+#int1_infint = #p4hir.int<1> : !infint
 #int-1_infint = #p4hir.int<-1> : !infint
 #int-5_infint = #p4hir.int<-5> : !infint
 #int-40_infint = #p4hir.int<-40> : !infint
@@ -196,6 +197,7 @@ module  {
     // CHECK-DAG: %[[cminus1_infint:.*]] = p4hir.const #int-1_infint
     // CHECK-DAG: %[[c0_infint:.*]] = p4hir.const #int0_infint
     // CHECK-DAG: %[[cminus63_infint:.*]] = p4hir.const #int-63_infint
+    // CHECK-DAG: %[[c2_b8i:.*]] = p4hir.const #int2_b8i
     %c0_b8i = p4hir.const #int0_b8i
     %c3_b8i = p4hir.const #int3_b8i
     %c5_b8i = p4hir.const #int5_b8i
@@ -211,6 +213,7 @@ module  {
     %c62_infint = p4hir.const #int62_infint
     %c500_infint = p4hir.const #int500_infint
     %c128000 = p4hir.const #int128000_infint
+    %c1_infint = p4hir.const #int1_infint
     %c-1_infint = p4hir.const #int-1_infint
     %c-5_infint = p4hir.const #int-5_infint
     %c-40_infint = p4hir.const #int-40_infint
@@ -245,6 +248,10 @@ module  {
     // CHECK: p4hir.call @blackhole_infint (%[[cminus63_infint]]) : (!infint) -> ()
     %shr3 = p4hir.shr(%c-500_infint, %c3_b8i : !b8i) : !infint // -500 >> 3 = -63
     p4hir.call @blackhole_infint(%shr3) : (!infint) -> ()
+
+    // CHECK: p4hir.call @blackhole_b8i (%[[c2_b8i]]) : (!b8i) -> ()
+    %shr4 = p4hir.shr(%c5_b8i, %c1_infint : !infint) : !b8i
+    p4hir.call @blackhole_b8i(%shr4) : (!b8i) -> ()
 
     p4hir.return
   }

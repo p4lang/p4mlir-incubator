@@ -387,7 +387,8 @@ static Attribute constFoldBinOp(llvm::ArrayRef<Attribute> operands, mlir::Type r
         return mlir::isa<P4HIR::InfIntType>(mlir::cast<TypedAttr>(attr).getType());
     };
 
-    if (isInfInt(operands[0]) || isInfInt(operands[1])) {
+    bool infIntCalc = isInfInt(operands[0]) || isInfInt(operands[1]);
+    if (infIntCalc) {
         unsigned lhsBits = lhs->getActiveBits() + 1;
         unsigned rhsBits = rhs->getActiveBits() + 1;
 
@@ -415,10 +416,16 @@ static Attribute constFoldBinOp(llvm::ArrayRef<Attribute> operands, mlir::Type r
 
     auto calRes = calculate(lhs.value(), rhs.value());
 
-    if constexpr (std::is_same_v<decltype(calRes), bool>)
+    if constexpr (std::is_same_v<decltype(calRes), bool>) {
         return P4HIR::BoolAttr::get(resultType.getContext(), calRes);
-    else
+    } else {
+        // Adjust width if calculation was done with InfInt but result is BitsType.
+        if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(resultType); bitsType && infIntCalc)
+            calRes = bitsType.isSigned() ? calRes.sextOrTrunc(bitsType.getWidth())
+                                         : calRes.zextOrTrunc(bitsType.getWidth());
+
         return P4HIR::IntAttr::get(resultType.getContext(), resultType, calRes);
+    }
 }
 
 void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
