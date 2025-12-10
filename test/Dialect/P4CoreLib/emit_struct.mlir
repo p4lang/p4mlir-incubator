@@ -6,14 +6,15 @@
 !validity_bit = !p4hir.validity.bit
 !header_one = !p4hir.header<"header_one", type: !b8i, data: !b8i, __valid: !validity_bit>
 !header_two = !p4hir.header<"header_two", type: !b8i, data: !b16i, __valid: !validity_bit>
-!struct_int = !p4hir.struct<"headers_t", t3: !header_one>
 !hs_2ht = !p4hir.header_stack<2x!header_two>
+!arr_int = !p4hir.array<2 x !header_two>
+!struct_int = !p4hir.struct<"headers_int", t3: !header_one, t5: !arr_int>
 !headers_t = !p4hir.struct<"headers_t", t1: !header_one, t2: !header_two, t3: !struct_int, t4: !hs_2ht>
 module {
   // CHECK-LABEL: emitTest
   p4hir.control @emitTest(%arg0: !p4corelib.packet_out {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "packet"}, %arg1: !headers_t {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "hdr"})() {
     p4hir.control_apply {
-      // CHECK-COUNT-5: p4corelib.emit
+      // CHECK-COUNT-7: p4corelib.emit
       p4corelib.emit %arg1 : !headers_t to %arg0 : !p4corelib.packet_out
     }
   }

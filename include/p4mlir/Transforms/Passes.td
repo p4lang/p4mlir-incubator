@@ -168,6 +168,7 @@ def ExpandEmit : Pass<"p4hir-expand-emit", "mlir::ModuleOp"> {
   }];
 
   let constructor = "P4MLIR::createExpandEmitPass()";
+  let dependentDialects = ["P4MLIR::P4CoreLib::P4CoreLibDialect"];
 }
 
 //===----------------------------------------------------------------------===//

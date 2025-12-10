@@ -1,4 +1,5 @@
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
@@ -27,34 +28,39 @@ struct ExpandEmitPattern : public mlir::OpRewritePattern<P4CoreLib::PacketEmitOp
     ExpandEmitPattern(MLIRContext *context) : OpRewritePattern(context) {}
     mlir::LogicalResult matchAndRewrite(P4CoreLib::PacketEmitOp emitOp,
                                         mlir::PatternRewriter &rewriter) const override {
-        static constexpr unsigned hsIdBitWidth = 32;
         auto dstPkt = emitOp.getPacketOut();
         auto emitArg = emitOp.getHdr();
         auto loc = emitOp.getLoc();
-        if (auto structType = mlir::dyn_cast<P4HIR::StructType>(emitArg.getType())) {
-            auto elements = structType.getFields();
-            for (const auto &elt : elements) {
-                auto extrData = rewriter.create<P4HIR::StructExtractOp>(loc, emitArg, elt.name);
-                if (auto arrData = mlir::dyn_cast<P4HIR::HeaderStackType>(extrData.getType())) {
-                    auto hsData = rewriter.create<P4HIR::StructExtractOp>(
-                        loc, extrData, P4HIR::HeaderStackType::dataFieldName);
-                    for (unsigned i = 0; i < arrData.getArraySize(); i++) {
-                        auto idxOp = rewriter.create<P4HIR::ConstOp>(
-                            loc, P4HIR::IntAttr::get(
-                                     getContext(),
-                                     P4HIR::BitsType::get(getContext(), hsIdBitWidth, false),
-                                     llvm::APInt(hsIdBitWidth, i)));
-                        auto arrItem = rewriter.create<P4HIR::ArrayGetOp>(loc, hsData, idxOp);
-                        rewriter.create<P4CoreLib::PacketEmitOp>(loc, dstPkt, arrItem);
-                    }
-                } else {
+        return llvm::TypeSwitch<mlir::Type, mlir::LogicalResult>(emitArg.getType())
+            .Case<P4HIR::StructType>([&](P4HIR::StructType tp) {
+                auto elements = tp.getFields();
+                for (const auto &elt : elements) {
+                    auto extrData = rewriter.create<P4HIR::StructExtractOp>(loc, emitArg, elt.name);
                     rewriter.create<P4CoreLib::PacketEmitOp>(loc, dstPkt, extrData);
                 }
-            }
-            rewriter.eraseOp(emitOp);
-            return mlir::success();
-        }
-        return mlir::failure();
+                rewriter.eraseOp(emitOp);
+                return mlir::success();
+            })
+            .Case<P4HIR::HeaderStackType>([&](P4HIR::HeaderStackType tp) {
+                auto hsData = rewriter.create<P4HIR::StructExtractOp>(
+                    loc, emitArg, P4HIR::HeaderStackType::dataFieldName);
+                rewriter.create<P4CoreLib::PacketEmitOp>(loc, dstPkt, hsData);
+                rewriter.eraseOp(emitOp);
+                return mlir::success();
+            })
+            .Case<P4HIR::ArrayType>([&](P4HIR::ArrayType tp) {
+                static constexpr unsigned hsIdBitWidth = 32;
+                auto intType = P4HIR::BitsType::get(getContext(), hsIdBitWidth, false);
+                for (unsigned i = 0; i < tp.getSize(); i++) {
+                    auto idxOp =
+                        rewriter.create<P4HIR::ConstOp>(loc, P4HIR::IntAttr::get(intType, i));
+                    auto arrItem = rewriter.create<P4HIR::ArrayGetOp>(loc, emitArg, idxOp);
+                    rewriter.create<P4CoreLib::PacketEmitOp>(loc, dstPkt, arrItem);
+                }
+                rewriter.eraseOp(emitOp);
+                return mlir::success();
+            })
+            .Default([](mlir::Type tp) { return mlir::failure(); });
     }
 };
 
