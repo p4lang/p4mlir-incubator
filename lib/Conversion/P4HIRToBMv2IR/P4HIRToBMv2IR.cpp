@@ -1,3 +1,4 @@
+#include <cassert>
 #include <cmath>
 #include <optional>
 #include <string>
@@ -48,28 +49,6 @@ namespace P4::P4MLIR {
 using namespace P4::P4MLIR;
 
 namespace {
-
-static constexpr StringRef conditionalNameAttrName = "conditional_name";
-
-static FailureOr<SymbolRefAttr> getUniqueIfOpName(P4HIR::IfOp ifOp) {
-    auto name = dyn_cast<SymbolRefAttr>(ifOp->getAttr(conditionalNameAttrName));
-    if (!name) return ifOp.emitError("Expected conditional name");
-    return name;
-}
-
-StringAttr getUniqueNameInParentModule(P4HIR::CallOp op, StringRef base) {
-    auto name = StringAttr::get(op.getContext(), base);
-    unsigned counter = 0;
-    auto moduleOp = op->getParentOfType<ModuleOp>();
-    assert(moduleOp && "Expected module op");
-    auto uniqueName = SymbolTable::generateSymbolName<256>(
-        name,
-        [&](StringRef candidate) {
-            return SymbolTable::lookupSymbolIn(moduleOp, candidate) != nullptr;
-        },
-        counter);
-    return StringAttr::get(op.getContext(), uniqueName);
-}
 
 BMv2IR::FieldInfo convertFieldInfo(P4HIR::FieldInfo p4Field) {
     return BMv2IR::FieldInfo(p4Field.name, p4Field.type);
@@ -443,44 +422,6 @@ struct ParserOpConversionPattern : public OpConversionPattern<P4HIR::ParserOp> {
     }
 };
 
-FailureOr<BMv2IR::V1SwitchOp> getPackageInstantiationFromParentModule(Operation *op) {
-    auto moduleOp = op->getParentOfType<ModuleOp>();
-    if (!moduleOp) return op->emitError("No module parent");
-    // TODO: consider adding an interface to support different targets transparently
-    BMv2IR::V1SwitchOp packageInstantiateOp = nullptr;
-    auto walkRes = moduleOp.walk([&](BMv2IR::V1SwitchOp v1switch) {
-        if (packageInstantiateOp != nullptr) return WalkResult::interrupt();
-        packageInstantiateOp = v1switch;
-        return WalkResult::advance();
-    });
-    if (walkRes.wasInterrupted())
-        return op->emitError("Expected only a single package instantiation");
-    return packageInstantiateOp;
-}
-
-FailureOr<bool> isTopLevelControl(P4HIR::ControlOp controlOp) {
-    auto packageInstantiateOp = getPackageInstantiationFromParentModule(controlOp);
-    if (failed(packageInstantiateOp)) return failure();
-    auto symToCheck = controlOp.getSymName();
-    return symToCheck == packageInstantiateOp->getIngress().getLeafReference() ||
-           symToCheck == packageInstantiateOp->getEgress().getLeafReference();
-}
-
-FailureOr<bool> isDeparserControl(P4HIR::ControlOp controlOp) {
-    auto packageInstantiateOp = getPackageInstantiationFromParentModule(controlOp);
-    if (failed(packageInstantiateOp)) return failure();
-    auto symToCheck = controlOp.getSymName();
-    return symToCheck == packageInstantiateOp->getDeparser().getLeafReference();
-}
-
-FailureOr<bool> isCalculationControl(P4HIR::ControlOp controlOp) {
-    auto packageInstantiateOp = getPackageInstantiationFromParentModule(controlOp);
-    if (failed(packageInstantiateOp)) return failure();
-    auto symToCheck = controlOp.getSymName();
-    return symToCheck == packageInstantiateOp->getVerifyChecksum().getLeafReference() ||
-           symToCheck == packageInstantiateOp->getComputeChecksum().getLeafReference();
-}
-
 // This pattern converts top-level controls to BMv2 patterns.
 // It traverses the ControlOp, converting P4HIR tables to BMv2 tables, and IfOps to BMv2
 // Conditionals. It assumes that control_apply regions have been canonicalized so that they contain
@@ -493,7 +434,7 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
 
     LogicalResult matchAndRewrite(P4HIR::ControlOp op, OpAdaptor operands,
                                   ConversionPatternRewriter &rewriter) const override {
-        auto isTopLevel = isTopLevelControl(op);
+        auto isTopLevel = BMv2IR::isTopLevelControl(op);
         if (failed(isTopLevel)) return failure();
         if (!isTopLevel.value()) return failure();
 
@@ -520,8 +461,8 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         });
         if (tableRes.wasInterrupted()) return failure();
 
-        // Convert IfOps inside control_apply to BMv2IR::ConditionalOp
-        auto ifRes = controlApply.walk([&](P4HIR::IfOp ifOp) {
+        // Generate BMv2IR::ConditionalOp for BMv2IR::IfOps inside control_apply
+        auto ifRes = controlApply.walk([&](BMv2IR::IfOp ifOp) {
             if (failed(convertIfOp(ifOp, controlApply, rewriter))) return WalkResult::interrupt();
             return WalkResult::advance();
         });
@@ -540,16 +481,21 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
     }
 
  private:
+    static SymbolRefAttr getUniqueIfOpName(BMv2IR::IfOp ifOp,
+                                           P4HIR::ControlApplyOp controlApplyOp) {
+        auto controlParent = cast<P4HIR::ControlOp>(controlApplyOp.getParentOp());
+        return SymbolRefAttr::get(controlParent.getSymNameAttr(),
+                                  {SymbolRefAttr::get(ifOp.getContext(), ifOp.getSymNameAttr())});
+    }
+
     static FailureOr<SymbolRefAttr> getInitTable(P4HIR::ControlApplyOp controlApplyOp) {
         auto &block = controlApplyOp.getBody().front();
         Operation *op = &block.front();
-        while (op && !isa<P4HIR::TableApplyOp, P4HIR::IfOp>(op)) op = op->getNextNode();
+        while (op && !isa<P4HIR::TableApplyOp, BMv2IR::IfOp>(op)) op = op->getNextNode();
         if (!op) return controlApplyOp.emitError("Error retrieving initial table");
         if (auto applyOp = dyn_cast<P4HIR::TableApplyOp>(op)) return applyOp.getTable();
-        auto ifOp = cast<P4HIR::IfOp>(op);
-        auto maybeName = getUniqueIfOpName(ifOp);
-        if (failed(maybeName)) return failure();
-        return maybeName.value();
+        auto ifOp = cast<BMv2IR::IfOp>(op);
+        return getUniqueIfOpName(ifOp, controlApplyOp);
     }
 
     static LogicalResult convertTable(P4HIR::TableOp op, P4HIR::ControlApplyOp controlApply,
@@ -732,6 +678,8 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
             }
         });
         Operation *nextOp = getNextApplyOrConditionalNode(applyOp);
+        // We explcitly add a p4hir.yield op at the end of the control_apply block
+        // to ensure that the block is yield terminated, so nextOp should always be non null
         if (!nextOp) return tableOp.emitError("Expected next operation");
 
         return getActionTablePairsForNextNode(nextOp, controlApply, actions);
@@ -744,6 +692,9 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
             .Case([&](P4HIR::YieldOp yieldOp) -> FailureOr<SmallVector<Attribute>> {
                 return getActionTablePairsForYieldOp(yieldOp, controlApply, actions);
             })
+            .Case([&](BMv2IR::YieldOp yieldOp) -> FailureOr<SmallVector<Attribute>> {
+                return getActionTablePairsForYieldOp(yieldOp, controlApply, actions);
+            })
             .Case([&](P4HIR::TableApplyOp nextApplyOp) {
                 SmallVector<Attribute> result;
                 auto nextTable = nextApplyOp.getTable();
@@ -754,14 +705,13 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
                 }
                 return result;
             })
-            .Case([&](P4HIR::IfOp ifOp) -> FailureOr<SmallVector<Attribute>> {
+            .Case([&](BMv2IR::IfOp ifOp) -> FailureOr<SmallVector<Attribute>> {
                 SmallVector<Attribute> result;
-                auto nextTable = getUniqueIfOpName(ifOp);
-                if (failed(nextTable)) return failure();
+                auto nextTable = getUniqueIfOpName(ifOp, controlApply);
                 for (auto attr : actions) {
                     auto action = cast<SymbolRefAttr>(attr);
                     result.push_back(
-                        BMv2IR::ActionTableAttr::get(ifOp.getContext(), action, nextTable.value()));
+                        BMv2IR::ActionTableAttr::get(ifOp.getContext(), action, nextTable));
                 }
                 return result;
             })
@@ -779,15 +729,17 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
 
     static Operation *getNextApplyOrConditionalNode(Operation *op) {
         auto nextOp = op->getNextNode();
-        while (
-            nextOp &&
-            !isa<P4HIR::TableApplyOp, P4HIR::IfOp, P4HIR::YieldOp, P4HIR::StructExtractOp>(nextOp))
+        while (nextOp && !isa<P4HIR::TableApplyOp, BMv2IR::IfOp, P4HIR::YieldOp, BMv2IR::YieldOp,
+                              P4HIR::StructExtractOp>(nextOp)) {
             nextOp = nextOp->getNextNode();
+        }
         return nextOp;
     }
 
     static FailureOr<SmallVector<Attribute>> getActionTablePairsForYieldOp(
-        P4HIR::YieldOp yieldOp, P4HIR::ControlApplyOp controlApply, ArrayRef<Attribute> actions) {
+        Operation *yieldOp, P4HIR::ControlApplyOp controlApply, ArrayRef<Attribute> actions) {
+        bool isYield = isa<P4HIR::YieldOp, BMv2IR::YieldOp>(yieldOp);
+        assert(isYield && "Expected YieldOp");
         if (yieldOp->getParentOp() == controlApply) {
             // This is the final table, return `null` as next table for every action
             SmallVector<Attribute> result;
@@ -800,10 +752,10 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         }
         Operation *nextOp = nullptr;
         if (auto caseOp = yieldOp->getParentOfType<P4HIR::CaseOp>()) {
-            if (!caseOp) return yieldOp.emitError("Expected CaseOp parent");
+            if (!caseOp) return yieldOp->emitError("Expected CaseOp parent");
             auto switchOp = cast<P4HIR::SwitchOp>(caseOp->getParentOp());
             nextOp = getNextApplyOrConditionalNode(switchOp);
-        } else if (auto ifOp = yieldOp->getParentOfType<P4HIR::IfOp>()) {
+        } else if (auto ifOp = yieldOp->getParentOfType<BMv2IR::IfOp>()) {
             nextOp = getNextApplyOrConditionalNode(ifOp);
         }
         return getActionTablePairsForNextNode(nextOp, controlApply, actions);
@@ -855,56 +807,33 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         return result;
     }
 
-    static LogicalResult convertIfOp(P4HIR::IfOp op, P4HIR::ControlApplyOp controlApply,
+    static LogicalResult convertIfOp(BMv2IR::IfOp op, P4HIR::ControlApplyOp controlApply,
                                      ConversionPatternRewriter &rewriter) {
-        auto name = getUniqueIfOpName(op);
-        if (failed(name)) return op.emitError("Expected conditional name");
-
         ConversionPatternRewriter::InsertionGuard guard(rewriter);
         rewriter.setInsertionPoint(controlApply);
-        auto getNextSym = [](Region &r) -> FailureOr<SymbolRefAttr> {
+        auto getNextSym = [&controlApply,
+                           ctx = op.getContext()](Region &r) -> FailureOr<SymbolRefAttr> {
             if (r.empty()) return {nullptr};
+            if (r.front().getOperations().size() == 1) return {nullptr};
             Operation *op = &r.front().front();
             while (op) {
                 if (auto tableApply = dyn_cast<P4HIR::TableApplyOp>(op))
                     return tableApply.getTable();
-                if (auto ifOp = dyn_cast<P4HIR::IfOp>(op)) return getUniqueIfOpName(ifOp);
+                if (auto ifOp = dyn_cast<BMv2IR::IfOp>(op)) {
+                    return getUniqueIfOpName(ifOp, controlApply);
+                }
                 op = op->getNextNode();
             }
             return failure();
         };
         auto maybeThenSym = getNextSym(op.getThenRegion());
         auto maybeElseSym = getNextSym(op.getElseRegion());
-        if (failed(maybeThenSym) || failed(maybeElseSym))
-            return op.emitError("Error while computing then/else next sym");
+        if (failed(maybeThenSym)) return op.emitError("Error while computing then next sym");
+        if (failed(maybeElseSym)) return op.emitError("Error while computing else next sym");
 
-        auto condOp =
-            rewriter.create<BMv2IR::ConditionalOp>(op.getLoc(), name.value().getLeafReference(),
-                                                   maybeThenSym.value(), maybeElseSym.value());
-
-        // Clone ops the are used to compute the IfOp condition into the BMv2IR::ConditionalOp
-        // region: the corresponding JSON node has a node for the boolean expression, so we isolate
-        // the ops that compute the condition here. We assume that the leaf nodes in the expression
-        // are Header Instances.
-        // TODO: could there be other kinds of ops as leaf? Constants?
-        SmallVector<Operation *> expressionOps;
-        if (failed(getIfOpConditionOps(op.getLoc(), op.getCondition(), expressionOps)))
-            return op.emitError("Error retrieving expression ops");
-        auto &block = condOp.getConditionRegion().emplaceBlock();
-        rewriter.setInsertionPointToStart(&block);
-
-        IRMapping mapper;
-        for (auto op : llvm::reverse(expressionOps)) {
-            auto clonedOp = rewriter.clone(*op, mapper);
-            for (auto [origResult, clonedResult] :
-                 llvm::zip(op->getResults(), clonedOp->getResults())) {
-                mapper.map(origResult, clonedResult);
-            }
-        }
-        rewriter.setInsertionPointToEnd(&block);
-        rewriter.create<BMv2IR::YieldOp>(
-            op.getLoc(),
-            ValueRange{mapper.lookup(op.getCondition().getDefiningOp())->getResult(0)});
+        auto condOp = rewriter.create<BMv2IR::ConditionalOp>(
+            op.getLoc(), op.getSymName(), maybeThenSym.value(), maybeElseSym.value());
+        condOp.getConditionRegion().takeBody(op.getConditionRegion());
 
         return success();
     }
@@ -927,7 +856,7 @@ struct DeparserConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
 
     LogicalResult matchAndRewrite(P4HIR::ControlOp op, OpAdaptor operands,
                                   ConversionPatternRewriter &rewriter) const override {
-        auto isDeparser = isDeparserControl(op);
+        auto isDeparser = BMv2IR::isDeparserControl(op);
         if (failed(isDeparser)) return failure();
         if (!isDeparser.value()) return failure();
         SmallVector<Attribute> headersRef;
@@ -957,7 +886,7 @@ struct CalculationConversionPattern : public OpConversionPattern<P4HIR::ControlO
 
     LogicalResult matchAndRewrite(P4HIR::ControlOp op, OpAdaptor operands,
                                   ConversionPatternRewriter &rewriter) const override {
-        auto isCalculation = isCalculationControl(op);
+        auto isCalculation = BMv2IR::isCalculationControl(op);
         if (failed(isCalculation)) return failure();
         if (!isCalculation.value()) return failure();
         auto controlApply = cast<P4HIR::ControlApplyOp>(op.getBody().front().getTerminator());
@@ -986,7 +915,7 @@ struct CalculationConversionPattern : public OpConversionPattern<P4HIR::ControlO
 
     static FailureOr<BMv2IR::CalculationOp> handleVerifyOrUpdateChecksumCall(
         P4HIR::CallOp callOp, PatternRewriter &rewriter) {
-        auto name = getUniqueNameInParentModule(callOp, "calculation");
+        auto name = BMv2IR::getUniqueNameInParentModule(callOp, "calculation");
         PatternRewriter::InsertionGuard guard(rewriter);
         auto args = callOp.getArgOperands();
         if (args.size() != 4) return callOp.emitError("Unexpected number of args");
@@ -1098,7 +1027,7 @@ struct CalculationConversionPattern : public OpConversionPattern<P4HIR::ControlO
         if (failed(maybeCalcOp)) return failure();
 
         // Generate the checksum
-        auto name = getUniqueNameInParentModule(callOp, "checksum");
+        auto name = BMv2IR::getUniqueNameInParentModule(callOp, "checksum");
         auto maybeFieldRef = getTargetField(callOp, rewriter);
         if (failed(maybeFieldRef)) return failure();
         auto [headerRef, fieldName] = maybeFieldRef.value();
@@ -1134,32 +1063,10 @@ struct RemovePackageInstantiationPattern : public OpConversionPattern<BMv2IR::V1
     }
 };
 
-static void setUniqueIfOpName(P4HIR::IfOp ifOp, P4HIR::ControlOp controlOp, unsigned id) {
-    auto name = conditionalNameAttrName + std::to_string(id);
-    ifOp->setAttr(
-        conditionalNameAttrName,
-        SymbolRefAttr::get(controlOp.getSymNameAttr(),
-                           {SymbolRefAttr::get(StringAttr::get(ifOp.getContext(), name))}));
-}
-
 struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv2IRPass> {
     void runOnOperation() override {
         MLIRContext &context = getContext();
         mlir::ModuleOp module = getOperation();
-
-        // We need to give unique names to p4hir.if operations before converting to BMv2IR because
-        // BMv2 represents control flow in control_apply blocks by having `conditional` nodes in the
-        // JSON, and each has an unique name.
-        unsigned conditionalId = 0;
-        module.walk([&](P4HIR::IfOp ifOp) {
-            auto controlApplyParent = ifOp->getParentOfType<P4HIR::ControlApplyOp>();
-            if (!controlApplyParent) return WalkResult::skip();
-            auto controlParent = controlApplyParent->getParentOfType<P4HIR::ControlOp>();
-            if (!controlParent) return WalkResult::skip();
-            setUniqueIfOpName(ifOp, controlParent, conditionalId);
-            conditionalId++;
-            return WalkResult::advance();
-        });
 
         ConversionTarget target(context);
         RewritePatternSet patterns(&context);

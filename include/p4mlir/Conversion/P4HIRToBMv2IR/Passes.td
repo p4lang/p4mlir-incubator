@@ -61,4 +61,19 @@ def LowerPackage : Pass<"lower-package", "mlir::ModuleOp"> {
   ];
 }
 
+def SynthesizeActions : Pass<"synth-actions", "mlir::ModuleOp"> {
+  let summary = "Synthesizes dummy actions for raw operations in control_apply blocks";
+  let description = [{
+    BMv2 doesn't have a way of expressing arbitrary operations in control_apply blocks:
+    it can only express either table_apply or control flow nodes. If a control_apply
+    block contains a "raw" [sequence of] operations, we need to enclose the operation(s)
+    in a dummy action and call that action from the control_apply block.
+  }];
+  let dependentDialects = [
+      "::P4::P4MLIR::P4HIR::P4HIRDialect",
+      "::P4::P4MLIR::P4CoreLib::P4CoreLibDialect",
+      "::P4::P4MLIR::BMv2IR::BMv2IRDialect",
+  ];
+}
+
 #endif // P4MLIR_CONVERSION_P4HIRToBMv2IR_PASSES_TD

@@ -140,6 +140,65 @@ LogicalResult V1SwitchOp::verify() {
     return success();
 }
 
+static FailureOr<V1SwitchOp> getPackageInstantiationFromParentModule(Operation *op) {
+    auto moduleOp = op->getParentOfType<ModuleOp>();
+    if (!moduleOp) return op->emitError("No module parent");
+    // TODO: consider adding an interface to support different targets transparently
+    V1SwitchOp packageInstantiateOp = nullptr;
+    auto walkRes = moduleOp.walk([&](V1SwitchOp v1switch) {
+        if (packageInstantiateOp != nullptr) return WalkResult::interrupt();
+        packageInstantiateOp = v1switch;
+        return WalkResult::advance();
+    });
+    if (walkRes.wasInterrupted())
+        return op->emitError("Expected only a single package instantiation");
+    if (!packageInstantiateOp)
+        return op->emitError("Expected package instantiation op in the module");
+    return packageInstantiateOp;
+}
+
+namespace P4::P4MLIR::BMv2IR {
+
+StringAttr getUniqueNameInParentModule(Operation *op, StringRef base) {
+    auto name = StringAttr::get(op->getContext(), base);
+    unsigned counter = 0;
+    auto moduleOp = op->getParentOfType<ModuleOp>();
+    assert(moduleOp && "Expected module op");
+    auto uniqueName = SymbolTable::generateSymbolName<256>(
+        name,
+        [&](StringRef candidate) {
+            return SymbolTable::lookupSymbolIn(moduleOp, candidate) != nullptr;
+        },
+        counter);
+    return StringAttr::get(op->getContext(), uniqueName);
+}
+
+using P4HIR_ControlOp = P4::P4MLIR::P4HIR::ControlOp;
+
+FailureOr<bool> isTopLevelControl(P4HIR_ControlOp controlOp) {
+    auto packageInstantiateOp = getPackageInstantiationFromParentModule(controlOp);
+    if (failed(packageInstantiateOp)) return failure();
+    auto symToCheck = controlOp.getSymName();
+    return symToCheck == packageInstantiateOp->getIngress().getLeafReference() ||
+           symToCheck == packageInstantiateOp->getEgress().getLeafReference();
+}
+
+FailureOr<bool> isDeparserControl(P4HIR_ControlOp controlOp) {
+    auto packageInstantiateOp = getPackageInstantiationFromParentModule(controlOp);
+    if (failed(packageInstantiateOp)) return failure();
+    auto symToCheck = controlOp.getSymName();
+    return symToCheck == packageInstantiateOp->getDeparser().getLeafReference();
+}
+
+FailureOr<bool> isCalculationControl(P4HIR_ControlOp controlOp) {
+    auto packageInstantiateOp = getPackageInstantiationFromParentModule(controlOp);
+    if (failed(packageInstantiateOp)) return failure();
+    auto symToCheck = controlOp.getSymName();
+    return symToCheck == packageInstantiateOp->getVerifyChecksum().getLeafReference() ||
+           symToCheck == packageInstantiateOp->getComputeChecksum().getLeafReference();
+}
+}  // namespace P4::P4MLIR::BMv2IR
+
 void BMv2IRDialect::initialize() {
     registerTypes();
     registerAttributes();

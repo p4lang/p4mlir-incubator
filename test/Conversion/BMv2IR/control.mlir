@@ -300,17 +300,19 @@ module {
         p4hir.call @ingress::@NoAction_7 () : () -> ()
       }
     }
-// CHECK:    bmv2ir.conditional @conditional_name0 then @ingress::@port_mapping_0 expr {
-// CHECK-NEXT:      %0 = bmv2ir.field @ingress0_ipv4["$valid$"] -> !b1i
-// CHECK-NEXT:      %1 = bmv2ir.d2b %0 : !b1i
-// CHECK-NEXT:      bmv2ir.yield %1 : !p4hir.bool
-// CHECK-NEXT:    }
+// CHECK:    bmv2ir.conditional @cond_node_0 then @ingress::@port_mapping_0 expr {
+// CHECK:      %0 = bmv2ir.field @ingress0_ipv4["$valid$"] -> !b1i
+// CHECK:      %1 = bmv2ir.d2b %0 : !b1i
+// CHECK:      bmv2ir.yield %1 : !p4hir.bool
+// CHECK:    }
     p4hir.control_apply {
-      %ingress0_ipv4 = bmv2ir.symbol_ref @ingress0_ipv4 : !p4hir.ref<!ipv4_t>
-      %__valid_field_ref = p4hir.struct_field_ref %ingress0_ipv4["__valid"] : <!ipv4_t>
-      %val = p4hir.read %__valid_field_ref : <!validity_bit>
-      %eq = p4hir.cmp(eq, %val : !validity_bit, %valid : !validity_bit)
-      p4hir.if %eq {
+      bmv2ir.if @cond_node_0 expr {
+        %ingress0_ipv4 = bmv2ir.symbol_ref @ingress0_ipv4 : !p4hir.ref<!ipv4_t>
+        %__valid_field_ref = p4hir.struct_field_ref %ingress0_ipv4["__valid"] : <!ipv4_t>
+        %val = p4hir.read %__valid_field_ref : <!validity_bit>
+        %eq = p4hir.cmp(eq, %val : !validity_bit, %valid : !validity_bit)
+        bmv2ir.yield %eq : !p4hir.bool
+      } then {
         %port_mapping_0_apply_result = p4hir.table_apply @ingress::@port_mapping_0 with key(%arg2) : (!p4hir.ref<!standard_metadata_t1>) -> !port_mapping_0
         %bd_1_apply_result = p4hir.table_apply @ingress::@bd_1 with key(%arg1) : (!p4hir.ref<!ingress_metadata_t1>) -> !bd_1
         %ipv4_fib_0_apply_result = p4hir.table_apply @ingress::@ipv4_fib_0 with key(%arg1, %arg0) : (!p4hir.ref<!ingress_metadata_t1>, !p4hir.ref<!headers>) -> !ipv4_fib_0
@@ -326,6 +328,7 @@ module {
           p4hir.yield
         }
         %nexthop_0_apply_result = p4hir.table_apply @ingress::@nexthop_0 with key(%arg1) : (!p4hir.ref<!ingress_metadata_t1>) -> !nexthop_0
+      } else {
       }
     }
   }

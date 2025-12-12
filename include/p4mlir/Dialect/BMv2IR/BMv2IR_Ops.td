@@ -5,6 +5,7 @@ include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Dialect.td"
@@ -240,16 +241,10 @@ def BMv2IR_DataToBoolOp : BMv2IR_Op<"d2b"> {
   let assemblyFormat = [{
     $input `:` type($input) attr-dict
   }];
-
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$input), [{
-      build($_builder, $_state, ::P4::P4MLIR::P4HIR::BoolType::get($_state.getContext()), input);
-    }]>
-  ];
 }
 
 def BMv2IR_YieldOp : BMv2IR_Op<"yield", [ReturnLike, Terminator, NoMemoryEffect,
-    ParentOneOf<["ConditionalOp, CalculationOp, ChecksumOp"]>]> {
+    ParentOneOf<["ConditionalOp, CalculationOp, ChecksumOp, BMv2IR::IfOp"]>]> {
   let summary = "BMv2 region terminator";
 
   let arguments = (ins Variadic<AnyType>:$args);
@@ -277,6 +272,34 @@ def BMv2IR_ConditionalOp : BMv2IR_Op<"conditional", [Symbol, SingleBlockImplicit
     $sym_name `then` $thenRef (`else` $elseRef^)? `expr` $conditionRegion attr-dict
   }];
   let hasVerifier = 1;
+}
+
+def BMv2IR_IfOp : BMv2IR_Op<"if",
+      [ //DeclareOpInterfaceMethods<RegionBranchOpInterface>, InferTypeOpAdaptor, 
+       SingleBlockImplicitTerminator<"BMv2IR::YieldOp">,
+       RecursiveMemoryEffects, RecursivelySpeculatable,
+       AutomaticAllocationScope, NoRegionArguments]> {
+  let summary = "BMv2 if-then-else";
+  let description = [{
+    The `bmv2ir.if` works similarly to the `p4hir.if` operation, with two main differences:
+    - it has a symbolname
+    - the branch condition is the result yielded by the `conditionRegion`, which carries the whole expression
+      that computes the condition. This is done to ease lowering to BMv2 Conditional nodes.
+  }];
+  let arguments = (ins SymbolNameAttr:$sym_name);
+
+  // TODO: support results and implement interfaces
+  //let results = (outs Optional<AnyP4Type>:$result);
+  let regions = (region
+                   MaxSizedRegion<1>:$conditionRegion,
+                   AnyRegion:$thenRegion,
+                   AnyRegion:$elseRegion);
+  let assemblyFormat = [{
+    $sym_name `expr` $conditionRegion `then` $thenRegion `else` $elseRegion attr-dict
+  }];
+
+  // TODO: add verifier, check that condition region yields a boolean
+  let hasVerifier = 0;
 }
 
 def BMv2IR_TableOp : BMv2IR_Op<"table",

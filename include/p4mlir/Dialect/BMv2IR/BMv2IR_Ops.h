@@ -12,6 +12,8 @@
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Support/LLVM.h"
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Attrs.h"
@@ -19,8 +21,21 @@
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Types.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpInterfaces.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 #define GET_OP_CLASSES
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Ops.h.inc"
+
+namespace P4::P4MLIR::BMv2IR {
+
+mlir::StringAttr getUniqueNameInParentModule(mlir::Operation *op, llvm::StringRef base);
+
+llvm::FailureOr<bool> isTopLevelControl(P4HIR::ControlOp controlOp);
+
+llvm::FailureOr<bool> isDeparserControl(P4HIR::ControlOp controlOp);
+
+llvm::FailureOr<bool> isCalculationControl(P4HIR::ControlOp controlOp);
+
+}  // namespace P4::P4MLIR::BMv2IR
 
 #endif  // P4MLIR_DIALECT_BMv2IR_BMv2IR_OPS_H
