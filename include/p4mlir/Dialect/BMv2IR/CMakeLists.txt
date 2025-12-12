@@ -10,5 +10,13 @@ add_dependencies(mlir-headers P4MLIR_BMv2IR_IncGen)
 
 mlir_tablegen(BMv2IR_Attrs.h.inc -gen-attrdef-decls -attrdefs-dialect=bmv2ir)
 mlir_tablegen(BMv2IR_Attrs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=bmv2ir)
+mlir_tablegen(BMv2IR_EnumAttrs.h.inc -gen-enum-decls)
+mlir_tablegen(BMv2IR_EnumAttrs.cpp.inc -gen-enum-defs)
 add_public_tablegen_target(P4MLIR_BMv2IR_AttrIncGen)
 add_dependencies(mlir-headers P4MLIR_BMv2IR_AttrIncGen)
+
+set(LLVM_TARGET_DEFINITIONS BMv2IR_OpInterfaces.td)
+mlir_tablegen(BMv2IR_OpInterfaces.h.inc -gen-op-interface-decls)
+mlir_tablegen(BMv2IR_OpInterfaces.cpp.inc -gen-op-interface-defs)
+add_public_tablegen_target(P4MLIR_BMv2IR_OpsInterfacesIncGen)
+add_dependencies(mlir-headers P4MLIR_BMv2IR_OpsInterfacesIncGen)
