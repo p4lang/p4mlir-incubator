@@ -299,14 +299,23 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
     return success();
 }
 
-LogicalResult addInstanceForHeader(Operation *op, P4HIR::HeaderType headerTy, Twine name,
+LogicalResult addInstanceForHeader(P4HIR::VariableOp op, P4HIR::HeaderType headerTy, Twine name,
                                    PatternRewriter &rewriter) {
     PatternRewriter::InsertionGuard guard(rewriter);
     auto moduleOp = op->getParentOfType<ModuleOp>();
     assert(moduleOp);
     rewriter.setInsertionPointToStart(moduleOp.getBody());
+    auto nameAttr = rewriter.getStringAttr(name + "_var");
+    unsigned counter = 0;
+    auto uniqueName = SymbolTable::generateSymbolName<256>(
+        nameAttr,
+        [&](StringRef candidate) {
+            return SymbolTable::lookupSymbolIn(moduleOp, candidate) != nullptr;
+        },
+        counter);
+
     auto instance = rewriter.create<BMv2IR::HeaderInstanceOp>(
-        op->getLoc(), rewriter.getStringAttr(name), P4HIR::ReferenceType::get(headerTy));
+        op->getLoc(), rewriter.getStringAttr(uniqueName), P4HIR::ReferenceType::get(headerTy));
     rewriter.setInsertionPointAfter(op);
     rewriter.replaceOpWithNewOp<BMv2IR::SymToValueOp>(
         op, instance.getHeaderType(),
@@ -418,12 +427,6 @@ struct ControlOpPattern : public OpRewritePattern<P4HIR::ControlOp> {
     HeaderConversionContext *instancesFromHeaderArgs;
 };
 
-FailureOr<StringRef> getParentName(Operation *op) {
-    auto parserParent = op->getParentOfType<P4HIR::ParserOp>();
-    if (!parserParent) return op->emitError("Unexpected VariableOp parent");
-    return parserParent.getSymName();
-}
-
 struct VariableOpPattern : public OpRewritePattern<P4HIR::VariableOp> {
     using OpRewritePattern<P4HIR::VariableOp>::OpRewritePattern;
 
@@ -437,9 +440,6 @@ struct VariableOpPattern : public OpRewritePattern<P4HIR::VariableOp> {
             return variableOp.emitError("Unnamed variable can't be lowered to header instance");
         auto name = maybeName.value();
 
-        auto maybeParentName = getParentName(variableOp);
-        if (failed(maybeParentName)) return failure();
-
         auto res =
             TypeSwitch<Type, LogicalResult>(ty)
                 .Case([&](P4HIR::StructType structTy) -> LogicalResult {
@@ -450,8 +450,7 @@ struct VariableOpPattern : public OpRewritePattern<P4HIR::VariableOp> {
                     return success();
                 })
                 .Case([&](P4HIR::HeaderType headerTy) -> LogicalResult {
-                    if (failed(addInstanceForHeader(
-                            variableOp, headerTy, maybeParentName.value() + "_" + name, rewriter)))
+                    if (failed(addInstanceForHeader(variableOp, headerTy, name, rewriter)))
                         return variableOp.emitError("Error translating variableOp");
                     return success();
                 })

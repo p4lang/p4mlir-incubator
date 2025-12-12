@@ -14,13 +14,13 @@
 !Headers_t = !p4hir.struct<"Headers_t", top: !header_top, one: !header_one, two: !header_two, bottom: !header_bottom>
 !header_and_bit = !p4hir.struct<"header_and_bit", top: !header_top, bit: !b8i>
 module {
-// CHECK:  bmv2ir.header_instance @prs_e_0 : !p4hir.ref<!header_one>
+// CHECK:  bmv2ir.header_instance @e_0_var_0 : !p4hir.ref<!header_one>
 // CHECK:  bmv2ir.header_instance @Headers_t_top : !p4hir.ref<!header_top>
 // CHECK:  bmv2ir.header_instance @Headers_t_one : !p4hir.ref<!header_one>
 // CHECK:  bmv2ir.header_instance @Headers_t_two : !p4hir.ref<!header_two>
   p4hir.parser @prs(%arg0: !p4corelib.packet_in {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "p"}, %arg1: !p4hir.ref<!Headers_t> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "headers"})() {
     %e_0 = p4hir.variable ["e_0"] annotations {name = "ParserImpl.e"} : <!header_one>
-    // CHECK: %[[E_0:.*]] = bmv2ir.symbol_ref @prs_e_0 : !p4hir.ref<!header_one>
+    // CHECK: %[[E_0:.*]] = bmv2ir.symbol_ref @e_0_var_0 : !p4hir.ref<!header_one>
     p4hir.state @start {
       %top_field_ref = p4hir.struct_field_ref %arg1["top"] : <!Headers_t>
       p4corelib.extract_header %top_field_ref : <!header_top> from %arg0 : !p4corelib.packet_in
