@@ -777,7 +777,7 @@ def SoftReturnOp : P4HIR_Op<"soft_return", [ParentOneOf<["ScopeOp", "IfOp",
   let assemblyFormat = "($input^ `:` type($input))? attr-dict ";
 
   let builders = [
-    OpBuilder<(ins), [{ build($_builder, $_state, std::nullopt); }]>
+    OpBuilder<(ins), [{ build($_builder, $_state, {}); }]>
   ];
 
   let extraClassDeclaration = [{

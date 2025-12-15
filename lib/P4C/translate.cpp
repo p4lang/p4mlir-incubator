@@ -2071,7 +2071,7 @@ llvm::SmallVector<mlir::DictionaryAttr, 4> P4HIRConverter::convertParamAttribute
     // Create attributes for directions
     llvm::SmallVector<mlir::DictionaryAttr, 4> paramsAttrs;
     for (const auto *p : params->parameters) {
-        P4HIR::ParamDirection dir;
+        P4HIR::ParamDirection dir = P4HIR::ParamDirection::None;
         switch (p->direction) {
             case P4::IR::Direction::None:
                 dir = P4HIR::ParamDirection::None;

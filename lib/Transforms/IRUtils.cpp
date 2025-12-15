@@ -85,7 +85,7 @@ void copyOp(mlir::RewriterBase &rewriter, mlir::Operation *op, const BlockSet &e
     }
 }
 
-};  // namespace
+}  // namespace
 
 // Corrects all values that are used outside `block` due to splitting.
 // Rewriter position must be in a place where we can create locals (e.g. parser or control locals).
