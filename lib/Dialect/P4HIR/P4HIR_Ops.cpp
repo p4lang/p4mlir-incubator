@@ -3897,7 +3897,8 @@ OpFoldResult P4HIR::ArrayGetOp::fold(FoldAdaptor adaptor) {
         return mlir::cast<P4HIR::AggAttr>(aggAttr).getFields()[idxAttr.getUInt()];
 
     // Fold extract from array
-    if (auto arrayOp = mlir::dyn_cast_if_present<P4HIR::ArrayOp>(getInput().getDefiningOp()))
+    if (auto arrayOp = mlir::dyn_cast_if_present<P4HIR::ArrayOp>(getInput().getDefiningOp());
+        arrayOp && idxAttr.getUInt() < arrayOp.getNumOperands())
         return arrayOp.getOperand(idxAttr.getUInt());
 
     return {};
@@ -3912,14 +3913,14 @@ LogicalResult P4HIR::ArrayGetOp::canonicalize(P4HIR::ArrayGetOp op, PatternRewri
     // reads.
     if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>(); readOp && readOp->hasOneUse()) {
         auto indexOp = op.getIndex().getDefiningOp();
-        // We can only do this canonicalization if the index is defined before the read because
-        // otherwise we would use index before it's defined.
-        if (indexOp && indexOp->getBlock() == readOp->getBlock() &&
-            indexOp->isBeforeInBlock(readOp)) {
-            auto ref = readOp.getRef();
+        if (!indexOp) return failure();
+        // We can only do this canonicalization if the index dominates the read because otherwise we
+        // would use index before it's defined.
+        if ((indexOp->getBlock() == readOp->getBlock() && indexOp->isBeforeInBlock(readOp)) ||
+            (indexOp->getBlock() != readOp->getBlock() && readOp->getBlock() == op->getBlock())) {
             rewriter.setInsertionPoint(readOp);
             auto eltRef = rewriter.create<P4HIR::ArrayElementRefOp>(
-                op.getLoc(), P4HIR::ReferenceType::get(op.getType()), ref, op.getIndex());
+                op.getLoc(), P4HIR::ReferenceType::get(op.getType()), readOp.getRef(), op.getIndex());
             rewriter.replaceOpWithNewOp<P4HIR::ReadOp>(op, eltRef);
             rewriter.eraseOp(readOp);
             return success();
