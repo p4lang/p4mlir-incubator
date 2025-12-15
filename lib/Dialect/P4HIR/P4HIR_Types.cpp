@@ -229,9 +229,9 @@ llvm::ArrayRef<mlir::Type> FuncType::getReturnTypes() const {
 // Whether the function returns void
 bool FuncType::isVoid() const {
     auto rt = static_cast<detail::FuncTypeStorage *>(getImpl())->optionalReturnType;
-    assert(!rt || !mlir::isa<VoidType>(rt) &&
-                      "The return type for a function returning void should be empty "
-                      "instead of a real !p4hir.void");
+    assert((!rt || !mlir::isa<VoidType>(rt)) &&
+           "The return type for a function returning void should be empty "
+           "instead of a real !p4hir.void");
     return !rt;
 }
 

@@ -1265,7 +1265,7 @@ void P4HIR::FuncOp::createEntryBlock() {
     assert(empty() && "can only create entry block for empty function");
     Block &first = getFunctionBody().emplaceBlock();
     auto loc = getFunctionBody().getLoc();
-    for (auto argType : getFunctionType().getInputs()) first.addArgument(argType, loc);
+    for (auto argType : getArgumentTypes()) first.addArgument(argType, loc);
 }
 
 void P4HIR::FuncOp::print(OpAsmPrinter &p) {
@@ -2084,7 +2084,7 @@ void P4HIR::ParserOp::createEntryBlock() {
     assert(empty() && "can only create entry block for empty parser");
     Block &first = getFunctionBody().emplaceBlock();
     auto loc = getFunctionBody().getLoc();
-    for (auto argType : getFunctionType().getInputs()) first.addArgument(argType, loc);
+    for (auto argType : getArgumentTypes()) first.addArgument(argType, loc);
 }
 
 P4HIR::ParserStateOp P4HIR::ParserOp::getStartState() {
@@ -3091,7 +3091,7 @@ void P4HIR::ControlOp::createEntryBlock() {
     assert(empty() && "can only create entry block for empty control");
     Block &first = getFunctionBody().emplaceBlock();
     auto loc = getFunctionBody().getLoc();
-    for (auto argType : getFunctionType().getInputs()) first.addArgument(argType, loc);
+    for (auto argType : getArgumentTypes()) first.addArgument(argType, loc);
 }
 
 void P4HIR::ControlOp::print(mlir::OpAsmPrinter &printer) {

@@ -98,6 +98,6 @@ class SplitStateRewriter {
     mlir::Operation *stateCreationPoint;
 };
 
-};  // namespace P4::P4MLIR::IRUtils
+}  // namespace P4::P4MLIR::IRUtils
 
 #endif  // P4MLIR_IMPL_IR_UTILS_H
