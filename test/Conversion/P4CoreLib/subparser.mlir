@@ -40,7 +40,7 @@ module {
       p4hir.scope {
         %h2_field_ref = p4hir.struct_field_ref %arg1["h2"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h2_t>
-        p4hir.call_method @packet_in::@extract<[!h2_t]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!h2_t>) -> ()
+        p4hir.call_method @packet_in::@extract<[!h2_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!h2_t>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!h2_t>
         p4hir.assign %val_0, %h2_field_ref : <!h2_t>
       }
@@ -67,7 +67,7 @@ module {
       p4hir.scope {
         %h1_field_ref = p4hir.struct_field_ref %arg1["h1"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h1_t>
-        p4hir.call_method @packet_in::@extract<[!h1_t]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!h1_t>) -> ()
+        p4hir.call_method @packet_in::@extract<[!h1_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!h1_t>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!h1_t>
         p4hir.assign %val_0, %h1_field_ref : <!h1_t>
       }
@@ -120,7 +120,7 @@ module {
       p4hir.scope {
         %h3_field_ref = p4hir.struct_field_ref %arg1["h3"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h3_t>
-        p4hir.call_method @packet_in::@extract<[!h3_t]> of %arg0: !packet_in (%hdr_out_arg) : (!p4hir.ref<!h3_t>) -> ()
+        p4hir.call_method @packet_in::@extract<[!h3_t]> (%hdr_out_arg) of %arg0: !packet_in : (!p4hir.ref<!h3_t>) -> ()
         %val = p4hir.read %hdr_out_arg : <!h3_t>
         p4hir.assign %val, %h3_field_ref : <!h3_t>
       }

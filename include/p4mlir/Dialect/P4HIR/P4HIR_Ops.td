@@ -1250,7 +1250,7 @@ def InstantiateOp : P4HIR_Op<"instantiate",
   }];
 
   // TODO: refine parameter type (must be constants!)
-  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
+  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
                        SymbolNameAttr:$sym_name, OptionalAttr<ArrayAttr>:$type_parameters,
                        OptionalAttr<DictionaryAttr>:$annotations,
                        OptionalAttr<ArrayAttr>:$arg_attrs);
@@ -1259,26 +1259,26 @@ def InstantiateOp : P4HIR_Op<"instantiate",
   let hasVerifier = 0;
 
   let builders = [
-      OpBuilder<(ins "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name), [{
+      OpBuilder<(ins "mlir::SymbolRefAttr":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name), [{
         build($_builder, $_state,
               callee, arg_operands, sym_name, nullptr, nullptr, nullptr);
       }]>,
 
-      OpBuilder<(ins "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name, "mlir::TypeRange":$type_parameters), [{
+      OpBuilder<(ins "mlir::SymbolRefAttr":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name, "mlir::TypeRange":$type_parameters), [{
         build($_builder, $_state,
               callee, arg_operands, sym_name,
               type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters),
               nullptr, nullptr);
       }]>,
 
-      OpBuilder<(ins "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name, "mlir::DictionaryAttr":$annotations), [{
+      OpBuilder<(ins "mlir::SymbolRefAttr":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name, "mlir::DictionaryAttr":$annotations), [{
         build($_builder, $_state,
               callee, arg_operands, sym_name, nullptr,
               annotations && annotations.empty() ? nullptr : annotations,
               nullptr);
       }]>,
 
-      OpBuilder<(ins "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name, "mlir::TypeRange":$type_parameters, "mlir::DictionaryAttr":$annotations), [{
+      OpBuilder<(ins "mlir::SymbolRefAttr":$callee, "mlir::ValueRange":$arg_operands, "mlir::StringAttr":$sym_name, "mlir::TypeRange":$type_parameters, "mlir::DictionaryAttr":$annotations), [{
         build($_builder, $_state,
               callee, arg_operands, sym_name,
               type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters),
@@ -1413,6 +1413,7 @@ def ControlLocalOp : P4HIR_Op<"control_local",
   let extraClassDeclaration = [{
     // TODO: Remove after https://github.com/llvm/llvm-project/pull/151036 would be in third-party
     bool isPrivate() { return true; }
+    bool canDiscardOnUseEmpty() { return true; }
     Visibility getVisibility() { return Visibility::Private;  }
   }];
 
@@ -1541,6 +1542,11 @@ def ExternOp : P4HIR_Op<"extern",
 
   let extraClassDeclaration = [{
     mlir::Block &createEntryBlock();
+
+    // TODO: Remove after https://github.com/llvm/llvm-project/pull/151036 would be in third-party
+    bool isPrivate() { return true; }
+    bool canDiscardOnUseEmpty() { return true; }
+    Visibility getVisibility() { return Visibility::Private;  }
   }];
 }
 
@@ -1567,7 +1573,8 @@ def CallMethodOp : P4HIR_Op<"call_method",
 
   // TODO: Refine result types, refine parameter type
   let results = (outs Optional<CallResultP4Type>:$result);
-  let arguments = (ins SymbolRefAttr:$callee,
+  let arguments = (ins SymbolRefAttr:$method,
+                       OptionalAttr<SymbolRefAttr>:$instantiation,
                        Optional<P4ObjectType>:$obj,
                        OptionalAttr<TypeArrayAttr>:$type_operands,
                        Variadic<AnyType>:$arg_operands,
@@ -1576,16 +1583,17 @@ def CallMethodOp : P4HIR_Op<"call_method",
   // let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-      $callee  (`<` $type_operands^ `>`)? (`of` $obj^ `:` type($obj) ` `)? `(` $arg_operands `)` `:` functional-type($arg_operands, results) attr-dict
+     $method  (`<` $type_operands^ `>`)? `(` $arg_operands `)` `of` ($obj^ `:` type($obj))? ($instantiation^)? `:` functional-type($arg_operands, results) attr-dict
   }];
 
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::Type":$resultType, "mlir::SymbolRefAttr":$callee,
+    OpBuilder<(ins "mlir::Type":$resultType, "mlir::SymbolRefAttr":$instantiation, "mlir::SymbolRefAttr":$method,
                    "mlir::TypeRange":$type_operands, "mlir::ValueRange":$arg_operands), [{
       $_state.addOperands(arg_operands);
-      $_state.addAttribute(getCalleeAttrName($_state.name), callee);
+      $_state.addAttribute(getMethodAttrName($_state.name), method);
+      $_state.addAttribute(getInstantiationAttrName($_state.name), instantiation);
       if (resultType && !isa<VoidType>(resultType))
         $_state.addTypes(resultType);
       if (!type_operands.empty())
@@ -1600,7 +1608,7 @@ def CallMethodOp : P4HIR_Op<"call_method",
                    "mlir::TypeRange":$type_operands, "mlir::ValueRange":$arg_operands), [{
       $_state.addOperands(obj);
       $_state.addOperands(arg_operands);
-      $_state.addAttribute(getCalleeAttrName($_state.name), method);
+      $_state.addAttribute(getMethodAttrName($_state.name), method);
       if (resultType && !isa<VoidType>(resultType))
         $_state.addTypes(resultType);
       if (!type_operands.empty())
@@ -1620,7 +1628,7 @@ def CallMethodOp : P4HIR_Op<"call_method",
     mlir::CallInterfaceCallable getCallableForCallee() {
        if (isIndirect())
          return getIndirectCallee();
-       return getCallee();
+       return *getInstantiation();
     }
 
     /// Set the callee for this operation.

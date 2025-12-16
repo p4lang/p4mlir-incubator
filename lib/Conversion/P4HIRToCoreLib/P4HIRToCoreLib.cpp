@@ -94,7 +94,7 @@ struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMet
 
     LogicalResult matchAndRewrite(P4HIR::CallMethodOp op, OpAdaptor operands,
                                   ConversionPatternRewriter &rewriter) const override {
-        auto sym = op.getCallee();
+        auto sym = op.getMethod();
         auto extSym = sym.getRootReference(), methodSym = sym.getLeafReference();
         if (extSym == "packet_out" && methodSym == "emit") {
             rewriter.replaceOpWithNewOp<P4CoreLib::PacketEmitOp>(op, mlir::TypeRange(),

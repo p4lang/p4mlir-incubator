@@ -2570,19 +2570,18 @@ void P4HIR::PackageOp::build(mlir::OpBuilder &builder, mlir::OperationState &res
 
 LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     // Check that the callee attribute was specified.
-    auto ctorAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>(getCalleeAttrName());
+    auto ctorAttr = (*this)->getAttrOfType<SymbolRefAttr>(getCalleeAttrName());
     if (!ctorAttr) return emitOpError("requires a 'callee' symbol reference attribute");
 
-    auto getCtorType =
-        [&](mlir::FlatSymbolRefAttr ctorAttr) -> std::pair<CtorType, mlir::Operation *> {
+    auto getCtorType = [&](mlir::SymbolRefAttr ctorAttr) -> std::pair<CtorType, mlir::Operation *> {
         if (ParserOp parser =
                 symbolTable.lookupSymbolIn<ParserOp>(getParentModule(*this), ctorAttr)) {
             return {parser.getCtorType(), parser.getOperation()};
         } else if (ControlOp control =
                        symbolTable.lookupSymbolIn<ControlOp>(getParentModule(*this), ctorAttr)) {
             return {control.getCtorType(), control.getOperation()};
-        } else if (ExternOp ext =
-                       symbolTable.lookupSymbolIn<ExternOp>(getParentModule(*this), ctorAttr)) {
+        } else if (FuncOp extCtor =
+                       symbolTable.lookupSymbolIn<FuncOp>(getParentModule(*this), ctorAttr)) {
             // TBD
             return {};
         } else if (PackageOp pkg =
@@ -2826,25 +2825,28 @@ bool P4HIR::CallMethodOp::isIndirect() { return (bool)getObj(); }
 mlir::Value P4HIR::CallMethodOp::getIndirectCallee() { return getObj(); }
 
 LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-    // Check that the callee attribute was specified.
-    auto sym = (*this)->getAttrOfType<SymbolRefAttr>(getCalleeAttrName());
-    if (!sym) return emitOpError("requires a 'callee' symbol reference attribute");
+    // Check that the method attribute was specified.
+    auto methodSymAttr = (*this)->getAttrOfType<SymbolRefAttr>(getMethodAttrName());
+    if (!methodSymAttr) return emitOpError("requires a 'method' symbol reference attribute");
 
-    // Symbol ref should be pair of extern + method name
-    auto nestedRefs = sym.getNestedReferences();
-    if (nestedRefs.empty()) return emitOpError("requires a nested method name in '") << sym << "'";
-    auto methodSymAttr = nestedRefs.back();
-    auto extSymAttr = mlir::SymbolRefAttr::get(sym.getRootReference(), nestedRefs.drop_back());
+    // Method symbol ref should be pair of extern + method name
+    auto nestedRefs = methodSymAttr.getNestedReferences();
+    if (nestedRefs.size() != 1)
+        return emitOpError("requires a nested method name in '") << methodSymAttr << "'";
+    auto methodNameAttr = methodSymAttr.getLeafReference();
+    auto extSymAttr = methodSymAttr.getRootReference();
 
     // Extern symbol refers to instantiation here. We need to resolve it first.
     SmallVector<mlir::Type> baseTypeOperands;
     if (!isIndirect()) {
-        auto inst =
-            symbolTable.lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this), extSymAttr);
+        if (!getInstantiation())
+            return emitOpError("requires an `instantiation` reference attribute");
+
+        auto inst = symbolTable.lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this),
+                                                                     getInstantiationAttr());
         if (!inst)
-            return emitOpError() << "'" << extSymAttr
+            return emitOpError() << "'" << getInstantiationAttr()
                                  << "' does not reference a valid instantiation";
-        extSymAttr = mlir::SymbolRefAttr::get(inst.getCalleeAttr().getRootReference());
         if (auto typeOps = inst.getTypeParameters())
             llvm::append_range(baseTypeOperands, typeOps->getAsValueRange<mlir::TypeAttr>());
     } else {
@@ -2856,13 +2858,15 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
                 "operand");
         llvm::append_range(baseTypeOperands, extType.getTypeArguments());
     }
-
     // Grab the extern
     P4HIR::FuncOp fn;
     P4HIR::ExternOp ext;
     if ((ext = symbolTable.lookupSymbolIn<P4HIR::ExternOp>(getParentModule(*this), extSymAttr))) {
         // Now, perform a method lookup
-        auto *decl = ext.lookupSymbol(methodSymAttr);
+        auto *decl = ext.lookupSymbol(methodNameAttr);
+        if (!decl)
+            return emitOpError() << "failed to resolve method " << methodNameAttr << " of "
+                                 << extSymAttr;
         if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
             // We good here
         } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
@@ -2956,16 +2960,13 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
     return success();
 }
 
-mlir::StringAttr P4HIR::CallMethodOp::getMethodName() { return getCallee().getLeafReference(); }
+mlir::StringAttr P4HIR::CallMethodOp::getMethodName() { return getMethod().getLeafReference(); }
 
 // Callee might be:
 //  - Overload set, then we need to look for a particular overload
 //  - Normal methods
 static mlir::Operation *resolveCallMethodCallableImpl(
     P4HIR::CallMethodOp callMethodOp, mlir::SymbolTableCollection *symbolTable = nullptr) {
-    auto sym = callMethodOp.getCallee();
-    if (!sym) return nullptr;
-
     // Grab the extern
     if (auto ext = callMethodOp.getExtern(symbolTable)) {
         // Now perform a method lookup
@@ -2995,21 +2996,10 @@ mlir::Operation *P4HIR::CallMethodOp::resolveCallable() {
 }
 
 P4HIR::ExternOp P4HIR::CallMethodOp::getExtern(mlir::SymbolTableCollection *symbolTable) {
-    auto sym = getCallee();
+    auto sym = getMethod();
 
     // Symbol ref should be pair of extern + method name
-    auto nestedRefs = sym.getNestedReferences();
-    assert(!nestedRefs.empty() && "requires a nested method name");
-    auto extSymAttr = mlir::SymbolRefAttr::get(sym.getRootReference(), nestedRefs.drop_back());
-
-    if (!isIndirect()) {
-        auto inst = symbolTable
-                        ? symbolTable->lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this),
-                                                                            extSymAttr)
-                        : getParentModule(*this).lookupSymbol<P4HIR::InstantiateOp>(extSymAttr);
-        assert(inst && "expected a valid instantiation");
-        extSymAttr = mlir::SymbolRefAttr::get(inst.getCalleeAttr().getRootReference());
-    }
+    auto extSymAttr = sym.getRootReference();
 
     auto res = symbolTable ? symbolTable->lookupSymbolIn<P4HIR::ExternOp>(getParentModule(*this),
                                                                           extSymAttr)
@@ -3052,8 +3042,10 @@ void P4HIR::CallMethodOp::getEffects(
         effects.emplace_back(MemoryEffects::Read::get(), &*getObjMutable().begin(),
                              ExternResource::get());
     } else {
-        effects.emplace_back(MemoryEffects::Write::get(), getCallee(), ExternResource::get());
-        effects.emplace_back(MemoryEffects::Read::get(), getCallee(), ExternResource::get());
+        effects.emplace_back(MemoryEffects::Write::get(), *getInstantiation(),
+                             ExternResource::get());
+        effects.emplace_back(MemoryEffects::Read::get(), *getInstantiation(),
+                             ExternResource::get());
     }
 }
 
@@ -3920,7 +3912,8 @@ LogicalResult P4HIR::ArrayGetOp::canonicalize(P4HIR::ArrayGetOp op, PatternRewri
             (indexOp->getBlock() != readOp->getBlock() && readOp->getBlock() == op->getBlock())) {
             rewriter.setInsertionPoint(readOp);
             auto eltRef = rewriter.create<P4HIR::ArrayElementRefOp>(
-                op.getLoc(), P4HIR::ReferenceType::get(op.getType()), readOp.getRef(), op.getIndex());
+                op.getLoc(), P4HIR::ReferenceType::get(op.getType()), readOp.getRef(),
+                op.getIndex());
             rewriter.replaceOpWithNewOp<P4HIR::ReadOp>(op, eltRef);
             rewriter.eraseOp(readOp);
             return success();
