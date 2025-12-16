@@ -55,7 +55,7 @@ struct Parsed_packet {
 parser parserI(packet_in pkt,
                out Parsed_packet hdr) {
     state start {
-// CHECK: p4hir.call_method @packet_in::@extract<[!Ethernet_h]> of %{{.*}} : ![[packet_in]] (%{{.*}}) : (!p4hir.ref<!Ethernet_h>) -> ()
+// CHECK: p4hir.call_method @packet_in::@extract<[!Ethernet_h]> (%{{.*}}) of %{{.*}} : ![[packet_in]] : (!p4hir.ref<!Ethernet_h>) -> ()
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
           16w0x0800: parse_ipv4;
@@ -63,7 +63,7 @@ parser parserI(packet_in pkt,
         }
     }
     state parse_ipv4 {
-// CHECK: p4hir.call_method @packet_in::@extract<[!ipv4_t]> of %{{.*}} : ![[packet_in]] (%{{.*}}) : (!p4hir.ref<!ipv4_t>) -> ()
+// CHECK: p4hir.call_method @packet_in::@extract<[!ipv4_t]> (%{{.*}}) of %{{.*}} : ![[packet_in]] : (!p4hir.ref<!ipv4_t>) -> ()
         pkt.extract(hdr.ipv4);
         transition select(hdr.ipv4.version, hdr.ipv4.protocol) {
           (4w0x4, 8w0x06): accept;

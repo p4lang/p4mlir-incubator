@@ -49,7 +49,7 @@ module {
     p4hir.state @next {
       p4hir.scope {
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!Header>
-        p4hir.call_method @packet_in::@extract<[!Header]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!Header>) -> ()
+        p4hir.call_method @packet_in::@extract<[!Header]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!Header>) -> ()
         %val = p4hir.read %hdr_out_arg : <!Header>
         p4hir.assign %val, %arg1 : <!Header>
       }

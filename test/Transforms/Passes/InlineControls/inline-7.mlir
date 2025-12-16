@@ -17,7 +17,7 @@ module {
     p4hir.control_local @__local_Callee1_x_0 = %arg0 : !p4hir.ref<!b32i>
     p4hir.instantiate @Y (%val : !b32i) as @ext
     p4hir.control_apply {
-      %0 = p4hir.call_method @Callee1::@ext::@get(%val) : (!b32i) -> !b32i
+      %0 = p4hir.call_method @Y::@get (%val) of @Callee1::@ext : (!b32i) -> !b32i
     }
   }
   // CHECK-LABEL: p4hir.control @Callee2
@@ -33,8 +33,8 @@ module {
     p4hir.instantiate @Callee1 (%c10_b32i : !b32i) as @c2
     // CHECK: p4hir.control_apply
     p4hir.control_apply {
-      // CHECK-DAG: %{{.*}} = p4hir.call_method @Callee2::@c1.ext::@get(%[[CONST_0]]) : (!b32i) -> !b32i
-      // CHECK-DAG: %{{.*}} = p4hir.call_method @Callee2::@c2.ext::@get(%[[CONST_10]]) : (!b32i) -> !b32i
+      // CHECK-DAG: %{{.*}} = p4hir.call_method @Y::@get (%[[CONST_0]]) of @Callee2::@c1.ext : (!b32i) -> !b32i
+      // CHECK-DAG: %{{.*}} = p4hir.call_method @Y::@get (%[[CONST_10]]) of @Callee2::@c2.ext : (!b32i) -> !b32i
       p4hir.scope {
         %x_inout_arg = p4hir.variable ["x_inout_arg", init] : <!b32i>
         %val = p4hir.read %arg0 : <!b32i>

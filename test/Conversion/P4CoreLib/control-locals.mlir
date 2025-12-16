@@ -41,7 +41,7 @@ module {
     p4hir.control_local @__local_deparser_hdr_0 = %arg1 : !headers_t
     p4hir.control_apply {
       %u0_ethernet = p4hir.struct_extract %arg1["u0_ethernet"] : !headers_t
-      p4hir.call_method @packet_out::@emit<[!ethernet_t]> of %arg0 : !packet_out (%u0_ethernet) : (!ethernet_t) -> ()
+      p4hir.call_method @packet_out::@emit<[!ethernet_t]> (%u0_ethernet) of %arg0 : !packet_out : (!ethernet_t) -> ()
     }
   }
 }

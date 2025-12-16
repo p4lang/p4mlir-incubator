@@ -17,7 +17,7 @@ module {
   p4hir.parser @callee1(%arg0: !b8i {p4hir.dir = #in, p4hir.param_name = "packet"}, %arg1: !p4hir.ref<!b8i> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "ipv4"})() {
     p4hir.instantiate @Checksum8 () as @chk
     p4hir.state @start {
-      %0 = p4hir.call_method @callee1::@chk::@get() : () -> !b8i
+      %0 = p4hir.call_method @Checksum8::@get () of @callee1::@chk : () -> !b8i
       p4hir.assign %0, %arg1 : <!b8i>
       p4hir.transition to @callee1::@accept
     }
@@ -56,7 +56,7 @@ module {
   // CHECK-LABEL: p4hir.parser @caller
   // CHECK: p4hir.instantiate @Checksum8 () as @subparser2.subparser1.chk
   // CHECK: p4hir.instantiate @Checksum8 () as @subparser3.subparser1.chk
-  // CHECK: %0 = p4hir.call_method @caller::@subparser2.subparser1.chk::@get() : () -> !b8i
+  // CHECK: %0 = p4hir.call_method @Checksum8::@get () of @caller::@subparser2.subparser1.chk : () -> !b8i
   // CHECK: p4hir.assign %0, %ipv4_out_arg : <!b8i>
   // CHECK-NOT: p4hir.call_method
   // CHECK-NOT: p4hir.apply

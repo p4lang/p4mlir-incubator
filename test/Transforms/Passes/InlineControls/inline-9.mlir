@@ -43,12 +43,12 @@ module {
     p4hir.control_local @__local_callee_rand_0 = %arg0 : !Random
     p4hir.func action @a() {
       %__local_callee_rand_0 = p4hir.symbol_ref @callee::@__local_callee_rand_0 : !Random
-      %0 = p4hir.call_method @Random::@read of %__local_callee_rand_0 : !Random () : () -> !b10i
+      %0 = p4hir.call_method @Random::@read () of %__local_callee_rand_0 : !Random : () -> !b10i
       p4hir.return
     }
     p4hir.table @b {
       p4hir.table_key(%arg1: !Random) {
-        %0 = p4hir.call_method @Random::@read of %arg1 : !Random () : () -> !b10i
+        %0 = p4hir.call_method @Random::@read () of %arg1 : !Random : () -> !b10i
         p4hir.match_key #exact %0 : !b10i annotations {name = "rand"}
       }
       p4hir.table_actions {
@@ -65,7 +65,7 @@ module {
     }
     p4hir.control_apply {
       %b_apply_result = p4hir.table_apply @callee::@b with key(%arg0) : (!Random) -> !b
-      %0 = p4hir.call_method @Random::@read of %arg0 : !Random () : () -> !b10i
+      %0 = p4hir.call_method @Random::@read () of %arg0 : !Random : () -> !b10i
     }
   }
   // CHECK-LABEL: p4hir.control @caller
@@ -77,12 +77,12 @@ module {
 
     // CHECK: p4hir.func action @inst.a() {
     // CHECK:   %[[RAND:.*]] = p4hir.symbol_ref @caller::@[[ARG]] : !Random
-    // CHECK:   %{{.*}} = p4hir.call_method @Random::@read of %[[RAND]] : !Random () : () -> !b10i
+    // CHECK:   %{{.*}} = p4hir.call_method @Random::@read () of %[[RAND]] : !Random : () -> !b10i
     // CHECK:   p4hir.return
     // CHECK: }
     // CHECK: p4hir.table @inst.b {
     // CHECK:   p4hir.table_key(%[[KEY_ARG:.*]]: !Random) {
-    // CHECK:     %0 = p4hir.call_method @Random::@read of %[[KEY_ARG]] : !Random () : () -> !b10i
+    // CHECK:     %0 = p4hir.call_method @Random::@read () of %[[KEY_ARG]] : !Random : () -> !b10i
     // CHECK:     p4hir.match_key #exact %0 : !b10i annotations {name = "rand"}
     // CHECK:   }
     // CHECK:   p4hir.table_actions {
@@ -102,9 +102,9 @@ module {
     // CHECK-LABEL: p4hir.control_apply
     p4hir.control_apply {
       // CHECK-DAG: %inst.b_apply_result = p4hir.table_apply @caller::@inst.b with key(%arg0) : (!Random) -> !b
-      // CHECK-DAG: %{{.*}} = p4hir.call_method @Random::@read of %arg0 : !Random () : () -> !b10i
+      // CHECK-DAG: %{{.*}} = p4hir.call_method @Random::@read () of %arg0 : !Random : () -> !b10i
       // CHECK-DAG: %inst.b_apply_result_0 = p4hir.table_apply @caller::@inst.b with key(%arg0) : (!Random) -> !b
-      // CHECK-DAG: %{{.*}} = p4hir.call_method @Random::@read of %arg0 : !Random () : () -> !b10i
+      // CHECK-DAG: %{{.*}} = p4hir.call_method @Random::@read () of %arg0 : !Random : () -> !b10i
 
       p4hir.apply @caller::@inst(%arg0) : (!Random) -> ()
       p4hir.apply @caller::@inst(%arg0) : (!Random) -> ()

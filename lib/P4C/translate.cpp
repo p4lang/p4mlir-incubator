@@ -2596,12 +2596,14 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             auto callResultType = getOrCreateType(instance->actualMethodType->returnType);
             auto methodName =
                 mlir::SymbolRefAttr::get(builder.getContext(), member->member.string_view());
+            auto externName = builder.getStringAttr(fCall->actualExternType->name.string_view());
+            auto fullMethodName =
+                mlir::SymbolRefAttr::get(builder.getContext(), externName, {methodName});
 
             // TODO: Move to common method
             llvm::SmallVector<mlir::Type> typeArguments;
-            for (const auto *type : *mce->typeArguments) {
+            for (const auto *type : *mce->typeArguments)
                 typeArguments.push_back(getOrCreateType(type));
-            }
 
             const P4::IR::Declaration_Instance *decl = nullptr;
             if (const auto *pe = member->expr->to<P4::IR::PathExpression>())
@@ -2611,22 +2613,11 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                 auto dSym = p4Symbols.lookup(decl);
                 BUG_CHECK(dSym, "expected applied declaration to be converted: %1%", decl);
 
-                llvm::SmallVector<mlir::FlatSymbolRefAttr> nestedRefs(dSym.getNestedReferences());
-                nestedRefs.push_back(methodName);
-
-                auto fullMethodName = mlir::SymbolRefAttr::get(builder.getContext(),
-                                                               dSym.getRootReference(), nestedRefs);
-
-                callResult = b.create<P4HIR::CallMethodOp>(loc, callResultType, fullMethodName,
-                                                           typeArguments, operands)
+                callResult = b.create<P4HIR::CallMethodOp>(loc, callResultType, dSym,
+                                                           fullMethodName, typeArguments, operands)
                                  .getResult();
             } else {
                 auto callee = convert(member->expr);
-                auto externName =
-                    builder.getStringAttr(fCall->actualExternType->name.string_view());
-                auto fullMethodName =
-                    mlir::SymbolRefAttr::get(builder.getContext(), externName, {methodName});
-
                 callResult = b.create<P4HIR::CallMethodOp>(loc, callResultType, callee,
                                                            fullMethodName, typeArguments, operands)
                                  .getResult();
@@ -3175,27 +3166,29 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         auto parserSym = p4Symbols.lookup(parser);
         BUG_CHECK(parserSym, "expected reference parser to be converted: %1%", dbp(parser));
 
-        auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), parserSym.getRootReference(), operands, nameAttr, annotations);
+        auto instance = builder.create<P4HIR::InstantiateOp>(getLoc(builder, decl), parserSym,
+                                                             operands, nameAttr, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
         LOG4("resolved as extern instantiation");
         auto externName = builder.getStringAttr(ext->name.string_view());
+        auto ctorName = mlir::SymbolRefAttr::get(builder.getContext(), externName);
+        auto fullCtorName = mlir::SymbolRefAttr::get(builder.getContext(), externName, {ctorName});
 
         auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), externName, operands, nameAttr, typeParameters, annotations);
+            getLoc(builder, decl), fullCtorName, operands, nameAttr, typeParameters, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *control = type->to<P4::IR::P4Control>()) {
         LOG4("resolved as control instantiation");
         auto controlSym = p4Symbols.lookup(control);
         BUG_CHECK(controlSym, "expected reference control to be converted: %1%", dbp(control));
 
-        auto instance = builder.create<P4HIR::InstantiateOp>(
-            getLoc(builder, decl), controlSym.getRootReference(), operands, nameAttr, annotations);
+        auto instance = builder.create<P4HIR::InstantiateOp>(getLoc(builder, decl), controlSym,
+                                                             operands, nameAttr, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));
     } else if (const auto *pkg = type->to<P4::IR::Type_Package>()) {
         LOG4("resolved as package instantiation");
-        auto packageName = builder.getStringAttr(pkg->name.string_view());
+        auto packageName = mlir::SymbolRefAttr::get(builder.getContext(), pkg->name.string_view());
         auto instance = builder.create<P4HIR::InstantiateOp>(
             getLoc(builder, decl), packageName, operands, nameAttr, typeParameters, annotations);
         setSymbol(decl, getQualifiedSymbolRef(instance));

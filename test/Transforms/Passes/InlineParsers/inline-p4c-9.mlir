@@ -156,14 +156,14 @@ module {
       p4hir.scope {
         %h1_field_ref = p4hir.struct_field_ref %arg1["h1"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!data_t>
-        p4hir.call_method @packet_in::@extract<[!data_t]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!data_t>) -> ()
+        p4hir.call_method @packet_in::@extract<[!data_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!data_t>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!data_t>
         p4hir.assign %val_0, %h1_field_ref : <!data_t>
       }
       p4hir.scope {
         %h2_field_ref = p4hir.struct_field_ref %arg1["h2"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!data_t>
-        p4hir.call_method @packet_in::@extract<[!data_t]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!data_t>) -> ()
+        p4hir.call_method @packet_in::@extract<[!data_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!data_t>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!data_t>
         p4hir.assign %val_0, %h2_field_ref : <!data_t>
       }
@@ -243,7 +243,7 @@ module {
       p4hir.scope {
         %h3_field_ref = p4hir.struct_field_ref %arg1["h3"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!data_t>
-        p4hir.call_method @packet_in::@extract<[!data_t]> of %arg0 : !packet_in (%hdr_out_arg) : (!p4hir.ref<!data_t>) -> ()
+        p4hir.call_method @packet_in::@extract<[!data_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!data_t>) -> ()
         %val = p4hir.read %hdr_out_arg : <!data_t>
         p4hir.assign %val, %h3_field_ref : <!data_t>
       }
@@ -293,9 +293,9 @@ module {
     p4hir.control_local @__local_DeparserImpl_hdr_0 = %arg1 : !headers
     p4hir.control_apply {
       %h1 = p4hir.struct_extract %arg1["h1"] : !headers
-      p4hir.call_method @packet_out::@emit<[!data_t]> of %arg0 : !packet_out (%h1) : (!data_t) -> ()
+      p4hir.call_method @packet_out::@emit<[!data_t]> (%h1) of %arg0 : !packet_out : (!data_t) -> ()
       %h2 = p4hir.struct_extract %arg1["h2"] : !headers
-      p4hir.call_method @packet_out::@emit<[!data_t]> of %arg0 : !packet_out (%h2) : (!data_t) -> ()
+      p4hir.call_method @packet_out::@emit<[!data_t]> (%h2) of %arg0 : !packet_out : (!data_t) -> ()
     }
   }
   p4hir.control @verifyChecksum(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"}, %arg1: !p4hir.ref<!metadata> {p4hir.dir = #inout, p4hir.param_name = "meta"})() {
