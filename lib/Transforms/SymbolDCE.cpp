@@ -71,7 +71,7 @@ void SymbolDCE::runOnOperation() {
             }
             emptyOp &= block.empty();
         }
-        if (0 && emptyOp && isa<SymbolOpInterface>(nestedSymbolTable) &&
+        if (emptyOp && isa<SymbolOpInterface>(nestedSymbolTable) &&
             !liveSymbols.count(nestedSymbolTable)) {
             LLVM_DEBUG(llvm::dbgs() << "erasing: " << *nestedSymbolTable << "\n");
             nestedSymbolTable->erase();
