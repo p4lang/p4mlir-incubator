@@ -340,26 +340,56 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
                 // If a value is equal across all applies then it is a candidate for
                 // passthrough.
                 if (allSame && domInfo->dominates(rep, instOp)) {
-                    // If we can find an existing control local in the caller for that value
-                    // then we can promote to symbol passthrough.
-                    for (mlir::Operation &op : caller.getBody().front()) {
-                        auto controlLocal = mlir::dyn_cast<P4HIR::ControlLocalOp>(op);
-                        if (!controlLocal) continue;
+                    if (rep.getDefiningOp<P4HIR::ConstOp>()) {
+                        // Promote constant to value passthrough.
+                        passthroughByValue[i] = rep;
+                    } else if (mlir::isa<mlir::BlockArgument>(rep)) {
+                        // Promote argument to symbol passthrough.
+                        passthroughByValue[i] = rep;
 
-                        if (controlLocal.getVal() == rep) {
-                            passthroughBySymbol[i] = controlLocal.getSymNameAttr();
-                            break;
+                        mlir::Block &callerBlock = caller.getBody().front();
+                        // Try to find an existing control local in the caller for that value.
+                        for (mlir::Operation &op : callerBlock) {
+                            auto controlLocal = mlir::dyn_cast<P4HIR::ControlLocalOp>(op);
+                            if (!controlLocal) continue;
+
+                            if (controlLocal.getVal() == rep) {
+                                passthroughBySymbol[i] = controlLocal.getSymNameAttr();
+                                break;
+                            }
+                        }
+
+                        // Otherwise create a new local.
+                        if (!passthroughBySymbol[i]) {
+                            rewriter.setInsertionPointToStart(&callerBlock);
+
+                            auto getUniqueName = [&](mlir::StringAttr toRename) {
+                                unsigned counter = 0;
+                                return mlir::SymbolTable::generateSymbolName<256>(
+                                    toRename,
+                                    [&](llvm::StringRef candidate) {
+                                        return caller.lookupSymbol(
+                                                   rewriter.getStringAttr(candidate)) != nullptr;
+                                    },
+                                    counter);
+                            };
+
+                            std::string argNameStr;
+                            if (auto argName = caller.getArgAttrOfType<mlir::StringAttr>(
+                                    i, P4HIR::FuncOp::getParamNameAttrName()))
+                                argNameStr = argName.str();
+                            auto nameAttr = getUniqueName(rewriter.getStringAttr(
+                                llvm::Twine("__local_") + caller.getSymName() + "_" + argNameStr));
+                            auto local =
+                                rewriter.create<P4HIR::ControlLocalOp>(rep.getLoc(), nameAttr, rep);
+                            passthroughBySymbol[i] = local.getSymNameAttr();
                         }
                     }
-
-                    if (!passthroughBySymbol[i] && (mlir::isa<mlir::BlockArgument>(rep) ||
-                                                    mlir::isa<P4HIR::ConstOp>(rep.getDefiningOp())))
-                        passthroughByValue[i] = rep;
                 }
 
-                // Specifically for locally instantiated externs we need to look through
+                // Specifically for locally instantiated externs we may need to look through
                 // SymToValueOp.
-                if (mlir::isa<P4HIR::ExternType>(rep.getType())) {
+                if (mlir::isa<P4HIR::ExternType>(rep.getType()) && !passthroughBySymbol[i]) {
                     auto getExternDecl = [](mlir::Value val) -> mlir::SymbolRefAttr {
                         if (auto symToVal = val.getDefiningOp<P4HIR::SymToValueOp>())
                             return symToVal.getDecl();
@@ -376,8 +406,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
 
                 // If an extern is used as an argument it must be the same in all applies and
                 // can only be inlined with symbol passthrough.
-                if (!passthroughBySymbol[i] && !passthroughByValue[i] &&
-                    mlir::isa<P4HIR::ExternType>(rep.getType()))
+                if (!passthroughBySymbol[i] && mlir::isa<P4HIR::ExternType>(rep.getType()))
                     return calls[0].emitOpError(
                         "Cannot use different extern argument in apply call of the same "
                         "control instance");
@@ -459,6 +488,8 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
                             mlir::Value newVal = info.newVal;
                             if (auto constOp = info.newVal.getDefiningOp<P4HIR::ConstOp>())
                                 newVal = rewriter.clone(*constOp)->getResult(0);
+                            else
+                                llvm_unreachable("Unknown type of value passthrough");
 
                             rewriter.replaceOp(symbolRefOp, newVal);
                         } else if (info.promoted) {
