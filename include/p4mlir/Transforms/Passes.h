@@ -7,15 +7,8 @@
 
 #include <memory>
 
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Dialect.h"
-#include "mlir/IR/OpDefinition.h"
 #include "mlir/Pass/Pass.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 namespace P4::P4MLIR {
 
@@ -31,6 +24,7 @@ namespace P4::P4MLIR {
 #define GEN_PASS_DECL_INLINEPARSERS
 #define GEN_PASS_DECL_INLINECONTROLS
 #define GEN_PASS_DECL_EXPANDEMIT
+#define GEN_PASS_DECL_SYMBOLDCE
 #include "p4mlir/Transforms/Passes.h.inc"
 
 std::unique_ptr<mlir::Pass> createPrintParsersGraphPass();
@@ -45,6 +39,7 @@ std::unique_ptr<mlir::Pass> createCopyInCopyOutEliminationPass();
 std::unique_ptr<mlir::Pass> createInlineParsersPass();
 std::unique_ptr<mlir::Pass> createInlineControlsPass();
 std::unique_ptr<mlir::Pass> createExpandEmitPass();
+std::unique_ptr<mlir::Pass> createSymbolDCEPass();
 
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"

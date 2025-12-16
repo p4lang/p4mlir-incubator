@@ -329,4 +329,19 @@ def TupleToStruct : Pass<"p4hir-tuple-to-struct", "mlir::ModuleOp"> {
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
+//===----------------------------------------------------------------------===//
+// SymbolDCE
+//===----------------------------------------------------------------------===//
+
+def SymbolDCE : Pass<"p4hir-symbol-dce"> {
+  let summary = "Eliminate dead symbols";
+  let description = [{
+  }];
+  let constructor = "P4MLIR::createSymbolDCEPass()";
+
+  let statistics = [
+    Statistic<"numDCE", "num-dce'd", "Number of symbols DCE'd">,
+  ];
+}
+
 #endif // P4MLIR_TRANSFORMS_PASSES_TD
