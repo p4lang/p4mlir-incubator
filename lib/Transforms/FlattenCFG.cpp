@@ -1,5 +1,6 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "p4hir-flatten-cfg"
