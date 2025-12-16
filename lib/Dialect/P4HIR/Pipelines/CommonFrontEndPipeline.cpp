@@ -16,12 +16,17 @@ void P4::P4MLIR::buildCommonFrontEndPassPipeline(OpPassManager &pm,
     pm.addPass(createRemoveSoftCFPass());
 
     pm.addPass(createLowerToP4CoreLib());
+
     // TODO: add target-specific extern conversion pass with an appropriate hook
     // to define target-specific conversions
 
     pm.addPass(createCopyInCopyOutEliminationPass());
 
-    // TODO: add Symbol DCE/CSE passes
+    pm.addPass(P4MLIR::createSymbolDCEPass());
+
+    pm.addPass(createInlineControlsPass());
+    pm.addPass(createInlineParsersPass());
+    pm.addPass(mlir::createCanonicalizerPass());
 }
 
 void P4::P4MLIR::registerCommonFrontEndPipeline() {
