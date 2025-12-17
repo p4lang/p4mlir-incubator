@@ -307,6 +307,57 @@ def TableKeyEntryOp : P4HIR_Op<"match_key", [Annotated]> {
 
 }
 
+def TableEntriesOp : P4HIR_Op<"table_entries", [ Annotated,
+       NoRegionArguments, NoTerminator]> {
+  let summary = "Represents a list of table entries for a P4 table";
+  let description = [{
+
+  }];
+
+  let arguments = (ins UnitAttr:$is_const, OptionalAttr<DictionaryAttr>:$annotations);
+  let regions = (region SizedRegion<1>:$body);
+
+  // TODO: Check
+  let hasVerifier = 0;
+  let skipDefaultBuilders = 1;
+  let assemblyFormat = [{
+    (`const` $is_const^)? (`annotations` $annotations^)? $body attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins "bool":$isConst, "mlir::DictionaryAttr":$annotations,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$entryBuilder)>,
+  ];
+
+  let extraClassDeclaration = [{
+    void createEntryBlock();
+  }];
+}
+
+def TableEntryOp : P4HIR_Op<"table_entry", [ Annotated,
+       NoRegionArguments, NoTerminator]> {
+  let summary = "Represents a pre-defined entry for a P4 table";
+  let description = [{
+
+  }];
+
+  let arguments = (ins TypedAttrInterface:$keys, UnitAttr:$is_const, OptionalAttr<TypedAttrInterface>:$priority, OptionalAttr<DictionaryAttr>:$annotations);
+  let regions = (region SizedRegion<1>:$body);
+
+  // TODO: Check
+  let hasVerifier = 0;
+  let skipDefaultBuilders = 1;
+  let assemblyFormat = [{
+    (`const` $is_const^)? $keys (`priority` `=` $priority^)? (`annotations` $annotations^)? $body attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::TypedAttr":$keys, "bool":$isConst, "mlir::TypedAttr":$priority, "mlir::DictionaryAttr":$annotations,
+                   "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$entryBuilder)>,
+  ];
+}
+
+
 def ExitOp : P4HIR_Op<"exit", [ParentOneOf<["ScopeOp", "IfOp", "CaseOp",
                                             "FuncOp", "ControlApplyOp",]>]> {
   let summary = "Represents an exit from action or control";

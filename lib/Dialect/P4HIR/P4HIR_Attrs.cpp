@@ -303,29 +303,31 @@ LogicalResult SetAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type
     }
 
     auto eltType = setType.getElementType();
+    mlir::Type underlyingType;
+    // We can have mix-and-match with serialized enums and underlying types...
+    if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(eltType))
+        underlyingType = serEnumType.getType();
     switch (kind) {
-        case SetKind::Constant:
-            // Check that all of constants are of the same type
-            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(),
-                             [&](auto attr) { return attr.getType() != eltType; })) {
-                emitError() << "p4hir.set elements must be of the same type: " << eltType;
-                return failure();
-            }
+        case SetKind::Product:
+            // TBD
             break;
         case SetKind::Range:
         case SetKind::Mask:
             if (value.size() != 2) {
-                emitError() << "p4hir.set mask / range attribute must have only two values";
+                emitError() << "#p4hir.set mask / range attribute must have only two values";
                 return failure();
             }
-
+            [[fallthrough]];
+        case SetKind::Constant:
             // Check that all of constants are of the same type
-            if (llvm::any_of(value.getAsRange<mlir::TypedAttr>(),
-                             [&](auto attr) { return attr.getType() != eltType; })) {
-                emitError() << "p4hir.set elements must be of the same type: " << eltType;
-                return failure();
+            for (auto attr : value.getAsRange<mlir::TypedAttr>()) {
+                if (attr.getType() != eltType &&
+                    (!underlyingType || attr.getType() != underlyingType)) {
+                    emitError() << "#p4hir.set elements must be of the same type: " << eltType
+                                << ", but got: " << attr.getType();
+                    return failure();
+                }
             }
-
             break;
     }
 
