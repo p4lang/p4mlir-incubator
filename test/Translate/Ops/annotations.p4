@@ -48,7 +48,7 @@ parser p(in empty e, in int<10> sinit) {
 // CHECK:     p4hir.state @start annotations {name = "state.start"}
     @name("state.start")
     state start {
-// Constfolding killed original constant before us    
+// Constfolding killed original constant before us
 // xHECK:   p4hir.const ["b"] #int-1_b1i annotations {hidden}
         s = (int<10>)(b);
         transition next;
@@ -72,26 +72,26 @@ control c(in Foo ff, bool bb) {
 
 // CHECK:     p4hir.table @t annotations {name = "table.t"}
     @name("table.t") table t {
-// CHECK:         p4hir.match_key #exact %c42_b10i : !b10i annotations {name = "exact.key"}    
+// CHECK:         p4hir.match_key #exact %c42_b10i : !b10i annotations {name = "exact.key"}
         key = { 10w42 : exact @name("exact.key"); false : lpm @name("false.key"); }
         actions = {
-// CHECK: p4hir.table_action @a() {        
+// CHECK: p4hir.table_action @a() {
            a;
-// CHECK: p4hir.table_action @b() annotations {tableonly} {           
+// CHECK: p4hir.table_action @b() annotations {tableonly} {
            @tableonly b;
-// CHECK: p4hir.table_action @cc() annotations {defaultonly} {           
+// CHECK: p4hir.table_action @cc() annotations {defaultonly} {
            @defaultonly cc;
         }
-// CHECK:      p4hir.table_default_action annotations {name = "bar"} {        
+// CHECK:      p4hir.table_default_action annotations {name = "bar"} {
         @name("bar") default_action = cc;
-// CHECK:      p4hir.table_entry "implementation" annotations {name = "foo"} {
+// CHECK:      p4hir.table_property "implementation" annotations {name = "foo"} {
         @name("foo") implementation = Annotated();
-// CHECK:      p4hir.table_size #int42_infint annotations {name = "dummy.size"}        
+// CHECK:      p4hir.table_size #int42_infint annotations {name = "dummy.size"}
         @name("dummy.size") size = 42;
     }
 
     apply {
-// CHECK:      p4hir.scope annotations {unlikely} {    
+// CHECK:      p4hir.scope annotations {unlikely} {
         @unlikely {
         }
 
@@ -101,7 +101,7 @@ control c(in Foo ff, bool bb) {
 
 // CHECK:       p4hir.if %{{.*}} annotations {likely} {
         if (bb) @likely {
-// CHECK:      } else annotations {unlikely} {        
+// CHECK:      } else annotations {unlikely} {
         } else @unlikely {
         }
 

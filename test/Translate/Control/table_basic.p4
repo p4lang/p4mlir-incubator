@@ -49,17 +49,17 @@ control c(in bit<32> arg) {
         actions = { a; b;  aa(arg); }
         default_action = b;
         size = 42;
-     // CHECK:  %size = p4hir.table_size #int42_infint        
+     // CHECK:  %size = p4hir.table_size #int42_infint
         largest_priority_wins = false;
-      // CHECK: %largest_priority_wins = p4hir.table_entry "largest_priority_wins" {        
+      // CHECK: %largest_priority_wins = p4hir.table_property "largest_priority_wins" {
         priority_delta = 10;
-      // CHECK: %priority_delta = p4hir.table_entry "priority_delta" {        
-        some_entry = 10;
+      // CHECK: %priority_delta = p4hir.table_property "priority_delta" {
+        some_property = 10;
         implementation = ActionProfile(32);
-       // CHECK:%implementation = p4hir.table_entry "implementation" {
+       // CHECK:%implementation = p4hir.table_property "implementation" {
        // CHECK: %ActionProfile = p4hir.construct @ActionProfile (%{{.*}} : !b32i) : !ActionProfile
        // CHECK: p4hir.yield %ActionProfile : !ActionProfile
-       // CHECK:} : !ActionProfile        
+       // CHECK:} : !ActionProfile
     }
 
     apply {

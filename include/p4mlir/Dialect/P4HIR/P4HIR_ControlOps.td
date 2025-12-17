@@ -136,12 +136,12 @@ def TableApplyOp : P4HIR_Op<"table_apply",
 }
 
 
-def TableEntryOp : P4HIR_Op<"table_entry", [
+def TablePropertyOp : P4HIR_Op<"table_property", [
    NoRegionArguments, SingleBlockImplicitTerminator<"YieldOp">,
    Annotated,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
    ]> {
-  let summary = "Represents a named P4 table entry";
+  let summary = "Represents a named P4 table property";
   let description = [{
 
   }];

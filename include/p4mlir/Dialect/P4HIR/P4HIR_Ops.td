@@ -597,7 +597,7 @@ def ScopeOp : P4HIR_Op<"scope", [
 def YieldOp : P4HIR_Op<"yield", [ReturnLike, Terminator, NoMemoryEffect,
     ParentOneOf<["ScopeOp", "IfOp",
                  "ParserSelectCaseOp",
-                 "TableEntryOp",
+                 "TablePropertyOp",
                  "SwitchOp", "CaseOp",
                  "ForOp", "ForInOp",
                  ]>]> {
