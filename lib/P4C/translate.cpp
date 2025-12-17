@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <climits>
 
+#include "ir/ir-generated.h"
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -154,6 +156,7 @@ class P4TypeConverter : public P4::Inspector, P4::ResolutionContext {
     bool preorder(const P4::IR::Type_Specialized *t) override;
     bool preorder(const P4::IR::Type_SpecializedCanonical *t) override;
     bool preorder(const P4::IR::Type_Package *p) override;
+    bool preorder(const P4::IR::Type_Set *s) override;
 
     mlir::Type getType() const { return type; }
     bool setType(const P4::IR::Type *type, mlir::Type mlirType);
@@ -591,6 +594,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::P4Control *c) override;
     bool preorder(const P4::IR::P4Table *t) override;
     bool preorder(const P4::IR::Property *p) override;
+    bool preorder(const P4::IR::ActionListElement *act) override;
+    bool preorder(const P4::IR::Entry *ent) override;
 
     bool preorder(const P4::IR::Type_Package *e) override;
 
@@ -883,6 +888,15 @@ bool P4TypeConverter::preorder(const P4::IR::Type_Name *name) {
     mlir::Type mlirType = convert(type);
 
     return setType(name, mlirType);
+}
+
+bool P4TypeConverter::preorder(const P4::IR::Type_Set *type) {
+    if ((this->type = converter.findType(type))) return false;
+
+    ConversionTracer trace("TypeConverting ", type);
+
+    auto mlirType = P4HIR::SetType::get(convert(type->elementType));
+    return setType(type, mlirType);
 }
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Newtype *type) {
@@ -1240,7 +1254,13 @@ bool P4TypeConverter::preorder(const P4::IR::Type_BaseList *type) {
     ConversionTracer trace("TypeConverting ", type);
     llvm::SmallVector<mlir::Type, 4> fields;
     for (const auto *field : type->components) {
-        fields.push_back(convert(field));
+        // Hack for handling dontcare type: if it is in aggregate, then it
+        // should be really be !p4hir.set<!p4hir.dontcare> as this would
+        // represent default expression (unfortunaltely p4c type inference is
+        // broken here)
+        auto fieldTy = convert(field);
+        if (mlir::isa<P4HIR::DontcareType>(fieldTy)) fieldTy = P4HIR::SetType::get(fieldTy);
+        fields.push_back(fieldTy);
     }
 
     auto mlirType = mlir::TupleType::get(converter.context(), fields);
@@ -1533,6 +1553,10 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
         return setConstantExpr(hu, defValue);
     }
 
+    if (const auto *def = expr->to<P4::IR::DefaultExpression>()) {
+        return setConstantExpr(def, P4HIR::UniversalSetAttr::get(context()));
+    }
+
     if (const auto *cast = expr->to<P4::IR::Cast>()) {
         mlir::Type destType = getOrCreateType(cast);
         mlir::Type srcType = getOrCreateType(cast->expr);
@@ -1563,6 +1587,22 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
     if (const auto *lst = expr->to<P4::IR::ListExpression>()) {
         auto type = getOrCreateType(lst->type);
         llvm::SmallVector<mlir::Attribute, 4> fields;
+
+        // If list expression may have set components, then type unification
+        // gives us a product type. Handle it separately
+        if (auto setType = mlir::dyn_cast<P4HIR::SetType>(type)) {
+            for (const auto *field : lst->components) {
+                auto fieldConstant = getOrCreateConstantExpr(field);
+                if (!isa<P4HIR::SetType>(fieldConstant.getType()))
+                    fieldConstant = P4HIR::SetAttr::get(
+                        P4HIR::SetType::get(fieldConstant.getType()), P4HIR::SetKind::Constant,
+                        builder.getArrayAttr({fieldConstant}));
+                fields.push_back(fieldConstant);
+            }
+            return setConstantExpr(expr, P4HIR::SetAttr::get(setType, P4HIR::SetKind::Product,
+                                                             builder.getArrayAttr(fields)));
+        }
+
         for (const auto *field : lst->components) fields.push_back(getOrCreateConstantExpr(field));
         return setConstantExpr(expr, P4HIR::AggAttr::get(type, builder.getArrayAttr(fields)));
     }
@@ -1581,6 +1621,21 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
         auto fieldType = getOrCreateType(arr->type);
         return setConstantExpr(expr, getTypedConstant(fieldType, field));
     }
+    if (const auto *range = expr->to<P4::IR::Range>()) {
+        auto rangeType = cast<P4HIR::SetType>(getOrCreateType(range->type));
+        auto left = getOrCreateConstantExpr(range->left);
+        auto right = getOrCreateConstantExpr(range->right);
+        return setConstantExpr(expr, P4HIR::SetAttr::get(rangeType, P4HIR::SetKind::Range,
+                                                         builder.getArrayAttr({left, right})));
+    }
+    if (const auto *mask = expr->to<P4::IR::Mask>()) {
+        auto maskType = cast<P4HIR::SetType>(getOrCreateType(mask->type));
+        auto left = getOrCreateConstantExpr(mask->left);
+        auto right = getOrCreateConstantExpr(mask->right);
+        return setConstantExpr(expr, P4HIR::SetAttr::get(maskType, P4HIR::SetKind::Mask,
+                                                         builder.getArrayAttr({left, right})));
+    }
+
     if (const auto *m = expr->to<P4::IR::Member>()) {
         if (const auto *typeNameExpr = m->expr->to<P4::IR::TypeNameExpression>()) {
             auto baseType = getOrCreateType(typeNameExpr->typeName);
@@ -3408,6 +3463,75 @@ bool P4HIRConverter::preorder(const P4::IR::P4Table *table) {
     return false;
 }
 
+bool P4HIRConverter::preorder(const P4::IR::ActionListElement *act) {
+    ValueScope scope(controlPlaneValues);
+
+    auto annotations = convert(act->annotations);
+
+    // We expect that everything was normalized to action calls.
+    const auto *expr = act->expression->checkedTo<P4::IR::MethodCallExpression>();
+    // Prepare control plane values. These will be filled in visit() call
+    const auto *actType = expr->method->type->checkedTo<P4::IR::Type_Action>();
+
+    llvm::SmallVector<mlir::Type> controlPlaneTypes;
+    llvm::SmallVector<mlir::DictionaryAttr> controlPlaneParamAttrs;
+    size_t argCount = expr->arguments->size();
+    const auto &params = actType->parameters->parameters;
+    for (size_t idx = argCount; idx < params.size(); ++idx) {
+        const auto *param = params[idx];
+        controlPlaneTypes.push_back(getOrCreateType(param->type));
+        auto pAnnotations = convert(param->annotations);
+
+        llvm::SmallVector<mlir::NamedAttribute> paramAttrs = {
+            builder.getNamedAttr(P4HIR::FuncOp::getParamNameAttrName(),
+                                 builder.getStringAttr(param->name.string_view())),
+        };
+        if (!pAnnotations.empty())
+            paramAttrs.emplace_back(
+                builder.getNamedAttr(P4HIR::FuncOp::getParamAnnotationAttrName(), annotations));
+        controlPlaneParamAttrs.emplace_back(builder.getDictionaryAttr(paramAttrs));
+    }
+
+    auto funcType = P4HIR::FuncType::get(context(), controlPlaneTypes);
+    const auto *action = resolvePath(expr->method->checkedTo<P4::IR::PathExpression>()->path, false)
+                             ->checkedTo<P4::IR::P4Action>();
+    auto actSym = p4Symbols.lookup(action);
+    BUG_CHECK(actSym, "expected reference action to be converted: %1%", action);
+
+    auto localActSym = mlir::SymbolRefAttr::get(actSym.getLeafReference());
+
+    builder.create<P4HIR::TableActionOp>(
+        getLoc(builder, expr), localActSym, funcType, controlPlaneParamAttrs, annotations,
+        [&](mlir::OpBuilder &, mlir::Block::BlockArgListType args, mlir::Location) {
+            for (const auto arg : args) {
+                const auto *param = params[argCount + arg.getArgNumber()];
+                controlPlaneValues.insert(param, arg);
+            }
+
+            visit(expr);
+        });
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::Entry *ent) {
+    ValueScope scope(*p4Values);
+
+    auto annotations = convert(ent->annotations);
+    mlir::TypedAttr priority;
+    if (ent->priority) priority = getOrCreateConstantExpr(ent->priority);
+    auto keys = getOrCreateConstantExpr(ent->keys);
+
+    // We expect that everything was normalized to action calls.
+    const auto *expr = ent->action->checkedTo<P4::IR::MethodCallExpression>();
+
+    builder.create<P4HIR::TableEntryOp>(getLoc(builder, ent), keys, ent->isConst, priority,
+                                        annotations,
+                                        [&](mlir::OpBuilder &, mlir::Location) { visit(expr); });
+
+    return false;
+}
+
 bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
     ConversionTracer trace("Converting ", prop);
 
@@ -3419,55 +3543,7 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
         builder.create<P4HIR::TableActionsOp>(
             loc, annotations, [&](mlir::OpBuilder &b, mlir::Location) {
                 const auto *alist = prop->value->checkedTo<P4::IR::ActionList>();
-                for (const auto *act : alist->actionList) {
-                    ValueScope scope(controlPlaneValues);
-
-                    auto aAnnotations = convert(act->annotations);
-
-                    // We expect that everything was normalized to action calls.
-                    const auto *expr = act->expression->checkedTo<P4::IR::MethodCallExpression>();
-                    // Prepare control plane values. These will be filled in visit() call
-                    const auto *actType = expr->method->type->checkedTo<P4::IR::Type_Action>();
-
-                    llvm::SmallVector<mlir::Type> controlPlaneTypes;
-                    llvm::SmallVector<mlir::DictionaryAttr> controlPlaneParamAttrs;
-                    size_t argCount = expr->arguments->size();
-                    const auto &params = actType->parameters->parameters;
-                    for (size_t idx = argCount; idx < params.size(); ++idx) {
-                        const auto *param = params[idx];
-                        controlPlaneTypes.push_back(getOrCreateType(param->type));
-                        auto annotations = convert(param->annotations);
-
-                        llvm::SmallVector<mlir::NamedAttribute> paramAttrs = {
-                            builder.getNamedAttr(P4HIR::FuncOp::getParamNameAttrName(),
-                                                 builder.getStringAttr(param->name.string_view())),
-                        };
-                        if (!annotations.empty())
-                            paramAttrs.emplace_back(builder.getNamedAttr(
-                                P4HIR::FuncOp::getParamAnnotationAttrName(), annotations));
-                        controlPlaneParamAttrs.emplace_back(builder.getDictionaryAttr(paramAttrs));
-                    }
-                    auto funcType = P4HIR::FuncType::get(context(), controlPlaneTypes);
-                    const auto *action =
-                        resolvePath(expr->method->checkedTo<P4::IR::PathExpression>()->path, false)
-                            ->checkedTo<P4::IR::P4Action>();
-                    auto actSym = p4Symbols.lookup(action);
-                    BUG_CHECK(actSym, "expected reference action to be converted: %1%", action);
-
-                    auto localActSym = mlir::SymbolRefAttr::get(actSym.getLeafReference());
-
-                    b.create<P4HIR::TableActionOp>(
-                        getLoc(builder, expr), localActSym, funcType, controlPlaneParamAttrs,
-                        aAnnotations,
-                        [&](mlir::OpBuilder &, mlir::Block::BlockArgListType args, mlir::Location) {
-                            for (const auto arg : args) {
-                                const auto *param = params[argCount + arg.getArgNumber()];
-                                controlPlaneValues.insert(param, arg);
-                            }
-
-                            visit(expr);
-                        });
-                }
+                for (const auto *act : alist->actionList) visit(act);
             });
     } else if (prop->name == P4::IR::TableProperties::keyPropertyName) {
         auto emptyFuncType = P4HIR::FuncType::get(builder.getContext(), {});
@@ -3531,7 +3607,11 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
                 visit(expr);
             });
     } else if (prop->name == P4::IR::TableProperties::entriesPropertyName) {
-        BUG("cannot handle entries yet");
+        builder.create<P4HIR::TableEntriesOp>(
+            loc, prop->isConstant, annotations, [&](mlir::OpBuilder &b, mlir::Location) {
+                const auto *elist = prop->value->checkedTo<P4::IR::EntriesList>();
+                for (const auto *entry : elist->entries) visit(entry);
+            });
     } else if (prop->name == P4::IR::TableProperties::sizePropertyName) {
         const auto *expr = prop->value->checkedTo<P4::IR::ExpressionValue>()->expression;
         // Here property value might be a constructor argument. So we need to
