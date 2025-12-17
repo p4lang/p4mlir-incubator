@@ -3531,6 +3531,48 @@ mlir::ParseResult P4HIR::TableActionOp::parse(mlir::OpAsmParser &parser,
 }
 
 //===----------------------------------------------------------------------===//
+// TableEntriesOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::TableEntriesOp::build(
+    mlir::OpBuilder &builder, mlir::OperationState &result, bool isConst,
+    mlir::DictionaryAttr annotations,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> entryBuilder) {
+    OpBuilder::InsertionGuard guard(builder);
+
+    Region *entryRegion = result.addRegion();
+    builder.createBlock(entryRegion);
+    entryBuilder(builder, result.location);
+
+    if (isConst) result.addAttribute(getIsConstAttrName(result.name), builder.getUnitAttr());
+
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+}
+
+//===----------------------------------------------------------------------===//
+// TableEntryOp
+//===----------------------------------------------------------------------===//
+
+void P4HIR::TableEntryOp::build(
+    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::TypedAttr keys, bool isConst,
+    mlir::TypedAttr priority, mlir::DictionaryAttr annotations,
+    llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> entryBuilder) {
+    OpBuilder::InsertionGuard guard(builder);
+
+    Region *entryRegion = result.addRegion();
+    builder.createBlock(entryRegion);
+    entryBuilder(builder, result.location);
+
+    result.addAttribute(getKeysAttrName(result.name), keys);
+    if (isConst) result.addAttribute(getIsConstAttrName(result.name), builder.getUnitAttr());
+    if (priority) result.addAttribute(getPriorityAttrName(result.name), priority);
+
+    if (annotations && !annotations.empty())
+        result.addAttribute(getAnnotationsAttrName(result.name), annotations);
+}
+
+//===----------------------------------------------------------------------===//
 // SwitchOp & CaseOp
 //===----------------------------------------------------------------------===//
 void P4HIR::CaseOp::getSuccessorRegions(mlir::RegionBranchPoint point,

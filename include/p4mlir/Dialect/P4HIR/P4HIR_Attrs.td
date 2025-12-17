@@ -275,11 +275,12 @@ def P4HIR_UniversalSetAttr : P4HIR_Attr<"UniversalSet", "universal_set", [TypedA
 def SetKind_Const : I32EnumAttrCase<"Constant", 1, "const">;
 def SetKind_Range : I32EnumAttrCase<"Range", 2, "range">;
 def SetKind_Mask  : I32EnumAttrCase<"Mask", 3, "mask">;
+def SetKind_Product  : I32EnumAttrCase<"Product", 4, "product">;
 
 def SetKind : I32EnumAttr<
     "SetKind",
     "set constant kind",
-    [SetKind_Const, SetKind_Range, SetKind_Mask]> {
+    [SetKind_Const, SetKind_Range, SetKind_Mask, SetKind_Product]> {
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
 
