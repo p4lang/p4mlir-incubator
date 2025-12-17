@@ -103,7 +103,7 @@ module {
       p4hir.table_default_action annotations {name = "bar"} {
         p4hir.call @c::@cc () : () -> ()
       }
-      %implementation = p4hir.table_entry "implementation" annotations {name = "foo"} {
+      %implementation = p4hir.table_property "implementation" annotations {name = "foo"} {
         %Annotated = p4hir.construct @Annotated() : !Annotated
         p4hir.yield %Annotated : !Annotated
       } : !Annotated

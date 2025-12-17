@@ -3349,10 +3349,10 @@ void P4HIR::TableApplyOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 }
 
 //===----------------------------------------------------------------------===//
-// TableEntryOp
+// TablePropertyOp
 //===----------------------------------------------------------------------===//
 
-void P4HIR::TableEntryOp::build(
+void P4HIR::TablePropertyOp::build(
     mlir::OpBuilder &builder, mlir::OperationState &result, mlir::StringAttr name, bool isConst,
     mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Type &, mlir::Location)> entryBuilder) {
@@ -3372,7 +3372,7 @@ void P4HIR::TableEntryOp::build(
     if (yieldTy) result.addTypes(TypeRange{yieldTy});
 }
 
-void P4HIR::TableEntryOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+void P4HIR::TablePropertyOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), getName());
 }
 

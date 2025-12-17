@@ -64,19 +64,19 @@ module {
         p4hir.call @c::@b () : () -> ()
       }
       %size = p4hir.table_size #int42_infint
-      %largest_priority_wins = p4hir.table_entry "largest_priority_wins" {
+      %largest_priority_wins = p4hir.table_property "largest_priority_wins" {
         %false = p4hir.const #false
         p4hir.yield %false : !p4hir.bool
       } : !p4hir.bool
-      %priority_delta = p4hir.table_entry "priority_delta" {
+      %priority_delta = p4hir.table_property "priority_delta" {
         %c10 = p4hir.const #int10_infint
         p4hir.yield %c10 : !infint
       } : !infint
-      %some_entry = p4hir.table_entry "some_entry" {
+      %some_entry = p4hir.table_property "some_entry" {
         %c10 = p4hir.const #int10_infint
         p4hir.yield %c10 : !infint
       } : !infint
-      %implementation = p4hir.table_entry "implementation" {
+      %implementation = p4hir.table_property "implementation" {
         %c32_b32i = p4hir.const #int32_b32i
         %ActionProfile = p4hir.construct @ActionProfile(%c32_b32i : !b32i) : !ActionProfile
         p4hir.yield %ActionProfile : !ActionProfile

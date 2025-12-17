@@ -3545,7 +3545,7 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
         builder.create<P4HIR::TableSizeOp>(
             loc, size, annotations.empty() ? mlir::DictionaryAttr() : annotations);
     } else {
-        builder.create<P4HIR::TableEntryOp>(
+        builder.create<P4HIR::TablePropertyOp>(
             loc, builder.getStringAttr(prop->getName().string_view()), prop->isConstant,
             annotations, [&](mlir::OpBuilder &b, mlir::Type &resultType, mlir::Location) {
                 ValueScope scope(*p4Values);
