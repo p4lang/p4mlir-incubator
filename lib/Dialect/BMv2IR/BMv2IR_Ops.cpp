@@ -103,8 +103,8 @@ LogicalResult TableOp::verify() {
         if (tableSymRef) {
             auto tableDecl = SymbolTable::lookupSymbolIn(moduleOp, it->getTable());
             if (!tableDecl) return emitError("cannot resolve symbol ") << tableDecl << "\n";
-            if (!isa<BMv2IR::TableOp>(tableDecl))
-                return emitOpError("expected table op, got ") << tableDecl << "\n";
+            if (!isa<BMv2IR::TableOp, BMv2IR::ConditionalOp>(tableDecl))
+                return emitOpError("expected table or conditional op, got ") << tableDecl << "\n";
         }
     }
     // Check that we only have at most one LPM key

@@ -530,11 +530,12 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
             assert(!sizeOp && "Multiple size ops");
             sizeOp = size;
         });
+        if (!sizeOp) return op.emitError("Expected table size op");
 
-        auto tableMatchKind = getTableMatchKind(maybeKeys.value(), rewriter);
         auto sizeAttr = dyn_cast<P4HIR::IntAttr>(sizeOp.getValue());
         auto size = sizeAttr.getValue().getSExtValue();
         auto defEntryAttr = getDefaultEntry(op);
+        auto tableMatchKind = getTableMatchKind(maybeKeys.value(), rewriter);
         if (failed(defEntryAttr)) return failure();
 
         // TODO: implement support for indirect and indirect_ws table types
@@ -624,6 +625,7 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
     }
 
     static FailureOr<SmallVector<Attribute>> getKeys(P4HIR::TableKeyOp tableKeyOp) {
+        if (!tableKeyOp) return {{}};
         SmallVector<Attribute> res;
         auto walkRes = tableKeyOp.walk([&](P4HIR::TableKeyEntryOp matchOp) {
             auto maybeKey = getKey(matchOp);

@@ -76,4 +76,19 @@ def SynthesizeActions : Pass<"synth-actions", "mlir::ModuleOp"> {
   ];
 }
 
+def SynthesizeTables : Pass<"synth-tables", "mlir::ModuleOp"> {
+  let summary = "Synthesizes dummy tables for action calls in control_apply blocks";
+  let description = [{
+    Synthesizes dummy tables that wrap action calls in control_apply blocks.
+    Note that technically BMv2 could express action calls in control_apply, but the default behaviour
+    in p4c is to always wrap them in tables (see Note 1 in the
+    [Pipelines section](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#pipelines))
+  }];
+  let dependentDialects = [
+      "::P4::P4MLIR::P4HIR::P4HIRDialect",
+      "::P4::P4MLIR::P4CoreLib::P4CoreLibDialect",
+      "::P4::P4MLIR::BMv2IR::BMv2IRDialect",
+  ];
+}
+
 #endif // P4MLIR_CONVERSION_P4HIRToBMv2IR_PASSES_TD
