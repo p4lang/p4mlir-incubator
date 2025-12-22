@@ -15,7 +15,6 @@ include "p4mlir/Dialect/BMv2IR/BMv2IR_OpInterfaces.td"
 
 include "p4mlir/Dialect/P4HIR/P4HIR_Types.td"
 
-
 //===----------------------------------------------------------------------===//
 // Base BMv2IR operation definition.
 //===----------------------------------------------------------------------===//
@@ -205,6 +204,30 @@ def BMv2_AssignOp : BMv2IR_Op<"assign", [AllowedParserOp]> {
   let assemblyFormat = [{
     $src `:` type($src) `to` $dst `:` type($dst) attr-dict
   }];
+}
+
+def BMv2IR_V1SwitchOp : BMv2IR_Op<"v1switch", [Symbol]> {
+  let summary = "V1 Switch instantion";
+  let description = [{
+    Instantiates a V1 Switch package
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    SymbolRefAttr:$parser,
+    SymbolRefAttr:$verify_checksum,
+    SymbolRefAttr:$ingress,
+    SymbolRefAttr:$egress,
+    SymbolRefAttr:$compute_checksum,
+    SymbolRefAttr:$deparser
+  );
+
+  // TODO: add verifier to check that symbols have the correct type
+  let hasVerifier = 1;
+  let assemblyFormat = [{
+    $sym_name `parser` $parser `,` `verify_checksum` $verify_checksum `,` `ingress` $ingress `,` `egress` $egress `,` `compute_checksum` $compute_checksum `,` `deparser` $deparser attr-dict
+  }];
+    
 }
 
 //===-------------------------------------------------------------------------------------------===//

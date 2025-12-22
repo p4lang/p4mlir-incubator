@@ -1,6 +1,10 @@
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Ops.h"
 
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/SymbolTable.h"
+#include "p4mlir//Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir//Dialect/P4HIR/P4HIR_Types.h"
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Dialect.h"
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_OpInterfaces.h"
@@ -56,6 +60,24 @@ LogicalResult SymToValueOp::verifySymbolUses(SymbolTableCollection &symbolTable)
 
 void SymToValueOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), getDecl().getLeafReference());
+}
+
+LogicalResult V1SwitchOp::verify() {
+    auto moduleOp = getParentModule(*this);
+    auto checkArg = [&]<typename... AllowedTys>(SymbolRefAttr ref) -> LogicalResult {
+        auto defOp = SymbolTable::lookupSymbolIn(moduleOp, ref);
+        if (!defOp) return emitOpError("cannot resolve symbol");
+        if (!isa<AllowedTys...>(defOp)) return emitOpError("unexpected type");
+        return success();
+    };
+    if (failed(checkArg.operator()<P4HIR::ParserOp, BMv2IR::ParserOp>(getParser())))
+        return failure();
+    if (failed(checkArg.operator()<P4HIR::ControlOp>(getVerifyChecksum()))) return failure();
+    if (failed(checkArg.operator()<P4HIR::ControlOp>(getIngress()))) return failure();
+    if (failed(checkArg.operator()<P4HIR::ControlOp>(getEgress()))) return failure();
+    if (failed(checkArg.operator()<P4HIR::ControlOp>(getComputeChecksum()))) return failure();
+    if (failed(checkArg.operator()<P4HIR::ControlOp>(getDeparser()))) return failure();
+    return success();
 }
 
 void BMv2IRDialect::initialize() {
