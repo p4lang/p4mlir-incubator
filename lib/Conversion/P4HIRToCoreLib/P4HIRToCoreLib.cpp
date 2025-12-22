@@ -89,6 +89,116 @@ struct CallOpConversionPattern : public OpConversionPattern<P4HIR::CallOp> {
     }
 };
 
+static Value detectNextPattern(P4HIR::CallMethodOp extractOp) {
+    // Pattern:
+    // %hs = ... (HeaderStackType)
+    // %nextIndex_ref = struct_field_ref %hs["nextIndex"]
+    // %idx = read %nextIndex_ref
+    // %elt_ref = array_element_ref %array[%idx]
+    // %var = variable
+    // call_method @extract(%var)      <- extractOp
+    // %val = read %var                <- read from extract result
+    // assign %val, %elt_ref           <- assign extract result to hs[nextIndex]
+
+    if (extractOp.getArgOperands().empty()) return {};
+
+    auto extractArg = extractOp.getArgOperands()[0];
+
+    auto varOp = extractArg.getDefiningOp<P4HIR::VariableOp>();
+    if (!varOp) return {};
+
+    P4HIR::ReadOp readOp = nullptr;
+    for (auto *user : varOp.getResult().getUsers()) {
+        if (auto read = dyn_cast<P4HIR::ReadOp>(user)) {
+            if (read->isBeforeInBlock(extractOp)) continue;
+            readOp = read;
+            break;
+        }
+    }
+    if (!readOp) return {};
+
+    P4HIR::AssignOp assignOp = nullptr;
+    for (auto *user : readOp.getResult().getUsers()) {
+        if (auto assign = dyn_cast<P4HIR::AssignOp>(user)) {
+            assignOp = assign;
+            break;
+        }
+    }
+    if (!assignOp) return {};
+
+    auto target = assignOp.getRef();
+    auto arrayEltRef = target.getDefiningOp<P4HIR::ArrayElementRefOp>();
+    if (!arrayEltRef) return {};
+
+    auto index = arrayEltRef.getIndex();
+    auto readIdx = index.getDefiningOp<P4HIR::ReadOp>();
+    if (!readIdx) return {};
+
+    auto readSource = readIdx.getRef();
+    auto nextIndexRef = readSource.getDefiningOp<P4HIR::StructFieldRefOp>();
+    if (!nextIndexRef || nextIndexRef.getFieldName() != "nextIndex") return {};
+
+    auto hsBase = nextIndexRef.getOperand();
+    auto hsBaseType = hsBase.getType();
+    if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(hsBaseType))
+        hsBaseType = refType.getObjectType();
+
+    if (!mlir::isa<P4HIR::HeaderStackType>(hsBaseType)) return {};
+
+    return hsBase;
+}
+
+static void insertHeaderStackExtractLogic(P4HIR::CallMethodOp op, Value hsBase,
+                                          ConversionPatternRewriter &rewriter) {
+    auto loc = op.getLoc();
+    static constexpr unsigned hsIdBitWidth = 32;
+    auto intType = P4HIR::BitsType::get(op.getContext(), hsIdBitWidth, false);
+
+    auto hsBaseType = hsBase.getType();
+    if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(hsBaseType))
+        hsBaseType = refType.getObjectType();
+
+    auto hsType = mlir::cast<P4HIR::HeaderStackType>(hsBaseType);
+    uint64_t arraySize = hsType.getArraySize();
+
+    auto nextIndexRef = rewriter.create<P4HIR::StructFieldRefOp>(loc, hsBase, "nextIndex");
+    auto nextIndexVal = rewriter.create<P4HIR::ReadOp>(loc, nextIndexRef);
+    auto sizeConst = rewriter.create<P4HIR::ConstOp>(loc, P4HIR::IntAttr::get(intType, arraySize));
+    auto check = rewriter.create<P4HIR::CmpOp>(loc, P4HIR::CmpOpKind::Lt, nextIndexVal, sizeConst);
+
+    auto errorType = P4HIR::ErrorType::get(
+        op.getContext(),
+        mlir::ArrayAttr::get(op.getContext(),
+                             {mlir::StringAttr::get(op.getContext(), "StackOutOfBounds")}));
+    auto errorConst = rewriter.create<P4HIR::ConstOp>(
+        loc, P4HIR::ErrorCodeAttr::get(errorType, "StackOutOfBounds"));
+    rewriter.create<P4CoreLib::VerifyOp>(loc, check, errorConst);
+
+    auto varOp = op.getArgOperands()[0].getDefiningOp<P4HIR::VariableOp>();
+    if (!varOp) return;
+
+    for (auto *user : varOp.getResult().getUsers()) {
+        if (auto readOp = dyn_cast<P4HIR::ReadOp>(user)) {
+            if (readOp->isBeforeInBlock(op)) continue;
+            for (auto *readUser : readOp.getResult().getUsers()) {
+                if (auto assignOp = dyn_cast<P4HIR::AssignOp>(readUser)) {
+                    rewriter.setInsertionPointAfter(assignOp);
+                    auto constOne =
+                        rewriter.create<P4HIR::ConstOp>(loc, P4HIR::IntAttr::get(intType, 1));
+                    auto nextIndexRefInc =
+                        rewriter.create<P4HIR::StructFieldRefOp>(loc, hsBase, "nextIndex");
+                    auto currentNext = rewriter.create<P4HIR::ReadOp>(loc, nextIndexRefInc);
+                    auto incremented = rewriter.create<P4HIR::BinOp>(loc, P4HIR::BinOpKind::Add,
+                                                                     currentNext, constOne);
+                    rewriter.create<P4HIR::AssignOp>(loc, incremented, nextIndexRefInc);
+                    return;
+                }
+            }
+            break;
+        }
+    }
+}
+
 struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMethodOp> {
     using OpConversionPattern<P4HIR::CallMethodOp>::OpConversionPattern;
 
@@ -103,6 +213,11 @@ struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMet
         } else if (extSym == "packet_in") {
             if (methodSym == "extract") {
                 size_t sz = op.getArgOperands().size();
+                if (Value hsBase = detectNextPattern(op)) {
+                    auto savedInsertionPoint = rewriter.saveInsertionPoint();
+                    insertHeaderStackExtractLogic(op, hsBase, rewriter);
+                    rewriter.restoreInsertionPoint(savedInsertionPoint);
+                }
                 if (sz == 1) {
                     rewriter.replaceOpWithNewOp<P4CoreLib::PacketExtractOp>(op, op.getResultTypes(),
                                                                             operands.getOperands());
