@@ -57,6 +57,7 @@ void setUniqueIDS(ModuleOp moduleOp) {
     setID<BMv2IR::ConditionalOp>(moduleOp);
     setID<BMv2IR::TableOp>(moduleOp);
     setID<BMv2IR::PipelineOp>(moduleOp);
+    setID<BMv2IR::DeparserOp>(moduleOp);
 }
 
 json::Value to_JSON(Value val);
@@ -440,6 +441,19 @@ json::Value to_JSON(BMv2IR::DataToBoolOp d2b) {
     return asExpressionNode(std::move(res));
 }
 
+json::Value to_JSON(BMv2IR::DeparserOp deparserOp) {
+  json::Object res;
+  res["name"] = deparserOp.getSymName();
+  res["id"] = getId(deparserOp);
+  json::Array order;
+  for (auto a : deparserOp.getOrder()) {
+    auto ref = cast<SymbolRefAttr>(a);
+    order.push_back(ref.getLeafReference().getValue());
+  }
+  res["order"] = std::move(order);
+  return res;
+}
+
 json::Value to_JSON(Operation *op) {
     return llvm::TypeSwitch<Operation *, json::Value>(op)
         .Case([](BMv2IR::AssignHeaderOp assignOp) { return to_JSON(assignOp); })
@@ -519,6 +533,11 @@ mlir::FailureOr<json::Value> P4::P4MLIR::bmv2irToJson(ModuleOp moduleOp) {
     json::Array pipelines;
     moduleOp.walk([&](BMv2IR::PipelineOp pipeline) { pipelines.push_back(to_JSON(pipeline)); });
     root["pipelines"] = std::move(pipelines);
+
+    // Emit deparsers
+    json::Array deparsers;
+    moduleOp.walk([&](BMv2IR::DeparserOp deparserOp) { deparsers.push_back(to_JSON(deparserOp)); });
+    root["deparsers"] = std::move(deparsers);
 
     json::Value res(std::move(root));
 

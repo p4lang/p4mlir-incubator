@@ -135,7 +135,8 @@ LogicalResult V1SwitchOp::verify() {
     if (failed(checkArg.operator()<P4HIR::ControlOp, BMv2IR::PipelineOp>(getEgress())))
         return failure();
     if (failed(checkArg.operator()<P4HIR::ControlOp>(getComputeChecksum()))) return failure();
-    if (failed(checkArg.operator()<P4HIR::ControlOp>(getDeparser()))) return failure();
+    if (failed(checkArg.operator()<P4HIR::ControlOp, BMv2IR::DeparserOp>(getDeparser())))
+        return failure();
     return success();
 }
 

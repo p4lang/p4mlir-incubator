@@ -49,6 +49,8 @@ module {
   bmv2ir.header_instance @ingress2 : !p4hir.ref<!standard_metadata_t>
   bmv2ir.header_instance @ingress1 : !p4hir.ref<!ingress_metadata_t>
   bmv2ir.header_instance @ingress0_ipv4 : !p4hir.ref<!ipv4_t>
+  bmv2ir.header_instance @deparser0_ipv4 : !p4hir.ref<!ipv4_t>
+  bmv2ir.header_instance @deparser0_ethernet : !p4hir.ref<!ethernet_t>
   p4hir.parser @p(%arg0: !packet_in {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !p4hir.ref<!headers> {p4hir.dir = #out, p4hir.param_name = "hdr"})() {
     p4hir.state @start {
       p4hir.transition to @p::@accept
@@ -336,8 +338,15 @@ module {
     p4hir.control_apply {
     }
   }
-  p4hir.control @deparser(%arg0: !packet_out {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !headers {p4hir.dir = #in, p4hir.param_name = "h"})() {
+// CHECK: bmv2ir.deparser @deparser order [@deparser0_ethernet, @deparser0_ipv4]
+  p4hir.control @deparser(%arg0: !p4corelib.packet_out {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !headers {p4hir.dir = #in, p4hir.param_name = "h"})() {
     p4hir.control_apply {
+      %ethernet_ref = bmv2ir.symbol_ref @deparser0_ethernet : !p4hir.ref<!ethernet_t>
+      %ethernet = p4hir.read %ethernet_ref : <!ethernet_t>
+      p4corelib.emit %ethernet : !ethernet_t to %arg0 : !p4corelib.packet_out
+      %ipv4_ref = bmv2ir.symbol_ref @deparser0_ipv4 : !p4hir.ref<!ipv4_t>
+      %ipv4 = p4hir.read %ipv4_ref : <!ipv4_t>
+      p4corelib.emit %ipv4 : !ipv4_t to %arg0 : !p4corelib.packet_out
     }
   }
   bmv2ir.v1switch @main parser @p, verify_checksum @vrfy, ingress @ingress, egress @egress, compute_checksum @update, deparser @deparser

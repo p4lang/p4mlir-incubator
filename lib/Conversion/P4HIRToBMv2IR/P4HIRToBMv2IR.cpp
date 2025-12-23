@@ -403,9 +403,9 @@ struct ParserOpConversionPattern : public OpConversionPattern<P4HIR::ParserOp> {
     }
 };
 
-static FailureOr<bool> isTopLevelControl(P4HIR::ControlOp controlOp) {
-    auto moduleOp = controlOp->getParentOfType<ModuleOp>();
-    if (!moduleOp) return controlOp.emitError("No module parent");
+FailureOr<BMv2IR::V1SwitchOp> getPackageInstantiationFromParentModule(Operation *op) {
+    auto moduleOp = op->getParentOfType<ModuleOp>();
+    if (!moduleOp) return op->emitError("No module parent");
     // TODO: consider adding an interface to support different targets transparently
     BMv2IR::V1SwitchOp packageInstantiateOp = nullptr;
     auto walkRes = moduleOp.walk([&](BMv2IR::V1SwitchOp v1switch) {
@@ -414,11 +414,23 @@ static FailureOr<bool> isTopLevelControl(P4HIR::ControlOp controlOp) {
         return WalkResult::advance();
     });
     if (walkRes.wasInterrupted())
-        return controlOp.emitError("Expected only a single package instantiation");
-    if (!packageInstantiateOp) return controlOp.emitError("No package instantion found");
+        return op->emitError("Expected only a single package instantiation");
+    return packageInstantiateOp;
+}
+
+FailureOr<bool> isTopLevelControl(P4HIR::ControlOp controlOp) {
+    auto packageInstantiateOp = getPackageInstantiationFromParentModule(controlOp);
+    if (failed(packageInstantiateOp)) return failure();
     auto symToCheck = controlOp.getSymName();
-    return symToCheck == packageInstantiateOp.getIngress().getLeafReference() ||
-           symToCheck == packageInstantiateOp.getEgress().getLeafReference();
+    return symToCheck == packageInstantiateOp->getIngress().getLeafReference() ||
+           symToCheck == packageInstantiateOp->getEgress().getLeafReference();
+}
+
+FailureOr<bool> isDeparserControl(P4HIR::ControlOp controlOp) {
+    auto packageInstantiateOp = getPackageInstantiationFromParentModule(controlOp);
+    if (failed(packageInstantiateOp)) return failure();
+    auto symToCheck = controlOp.getSymName();
+    return symToCheck == packageInstantiateOp->getDeparser().getLeafReference();
 }
 
 // This pattern converts top-level controls to BMv2 patterns.
@@ -862,6 +874,36 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
     }
 };
 
+struct DeparserConversionPattern : public OpConversionPattern<P4HIR::ControlOp> {
+    using OpConversionPattern<P4HIR::ControlOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ControlOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto isDeparser = isDeparserControl(op);
+        if (failed(isDeparser)) return failure();
+        if (!isDeparser.value()) return failure();
+        SmallVector<Attribute> headersRef;
+        auto walkRes = op.walk([&](P4CoreLib::PacketEmitOp emitOp) {
+            auto readOp = emitOp.getHdr().getDefiningOp<P4HIR::ReadOp>();
+            if (!readOp) {
+                emitOp.emitError("Expected header to come from a ReadOp");
+                return WalkResult::interrupt();
+            }
+            auto symRefOp = readOp.getRef().getDefiningOp<BMv2IR::SymToValueOp>();
+            if (!symRefOp) {
+                readOp.emitError("Expected SymToValueOp");
+                return WalkResult::interrupt();
+            }
+            headersRef.push_back(symRefOp.getDecl());
+            return WalkResult::advance();
+        });
+        if (walkRes.wasInterrupted()) return failure();
+        rewriter.replaceOpWithNewOp<BMv2IR::DeparserOp>(op, op.getSymName(),
+                                                        rewriter.getArrayAttr(headersRef));
+        return success();
+    }
+};
+
 static void setUniqueIfOpName(P4HIR::IfOp ifOp, P4HIR::ControlOp controlOp, unsigned id) {
     auto name = conditionalNameAttrName + std::to_string(id);
     ifOp->setAttr(
@@ -892,11 +934,12 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         ConversionTarget target(context);
         RewritePatternSet patterns(&context);
         P4HIRToBMv2IRTypeConverter converter;
-        patterns.add<HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
-                     ParserStateOpConversionPattern, ExtractOpConversionPattern,
-                     AssignOpToAssignHeaderPattern, AssignOpPattern, ReadOpConversionPattern,
-                     FieldRefConversionPattern, SymToValConversionPattern,
-                     CompareValidityToD2BPattern, PipelineConversionPattern>(converter, &context);
+        patterns
+            .add<HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
+                 ParserStateOpConversionPattern, ExtractOpConversionPattern,
+                 AssignOpToAssignHeaderPattern, AssignOpPattern, ReadOpConversionPattern,
+                 FieldRefConversionPattern, SymToValConversionPattern, CompareValidityToD2BPattern,
+                 PipelineConversionPattern, DeparserConversionPattern>(converter, &context);
 
         target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
 
@@ -920,8 +963,9 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         target.addIllegalOp<P4HIR::CmpOp>();
         target.addDynamicallyLegalOp<P4HIR::ControlOp>([](P4HIR::ControlOp controlOp) {
             auto isTopLevel = isTopLevelControl(controlOp);
-            if (failed(isTopLevel)) return true;
-            return !isTopLevel.value();
+            auto isDeparser = isDeparserControl(controlOp);
+            if (failed(isTopLevel) || failed(isDeparser)) return true;
+            return !isTopLevel.value() && !isDeparser.value();
         });
 
         if (failed(applyPartialConversion(module, target, std::move(patterns))))

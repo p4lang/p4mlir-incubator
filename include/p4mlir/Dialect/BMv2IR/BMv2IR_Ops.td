@@ -338,6 +338,22 @@ def BMv2IR_PipelineOp : BMv2IR_Op<"pipeline", [
   }];
 }
 
+def BMv2IR_DeparserOp : BMv2IR_Op<"deparser", [ Symbol ]> {
+  let summary = "BMv2 deparser definition";
+  let description = [{
+    Represents a BMv2 [Deparser](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#deparsers).
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    SymbolRefArrayAttr:$order
+  );
+  
+  let assemblyFormat = [{
+    $sym_name `order` $order attr-dict
+  }];
+}
+
 //===-------------------------------------------------------------------------------------------===//
 // BMv2 type-value fields
 // see https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#the-type-value-object
