@@ -15,6 +15,11 @@
 !b4i = !p4hir.bit<4>
 !b8i = !p4hir.bit<8>
 !b9i = !p4hir.bit<9>
+!type_O = !p4hir.type_var<"O">
+!type_T = !p4hir.type_var<"T">
+!HashAlgorithm = !p4hir.enum<"HashAlgorithm", crc32, crc32_custom, crc16, crc16_custom, random, identity, csum16, xor16>
+#HashAlgorithm_csum16 = #p4hir.enum_field<csum16, !HashAlgorithm> : !HashAlgorithm
+#true = #p4hir.bool<true> : !p4hir.bool
 !packet_in = !p4hir.extern<"packet_in">
 !packet_out = !p4hir.extern<"packet_out">
 #undir = #p4hir<dir undir>
@@ -324,12 +329,130 @@ module {
       }
     }
   }
-  p4hir.control @vrfy(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "h"})() {
+  bmv2ir.header_instance @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+  bmv2ir.header_instance @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+  p4hir.func @verify_checksum<!type_T, !type_O>(!p4hir.bool {p4hir.dir = #in, p4hir.param_name = "condition"}, !type_T {p4hir.dir = #in, p4hir.param_name = "data"}, !type_O {p4hir.dir = #in, p4hir.param_name = "checksum"}, !HashAlgorithm {p4hir.dir = #undir, p4hir.param_name = "algo"})
+  p4hir.func @update_checksum<!type_T, !type_O>(!p4hir.bool {p4hir.dir = #in, p4hir.param_name = "condition"}, !type_T {p4hir.dir = #in, p4hir.param_name = "data"}, !p4hir.ref<!type_O> {p4hir.dir = #inout, p4hir.param_name = "checksum"}, !HashAlgorithm {p4hir.dir = #undir, p4hir.param_name = "algo"}) annotations {pure}
+// CHECK:    bmv2ir.calculation @calculation_0 {
+// CHECK:    %0 = bmv2ir.field @verifyChecksum0_ipv4["version"] -> !b4i
+// CHECK:    %1 = bmv2ir.field @verifyChecksum0_ipv4["ihl"] -> !b4i
+// CHECK:    %2 = bmv2ir.field @verifyChecksum0_ipv4["diffserv"] -> !b8i
+// CHECK:    %3 = bmv2ir.field @verifyChecksum0_ipv4["totalLen"] -> !b16i
+// CHECK:    %4 = bmv2ir.field @verifyChecksum0_ipv4["identification"] -> !b16i
+// CHECK:    %5 = bmv2ir.field @verifyChecksum0_ipv4["flags"] -> !b3i
+// CHECK:    %6 = bmv2ir.field @verifyChecksum0_ipv4["fragOffset"] -> !b13i
+// CHECK:    %7 = bmv2ir.field @verifyChecksum0_ipv4["ttl"] -> !b8i
+// CHECK:    %8 = bmv2ir.field @verifyChecksum0_ipv4["protocol"] -> !b8i
+// CHECK:    %9 = bmv2ir.field @verifyChecksum0_ipv4["srcAddr"] -> !b32i
+// CHECK:    %10 = bmv2ir.field @verifyChecksum0_ipv4["dstAddr"] -> !b32i
+// CHECK:    bmv2ir.yield %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10 : !b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i
+// CHECK:  } {algo = "csum16"}
+  p4hir.control @verifyChecksum(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"}, %arg1: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "meta"})() {
     p4hir.control_apply {
+      %verifyChecksum0_ipv4 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val = p4hir.read %verifyChecksum0_ipv4 : <!ipv4_t>
+      %version = p4hir.struct_extract %val["version"] : !ipv4_t
+      %verifyChecksum0_ipv4_0 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_1 = p4hir.read %verifyChecksum0_ipv4_0 : <!ipv4_t>
+      %ihl = p4hir.struct_extract %val_1["ihl"] : !ipv4_t
+      %verifyChecksum0_ipv4_2 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_3 = p4hir.read %verifyChecksum0_ipv4_2 : <!ipv4_t>
+      %diffserv = p4hir.struct_extract %val_3["diffserv"] : !ipv4_t
+      %verifyChecksum0_ipv4_4 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_5 = p4hir.read %verifyChecksum0_ipv4_4 : <!ipv4_t>
+      %totalLen = p4hir.struct_extract %val_5["totalLen"] : !ipv4_t
+      %verifyChecksum0_ipv4_6 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_7 = p4hir.read %verifyChecksum0_ipv4_6 : <!ipv4_t>
+      %identification = p4hir.struct_extract %val_7["identification"] : !ipv4_t
+      %verifyChecksum0_ipv4_8 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_9 = p4hir.read %verifyChecksum0_ipv4_8 : <!ipv4_t>
+      %flags = p4hir.struct_extract %val_9["flags"] : !ipv4_t
+      %verifyChecksum0_ipv4_10 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_11 = p4hir.read %verifyChecksum0_ipv4_10 : <!ipv4_t>
+      %fragOffset = p4hir.struct_extract %val_11["fragOffset"] : !ipv4_t
+      %verifyChecksum0_ipv4_12 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_13 = p4hir.read %verifyChecksum0_ipv4_12 : <!ipv4_t>
+      %ttl = p4hir.struct_extract %val_13["ttl"] : !ipv4_t
+      %verifyChecksum0_ipv4_14 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_15 = p4hir.read %verifyChecksum0_ipv4_14 : <!ipv4_t>
+      %protocol = p4hir.struct_extract %val_15["protocol"] : !ipv4_t
+      %verifyChecksum0_ipv4_16 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_17 = p4hir.read %verifyChecksum0_ipv4_16 : <!ipv4_t>
+      %srcAddr = p4hir.struct_extract %val_17["srcAddr"] : !ipv4_t
+      %verifyChecksum0_ipv4_18 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_19 = p4hir.read %verifyChecksum0_ipv4_18 : <!ipv4_t>
+      %dstAddr = p4hir.struct_extract %val_19["dstAddr"] : !ipv4_t
+      %tuple = p4hir.tuple (%version, %ihl, %diffserv, %totalLen, %identification, %flags, %fragOffset, %ttl, %protocol, %srcAddr, %dstAddr) : tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>
+      %verifyChecksum0_ipv4_20 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+      %val_21 = p4hir.read %verifyChecksum0_ipv4_20 : <!ipv4_t>
+      %hdrChecksum = p4hir.struct_extract %val_21["hdrChecksum"] : !ipv4_t
+      %true = p4hir.const #true
+      %HashAlgorithm_csum16 = p4hir.const #HashAlgorithm_csum16
+      p4hir.call @verify_checksum<[tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>, !b16i]> (%true, %tuple, %hdrChecksum, %HashAlgorithm_csum16) : (!p4hir.bool, tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>, !b16i, !HashAlgorithm) -> ()
     }
   }
-  p4hir.control @update(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "h"})() {
+// CHECK:  bmv2ir.calculation @calculation_1 {
+// CHECK:    %0 = bmv2ir.field @computeChecksum0_ipv4["version"] -> !b4i
+// CHECK:    %1 = bmv2ir.field @computeChecksum0_ipv4["ihl"] -> !b4i
+// CHECK:    %2 = bmv2ir.field @computeChecksum0_ipv4["diffserv"] -> !b8i
+// CHECK:    %3 = bmv2ir.field @computeChecksum0_ipv4["totalLen"] -> !b16i
+// CHECK:    %4 = bmv2ir.field @computeChecksum0_ipv4["identification"] -> !b16i
+// CHECK:    %5 = bmv2ir.field @computeChecksum0_ipv4["flags"] -> !b3i
+// CHECK:    %6 = bmv2ir.field @computeChecksum0_ipv4["fragOffset"] -> !b13i
+// CHECK:    %7 = bmv2ir.field @computeChecksum0_ipv4["ttl"] -> !b8i
+// CHECK:    %8 = bmv2ir.field @computeChecksum0_ipv4["protocol"] -> !b8i
+// CHECK:    %9 = bmv2ir.field @computeChecksum0_ipv4["srcAddr"] -> !b32i
+// CHECK:    %10 = bmv2ir.field @computeChecksum0_ipv4["dstAddr"] -> !b32i
+// CHECK:    bmv2ir.yield %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10 : !b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i
+// CHECK:  } {algo = "csum16"}
+  p4hir.control @computeChecksum(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"}, %arg1: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "meta"})() {
     p4hir.control_apply {
+      p4hir.scope {
+        %true = p4hir.const #true
+        %computeChecksum0_ipv4 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val = p4hir.read %computeChecksum0_ipv4 : <!ipv4_t>
+        %version = p4hir.struct_extract %val["version"] : !ipv4_t
+        %computeChecksum0_ipv4_0 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val_1 = p4hir.read %computeChecksum0_ipv4_0 : <!ipv4_t>
+        %ihl = p4hir.struct_extract %val_1["ihl"] : !ipv4_t
+        %computeChecksum0_ipv4_2 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val_3 = p4hir.read %computeChecksum0_ipv4_2 : <!ipv4_t>
+        %diffserv = p4hir.struct_extract %val_3["diffserv"] : !ipv4_t
+        %computeChecksum0_ipv4_4 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val_5 = p4hir.read %computeChecksum0_ipv4_4 : <!ipv4_t>
+        %totalLen = p4hir.struct_extract %val_5["totalLen"] : !ipv4_t
+        %computeChecksum0_ipv4_6 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val_7 = p4hir.read %computeChecksum0_ipv4_6 : <!ipv4_t>
+        %identification = p4hir.struct_extract %val_7["identification"] : !ipv4_t
+        %computeChecksum0_ipv4_8 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val_9 = p4hir.read %computeChecksum0_ipv4_8 : <!ipv4_t>
+        %flags = p4hir.struct_extract %val_9["flags"] : !ipv4_t
+        %computeChecksum0_ipv4_10 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val_11 = p4hir.read %computeChecksum0_ipv4_10 : <!ipv4_t>
+        %fragOffset = p4hir.struct_extract %val_11["fragOffset"] : !ipv4_t
+        %computeChecksum0_ipv4_12 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val_13 = p4hir.read %computeChecksum0_ipv4_12 : <!ipv4_t>
+        %ttl = p4hir.struct_extract %val_13["ttl"] : !ipv4_t
+        %computeChecksum0_ipv4_14 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val_15 = p4hir.read %computeChecksum0_ipv4_14 : <!ipv4_t>
+        %protocol = p4hir.struct_extract %val_15["protocol"] : !ipv4_t
+        %computeChecksum0_ipv4_16 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val_17 = p4hir.read %computeChecksum0_ipv4_16 : <!ipv4_t>
+        %srcAddr = p4hir.struct_extract %val_17["srcAddr"] : !ipv4_t
+        %computeChecksum0_ipv4_18 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %val_19 = p4hir.read %computeChecksum0_ipv4_18 : <!ipv4_t>
+        %dstAddr = p4hir.struct_extract %val_19["dstAddr"] : !ipv4_t
+        %tuple = p4hir.tuple (%version, %ihl, %diffserv, %totalLen, %identification, %flags, %fragOffset, %ttl, %protocol, %srcAddr, %dstAddr) : tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>
+        %HashAlgorithm_csum16 = p4hir.const #HashAlgorithm_csum16
+        %computeChecksum0_ipv4_20 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
+        %hdrChecksum_field_ref = p4hir.struct_field_ref %computeChecksum0_ipv4_20["hdrChecksum"] : <!ipv4_t>
+        %checksum_inout_arg = p4hir.variable ["checksum_inout_arg", init] : <!b16i>
+        %val_21 = p4hir.read %hdrChecksum_field_ref : <!b16i>
+        p4hir.assign %val_21, %checksum_inout_arg : <!b16i>
+        p4hir.call @update_checksum<[tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>, !b16i]> (%true, %tuple, %checksum_inout_arg, %HashAlgorithm_csum16) : (!p4hir.bool, tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>, !p4hir.ref<!b16i>, !HashAlgorithm) -> ()
+        %val_22 = p4hir.read %checksum_inout_arg : <!b16i>
+        p4hir.assign %val_22, %hdrChecksum_field_ref : <!b16i>
+      }
     }
   }
 // CHECK:  bmv2ir.pipeline @egress {
@@ -349,5 +472,5 @@ module {
       p4corelib.emit %ipv4 : !ipv4_t to %arg0 : !p4corelib.packet_out
     }
   }
-  bmv2ir.v1switch @main parser @p, verify_checksum @vrfy, ingress @ingress, egress @egress, compute_checksum @update, deparser @deparser
+  bmv2ir.v1switch @main parser @p, verify_checksum @verifyChecksum, ingress @ingress, egress @egress, compute_checksum @computeChecksum, deparser @deparser
 }

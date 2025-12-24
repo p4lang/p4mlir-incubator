@@ -58,6 +58,7 @@ void setUniqueIDS(ModuleOp moduleOp) {
     setID<BMv2IR::TableOp>(moduleOp);
     setID<BMv2IR::PipelineOp>(moduleOp);
     setID<BMv2IR::DeparserOp>(moduleOp);
+    setID<BMv2IR::CalculationOp>(moduleOp);
 }
 
 json::Value to_JSON(Value val);
@@ -454,6 +455,22 @@ json::Value to_JSON(BMv2IR::DeparserOp deparserOp) {
   return res;
 }
 
+json::Value to_JSON(BMv2IR::CalculationOp calcOp) {
+    json::Object res;
+    res["name"] = calcOp.getSymName();
+    res["id"] = getId(calcOp);
+
+    json::Array input;
+    auto yieldTerminator = cast<BMv2IR::YieldOp>(calcOp.getInputsRegion().front().getTerminator());
+    for (auto yieldedVal : yieldTerminator.getArgs()) {
+        Operation *op = yieldedVal.getDefiningOp();
+        assert(op && "Expected yielded value to come from operation");
+        input.push_back(to_JSON(op));
+    }
+    res["input"] = std::move(input);
+    return res;
+}
+
 json::Value to_JSON(Operation *op) {
     return llvm::TypeSwitch<Operation *, json::Value>(op)
         .Case([](BMv2IR::AssignHeaderOp assignOp) { return to_JSON(assignOp); })
@@ -483,7 +500,7 @@ json::Value to_JSON(BlockArgument arg) {
     return res;
 }
 
-static json::Value to_JSON(Value val) {
+json::Value to_JSON(Value val) {
     if (auto op = val.getDefiningOp()) return to_JSON(op);
     return to_JSON(cast<BlockArgument>(val));
 }
@@ -538,6 +555,11 @@ mlir::FailureOr<json::Value> P4::P4MLIR::bmv2irToJson(ModuleOp moduleOp) {
     json::Array deparsers;
     moduleOp.walk([&](BMv2IR::DeparserOp deparserOp) { deparsers.push_back(to_JSON(deparserOp)); });
     root["deparsers"] = std::move(deparsers);
+
+    // Emit calculations
+    json::Array calculations;
+    moduleOp.walk([&](BMv2IR::CalculationOp calcOp) { calculations.push_back(to_JSON(calcOp)); });
+    root["calculations"] = std::move(calculations);
 
     json::Value res(std::move(root));
 

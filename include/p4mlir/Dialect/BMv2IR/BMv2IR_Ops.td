@@ -250,7 +250,7 @@ def BMv2IR_DataToBoolOp : BMv2IR_Op<"d2b"> {
 }
 
 def BMv2IR_YieldOp : BMv2IR_Op<"yield", [ReturnLike, Terminator, NoMemoryEffect,
-    ParentOneOf<["ConditionalOp"]>]> {
+    ParentOneOf<["ConditionalOp, CalculationOp"]>]> {
   let summary = "BMv2 region terminator";
 
   let arguments = (ins Variadic<AnyType>:$args);
@@ -351,6 +351,26 @@ def BMv2IR_DeparserOp : BMv2IR_Op<"deparser", [ Symbol ]> {
   
   let assemblyFormat = [{
     $sym_name `order` $order attr-dict
+  }];
+}
+
+def BMv2IR_CalculationOp : BMv2IR_Op<"calculation", [
+    Symbol, SingleBlock]> {
+  let summary = "BMv2 calculation definition";
+  let description = [{
+    Represents a BMv2 [Calculation](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#calculations).
+    Inputs for the calculation are the values yielded at the end of the op's region.
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    StrAttr:$algo
+  );
+  
+  let regions = (region SizedRegion<1>:$inputsRegion);
+  
+  let assemblyFormat = [{
+    $sym_name $inputsRegion attr-dict
   }];
 }
 

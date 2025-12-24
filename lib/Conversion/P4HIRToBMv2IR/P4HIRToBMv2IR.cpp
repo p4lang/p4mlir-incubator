@@ -7,6 +7,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/AllocatorBase.h"
 #include "llvm/Support/Casting.h"
@@ -18,6 +19,8 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
@@ -214,6 +217,28 @@ struct FieldRefConversionPattern : public OpConversionPattern<P4HIR::StructField
         auto ctx = rewriter.getContext();
         auto resTy = getTypeConverter()->convertType(op.getResult().getType());
         auto instance = op.getInput().getDefiningOp<BMv2IR::SymToValueOp>();
+        if (!instance) return failure();
+        auto oldName = op.getFieldName();
+        auto newName = oldName == P4HIR::HeaderType::validityBit
+                           ? BMv2IR::HeaderType::validBitFieldName
+                           : oldName;
+        rewriter.replaceOpWithNewOp<BMv2IR::FieldOp>(
+            op, resTy, SymbolRefAttr::get(ctx, instance.getDecl().getLeafReference()), newName);
+        return success();
+    }
+};
+
+// Converts StructExtractOp to BMv2IR::FieldOp
+struct StructExtractOpConversionPattern : public OpConversionPattern<P4HIR::StructExtractOp> {
+    using OpConversionPattern<P4HIR::StructExtractOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::StructExtractOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto ctx = rewriter.getContext();
+        auto resTy = getTypeConverter()->convertType(op.getResult().getType());
+        auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>();
+        if (!readOp) return op.emitError("Expected input to come from ReadOp");
+        auto instance = readOp.getRef().getDefiningOp<BMv2IR::SymToValueOp>();
         if (!instance) return failure();
         auto oldName = op.getFieldName();
         auto newName = oldName == P4HIR::HeaderType::validityBit
@@ -431,6 +456,14 @@ FailureOr<bool> isDeparserControl(P4HIR::ControlOp controlOp) {
     if (failed(packageInstantiateOp)) return failure();
     auto symToCheck = controlOp.getSymName();
     return symToCheck == packageInstantiateOp->getDeparser().getLeafReference();
+}
+
+FailureOr<bool> isCalculationControl(P4HIR::ControlOp controlOp) {
+    auto packageInstantiateOp = getPackageInstantiationFromParentModule(controlOp);
+    if (failed(packageInstantiateOp)) return failure();
+    auto symToCheck = controlOp.getSymName();
+    return symToCheck == packageInstantiateOp->getVerifyChecksum().getLeafReference() ||
+           symToCheck == packageInstantiateOp->getComputeChecksum().getLeafReference();
 }
 
 // This pattern converts top-level controls to BMv2 patterns.
@@ -904,6 +937,107 @@ struct DeparserConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
     }
 };
 
+struct CalculationConversionPattern : public OpConversionPattern<P4HIR::ControlOp> {
+    using OpConversionPattern<P4HIR::ControlOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ControlOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto isCalculation = isCalculationControl(op);
+        if (failed(isCalculation)) return failure();
+        if (!isCalculation.value()) return failure();
+        auto controlApply = cast<P4HIR::ControlApplyOp>(op.getBody().front().getTerminator());
+        auto walkRes = controlApply.walk([&](P4HIR::CallOp callOp) {
+            if (failed(processCall(callOp, rewriter))) return WalkResult::interrupt();
+            return WalkResult::advance();
+        });
+        if (walkRes.wasInterrupted()) return failure();
+        rewriter.eraseOp(op);
+        return success();
+    }
+
+ private:
+    static StringAttr getUniqueCalculationName(P4HIR::CallOp op) {
+        auto name = StringAttr::get(op.getContext(), "calculation");
+        unsigned counter = 0;
+        auto moduleOp = op->getParentOfType<ModuleOp>();
+        assert(moduleOp && "Expected module op");
+        auto uniqueName = SymbolTable::generateSymbolName<256>(
+            name,
+            [&](StringRef candidate) {
+                return SymbolTable::lookupSymbolIn(moduleOp, candidate) != nullptr;
+            },
+            counter);
+        return StringAttr::get(op.getContext(), uniqueName);
+    }
+
+    static LogicalResult getExpressionForInput(Location loc, Value val,
+                                               SmallVector<Operation *> &ops) {
+        auto defOp = val.getDefiningOp();
+        if (!defOp) return emitError(loc, "Expected defining op");
+        ops.push_back(defOp);
+
+        if (isa<BMv2IR::SymToValueOp>(defOp)) return success();
+        for (auto &operand : defOp->getOpOperands()) {
+            if (failed(getExpressionForInput(loc, operand.get(), ops))) return failure();
+        }
+        return success();
+    }
+
+    static LogicalResult handleVerifyOrUpdateChecksumCall(P4HIR::CallOp callOp,
+                                                          PatternRewriter &rewriter) {
+        auto name = getUniqueCalculationName(callOp);
+        PatternRewriter::InsertionGuard guard(rewriter);
+        auto args = callOp.getArgOperands();
+        if (args.size() != 4) return callOp.emitError("Unexpected number of args");
+        auto algorithmConstOp = args[3].getDefiningOp<P4HIR::ConstOp>();
+        if (!algorithmConstOp) return callOp.emitError("Expected ConstOp as fourth argument");
+        auto algoEnumField = algorithmConstOp.getValueAs<P4HIR::EnumFieldAttr>();
+        if (!algoEnumField)
+            return callOp.emitError("Expected algorithm to come from an Enum field");
+        auto algoName = algoEnumField.getField();
+        auto calcOp = rewriter.create<BMv2IR::CalculationOp>(callOp.getLoc(), name, algoName);
+        auto &calcBlock = calcOp.getInputsRegion().emplaceBlock();
+        auto inputTuple = args[1].getDefiningOp<P4HIR::TupleOp>();
+        if (!inputTuple) return callOp.emitError("Expected tuple as second arg");
+        inputTuple->print(llvm::errs(), OpPrintingFlags().assumeVerified());
+        SmallVector<Value> calcArgs;
+        for (auto input : inputTuple.getInput()) {
+            calcArgs.push_back(input);
+            SmallVector<Operation *> definingOps;
+            if (failed(getExpressionForInput(callOp.getLoc(), input, definingOps)))
+                return failure();
+            for (auto op : definingOps) {
+                rewriter.moveOpBefore(op, &calcBlock, calcBlock.end());
+            }
+        }
+        rewriter.setInsertionPointToEnd(&calcBlock);
+        rewriter.create<BMv2IR::YieldOp>(callOp.getLoc(), calcArgs);
+
+        return success();
+    }
+
+    static LogicalResult processCall(P4HIR::CallOp callOp, PatternRewriter &rewriter) {
+        llvm::errs() << "\n";
+        return llvm::StringSwitch<function_ref<LogicalResult(P4HIR::CallOp, PatternRewriter &)>>(
+                   callOp.getCallee().getLeafReference())
+            .Case("verify_checksum", handleVerifyOrUpdateChecksumCall)
+            .Case("update_checksum", handleVerifyOrUpdateChecksumCall)
+            .Default([](P4HIR::CallOp callOp, PatternRewriter &) {
+                return callOp.emitError("Unhandled function call");
+            })(callOp, rewriter);
+    }
+};
+
+struct RemovePackageInstantiationPattern : public OpConversionPattern<BMv2IR::V1SwitchOp> {
+    using OpConversionPattern<BMv2IR::V1SwitchOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(BMv2IR::V1SwitchOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        rewriter.eraseOp(op);
+        return success();
+    }
+};
+
 static void setUniqueIfOpName(P4HIR::IfOp ifOp, P4HIR::ControlOp controlOp, unsigned id) {
     auto name = conditionalNameAttrName + std::to_string(id);
     ifOp->setAttr(
@@ -934,12 +1068,14 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         ConversionTarget target(context);
         RewritePatternSet patterns(&context);
         P4HIRToBMv2IRTypeConverter converter;
-        patterns
-            .add<HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
-                 ParserStateOpConversionPattern, ExtractOpConversionPattern,
-                 AssignOpToAssignHeaderPattern, AssignOpPattern, ReadOpConversionPattern,
-                 FieldRefConversionPattern, SymToValConversionPattern, CompareValidityToD2BPattern,
-                 PipelineConversionPattern, DeparserConversionPattern>(converter, &context);
+        patterns.add<HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
+                     ParserStateOpConversionPattern, ExtractOpConversionPattern,
+                     AssignOpToAssignHeaderPattern, AssignOpPattern, ReadOpConversionPattern,
+                     FieldRefConversionPattern, StructExtractOpConversionPattern,
+                     SymToValConversionPattern, CompareValidityToD2BPattern,
+                     PipelineConversionPattern, DeparserConversionPattern,
+                     CalculationConversionPattern, RemovePackageInstantiationPattern>(converter,
+                                                                                      &context);
 
         target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
 
@@ -961,12 +1097,9 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         target.addIllegalOp<P4HIR::StructFieldRefOp>();
         target.addIllegalOp<P4HIR::ReadOp>();
         target.addIllegalOp<P4HIR::CmpOp>();
-        target.addDynamicallyLegalOp<P4HIR::ControlOp>([](P4HIR::ControlOp controlOp) {
-            auto isTopLevel = isTopLevelControl(controlOp);
-            auto isDeparser = isDeparserControl(controlOp);
-            if (failed(isTopLevel) || failed(isDeparser)) return true;
-            return !isTopLevel.value() && !isDeparser.value();
-        });
+        target.addIllegalOp<P4HIR::ControlOp>();
+        target.addIllegalOp<P4HIR::StructExtractOp>();
+        target.addIllegalOp<BMv2IR::V1SwitchOp>();
 
         if (failed(applyPartialConversion(module, target, std::move(patterns))))
             signalPassFailure();
