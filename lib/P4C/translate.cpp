@@ -1593,7 +1593,7 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
         if (auto setType = mlir::dyn_cast<P4HIR::SetType>(type)) {
             for (const auto *field : lst->components) {
                 auto fieldConstant = getOrCreateConstantExpr(field);
-                if (!isa<P4HIR::SetType>(fieldConstant.getType()))
+                if (!mlir::isa<P4HIR::SetType>(fieldConstant.getType()))
                     fieldConstant = P4HIR::SetAttr::get(
                         P4HIR::SetType::get(fieldConstant.getType()), P4HIR::SetKind::Constant,
                         builder.getArrayAttr({fieldConstant}));
@@ -1622,14 +1622,14 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
         return setConstantExpr(expr, getTypedConstant(fieldType, field));
     }
     if (const auto *range = expr->to<P4::IR::Range>()) {
-        auto rangeType = cast<P4HIR::SetType>(getOrCreateType(range->type));
+        auto rangeType = mlir::cast<P4HIR::SetType>(getOrCreateType(range->type));
         auto left = getOrCreateConstantExpr(range->left);
         auto right = getOrCreateConstantExpr(range->right);
         return setConstantExpr(expr, P4HIR::SetAttr::get(rangeType, P4HIR::SetKind::Range,
                                                          builder.getArrayAttr({left, right})));
     }
     if (const auto *mask = expr->to<P4::IR::Mask>()) {
-        auto maskType = cast<P4HIR::SetType>(getOrCreateType(mask->type));
+        auto maskType = mlir::cast<P4HIR::SetType>(getOrCreateType(mask->type));
         auto left = getOrCreateConstantExpr(mask->left);
         auto right = getOrCreateConstantExpr(mask->right);
         return setConstantExpr(expr, P4HIR::SetAttr::get(maskType, P4HIR::SetKind::Mask,
