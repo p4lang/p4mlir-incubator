@@ -59,6 +59,7 @@ void setUniqueIDS(ModuleOp moduleOp) {
     setID<BMv2IR::PipelineOp>(moduleOp);
     setID<BMv2IR::DeparserOp>(moduleOp);
     setID<BMv2IR::CalculationOp>(moduleOp);
+    setID<BMv2IR::ChecksumOp>(moduleOp);
 }
 
 json::Value to_JSON(Value val);
@@ -393,14 +394,15 @@ json::Value to_JSON(BMv2IR::PipelineOp pipeline) {
 }
 
 json::Value to_JSON(P4HIR::ConstOp constOp) {
-    json::Object res;
-    // FIXME: implement conversion to the actual hexstr
-    res["type"] = "hexstr";
-    json::Value val =
-        llvm::TypeSwitch<TypedAttr, json::Value>(constOp.getValue())
-            .Case([](P4HIR::IntAttr intAttr) { return intAttr.getValue().getSExtValue(); });
-    res["value"] = val;
-    return res;
+    return llvm::TypeSwitch<TypedAttr, json::Value>(constOp.getValue())
+        .Case([](P4HIR::IntAttr intAttr) {
+            // FIXME: implement conversion to the actual hexstr
+            json::Object res;
+            res["type"] = "hexstr";
+            res["value"] = intAttr.getValue().getSExtValue();
+            return res;
+        })
+        .Case([](P4HIR::BoolAttr boolAttr) { return json::Value(boolAttr.getValue()); });
 }
 
 json::Value asExpressionNode(json::Value val) {
@@ -468,6 +470,21 @@ json::Value to_JSON(BMv2IR::CalculationOp calcOp) {
         input.push_back(to_JSON(op));
     }
     res["input"] = std::move(input);
+    return res;
+}
+
+json::Value to_JSON(BMv2IR::ChecksumOp checksumOp) {
+    json::Object res;
+    res["name"] = checksumOp.getSymName();
+    res["id"] = getId(checksumOp);
+    res["type"] = checksumOp.getType();
+    res["target"] = json::Array{checksumOp.getTargetHeader().getLeafReference().getValue(),
+                                checksumOp.getTargetField()};
+    res["calculation"] = checksumOp.getCalculation().getLeafReference().getValue();
+    res["update"] = checksumOp.getUpdate();
+    res["verify"] = !checksumOp.getUpdate();
+    res["if_cond"] = to_JSON(checksumOp.getIfCondRegion().front().getTerminator());
+
     return res;
 }
 
@@ -560,6 +577,11 @@ mlir::FailureOr<json::Value> P4::P4MLIR::bmv2irToJson(ModuleOp moduleOp) {
     json::Array calculations;
     moduleOp.walk([&](BMv2IR::CalculationOp calcOp) { calculations.push_back(to_JSON(calcOp)); });
     root["calculations"] = std::move(calculations);
+
+    // Emit checksums
+    json::Array checksums;
+    moduleOp.walk([&](BMv2IR::ChecksumOp checksumOp) { checksums.push_back(to_JSON(checksumOp)); });
+    root["checksums"] = std::move(checksums);
 
     json::Value res(std::move(root));
 

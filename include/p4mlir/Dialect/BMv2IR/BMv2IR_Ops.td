@@ -221,7 +221,6 @@ def BMv2IR_V1SwitchOp : BMv2IR_Op<"v1switch", [Symbol]> {
     SymbolRefAttr:$deparser
   );
 
-  // TODO: add verifier to check that symbols have the correct type
   let hasVerifier = 1;
   let assemblyFormat = [{
     $sym_name `parser` $parser `,` `verify_checksum` $verify_checksum `,` `ingress` $ingress `,` `egress` $egress `,` `compute_checksum` $compute_checksum `,` `deparser` $deparser attr-dict
@@ -250,7 +249,7 @@ def BMv2IR_DataToBoolOp : BMv2IR_Op<"d2b"> {
 }
 
 def BMv2IR_YieldOp : BMv2IR_Op<"yield", [ReturnLike, Terminator, NoMemoryEffect,
-    ParentOneOf<["ConditionalOp, CalculationOp"]>]> {
+    ParentOneOf<["ConditionalOp, CalculationOp, ChecksumOp"]>]> {
   let summary = "BMv2 region terminator";
 
   let arguments = (ins Variadic<AnyType>:$args);
@@ -371,6 +370,37 @@ def BMv2IR_CalculationOp : BMv2IR_Op<"calculation", [
   
   let assemblyFormat = [{
     $sym_name $inputsRegion attr-dict
+  }];
+}
+
+def BMv2IR_ChecksumOp : BMv2IR_Op<"checksum", [
+    Symbol, SingleBlock]> {
+  let summary = "BMv2 checksum definition";
+  let description = [{
+    Represents a BMv2 [Checksum](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#checksums).
+    The expression for the conditional update/verification lives in `ifCondRegion`.
+    `update` == True iif `verify` == False.
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    SymbolRefAttr:$targetHeader,
+    StrAttr:$targetField,
+    StrAttr:$type,
+    SymbolRefAttr:$calculation,
+    BoolAttr:$update
+  );
+  
+  let regions = (region SizedRegion<1>:$ifCondRegion);
+  
+  // TODO: add verifier, check that symbols resolve to valid ops and if condition is terminated by a yield of a bool
+  let assemblyFormat = [{
+    $sym_name 
+    `\n` `target` $targetHeader `[` $targetField `]` 
+    `\n` `type` $type
+    `\n` `calculation` $calculation
+    `\n` `update` $update
+    `\n` `if_cond` $ifCondRegion attr-dict
   }];
 }
 

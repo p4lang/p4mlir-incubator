@@ -13,6 +13,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -54,6 +55,20 @@ static FailureOr<SymbolRefAttr> getUniqueIfOpName(P4HIR::IfOp ifOp) {
     auto name = dyn_cast<SymbolRefAttr>(ifOp->getAttr(conditionalNameAttrName));
     if (!name) return ifOp.emitError("Expected conditional name");
     return name;
+}
+
+StringAttr getUniqueNameInParentModule(P4HIR::CallOp op, StringRef base) {
+    auto name = StringAttr::get(op.getContext(), base);
+    unsigned counter = 0;
+    auto moduleOp = op->getParentOfType<ModuleOp>();
+    assert(moduleOp && "Expected module op");
+    auto uniqueName = SymbolTable::generateSymbolName<256>(
+        name,
+        [&](StringRef candidate) {
+            return SymbolTable::lookupSymbolIn(moduleOp, candidate) != nullptr;
+        },
+        counter);
+    return StringAttr::get(op.getContext(), uniqueName);
 }
 
 BMv2IR::FieldInfo convertFieldInfo(P4HIR::FieldInfo p4Field) {
@@ -956,36 +971,22 @@ struct CalculationConversionPattern : public OpConversionPattern<P4HIR::ControlO
     }
 
  private:
-    static StringAttr getUniqueCalculationName(P4HIR::CallOp op) {
-        auto name = StringAttr::get(op.getContext(), "calculation");
-        unsigned counter = 0;
-        auto moduleOp = op->getParentOfType<ModuleOp>();
-        assert(moduleOp && "Expected module op");
-        auto uniqueName = SymbolTable::generateSymbolName<256>(
-            name,
-            [&](StringRef candidate) {
-                return SymbolTable::lookupSymbolIn(moduleOp, candidate) != nullptr;
-            },
-            counter);
-        return StringAttr::get(op.getContext(), uniqueName);
-    }
-
     static LogicalResult getExpressionForInput(Location loc, Value val,
                                                SmallVector<Operation *> &ops) {
         auto defOp = val.getDefiningOp();
         if (!defOp) return emitError(loc, "Expected defining op");
         ops.push_back(defOp);
 
-        if (isa<BMv2IR::SymToValueOp>(defOp)) return success();
+        if (isa<BMv2IR::SymToValueOp>(defOp) || isa<P4HIR::ConstOp>(defOp)) return success();
         for (auto &operand : defOp->getOpOperands()) {
             if (failed(getExpressionForInput(loc, operand.get(), ops))) return failure();
         }
         return success();
     }
 
-    static LogicalResult handleVerifyOrUpdateChecksumCall(P4HIR::CallOp callOp,
-                                                          PatternRewriter &rewriter) {
-        auto name = getUniqueCalculationName(callOp);
+    static FailureOr<BMv2IR::CalculationOp> handleVerifyOrUpdateChecksumCall(
+        P4HIR::CallOp callOp, PatternRewriter &rewriter) {
+        auto name = getUniqueNameInParentModule(callOp, "calculation");
         PatternRewriter::InsertionGuard guard(rewriter);
         auto args = callOp.getArgOperands();
         if (args.size() != 4) return callOp.emitError("Unexpected number of args");
@@ -999,7 +1000,6 @@ struct CalculationConversionPattern : public OpConversionPattern<P4HIR::ControlO
         auto &calcBlock = calcOp.getInputsRegion().emplaceBlock();
         auto inputTuple = args[1].getDefiningOp<P4HIR::TupleOp>();
         if (!inputTuple) return callOp.emitError("Expected tuple as second arg");
-        inputTuple->print(llvm::errs(), OpPrintingFlags().assumeVerified());
         SmallVector<Value> calcArgs;
         for (auto input : inputTuple.getInput()) {
             calcArgs.push_back(input);
@@ -1013,18 +1013,114 @@ struct CalculationConversionPattern : public OpConversionPattern<P4HIR::ControlO
         rewriter.setInsertionPointToEnd(&calcBlock);
         rewriter.create<BMv2IR::YieldOp>(callOp.getLoc(), calcArgs);
 
-        return success();
+        return calcOp;
     }
 
-    static LogicalResult processCall(P4HIR::CallOp callOp, PatternRewriter &rewriter) {
-        llvm::errs() << "\n";
-        return llvm::StringSwitch<function_ref<LogicalResult(P4HIR::CallOp, PatternRewriter &)>>(
-                   callOp.getCallee().getLeafReference())
-            .Case("verify_checksum", handleVerifyOrUpdateChecksumCall)
-            .Case("update_checksum", handleVerifyOrUpdateChecksumCall)
+    static FailureOr<std::pair<SymbolRefAttr, StringAttr>> getVerifyTargetField(
+        P4HIR::CallOp callOp, PatternRewriter &rewriter) {
+        // We expect the target field for the checksum to come from a StructExtractOp
+        auto args = callOp.getArgOperands();
+        if (args.size() != 4) return callOp.emitError("Expected 4 arguments to verify_checksum");
+        auto extract = args[2].getDefiningOp<P4HIR::StructExtractOp>();
+        if (!extract)
+            return callOp.emitError(
+                "Expected verify_checksum target field to come from an extract op");
+        auto read = extract.getInput().getDefiningOp<P4HIR::ReadOp>();
+        if (!read) return callOp.emitError("Expected extract input to come from a read op");
+        auto symRef = read.getRef().getDefiningOp<BMv2IR::SymToValueOp>();
+        if (!symRef) return callOp.emitError("Expected read input to be an Header Instance");
+        return {{symRef.getDecl(), extract.getFieldNameAttr()}};
+    }
+
+    static FailureOr<std::pair<SymbolRefAttr, StringAttr>> getUpdateTargetField(
+        P4HIR::CallOp callOp, PatternRewriter &rewriter) {
+        // This pattern is pretty complex since the target field for the update_checksum function is
+        // `inout`, e.g.
+
+        //  %computeChecksum0_ipv4_20 = bmv2ir.symbol_ref @computeChecksum0_ipv4 :
+        //  !p4hir.ref<!ipv4_t> %hdrChecksum_field_ref = p4hir.struct_field_ref
+        //  %computeChecksum0_ipv4_20["hdrChecksum"] : <!ipv4_t> %checksum_inout_arg =
+        //  p4hir.variable ["checksum_inout_arg", init] : <!b16i> %val_21 = p4hir.read
+        //  %hdrChecksum_field_ref : <!b16i> p4hir.assign %val_21, %checksum_inout_arg : <!b16i>
+        //  p4hir.call @update_checksum (%true, %tuple, %checksum_inout_arg, %HashAlgorithm_csum16)
+        //  %val_22 = p4hir.read %checksum_inout_arg : <!b16i>
+        //  p4hir.assign %val_22, %hdrChecksum_field_ref : <!b16i>
+
+        // so we need to match to try and find the field_ref op for the target.
+        // This pattern could be greatly simplified once we implement copy elision for inout field
+        // args
+
+        auto args = callOp.getArgOperands();
+        if (args.size() != 4) return callOp.emitError("Expected 4 arguments to verify_checksum");
+        auto var = args[2].getDefiningOp<P4HIR::VariableOp>();
+        if (!var) return callOp.emitError("Expected var op");
+        P4HIR::StructFieldRefOp fieldRef = nullptr;
+        for (auto user : var->getUsers()) {
+            auto assignCandidate = dyn_cast<P4HIR::AssignOp>(user);
+            if (!assignCandidate) continue;
+            auto readLhs = assignCandidate.getValue().getDefiningOp<P4HIR::ReadOp>();
+            auto ref = assignCandidate.getRef().getDefiningOp();
+            if (!readLhs || !ref || ref != var) continue;
+            auto fieldRefCandidate = readLhs.getRef().getDefiningOp<P4HIR::StructFieldRefOp>();
+            if (!fieldRefCandidate) continue;
+            fieldRef = fieldRefCandidate;
+        }
+        if (!fieldRef) return callOp.emitError("Couldn't find field ref op for target field");
+        auto symRef = fieldRef.getInput().getDefiningOp<BMv2IR::SymToValueOp>();
+        if (!symRef) return callOp.emitError("Expected field ref input to be an Header Instance");
+
+        return {{symRef.getDecl(), fieldRef.getFieldNameAttr()}};
+    }
+
+    static FailureOr<std::pair<SymbolRefAttr, StringAttr>> getTargetField(
+        P4HIR::CallOp callOp, PatternRewriter &rewriter) {
+        return llvm::StringSwitch<function_ref<FailureOr<std::pair<SymbolRefAttr, StringAttr>>(
+            P4HIR::CallOp, PatternRewriter &)>>(callOp.getCallee().getLeafReference())
+            .Case("verify_checksum", getVerifyTargetField)
+            .Case("update_checksum", getUpdateTargetField)
             .Default([](P4HIR::CallOp callOp, PatternRewriter &) {
                 return callOp.emitError("Unhandled function call");
             })(callOp, rewriter);
+    }
+
+    static LogicalResult processCall(P4HIR::CallOp callOp, PatternRewriter &rewriter) {
+        auto calleeName = callOp.getCallee().getLeafReference();
+        // Generate the calculation
+        auto maybeCalcOp =
+            llvm::StringSwitch<
+                function_ref<FailureOr<BMv2IR::CalculationOp>(P4HIR::CallOp, PatternRewriter &)>>(
+                calleeName)
+                .Case("verify_checksum", handleVerifyOrUpdateChecksumCall)
+                .Case("update_checksum", handleVerifyOrUpdateChecksumCall)
+                .Default([](P4HIR::CallOp callOp, PatternRewriter &) {
+                    return callOp.emitError("Unhandled function call");
+                })(callOp, rewriter);
+        if (failed(maybeCalcOp)) return failure();
+
+        // Generate the checksum
+        auto name = getUniqueNameInParentModule(callOp, "checksum");
+        auto maybeFieldRef = getTargetField(callOp, rewriter);
+        if (failed(maybeFieldRef)) return failure();
+        auto [headerRef, fieldName] = maybeFieldRef.value();
+        bool isUpdate = llvm::StringSwitch<bool>(calleeName)
+                            .Case("verify_checksum", false)
+                            .Case("update_checksum", true);
+        auto type = rewriter.getStringAttr("generic");
+        auto calcRef = SymbolRefAttr::get(maybeCalcOp->getSymNameAttr());
+        auto checksum = rewriter.create<BMv2IR::ChecksumOp>(callOp.getLoc(), name, headerRef,
+                                                            fieldName, type, calcRef, isUpdate);
+        auto &checksumBlock = checksum.getIfCondRegion().emplaceBlock();
+        SmallVector<Operation *> definingOps;
+        auto args = callOp.getArgOperands();
+        if (!isa<P4HIR::BoolType>(args[0].getType()))
+            return callOp.emitError("Expected boolean arg");
+        if (failed(getExpressionForInput(callOp.getLoc(), args[0], definingOps))) return failure();
+        for (auto op : definingOps) rewriter.moveOpBefore(op, &checksumBlock, checksumBlock.end());
+        PatternRewriter::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointToEnd(&checksumBlock);
+        rewriter.create<BMv2IR::YieldOp>(callOp.getLoc(), ValueRange{args[0]});
+
+        return success();
     }
 };
 

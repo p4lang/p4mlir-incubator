@@ -334,19 +334,28 @@ module {
   p4hir.func @verify_checksum<!type_T, !type_O>(!p4hir.bool {p4hir.dir = #in, p4hir.param_name = "condition"}, !type_T {p4hir.dir = #in, p4hir.param_name = "data"}, !type_O {p4hir.dir = #in, p4hir.param_name = "checksum"}, !HashAlgorithm {p4hir.dir = #undir, p4hir.param_name = "algo"})
   p4hir.func @update_checksum<!type_T, !type_O>(!p4hir.bool {p4hir.dir = #in, p4hir.param_name = "condition"}, !type_T {p4hir.dir = #in, p4hir.param_name = "data"}, !p4hir.ref<!type_O> {p4hir.dir = #inout, p4hir.param_name = "checksum"}, !HashAlgorithm {p4hir.dir = #undir, p4hir.param_name = "algo"}) annotations {pure}
 // CHECK:    bmv2ir.calculation @calculation_0 {
-// CHECK:    %0 = bmv2ir.field @verifyChecksum0_ipv4["version"] -> !b4i
-// CHECK:    %1 = bmv2ir.field @verifyChecksum0_ipv4["ihl"] -> !b4i
-// CHECK:    %2 = bmv2ir.field @verifyChecksum0_ipv4["diffserv"] -> !b8i
-// CHECK:    %3 = bmv2ir.field @verifyChecksum0_ipv4["totalLen"] -> !b16i
-// CHECK:    %4 = bmv2ir.field @verifyChecksum0_ipv4["identification"] -> !b16i
-// CHECK:    %5 = bmv2ir.field @verifyChecksum0_ipv4["flags"] -> !b3i
-// CHECK:    %6 = bmv2ir.field @verifyChecksum0_ipv4["fragOffset"] -> !b13i
-// CHECK:    %7 = bmv2ir.field @verifyChecksum0_ipv4["ttl"] -> !b8i
-// CHECK:    %8 = bmv2ir.field @verifyChecksum0_ipv4["protocol"] -> !b8i
-// CHECK:    %9 = bmv2ir.field @verifyChecksum0_ipv4["srcAddr"] -> !b32i
-// CHECK:    %10 = bmv2ir.field @verifyChecksum0_ipv4["dstAddr"] -> !b32i
-// CHECK:    bmv2ir.yield %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10 : !b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i
-// CHECK:  } {algo = "csum16"}
+// CHECK-NEXT:    %0 = bmv2ir.field @verifyChecksum0_ipv4["version"] -> !b4i
+// CHECK-NEXT:    %1 = bmv2ir.field @verifyChecksum0_ipv4["ihl"] -> !b4i
+// CHECK-NEXT:    %2 = bmv2ir.field @verifyChecksum0_ipv4["diffserv"] -> !b8i
+// CHECK-NEXT:    %3 = bmv2ir.field @verifyChecksum0_ipv4["totalLen"] -> !b16i
+// CHECK-NEXT:    %4 = bmv2ir.field @verifyChecksum0_ipv4["identification"] -> !b16i
+// CHECK-NEXT:    %5 = bmv2ir.field @verifyChecksum0_ipv4["flags"] -> !b3i
+// CHECK-NEXT:    %6 = bmv2ir.field @verifyChecksum0_ipv4["fragOffset"] -> !b13i
+// CHECK-NEXT:    %7 = bmv2ir.field @verifyChecksum0_ipv4["ttl"] -> !b8i
+// CHECK-NEXT:    %8 = bmv2ir.field @verifyChecksum0_ipv4["protocol"] -> !b8i
+// CHECK-NEXT:    %9 = bmv2ir.field @verifyChecksum0_ipv4["srcAddr"] -> !b32i
+// CHECK-NEXT:    %10 = bmv2ir.field @verifyChecksum0_ipv4["dstAddr"] -> !b32i
+// CHECK-NEXT:    bmv2ir.yield %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10 : !b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i
+// CHECK-NEXT:  } {algo = "csum16"}
+
+// CHECK:  bmv2ir.checksum @checksum_0
+// CHECK-NEXT:   target @verifyChecksum0_ipv4["hdrChecksum"]
+// CHECK-NEXT:   type "generic"
+// CHECK-NEXT:   calculation @calculation_0
+// CHECK-NEXT:   update false
+// CHECK-NEXT:   if_cond {
+// CHECK-NEXT:    bmv2ir.yield %true : !p4hir.bool
+// CHECK-NEXT:  }
   p4hir.control @verifyChecksum(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"}, %arg1: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "meta"})() {
     p4hir.control_apply {
       %verifyChecksum0_ipv4 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
@@ -392,19 +401,28 @@ module {
     }
   }
 // CHECK:  bmv2ir.calculation @calculation_1 {
-// CHECK:    %0 = bmv2ir.field @computeChecksum0_ipv4["version"] -> !b4i
-// CHECK:    %1 = bmv2ir.field @computeChecksum0_ipv4["ihl"] -> !b4i
-// CHECK:    %2 = bmv2ir.field @computeChecksum0_ipv4["diffserv"] -> !b8i
-// CHECK:    %3 = bmv2ir.field @computeChecksum0_ipv4["totalLen"] -> !b16i
-// CHECK:    %4 = bmv2ir.field @computeChecksum0_ipv4["identification"] -> !b16i
-// CHECK:    %5 = bmv2ir.field @computeChecksum0_ipv4["flags"] -> !b3i
-// CHECK:    %6 = bmv2ir.field @computeChecksum0_ipv4["fragOffset"] -> !b13i
-// CHECK:    %7 = bmv2ir.field @computeChecksum0_ipv4["ttl"] -> !b8i
-// CHECK:    %8 = bmv2ir.field @computeChecksum0_ipv4["protocol"] -> !b8i
-// CHECK:    %9 = bmv2ir.field @computeChecksum0_ipv4["srcAddr"] -> !b32i
-// CHECK:    %10 = bmv2ir.field @computeChecksum0_ipv4["dstAddr"] -> !b32i
-// CHECK:    bmv2ir.yield %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10 : !b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i
-// CHECK:  } {algo = "csum16"}
+// CHECK-NEXT:    %0 = bmv2ir.field @computeChecksum0_ipv4["version"] -> !b4i
+// CHECK-NEXT:    %1 = bmv2ir.field @computeChecksum0_ipv4["ihl"] -> !b4i
+// CHECK-NEXT:    %2 = bmv2ir.field @computeChecksum0_ipv4["diffserv"] -> !b8i
+// CHECK-NEXT:    %3 = bmv2ir.field @computeChecksum0_ipv4["totalLen"] -> !b16i
+// CHECK-NEXT:    %4 = bmv2ir.field @computeChecksum0_ipv4["identification"] -> !b16i
+// CHECK-NEXT:    %5 = bmv2ir.field @computeChecksum0_ipv4["flags"] -> !b3i
+// CHECK-NEXT:    %6 = bmv2ir.field @computeChecksum0_ipv4["fragOffset"] -> !b13i
+// CHECK-NEXT:    %7 = bmv2ir.field @computeChecksum0_ipv4["ttl"] -> !b8i
+// CHECK-NEXT:    %8 = bmv2ir.field @computeChecksum0_ipv4["protocol"] -> !b8i
+// CHECK-NEXT:    %9 = bmv2ir.field @computeChecksum0_ipv4["srcAddr"] -> !b32i
+// CHECK-NEXT:    %10 = bmv2ir.field @computeChecksum0_ipv4["dstAddr"] -> !b32i
+// CHECK-NEXT:    bmv2ir.yield %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10 : !b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i
+// CHECK-NEXT:  } {algo = "csum16"}
+
+// CHECK:  bmv2ir.checksum @checksum_1
+// CHECK-NEXT:   target @computeChecksum0_ipv4["hdrChecksum"]
+// CHECK-NEXT:   type "generic"
+// CHECK-NEXT:   calculation @calculation_1
+// CHECK-NEXT:   update true
+// CHECK-NEXT:   if_cond {
+// CHECK-NEXT:    bmv2ir.yield %true : !p4hir.bool
+// CHECK-NEXT:  }
   p4hir.control @computeChecksum(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"}, %arg1: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "meta"})() {
     p4hir.control_apply {
       p4hir.scope {
