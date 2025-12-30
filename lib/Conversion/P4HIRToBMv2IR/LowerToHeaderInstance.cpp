@@ -1,7 +1,9 @@
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
@@ -9,6 +11,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
@@ -57,15 +60,52 @@ P4HIR::HeaderType isHeaderOrRefToHeader(mlir::Type ty) {
     return nullptr;
 }
 
+// Map for <struct type name, field name> -> header instance
+using InstanceConversionContext =
+    std::map<std::pair<mlir::Type *, std::string>, BMv2IR::HeaderInstanceOp>;
+// Map used for raw headers in control/parser args
+using HeaderConversionContext = llvm::DenseMap<P4HIR::HeaderType, BMv2IR::HeaderInstanceOp>;
+
 // Adds instances from a StructType, splitting the struct to create separate instances for
 // the header fields, and creating a new struct containing only the bit fields if necessary
 LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, Location loc,
                                          StringRef parentName, ModuleOp moduleOp,
-                                         PatternRewriter &rewriter) {
+                                         PatternRewriter &rewriter,
+                                         InstanceConversionContext *instances) {
     auto ctx = rewriter.getContext();
-    llvm::StringMap<BMv2IR::HeaderInstanceOp> instances;
+    llvm::StringMap<BMv2IR::HeaderInstanceOp> localInstance;
     SmallPtrSet<Operation *, 5> fieldRefs;
     SmallPtrSet<Operation *, 5> bitRefs;
+    auto getOrInsertInstance = [&localInstance, &rewriter, &instances, &moduleOp, &loc,
+                                &parentName](P4HIR::StructType ty, StringRef name,
+                                             bool referenceFullStruct) -> BMv2IR::HeaderInstanceOp {
+        auto instanceTy = referenceFullStruct ? P4HIR::ReferenceType::get(ty)
+                                              : P4HIR::ReferenceType::get(ty.getFieldType(name));
+        auto symName = referenceFullStruct ? rewriter.getStringAttr(ty.getName())
+                                           : rewriter.getStringAttr(ty.getName() + "_" + name);
+        if (instances) {
+            auto it = instances->find({&ty, name.str()});
+            if (it != instances->end()) {
+                return it->second;
+            }
+            PatternRewriter::InsertionGuard guard(rewriter);
+            rewriter.setInsertionPointToStart(moduleOp.getBody());
+            auto instanceOp = rewriter.create<BMv2IR::HeaderInstanceOp>(loc, symName, instanceTy);
+            instances->insert({{&ty, name.str()}, instanceOp});
+            return instanceOp;
+        }
+        // We don't want to use the global context for Header Instances (e.g. we are lowering a
+        // P4HIR::Variable) We still need to avoid adding duplicate HeaderInstances if the same
+        // field of a variable is accessed multiple times, so we use the "local" map
+        auto it = localInstance.find(name);
+        if (it != localInstance.end()) return it->second;
+        PatternRewriter::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointToStart(moduleOp.getBody());
+        auto instanceOp = rewriter.create<BMv2IR::HeaderInstanceOp>(
+            loc, rewriter.getStringAttr(parentName + "_" + name), instanceTy);
+        localInstance.insert({name, instanceOp});
+        return instanceOp;
+    };
 
     // Find the StructFieldRefOps that access the struct
     for (auto user : val.getUsers()) {
@@ -86,18 +126,7 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
     for (auto op : fieldRefs) {
         auto fieldRefOp = cast<P4HIR::StructFieldRefOp>(op);
         auto name = fieldRefOp.getFieldName();
-        auto instance = instances.find(name);
-        BMv2IR::HeaderInstanceOp instanceOp = nullptr;
-        PatternRewriter::InsertionGuard guard(rewriter);
-        if (instance != instances.end()) {
-            instanceOp = instance->second;
-        } else {
-            rewriter.setInsertionPointToStart(moduleOp.getBody());
-            instanceOp = rewriter.create<BMv2IR::HeaderInstanceOp>(
-                loc, rewriter.getStringAttr(parentName + "_" + name),
-                P4HIR::ReferenceType::get(structTy.getFieldType(name)));
-            instances.insert({name, instanceOp});
-        }
+        auto instanceOp = getOrInsertInstance(structTy, name.str(), false);
         rewriter.setInsertionPointAfter(fieldRefOp);
         rewriter.replaceOpWithNewOp<BMv2IR::SymToValueOp>(
             fieldRefOp, instanceOp.getHeaderType(),
@@ -107,7 +136,9 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
     if (bitRefs.empty()) return success();
 
     // Since the struct has bit fields, we create a new type dropping the header fields, and add a
-    // header instance for it
+    // header instance for it. Note that this behaves differently from p4c, which creates a single
+    // header instance containing all the scalars (and separate header instance for every varbit
+    // since an header instance can contain only one varbit field).
 
     SmallVector<P4HIR::FieldInfo> bitFields;
     for (auto field : structTy.getFields()) {
@@ -118,8 +149,7 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
     rewriter.setInsertionPointToStart(moduleOp.getBody());
     auto newTy = P4HIR::StructType::get(rewriter.getContext(), structTy.getName(), bitFields,
                                         structTy.getAnnotations());
-    auto newInstance = rewriter.create<BMv2IR::HeaderInstanceOp>(
-        loc, rewriter.getStringAttr(parentName), P4HIR::ReferenceType::get(newTy));
+    auto newInstance = getOrInsertInstance(newTy, newTy.getName(), true);
     for (auto op : bitRefs) {
         auto fieldRefOp = cast<P4HIR::StructFieldRefOp>(op);
         rewriter.setInsertionPointAfter(fieldRefOp);
@@ -149,12 +179,20 @@ LogicalResult addInstanceForHeader(Operation *op, P4HIR::HeaderType headerTy, Tw
     return success();
 }
 
-LogicalResult addInstanceForHeader(BlockArgument arg, P4HIR::HeaderType headerTy, Twine name,
-                                   ModuleOp moduleOp, PatternRewriter &rewriter) {
+LogicalResult addInstanceForHeader(BlockArgument arg, P4HIR::HeaderType headerTy, ModuleOp moduleOp,
+                                   PatternRewriter &rewriter, HeaderConversionContext *instances) {
     PatternRewriter::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointToStart(moduleOp.getBody());
-    auto newInstance = rewriter.create<BMv2IR::HeaderInstanceOp>(
-        arg.getLoc(), rewriter.getStringAttr(name), P4HIR::ReferenceType::get(headerTy));
+    BMv2IR::HeaderInstanceOp newInstance;
+    auto it = instances->find(headerTy);
+    if (it != instances->end()) {
+        newInstance = it->second;
+    } else {
+        newInstance = rewriter.create<BMv2IR::HeaderInstanceOp>(
+            arg.getLoc(), rewriter.getStringAttr(headerTy.getName()),
+            P4HIR::ReferenceType::get(headerTy));
+        instances->insert({headerTy, newInstance});
+    }
 
     for (auto &use : arg.getUses()) {
         Operation *user = use.getOwner();
@@ -171,7 +209,11 @@ LogicalResult addInstanceForHeader(BlockArgument arg, P4HIR::HeaderType headerTy
 }
 
 struct ParserOpPattern : public OpRewritePattern<P4HIR::ParserOp> {
-    using OpRewritePattern<P4HIR::ParserOp>::OpRewritePattern;
+    ParserOpPattern(MLIRContext *context, InstanceConversionContext *instances,
+                    HeaderConversionContext *instancesFromHeaderArgs)
+        : OpRewritePattern<P4HIR::ParserOp>(context),
+          instances(instances),
+          instancesFromHeaderArgs(instancesFromHeaderArgs) {}
 
     mlir::LogicalResult matchAndRewrite(P4HIR::ParserOp parserOp,
                                         mlir::PatternRewriter &rewriter) const override {
@@ -183,17 +225,22 @@ struct ParserOpPattern : public OpRewritePattern<P4HIR::ParserOp> {
             std::string parentName =
                 (parserOp.getSymName() + std::to_string(arg.getArgNumber())).str();
             if (auto headerTy = isHeaderOrRefToHeader(ty)) {
-                if (failed(addInstanceForHeader(arg, headerTy, parentName, moduleOp, rewriter)))
+                if (failed(addInstanceForHeader(arg, headerTy, moduleOp, rewriter,
+                                                instancesFromHeaderArgs)))
                     return parserOp->emitError("Failed to process parserOp");
             } else if (auto structTy = isStructOrRefToStruct(ty)) {
                 if (failed(splitStructAndAddInstances(arg, structTy, parserOp.getLoc(), parentName,
-                                                      moduleOp, rewriter)))
+                                                      moduleOp, rewriter, instances)))
                     return parserOp->emitError("Failed to process parserOp");
             }
         }
 
         return mlir::success();
     }
+
+ private:
+    InstanceConversionContext *instances;
+    HeaderConversionContext *instancesFromHeaderArgs;
 };
 
 FailureOr<StringRef> getParentName(Operation *op) {
@@ -223,7 +270,7 @@ struct VariableOpPattern : public OpRewritePattern<P4HIR::VariableOp> {
                 .Case([&](P4HIR::StructType structTy) -> LogicalResult {
                     if (failed(splitStructAndAddInstances(variableOp.getResult(), structTy,
                                                           variableOp.getLoc(), name, moduleOp,
-                                                          rewriter)))
+                                                          rewriter, nullptr)))
                         return variableOp.emitError("Error translating variableOp");
                     return success();
                 })
@@ -233,7 +280,9 @@ struct VariableOpPattern : public OpRewritePattern<P4HIR::VariableOp> {
                         return variableOp.emitError("Error translating variableOp");
                     return success();
                 })
-                .Default([](Type ty) { return failure(); });
+                .Default([&](Type ty) -> LogicalResult {
+                    return variableOp.emitError("Unsupported variable type");
+                });
         return res;
     }
 };
@@ -260,7 +309,10 @@ struct LowerToHeaderInstancePass
         });
 
         // TODO: add support for controls and other ops that may lead to header instances
-        patterns.add<ParserOpPattern, VariableOpPattern>(patterns.getContext());
+        InstanceConversionContext instances;
+        HeaderConversionContext instancesFromHeaderArgs;
+        patterns.add<VariableOpPattern>(patterns.getContext());
+        patterns.add<ParserOpPattern>(patterns.getContext(), &instances, &instancesFromHeaderArgs);
 
         if (failed(applyPartialConversion(getOperation(), target, std::move(patterns))))
             signalPassFailure();
