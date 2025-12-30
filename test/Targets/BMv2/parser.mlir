@@ -188,19 +188,19 @@ module {
 // CHECK-NEXT:              "mask": null,
 // CHECK-NEXT:              "next_state": "parse_one",
 // CHECK-NEXT:              "type": "hexstr",
-// CHECK-NEXT:              "value": "1"
+// CHECK-NEXT:              "value": "0x01"
 // CHECK-NEXT:            },
 // CHECK-NEXT:            {
 // CHECK-NEXT:              "mask": null,
 // CHECK-NEXT:              "next_state": "parse_two",
 // CHECK-NEXT:              "type": "hexstr",
-// CHECK-NEXT:              "value": "2"
+// CHECK-NEXT:              "value": "0x02"
 // CHECK-NEXT:            },
 // CHECK-NEXT:            {
-// CHECK-NEXT:              "mask": "2",
+// CHECK-NEXT:              "mask": "0x02",
 // CHECK-NEXT:              "next_state": "parse_two",
 // CHECK-NEXT:              "type": "hexstr",
-// CHECK-NEXT:              "value": "1"
+// CHECK-NEXT:              "value": "0x01"
 // CHECK-NEXT:            },
 // CHECK-NEXT:            {
 // CHECK-NEXT:              "mask": null,

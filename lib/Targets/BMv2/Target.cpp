@@ -1,16 +1,17 @@
 #include "p4mlir/Targets/BMv2/Target.h"
 
 #include <string>
-#include <vector>
 
 #include "llvm/ADT/APSInt.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/MathExtras.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -20,7 +21,6 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 #include "p4mlir/Common/Registration.h"
-#include "p4mlir/Dialect/BMv2IR/BMv2IR_Dialect.h"
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
@@ -60,6 +60,16 @@ void setUniqueIDS(ModuleOp moduleOp) {
     setID<BMv2IR::DeparserOp>(moduleOp);
     setID<BMv2IR::CalculationOp>(moduleOp);
     setID<BMv2IR::ChecksumOp>(moduleOp);
+}
+
+std::string asHexstr(P4HIR::IntAttr intAttr) {
+    std::string s;
+    llvm::raw_string_ostream ss(s);
+    auto bitTy = cast<P4HIR::BitsType>(intAttr.getType());
+    auto bytes = llvm::divideCeil(bitTy.getWidth(), 8);
+    auto width = bytes * 2;
+    ss << llvm::format_hex_no_prefix(intAttr.getUInt(), width);
+    return "0x" + ss.str();
 }
 
 json::Value to_JSON(Value val);
@@ -119,14 +129,12 @@ json::Value to_JSON(BMv2IR::TransitionOp transitionOp) {
     switch (type) {
         case BMv2IR::TransitionKind::Hexstr: {
             auto valueAttr = cast<P4HIR::IntAttr>(transitionOp.getValueAttr());
-            // FIXME: print value as hexadecimal
-            auto value = std::to_string(valueAttr.getValue().getSExtValue());
-            res["value"] = value;
+            // FIXME: we need to ensure that hexstrings are correctly padded according to the bmv2 spec
+            res["value"] = asHexstr(valueAttr);
             auto mask = transitionOp.getMask();
             if (mask.has_value()) {
                 auto maskAttr = cast<P4HIR::IntAttr>(mask.value());
-                auto mask = std::to_string(maskAttr.getValue().getSExtValue());
-                res["mask"] = mask;
+                res["mask"] = asHexstr(maskAttr);
             } else {
                 res["mask"] = json::Value(nullptr);
             }
@@ -207,9 +215,12 @@ json::Value to_JSON(BMv2IR::ExtractOp extractOp) {
     return res;
 }
 
-// Returns true for Operations that we don't want to emit directly
-// when emitting lists of primitives
-bool skipOpEmission(Operation *op) { return isa<BMv2IR::FieldOp, P4HIR::ReturnOp>(op); }
+// Returns true for Operations that we want to emit directly (basically "root" operations for
+// expression trees etc)
+bool isPrimitive(Operation *op) {
+    return isa<BMv2IR::AssignOp, BMv2IR::AssignHeaderOp, BMv2IR::ExtractOp, BMv2IR::LookaheadOp>(
+        op);
+}
 
 json::Value to_JSON(BMv2IR::ParserStateOp stateOp) {
     json::Object res;
@@ -235,7 +246,7 @@ json::Value to_JSON(BMv2IR::ParserStateOp stateOp) {
     json::Array ops;
     if (!stateOp.getParserOps().empty()) {
         for (auto &op : stateOp.getParserOps().front()) {
-            if (!skipOpEmission(&op)) ops.push_back(to_JSON(&op));
+            if (isPrimitive(&op)) ops.push_back(to_JSON(&op));
         }
     }
     res["parser_ops"] = std::move(ops);
@@ -273,7 +284,7 @@ json::Value actionToJSON(P4HIR::FuncOp actionOp) {
 
     json::Array ops;
     for (auto &op : actionOp.getOps()) {
-        if (!skipOpEmission(&op)) ops.push_back(to_JSON(&op));
+        if (isPrimitive(&op)) ops.push_back(to_JSON(&op));
     }
     res["primitives"] = std::move(ops);
     return res;
@@ -396,10 +407,9 @@ json::Value to_JSON(BMv2IR::PipelineOp pipeline) {
 json::Value to_JSON(P4HIR::ConstOp constOp) {
     return llvm::TypeSwitch<TypedAttr, json::Value>(constOp.getValue())
         .Case([](P4HIR::IntAttr intAttr) {
-            // FIXME: implement conversion to the actual hexstr
             json::Object res;
             res["type"] = "hexstr";
-            res["value"] = intAttr.getValue().getSExtValue();
+            res["value"] = asHexstr(intAttr);
             return res;
         })
         .Case([](P4HIR::BoolAttr boolAttr) { return json::Value(boolAttr.getValue()); });
@@ -413,7 +423,6 @@ json::Value asExpressionNode(json::Value val) {
 }
 
 json::Value to_JSON(P4HIR::BinOp binOp) {
-    json::Object res;
     json::Object value;
     auto kindToString = [](P4HIR::BinOpKind kind) {
         switch (kind) {
@@ -427,7 +436,7 @@ json::Value to_JSON(P4HIR::BinOp binOp) {
     value["op"] = op;
     value["left"] = to_JSON(binOp.getLhs());
     value["right"] = to_JSON(binOp.getRhs());
-    return asExpressionNode(std::move(res));
+    return asExpressionNode(std::move(value));
 }
 
 json::Value to_JSON(BMv2IR::YieldOp yieldOp) {
