@@ -307,7 +307,8 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
                     eraseList.push_back(rejectOp.getOperation());
                     return success();
                 })
-                .Default([](Operation *) { return failure(); });
+                .Default(
+                    [](Operation *op) { return op->emitError("Unsupported state terminator"); });
 
         if (failed(conversionOk)) return op->emitError("Error while processing state terminator");
 
@@ -324,19 +325,34 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
     static LogicalResult insertTransitionKey(Operation *op, ConversionPatternRewriter &rewriter,
                                              Block *block, SmallVector<Operation *> &eraseList) {
         auto loc = op->getLoc();
-        if (auto lookAheadOp = dyn_cast<P4CoreLib::PacketLookAheadOp>(op)) {
-            // TODO: not sure how to handle offsets
-            auto offset = rewriter.getI32IntegerAttr(0);
-            // TODO: can PacketLookAheadOp return something other than Bit?
-            auto bitTy = cast<P4HIR::BitsType>(lookAheadOp.getResult().getType());
-            auto width = rewriter.getI32IntegerAttr(bitTy.getWidth());
-            ConversionPatternRewriter::InsertionGuard guard(rewriter);
-            rewriter.setInsertionPointToEnd(block);
-            eraseList.push_back(lookAheadOp);
-            rewriter.create<BMv2IR::LookaheadOp>(loc, offset, width);
-            return success();
-        }
-        return op->emitError("Unhandled transition key");
+        return llvm::TypeSwitch<Operation *, LogicalResult>(op)
+            .Case([&](P4CoreLib::PacketLookAheadOp lookAheadOp) {
+                // TODO: not sure how to handle offsets
+                auto offset = rewriter.getI32IntegerAttr(0);
+                // TODO: can PacketLookAheadOp return something other than Bit?
+                auto bitTy = cast<P4HIR::BitsType>(lookAheadOp.getResult().getType());
+                auto width = rewriter.getI32IntegerAttr(bitTy.getWidth());
+                ConversionPatternRewriter::InsertionGuard guard(rewriter);
+                rewriter.setInsertionPointToEnd(block);
+                eraseList.push_back(lookAheadOp);
+                rewriter.create<BMv2IR::LookaheadOp>(loc, offset, width);
+                return success();
+            })
+            .Case([&](P4HIR::StructExtractOp extractOp) -> LogicalResult {
+                auto readOp = extractOp.getInput().getDefiningOp<P4HIR::ReadOp>();
+                if (!readOp) return extractOp.emitError("Expected input to come from ReadOp");
+                auto symRef = readOp.getRef().getDefiningOp<BMv2IR::SymToValueOp>();
+                if (!symRef) return extractOp.emitError("Expected input to be an Header Instance");
+                ConversionPatternRewriter::InsertionGuard guard(rewriter);
+                rewriter.setInsertionPointToEnd(block);
+                rewriter.create<BMv2IR::FieldOp>(loc, extractOp.getResult().getType(),
+                                                 symRef.getDecl(), extractOp.getFieldNameAttr());
+                eraseList.push_back(extractOp);
+                eraseList.push_back(symRef);
+                eraseList.push_back(readOp);
+                return success();
+            })
+            .Default([](Operation *op) { return op->emitError("Unhandled transition key"); });
     }
 
     static LogicalResult insertTransition(P4HIR::ParserSelectCaseOp caseOp,
@@ -370,7 +386,7 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
                     }
                     return success();
                 })
-                .Case([&](P4HIR::ConstOp constOp) {
+                .Case([&](P4HIR::ConstOp constOp) -> LogicalResult {
                     if (P4HIR::isUniversalSetValue(constOp.getRes())) {
                         ConversionPatternRewriter::InsertionGuard guard(rewriter);
                         rewriter.setInsertionPointToEnd(block);
@@ -381,7 +397,22 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
                             caseOp.getStateAttr(), nullptr, nullptr);
                         return success();
                     }
-                    return failure();
+                    if (auto setAttr = dyn_cast<P4HIR::SetAttr>(constOp.getValue())) {
+                        auto setEntries = setAttr.getMembers();
+                        if (setEntries.size() != 1)
+                            return constOp.emitError("Unsupported number of set entries");
+                        auto intAttr = dyn_cast<P4HIR::IntAttr>(setEntries[0]);
+                        if (!intAttr) return constOp.emitError("Expected IntAttr");
+                        ConversionPatternRewriter::InsertionGuard guard(rewriter);
+                        rewriter.setInsertionPointToEnd(block);
+                        rewriter.create<BMv2IR::TransitionOp>(
+                            loc,
+                            BMv2IR::TransitionKindAttr::get(context,
+                                                            BMv2IR::TransitionKind::Hexstr),
+                            caseOp.getStateAttr(), intAttr, nullptr);
+                        return success();
+                    }
+                    return constOp.emitError("Unsupported ConstOp");
                 })
                 .Case([&](P4HIR::MaskOp maskOp) -> LogicalResult {
                     auto maybeLhsConst = constValOrError(maskOp.getLhs());

@@ -197,3 +197,54 @@ module {
     p4hir.transition to @prs_valid::@start
   }
 }
+
+// -----
+
+!b8i = !p4hir.bit<8>
+!validity_bit = !p4hir.validity.bit
+!bit_only = !p4hir.struct<"bit_only", bit: !b8i>
+!header_top = !p4hir.header<"header_top", skip: !b8i, __valid: !validity_bit>
+#int255_b8i = #p4hir.int<255> : !b8i
+#everything = #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
+module {
+  bmv2ir.header_instance @prs_only_bit_top_0 : !p4hir.ref<!header_top>
+  bmv2ir.header_instance @prs_only_bit2 : !p4hir.ref<!header_top>
+  bmv2ir.header_instance @prs_only_bit1 : !p4hir.ref<!bit_only>
+  p4hir.parser @p(%arg0: !p4corelib.packet_in {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "p"}, %arg1: !p4hir.ref<!bit_only> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "headers"}, %arg2: !p4hir.ref<!header_top> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "headers"})() {
+// CHECK:    bmv2ir.state @start
+// CHECK:     transition_key {
+// CHECK:      %0 = bmv2ir.field @prs_only_bit2["skip"] -> !b8i
+// CHECK:    }
+// CHECK:     transitions {
+// CHECK:      bmv2ir.transition type  hexstr value #int-1_b8i next_state @p::@parse_h
+// CHECK:      bmv2ir.transition type  default next_state @p::@accept
+// CHECK:    }
+// CHECK:     parser_ops {
+// CHECK:      bmv2ir.extract  regular @prs_only_bit2
+// CHECK:    }
+    p4hir.state @start {
+      %prs_only_bit2 = bmv2ir.symbol_ref @prs_only_bit2 : !p4hir.ref<!header_top>
+      p4corelib.extract_header %prs_only_bit2 : <!header_top> from %arg0 : !p4corelib.packet_in
+      %r = p4hir.read %prs_only_bit2 : <!header_top>
+      %f_ref = p4hir.struct_extract %r["skip"] : !header_top
+      p4hir.transition_select %f_ref : !b8i {
+        p4hir.select_case {
+          %c255_b8i = p4hir.const #int255_b8i
+          %set = p4hir.set (%c255_b8i) : !p4hir.set<!b8i>
+          p4hir.yield %set : !p4hir.set<!b8i>
+        } to @p::@parse_h
+        p4hir.select_case {
+          %everything = p4hir.const #everything
+          p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
+        } to @p::@accept
+      }
+    }
+    p4hir.state @parse_h {
+      p4hir.transition to @p::@accept
+    }
+    p4hir.state @accept {
+      p4hir.parser_accept
+    }
+    p4hir.transition to @p::@start
+  }
+}
