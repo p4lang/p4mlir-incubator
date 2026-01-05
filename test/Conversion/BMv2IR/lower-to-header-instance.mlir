@@ -300,8 +300,8 @@ module {
         %vrf = p4hir.struct_extract %val["vrf"] : !ingress_metadata_t
         p4hir.match_key #exact %vrf : !b12i annotations {name = "meta.ingress_metadata.vrf"}
 // CHECK:        %[[REF3:.*]] = bmv2ir.symbol_ref @ingress_metadata_t : !p4hir.ref<!ingress_metadata_t>
-// CHECK:        %[[FREF:.*]] = p4hir.struct_field_ref %[[REF3]]["vrf"] : <!ingress_metadata_t>
-// CHECK:        %[[VAL:.*]] = p4hir.read %[[FREF]] : <!b12i>
+// CHECK:        %[[READ3:.*]] = p4hir.read %[[REF3]] : <!ingress_metadata_t>
+// CHECK:        %[[VAL:.*]] = p4hir.struct_extract %[[READ3]]["vrf"] : !ingress_metadata_t
 // CHECK:        p4hir.match_key #exact %[[VAL]] : !b12i annotations {name = "meta.ingress_metadata.vrf"}
         %val_0 = p4hir.read %arg3 : <!headers>
         %ipv4 = p4hir.struct_extract %val_0["ipv4"] : !headers

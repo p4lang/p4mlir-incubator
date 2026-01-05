@@ -95,6 +95,10 @@ LogicalResult handleStructUse(OpOperand &use, P4HIR::StructType structTy,
             return handleFieldAccess(fieldRefOp.getFieldName(), fieldRefOp, structTy, fieldRefs,
                                      bitRefs);
         })
+        .Case([&](P4HIR::StructExtractOp extractOp) {
+            return handleFieldAccess(extractOp.getFieldName(), extractOp, structTy, fieldRefs,
+                                     bitRefs);
+        })
         .Case([&](P4HIR::ReadOp readOp) -> LogicalResult {
             for (auto readUser : readOp.getResult().getUsers()) {
                 auto extract = dyn_cast<P4HIR::StructExtractOp>(readUser);
@@ -288,11 +292,13 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
         auto symToVal = rewriter.create<BMv2IR::SymToValueOp>(
             op->getLoc(), newInstance.getHeaderType(),
             SymbolRefAttr::get(ctx, newInstance.getSymName()));
-        Operation *newOp = rewriter.create<P4HIR::StructFieldRefOp>(op->getLoc(), symToVal, name);
-        if (isa<P4HIR::StructExtractOp>(op))
-            newOp = rewriter.create<P4HIR::ReadOp>(op->getLoc(), op->getResult(0).getType(),
-                                                   newOp->getResult(0));
-        rewriter.replaceOp(op, newOp->getResult(0));
+        if (isa<P4HIR::StructExtractOp>(op)) {
+            auto readOp = rewriter.create<P4HIR::ReadOp>(
+                loc, cast<P4HIR::ReferenceType>(symToVal.getType()).getObjectType(), symToVal);
+            rewriter.replaceOpWithNewOp<P4HIR::StructExtractOp>(op, readOp, name);
+        } else {
+            rewriter.replaceOpWithNewOp<P4HIR::StructFieldRefOp>(op, symToVal, name);
+        }
     }
 
     for (auto op : eraseList) rewriter.eraseOp(op);
