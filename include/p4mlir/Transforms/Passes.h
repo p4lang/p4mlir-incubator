@@ -20,6 +20,7 @@ namespace P4::P4MLIR {
 #define GEN_PASS_DECL_SERENUMELIMINATION
 #define GEN_PASS_DECL_REMOVEALIASES
 #define GEN_PASS_DECL_ENUMELIMINATION
+#define GEN_PASS_DECL_SWITCHELIMINATION
 #define GEN_PASS_DECL_REMOVESOFTCF
 #define GEN_PASS_DECL_INLINEPARSERS
 #define GEN_PASS_DECL_INLINECONTROLS
@@ -34,6 +35,7 @@ std::unique_ptr<mlir::Pass> createSerEnumEliminationPass();
 std::unique_ptr<mlir::Pass> createRemoveAliasesPass();
 std::unique_ptr<mlir::Pass> createTupleToStructPass();
 std::unique_ptr<mlir::Pass> createEnumEliminationPass();
+std::unique_ptr<mlir::Pass> createSwitchEliminationPass();
 std::unique_ptr<mlir::Pass> createRemoveSoftCFPass();
 std::unique_ptr<mlir::Pass> createCopyInCopyOutEliminationPass();
 std::unique_ptr<mlir::Pass> createInlineParsersPass();
