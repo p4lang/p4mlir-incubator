@@ -560,6 +560,7 @@ mlir::FailureOr<json::Value> P4::P4MLIR::bmv2irToJson(ModuleOp moduleOp) {
         }
         headerInstanceNodes.push_back(to_JSON(instance));
     }
+
     root["header_types"] = std::move(headerTyNodes);
     root["headers"] = std::move(headerInstanceNodes);
 

@@ -56,6 +56,7 @@ def BMv2IR_HeaderType : BMv2IR_Type<"Header", "header"> {
     static unsigned computeMaxLength(llvm::ArrayRef<BMv2IR::FieldInfo>);
     static bool isAllowedFieldType(mlir::Type ty);
     static constexpr llvm::StringRef validBitFieldName = "$valid$";
+    bool hasField(llvm::StringRef name);
   }];
 }
 

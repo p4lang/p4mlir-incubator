@@ -16,6 +16,8 @@
 #int-1_b8i = #p4hir.int<255> : !b8i
 !headers = !p4hir.struct<"headers", ethernet: !ethernet_t, ipv4: !ipv4_t>
 module {
+  bmv2ir.header_instance @verifyChecksum0_ipv4 : !bmv2ir.header<"ipv4_t", [version:!p4hir.bit<4>, ihl:!p4hir.bit<4>, diffserv:!p4hir.bit<8>, totalLen:!p4hir.bit<16>, identification:!p4hir.bit<16>, flags:!p4hir.bit<3>, fragOffset:!p4hir.bit<13>, ttl:!p4hir.bit<8>, protocol:!p4hir.bit<8>, hdrChecksum:!p4hir.bit<16>, srcAddr:!p4hir.bit<32>, dstAddr:!p4hir.bit<32>], max_length = 20>
+  bmv2ir.header_instance @computeChecksum0_ipv4 : !bmv2ir.header<"ipv4_t", [version:!p4hir.bit<4>, ihl:!p4hir.bit<4>, diffserv:!p4hir.bit<8>, totalLen:!p4hir.bit<16>, identification:!p4hir.bit<16>, flags:!p4hir.bit<3>, fragOffset:!p4hir.bit<13>, ttl:!p4hir.bit<8>, protocol:!p4hir.bit<8>, hdrChecksum:!p4hir.bit<16>, srcAddr:!p4hir.bit<32>, dstAddr:!p4hir.bit<32>], max_length = 20>
   bmv2ir.calculation @calculation_0 {
     %0 = bmv2ir.field @verifyChecksum0_ipv4["version"] -> !b4i
     %1 = bmv2ir.field @verifyChecksum0_ipv4["ihl"] -> !b4i

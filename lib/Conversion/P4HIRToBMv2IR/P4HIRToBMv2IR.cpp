@@ -53,11 +53,19 @@ namespace {
 BMv2IR::FieldInfo convertFieldInfo(P4HIR::FieldInfo p4Field) {
     return BMv2IR::FieldInfo(p4Field.name, p4Field.type);
 }
+constexpr StringRef standardMetadataOldStructName = "standard_metadata_t";
+constexpr StringRef standardMetadataNewStructName = "standard_metadata";
 
 StringRef getStructLikeName(P4HIR::StructLikeTypeInterface structLikeTy) {
     return llvm::TypeSwitch<P4HIR::StructLikeTypeInterface, StringRef>(structLikeTy)
         .Case([](P4HIR::HeaderType headerTy) { return headerTy.getName(); })
-        .Case([](P4HIR::StructType structTy) { return structTy.getName(); })
+        .Case([](P4HIR::StructType structTy) {
+            auto oldName = structTy.getName();
+            // While doing type conversion we also convert the standard_metadata_t type name to
+            // standard_metadata (this is required by the Simple Switch target)
+            if (oldName == standardMetadataOldStructName) return standardMetadataNewStructName;
+            return structTy.getName();
+        })
         .Default([](P4HIR::StructLikeTypeInterface) -> StringRef {
             llvm_unreachable("Unsupported StructLike Type");
         });
@@ -84,14 +92,49 @@ struct P4HIRToBMv2IRTypeConverter : public mlir::TypeConverter {
     }
 };
 
+// We can't use upstream's replaceAllSymbolUses because it doesn't traverse nested regions,
+// but since Header Instances are added at the top level scope, we are sure that their Symbol
+// Name is unique (and reference to it will not have NestedReferences) and so travrsing nested
+// regions is safe
+void renameHeaderInstance(BMv2IR::HeaderInstanceOp headerInstanceOp, StringRef newName,
+                          Operation *root) {
+    auto oldName = headerInstanceOp.getSymName();
+    auto newNameAttr = StringAttr::get(headerInstanceOp.getContext(), newName);
+
+    // Update the symbol definition
+    headerInstanceOp.setSymName(newName);
+
+    // Walk ALL operations recursively to update references
+    root->walk([&](Operation *op) {
+        // Update symbol references in all attributes
+        for (NamedAttribute attr : op->getAttrs()) {
+            if (auto symRef = dyn_cast<SymbolRefAttr>(attr.getValue())) {
+                if (symRef.getLeafReference().getValue() == oldName &&
+                    symRef.getNestedReferences().empty()) {
+                    op->setAttr(attr.getName(), SymbolRefAttr::get(newNameAttr));
+                }
+            }
+        }
+    });
+
+}
+
 struct HeaderInstanceOpConversionPattern : public OpConversionPattern<BMv2IR::HeaderInstanceOp> {
     using OpConversionPattern<BMv2IR::HeaderInstanceOp>::OpConversionPattern;
 
     LogicalResult matchAndRewrite(BMv2IR::HeaderInstanceOp op, OpAdaptor operands,
                                   ConversionPatternRewriter &rewriter) const override {
+        auto oldName = op.getSymName();
+        // Rename the standard_metadata_t Header Instance to standard_metadata (the Simple Switch
+        // target seems to require this)
+        if (oldName == standardMetadataOldStructName) {
+            auto moduleOp = op->getParentOfType<ModuleOp>();
+            if (!moduleOp) return op.emitError("No module parent");
+            renameHeaderInstance(op, standardMetadataNewStructName, moduleOp);
+        }
         auto convertedTy = getTypeConverter()->convertType(op.getHeaderType());
-        rewriter.replaceOpWithNewOp<BMv2IR::HeaderInstanceOp>(op, operands.getSymName(),
-                                                              convertedTy, operands.getMetadata());
+        rewriter.replaceOpWithNewOp<BMv2IR::HeaderInstanceOp>(op, op.getSymName(), convertedTy,
+                                                              operands.getMetadata());
         return success();
     }
 };
@@ -1122,7 +1165,8 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         };
         target.addDynamicallyLegalOp<BMv2IR::HeaderInstanceOp>(
             [&](BMv2IR::HeaderInstanceOp headerInstanceOp) {
-                return isHeaderOrRef(headerInstanceOp.getHeaderType());
+                return isHeaderOrRef(headerInstanceOp.getHeaderType()) &&
+                       headerInstanceOp.getSymName() != standardMetadataOldStructName;
             });
         target.addDynamicallyLegalOp<BMv2IR::SymToValueOp>(
             [&](BMv2IR::SymToValueOp op) { return converter.isLegal(op); });

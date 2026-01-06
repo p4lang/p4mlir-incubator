@@ -18,7 +18,7 @@ module {
     %0 = bmv2ir.field @egress0_ethernet["dstAddr"] -> !b16i
     bmv2ir.assign %arg0 : !b16i to %0 : !b16i
     %1 = bmv2ir.field @egress0_ethernet["etherType"] -> !b16i
-    %2 = bmv2ir.field @egress0_ethernet["ttl"] -> !b16i
+    %2 = bmv2ir.field @egress0_ethernet["etherType"] -> !b16i
     %add = p4hir.binop(add, %2, %c-1_b8i) : !b16i
     bmv2ir.assign %add : !b16i to %1 : !b16i
     p4hir.return
@@ -111,7 +111,7 @@ module {
 // CHECK-NEXT:                  "type": "field",
 // CHECK-NEXT:                  "value": [
 // CHECK-NEXT:                    "egress0_ethernet",
-// CHECK-NEXT:                    "ttl"
+// CHECK-NEXT:                    "etherType"
 // CHECK-NEXT:                  ]
 // CHECK-NEXT:                },
 // CHECK-NEXT:                "op": "+",

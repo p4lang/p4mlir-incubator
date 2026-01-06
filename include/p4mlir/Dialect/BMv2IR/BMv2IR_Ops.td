@@ -448,6 +448,7 @@ def BMv2IR_FieldOp : BMv2IR_Op<"field", [AllowedTransitionKey, AllowedParserOp]>
   let results = (outs 
     BMv2IR_FieldType:$res); 
   
+  let hasVerifier = 1;
   let assemblyFormat = "$headerInstance `[` $fieldMember `]` `->` type($res) attr-dict";
 }
 

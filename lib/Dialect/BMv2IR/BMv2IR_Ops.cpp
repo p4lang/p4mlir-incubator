@@ -1,6 +1,7 @@
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Ops.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -53,10 +54,29 @@ LogicalResult SymToValueOp::verifySymbolUses(SymbolTableCollection &symbolTable)
     auto decl = symbolTable.lookupSymbolIn(getParentModule(*this), declAttr);
     if (!decl) return emitOpError("cannot resolve symbol '") << declAttr << "' to declaration";
 
-    if (!mlir::isa<BMv2IR::HeaderInstanceOp>(decl))
+    if (!isa<BMv2IR::HeaderInstanceOp>(decl))
         return emitOpError("invalid symbol reference: ") << decl << ", expected header instance";
 
-    return mlir::success();
+    return success();
+}
+
+LogicalResult FieldOp::verify() {
+    auto op = SymbolTable::lookupSymbolIn(getParentModule(*this), getHeaderInstance());
+    if (!op) return emitOpError("Can't find op for symbol reference");
+
+    auto instance = dyn_cast<BMv2IR::HeaderInstanceOp>(op);
+    if (!instance) return emitOpError("Field op should refer to an header instance");
+
+    auto fieldName = getFieldMember();
+    return llvm::TypeSwitch<Type, LogicalResult>(instance.getHeaderType())
+        .Case([&](BMv2IR::HeaderType ty) -> LogicalResult {
+            if (!ty.hasField(fieldName)) return emitOpError("Invalid field name");
+            return success();
+        })
+        .Case([&](P4HIR::HeaderType ty) -> LogicalResult {
+            if (!ty.getFieldType(fieldName)) return emitOpError("Invalid field name");
+            return success();
+        });
 }
 
 LogicalResult ConditionalOp::verify() {
