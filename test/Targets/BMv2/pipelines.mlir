@@ -163,6 +163,10 @@ module {
 // CHECK-NEXT:      "name": "ingress",
 // CHECK-NEXT:      "tables": [
 // CHECK-NEXT:        {
+// CHECK-NEXT:          "action_ids": [
+// CHECK-NEXT:            5,
+// CHECK-NEXT:            0
+// CHECK-NEXT:          ],
 // CHECK-NEXT:          "actions": [
 // CHECK-NEXT:            "set_vrf",
 // CHECK-NEXT:            "NoAction_3"
@@ -194,6 +198,11 @@ module {
 // CHECK-NEXT:          "type": "simple"
 // CHECK-NEXT:        },
 // CHECK-NEXT:        {
+// CHECK-NEXT:          "action_ids": [
+// CHECK-NEXT:            6,
+// CHECK-NEXT:            9,
+// CHECK-NEXT:            1
+// CHECK-NEXT:          ],
 // CHECK-NEXT:          "actions": [
 // CHECK-NEXT:            "on_miss_2",
 // CHECK-NEXT:            "fib_hit_nexthop",
@@ -234,6 +243,11 @@ module {
 // CHECK-NEXT:          "type": "simple"
 // CHECK-NEXT:        },
 // CHECK-NEXT:        {
+// CHECK-NEXT:          "action_ids": [
+// CHECK-NEXT:            7,
+// CHECK-NEXT:            10,
+// CHECK-NEXT:            2
+// CHECK-NEXT:          ],
 // CHECK-NEXT:          "actions": [
 // CHECK-NEXT:            "on_miss_3",
 // CHECK-NEXT:            "fib_hit_nexthop_1",
@@ -274,6 +288,11 @@ module {
 // CHECK-NEXT:          "type": "simple"
 // CHECK-NEXT:        },
 // CHECK-NEXT:        {
+// CHECK-NEXT:          "action_ids": [
+// CHECK-NEXT:            8,
+// CHECK-NEXT:            11,
+// CHECK-NEXT:            3
+// CHECK-NEXT:          ],
 // CHECK-NEXT:          "actions": [
 // CHECK-NEXT:            "on_miss_4",
 // CHECK-NEXT:            "set_egress_details",
@@ -307,6 +326,10 @@ module {
 // CHECK-NEXT:          "type": "simple"
 // CHECK-NEXT:        },
 // CHECK-NEXT:        {
+// CHECK-NEXT:          "action_ids": [
+// CHECK-NEXT:            12,
+// CHECK-NEXT:            4
+// CHECK-NEXT:          ],
 // CHECK-NEXT:          "actions": [
 // CHECK-NEXT:            "set_bd",
 // CHECK-NEXT:            "NoAction_7"

@@ -340,11 +340,22 @@ json::Value to_JSON(BMv2IR::TableOp tableOp) {
     res["key"] = std::move(key);
 
     json::Array actions;
+    json::Array actionIds;
+    auto moduleOp = tableOp->getParentOfType<ModuleOp>();
+    assert(moduleOp && "Expected parent module");
+    auto getIdForAction = [&](SymbolRefAttr ref) {
+        auto defOp = SymbolTable::lookupSymbolIn(moduleOp, ref);
+        assert(defOp && "Can't find symbol def");
+        auto funcOp = cast<P4HIR::FuncOp>(defOp);
+        return getId(funcOp);
+    };
     for (auto attr : tableOp.getActions()) {
         auto actionRef = cast<SymbolRefAttr>(attr);
         actions.emplace_back(actionRef.getLeafReference().getValue());
+        actionIds.push_back(getIdForAction(actionRef));
     }
     res["actions"] = std::move(actions);
+    res["action_ids"] = std::move(actionIds);
 
     json::Object nextTables;
     for (auto attr : tableOp.getNextTables()) {
@@ -357,14 +368,6 @@ json::Value to_JSON(BMv2IR::TableOp tableOp) {
     }
     res["next_tables"] = std::move(nextTables);
 
-    auto moduleOp = tableOp->getParentOfType<ModuleOp>();
-    assert(moduleOp && "Expected ModuleOp parent");
-    auto getIdForAction = [&](SymbolRefAttr ref) {
-        auto defOp = SymbolTable::lookupSymbolIn(moduleOp, ref);
-        assert(defOp && "Can't find symbol def");
-        auto funcOp = cast<P4HIR::FuncOp>(defOp);
-        return getId(funcOp);
-    };
     auto defaultEntryAttr = tableOp.getDefaultEntry();
     if (defaultEntryAttr.has_value()) {
         json::Object defaultEntry;
