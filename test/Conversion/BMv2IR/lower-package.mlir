@@ -60,7 +60,7 @@ module {
     }
     p4hir.transition to @p::@start
   }
-  p4hir.control @ingress(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "h"}, %arg1: !p4hir.ref<!Meta> {p4hir.dir = #inout, p4hir.param_name = "m"}, %arg2: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "sm"})() {
+  p4hir.control @i(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "h"}, %arg1: !p4hir.ref<!Meta> {p4hir.dir = #inout, p4hir.param_name = "m"}, %arg2: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "sm"})() {
     p4hir.control_apply {
     }
   }
@@ -72,21 +72,21 @@ module {
     p4hir.control_apply {
     }
   }
-  p4hir.control @egress(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "h"}, %arg1: !p4hir.ref<!Meta> {p4hir.dir = #inout, p4hir.param_name = "m"}, %arg2: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "sm"})() {
+  p4hir.control @e(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "h"}, %arg1: !p4hir.ref<!Meta> {p4hir.dir = #inout, p4hir.param_name = "m"}, %arg2: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "sm"})() {
     p4hir.control_apply {
     }
   }
-  p4hir.control @deparser(%arg0: !packet_out {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !headers {p4hir.dir = #in, p4hir.param_name = "h"})() {
+  p4hir.control @dep(%arg0: !packet_out {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !headers {p4hir.dir = #in, p4hir.param_name = "h"})() {
     p4hir.control_apply {
     }
   }
   %p = p4hir.construct @p () : !p
   %vrfy = p4hir.construct @vrfy () : !vrfy
-  %ingress = p4hir.construct @ingress () : !ingress
-  %egress = p4hir.construct @egress () : !egress
+  %ingress = p4hir.construct @i() : !ingress
+  %egress = p4hir.construct @e() : !egress
   %update = p4hir.construct @update () : !update
-  %deparser = p4hir.construct @deparser () : !deparser
+  %deparser = p4hir.construct @dep() : !deparser
 // CHECK-NOT p4hir.construct
   p4hir.instantiate @V1Switch<[!headers, !Meta]> (%p, %vrfy, %ingress, %egress, %update, %deparser : !p, !vrfy, !ingress, !egress, !update, !deparser) as @main
-// CHECK: bmv2ir.v1switch @main parser @p, verify_checksum @vrfy, ingress @ingress, egress @egress, compute_checksum @update, deparser @deparser
+// CHECK: bmv2ir.v1switch @main parser @parser, verify_checksum @vrfy, ingress @ingress, egress @egress, compute_checksum @update, deparser @deparser
 }

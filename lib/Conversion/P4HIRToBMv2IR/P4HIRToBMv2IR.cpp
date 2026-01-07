@@ -116,7 +116,6 @@ void renameHeaderInstance(BMv2IR::HeaderInstanceOp headerInstanceOp, StringRef n
             }
         }
     });
-
 }
 
 struct HeaderInstanceOpConversionPattern : public OpConversionPattern<BMv2IR::HeaderInstanceOp> {

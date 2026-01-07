@@ -144,7 +144,7 @@ LogicalResult V1SwitchOp::verify() {
     auto checkArg = [&]<typename... AllowedTys>(SymbolRefAttr ref) -> LogicalResult {
         auto defOp = SymbolTable::lookupSymbolIn(moduleOp, ref);
         if (!defOp) return emitOpError("cannot resolve symbol");
-        if (!isa<AllowedTys...>(defOp)) return emitOpError("unexpected type");
+        if (!isa<AllowedTys...>(defOp)) return emitOpError("unexpected type") << defOp;
         return success();
     };
     if (failed(checkArg.operator()<P4HIR::ParserOp, BMv2IR::ParserOp>(getParser())))

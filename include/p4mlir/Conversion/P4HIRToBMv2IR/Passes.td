@@ -52,7 +52,8 @@ def LowerToHeaderInstance : Pass<"lower-to-header-instance", "mlir::ModuleOp"> {
 def LowerPackage : Pass<"lower-package", "mlir::ModuleOp"> {
   let summary = "Lowers P4HIR Package instantiations";
   let description = [{
-    This pass lowers P4HIR package instantiation to target-specific ops
+    This pass lowers P4HIR package instantiation to target-specific ops.
+    It also ensure that any target-specific requirement about naming parsers and controls is satisfied.
   }];
   let dependentDialects = [
       "::P4::P4MLIR::P4HIR::P4HIRDialect",
