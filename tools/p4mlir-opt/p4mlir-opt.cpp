@@ -1,3 +1,4 @@
+#include "p4mlir/Dialect/BMv2/BMv2Dialect.h"
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "mlir/IR/MLIRContext.h"
@@ -13,6 +14,7 @@ int main(int argc, char **argv) {
 
     mlir::DialectRegistry registry;
     P4::P4MLIR::registerAllDialects(registry);
+    registry.insert<p4mlir::bmv2::BMv2Dialect>();
 
     return mlir::asMainReturnCode(
         mlir::MlirOptMain(argc, argv, "P4MLIR optimizer driver\n", registry));

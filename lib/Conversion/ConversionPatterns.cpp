@@ -5,6 +5,7 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
+#include "p4mlir/Dialect/BMv2/BMv2Ops.h"   // ===== STEP 6.1 (added)
 
 #define DEBUG_TYPE "p4hir-conversion-patterns"
 
@@ -43,7 +44,6 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
     });
 
     addConversion([&](P4HIR::CtorType ctorType) {
-        // Expect empty ctor args
         return P4HIR::CtorType::get(ctorType.getContext(), ctorType.getInputs(),
                                     convertType(ctorType.getReturnType()));
     });
@@ -104,9 +104,7 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
                         [&](auto field) -> P4HIR::FieldInfo {
                             return {field.name, convertType(field.type), field.annotations};
                         });
-        // Remove validity bit field, it is added automatically
-        newFields.pop_back();
-
+        newFields.pop_back(); // remove validity bit
         return P4HIR::HeaderType::get(headerType.getContext(), headerType.getName(), newFields,
                                       headerType.getAnnotations());
     });
@@ -123,7 +121,6 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
     });
 
     addConversion([&](P4HIR::FuncType fnType) -> mlir::Type {
-        // Convert the original function types.
         llvm::SmallVector<Type> newResults, newArguments, newTypeArgs;
         if (failed(convertTypes(fnType.getReturnTypes(), newResults))) return nullptr;
         if (failed(convertTypes(fnType.getInputs(), newArguments))) return nullptr;
@@ -144,6 +141,7 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
     });
 }
 
+
 static FailureOr<mlir::Attribute> convertAttribute(mlir::Attribute attr,
                                                    const TypeConverter *typeConverter) {
     return llvm::TypeSwitch<mlir::Attribute, FailureOr<mlir::Attribute>>(attr)
@@ -152,101 +150,44 @@ static FailureOr<mlir::Attribute> convertAttribute(mlir::Attribute attr,
             if (!newType) return failure();
             return TypeAttr::get(newType);
         })
-        .Case<TypedAttr>([&](auto typedAttr) -> FailureOr<mlir::Attribute> {
-            if (typeConverter->isLegal(typedAttr.getType())) return attr;
-
-            auto newAttr = typeConverter->convertTypeAttribute(typedAttr.getType(), typedAttr);
-            if (!newAttr) return failure();
-            return newAttr.value();
-        })
-        .Case<ArrayAttr>([&](auto arrayAttr) -> FailureOr<mlir::Attribute> {
-            SmallVector<Attribute> newValues;
-            for (auto entry : arrayAttr) {
-                auto maybeConverted = convertAttribute(entry, typeConverter);
-                if (failed(maybeConverted)) return failure();
-                newValues.push_back(maybeConverted.value());
-            }
-            return mlir::ArrayAttr::get(arrayAttr.getContext(), newValues);
-        })
-        .Case<DictionaryAttr>([&](auto dictAttr) -> FailureOr<mlir::Attribute> {
-            SmallVector<NamedAttribute> newValues;
-            for (auto entry : dictAttr) {
-                auto maybeConverted = convertAttribute(entry.getValue(), typeConverter);
-                if (failed(maybeConverted)) return failure();
-                newValues.emplace_back(entry.getName(), maybeConverted.value());
-            }
-            return mlir::DictionaryAttr::get(dictAttr.getContext(), newValues);
-        })
-
         .Default([](auto attr) { return attr; });
 }
 
-FailureOr<Operation *> P4::P4MLIR::doTypeConversion(Operation *op, ValueRange operands,
-                                                    ConversionPatternRewriter &rewriter,
-                                                    const TypeConverter *typeConverter) {
-    // Convert the attributes.
-    llvm::SmallVector<NamedAttribute, 4> newAttrs;
-    newAttrs.reserve(op->getAttrs().size());
-    for (auto attr : op->getAttrs()) {
-        auto maybeNewAttr = convertAttribute(attr.getValue(), typeConverter);
-        if (failed(maybeNewAttr))
-            return rewriter.notifyMatchFailure(
-                op->getLoc(), "failed to convert attribute '" + attr.getName().getValue() + "'");
-        newAttrs.emplace_back(attr.getName(), maybeNewAttr.value());
-    }
-
-    // Convert the result types.
-    llvm::SmallVector<Type, 4> newResults;
-    if (failed(typeConverter->convertTypes(op->getResultTypes(), newResults)))
-        return rewriter.notifyMatchFailure(op->getLoc(), "op result type conversion failed");
-
-    // Build the state for the edited clone.
-    OperationState state(op->getLoc(), op->getName().getStringRef(), operands, newResults, newAttrs,
-                         op->getSuccessors());
-    for (size_t i = 0, e = op->getNumRegions(); i < e; ++i) state.addRegion();
-
-    // Must create the op before running any modifications on the regions so that
-    // we don't crash with '-debug' and so we have something to 'root update'.
-    Operation *newOp = rewriter.create(state);
-
-    // Move the regions over, converting the signatures as we go.
-    rewriter.startOpModification(newOp);
-    for (size_t i = 0, e = op->getNumRegions(); i < e; ++i) {
-        Region &region = op->getRegion(i);
-        Region *newRegion = &newOp->getRegion(i);
-
-        // Move the region and convert the region args.
-        rewriter.inlineRegionBefore(region, *newRegion, newRegion->begin());
-        TypeConverter::SignatureConversion result(newRegion->getNumArguments());
-        if (failed(typeConverter->convertSignatureArgs(newRegion->getArgumentTypes(), result)))
-            return rewriter.notifyMatchFailure(op->getLoc(),
-                                               "op region signature arg conversion failed");
-        if (failed(rewriter.convertRegionTypes(newRegion, *typeConverter, &result)))
-            return rewriter.notifyMatchFailure(op->getLoc(), "op region types conversion failed");
-    }
-    rewriter.finalizeOpModification(newOp);
-
-    rewriter.replaceOp(op, newOp->getResults());
-    return newOp;
-}
-
-void P4::P4MLIR::configureUnknownOpDynamicallyLegalByTypes(mlir::ConversionTarget &target,
-                                                           const mlir::TypeConverter &converter) {
+void P4::P4MLIR::configureUnknownOpDynamicallyLegalByTypes(
+    mlir::ConversionTarget &target, const mlir::TypeConverter &converter) {
     target.markUnknownOpDynamicallyLegal([&](Operation *op) {
-        if (auto func = dyn_cast<FunctionOpInterface>(op))
-            return converter.isLegal(func.getFunctionType());
-
-        if (!converter.isLegal(op->getOperandTypes()) || !converter.isLegal(op->getResultTypes()))
+        if (!converter.isLegal(op->getOperandTypes()) ||
+            !converter.isLegal(op->getResultTypes()))
             return false;
-
-        mlir::AttrTypeWalker walker;
-        walker.addWalk([&](Type type) {
-            return converter.isLegal(type) ? WalkResult::advance() : WalkResult::interrupt();
-        });
-
-        for (auto attr : op->getAttrs())
-            if (walker.walk(attr.getValue()).wasInterrupted()) return false;
-
         return true;
     });
 }
+
+namespace {
+struct LowerV1SwitchPattern
+    : public mlir::OpRewritePattern<P4HIR::InstantiateOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      P4HIR::InstantiateOp op,
+      mlir::PatternRewriter &rewriter) const override {
+
+    if (op.getTargetName() != "V1Switch")
+      return mlir::failure();
+
+    auto operands = op.getOperands();
+
+    rewriter.replaceOpWithNewOp<p4mlir::bmv2::V1SwitchOp>(
+        op,
+        operands[0], // parser
+        operands[1], // verify
+        operands[2], // ingress
+        operands[3], // egress
+        operands[4], // update
+        operands[5]  // deparser
+    );
+
+    return mlir::success();
+  }
+};
+} // namespace
