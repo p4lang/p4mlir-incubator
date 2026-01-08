@@ -333,3 +333,118 @@ module {
     p4hir.transition to @prs::@start
   }
 }
+
+// -----
+
+!_switch_0_action_enum = !p4hir.enum<"_switch_0_action_enum", _switch_0_case_0, _switch_0_case_1, _switch_0_default>
+!b3i = !p4hir.bit<3>
+!b4i = !p4hir.bit<4>
+!b8i = !p4hir.bit<8>
+!b13i = !p4hir.bit<13>
+!b32i = !p4hir.bit<32>
+!b48i = !p4hir.bit<48>
+!b16i = !p4hir.bit<16>
+!validity_bit = !p4hir.validity.bit
+!packet_in = !p4hir.extern<"packet_in">
+!packet_out = !p4hir.extern<"packet_out">
+#undir = #p4hir<dir undir>
+#out = #p4hir<dir out>
+#inout = #p4hir<dir inout>
+#in = #p4hir<dir in>
+#exact = #p4hir.match_kind<"exact">
+!_switch_0_result = !p4hir.struct<"_switch_0_result", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !_switch_0_action_enum>
+#_switch_0_action_enum__switch_0_case_0 = #p4hir.enum_field<_switch_0_case_0, !_switch_0_action_enum> : !_switch_0_action_enum
+#_switch_0_action_enum__switch_0_case_1 = #p4hir.enum_field<_switch_0_case_1, !_switch_0_action_enum> : !_switch_0_action_enum
+#_switch_0_action_enum__switch_0_default = #p4hir.enum_field<_switch_0_default, !_switch_0_action_enum> : !_switch_0_action_enum
+#int16_b32i = #p4hir.int<16> : !b32i
+#int1_b32i = #p4hir.int<1> : !b32i
+#int2_b32i = #p4hir.int<2> : !b32i
+#int32_b32i = #p4hir.int<32> : !b32i
+#int3_b32i = #p4hir.int<3> : !b32i
+!ethernet_t = !p4hir.header<"ethernet_t", dstAddr: !b48i, srcAddr: !b48i, etherType: !b16i, __valid: !validity_bit>
+!ipv4_t = !p4hir.header<"ipv4_t", version: !b4i, ihl: !b4i, diffserv: !b8i, totalLen: !b16i, identification: !b16i, flags: !b3i, fragOffset: !b13i, ttl: !b8i, protocol: !b8i, hdrChecksum: !b16i, srcAddr: !b32i, dstAddr: !b32i, __valid: !validity_bit>
+!headers = !p4hir.struct<"headers", ethernet: !ethernet_t, ipv4: !ipv4_t>
+module {
+// CHECK:  bmv2ir.header_instance @_switch_0_key_var_0 : !p4hir.ref<!_switch_0_key_var_0>
+// CHECK:  bmv2ir.header_instance @ipv4_t : !p4hir.ref<!ipv4_t>
+  p4hir.control @c(%arg0: !p4hir.ref<!ipv4_t> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "b"})() {
+    p4hir.func action @_switch_0_case_0() annotations {hidden} {
+      p4hir.return
+    }
+    p4hir.func action @_switch_0_case_1() annotations {hidden} {
+      p4hir.return
+    }
+    p4hir.func action @_switch_0_default() annotations {hidden} {
+      p4hir.return
+    }
+    p4hir.table @_switch_0_table annotations {hidden} {
+      p4hir.table_key(%arg1: !b32i) {
+// CHECK: %[[KEY_REF:.*]] = bmv2ir.symbol_ref @_switch_0_key_var_0
+// CHECK: %[[KEY_FREF:.*]] = p4hir.struct_field_ref %[[KEY_REF]]["_switch_0_key"]
+// CHECK: %[[KEY_VAL:.*]] = p4hir.read %[[KEY_FREF]]
+// CHECK: p4hir.match_key #exact %[[KEY_VAL]]
+        p4hir.match_key #exact %arg1 : !b32i
+      }
+      p4hir.table_actions {
+        p4hir.table_action @_switch_0_case_0() {
+          p4hir.call @c::@_switch_0_case_0 () : () -> ()
+        }
+      }
+      p4hir.table_default_action {
+        p4hir.call @c::@_switch_0_default () : () -> ()
+      }
+    }
+    p4hir.control_apply {
+// CHECK: %[[H_REF:.*]] = bmv2ir.symbol_ref @ipv4_t : !p4hir.ref<!ipv4_t>
+// CHECK: %[[F_REF:.*]] = p4hir.struct_field_ref %[[H_REF]]["srcAddr"] : <!ipv4_t>
+// CHECK: %[[VAL:.*]] = p4hir.read %[[F_REF]] : <!b32i>
+// CHECK: %[[V_REF:.*]] = bmv2ir.symbol_ref @_switch_0_key_var_0 : !p4hir.ref<!_switch_0_key_var_0>
+// CHECK: %[[V_F_REF:.*]] = p4hir.struct_field_ref %[[V_REF]]["_switch_0_key"] : <!_switch_0_key_var_0>
+// CHECK: p4hir.assign %[[VAL]], %[[V_F_REF]] : <!b32i>
+      %ref = p4hir.struct_field_ref %arg0["srcAddr"] : !p4hir.ref<!ipv4_t>
+      %read = p4hir.read %ref : !p4hir.ref<!b32i>
+      %_switch_0_key = p4hir.variable ["_switch_0_key"] annotations {hidden} : <!b32i>
+      p4hir.assign %read, %_switch_0_key : <!b32i>
+      %val_0 = p4hir.read %_switch_0_key : <!b32i>
+      %_switch_0_table_apply_result = p4hir.table_apply @c::@_switch_0_table with key(%val_0) : (!b32i) -> !_switch_0_result
+      %action_run = p4hir.struct_extract %_switch_0_table_apply_result["action_run"] : !_switch_0_result
+      p4hir.switch (%action_run : !_switch_0_action_enum) {
+        p4hir.case(default, [#_switch_0_action_enum__switch_0_default]) {
+          %c3_b32i = p4hir.const #int3_b32i
+          %ref3 = p4hir.struct_field_ref %arg0["srcAddr"] : !p4hir.ref<!ipv4_t>
+          p4hir.assign %c3_b32i, %ref3 : <!b32i>
+          p4hir.yield
+        }
+        p4hir.yield
+      }
+    }
+  }
+  p4hir.parser @p(%arg0: !packet_in {p4hir.dir = #undir, p4hir.param_name = "pkt"})() {
+    p4hir.state @start {
+      p4hir.transition to @p::@accept
+    }
+    p4hir.state @accept {
+      p4hir.parser_accept
+    }
+    p4hir.transition to @p::@start
+  }
+  p4hir.control @verifyChecksum(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"})() {
+    p4hir.control_apply {
+    }
+  }
+  p4hir.control @egress(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"})() {
+    p4hir.control_apply {
+    }
+  }
+  p4hir.control @computeChecksum(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"})() {
+    p4hir.control_apply {
+    }
+  }
+  p4hir.control @deparser(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"})() {
+    p4hir.control_apply {
+    }
+  }
+
+  bmv2ir.v1switch @main parser @p, verify_checksum @verifyChecksum, ingress @c, egress @egress, compute_checksum @computeChecksum, deparser @deparser
+}
+

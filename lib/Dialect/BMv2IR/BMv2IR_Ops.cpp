@@ -179,7 +179,7 @@ static FailureOr<V1SwitchOp> getPackageInstantiationFromParentModule(Operation *
 
 namespace P4::P4MLIR::BMv2IR {
 
-StringAttr getUniqueNameInParentModule(Operation *op, StringRef base) {
+StringAttr getUniqueNameInParentModule(Operation *op, Twine base) {
     auto name = StringAttr::get(op->getContext(), base);
     unsigned counter = 0;
     auto moduleOp = op->getParentOfType<ModuleOp>();

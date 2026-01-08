@@ -8,6 +8,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -305,23 +306,23 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
     return success();
 }
 
-LogicalResult addInstanceForHeader(P4HIR::VariableOp op, P4HIR::HeaderType headerTy, Twine name,
+bool tableApplyInForwardSlice(Value val) {
+    SetVector<Operation *> slice;
+    getForwardSlice(val, &slice);
+    return llvm::any_of(slice, [](Operation *op) { return isa<P4HIR::TableApplyOp>(op); });
+}
+
+LogicalResult addInstanceForHeader(P4HIR::VariableOp op, P4HIR::HeaderType headerTy, StringRef name,
                                    PatternRewriter &rewriter) {
+    if (tableApplyInForwardSlice(op.getResult())) return op.emitError("Handling in TableKey NYI");
     PatternRewriter::InsertionGuard guard(rewriter);
     auto moduleOp = op->getParentOfType<ModuleOp>();
-    assert(moduleOp);
+    assert(moduleOp && "Expected parent module");
     rewriter.setInsertionPointToStart(moduleOp.getBody());
-    auto nameAttr = rewriter.getStringAttr(name + "_var");
-    unsigned counter = 0;
-    auto uniqueName = SymbolTable::generateSymbolName<256>(
-        nameAttr,
-        [&](StringRef candidate) {
-            return SymbolTable::lookupSymbolIn(moduleOp, candidate) != nullptr;
-        },
-        counter);
+    auto uniqueName = BMv2IR::getUniqueNameInParentModule(op, name + "_var");
 
-    auto instance = rewriter.create<BMv2IR::HeaderInstanceOp>(
-        op->getLoc(), rewriter.getStringAttr(uniqueName), P4HIR::ReferenceType::get(headerTy));
+    auto instance = rewriter.create<BMv2IR::HeaderInstanceOp>(op->getLoc(), uniqueName,
+                                                              P4HIR::ReferenceType::get(headerTy));
     rewriter.setInsertionPointAfter(op);
     rewriter.replaceOpWithNewOp<BMv2IR::SymToValueOp>(
         op, instance.getHeaderType(),
@@ -330,8 +331,69 @@ LogicalResult addInstanceForHeader(P4HIR::VariableOp op, P4HIR::HeaderType heade
     return success();
 }
 
+LogicalResult addInstanceForScalarVariable(P4HIR::VariableOp op, P4HIR::BitsType bitTy,
+                                           StringRef name, PatternRewriter &rewriter) {
+    auto varName = BMv2IR::getUniqueNameInParentModule(op, name + "_var");
+    auto fieldName = rewriter.getStringAttr(name);
+    P4HIR::FieldInfo info(fieldName, bitTy);
+    auto headerWrapper = P4HIR::HeaderType::get(rewriter.getContext(), varName, {info});
+
+    PatternRewriter::InsertionGuard guard(rewriter);
+    auto moduleOp = op->getParentOfType<ModuleOp>();
+    assert(moduleOp && "Expected parent module");
+    rewriter.setInsertionPointToStart(moduleOp.getBody());
+    auto instance = rewriter.create<BMv2IR::HeaderInstanceOp>(
+        op->getLoc(), varName, P4HIR::ReferenceType::get(headerWrapper));
+
+    rewriter.setInsertionPointAfter(op);
+    auto symToVal = rewriter.create<BMv2IR::SymToValueOp>(
+        op.getLoc(), instance.getHeaderType(),
+        SymbolRefAttr::get(rewriter.getContext(), instance.getSymName()));
+
+    // Handle uses of the original variable "across" table_apply (we also need to use header
+    // instances in the corresponding table_key This is a fairly limited pattern that handles simple
+    // cases like:
+    //  %var = p4hir.variable ["var"]
+    //  %read = p4hir.read %_switch_0_key
+    //  p4hir.table_apply @table with key(%read)
+    //  TODO: handle more complex cases
+
+    for (auto user : op->getUsers()) {
+        auto readOp = dyn_cast<P4HIR::ReadOp>(user);
+        if (!readOp) continue;
+        for (auto &use : readOp->getUses()) {
+            PatternRewriter::InsertionGuard guard(rewriter);
+            auto tableApplyOp = dyn_cast<P4HIR::TableApplyOp>(use.getOwner());
+            if (!tableApplyOp) continue;
+            auto argNum = use.getOperandNumber();
+            // Retrieve the corresponding table_key
+            auto tableOp = cast<P4HIR::TableOp>(
+                SymbolTable::lookupSymbolIn(moduleOp, tableApplyOp.getTable()));
+            // TODO: use helper once added
+            P4HIR::TableKeyOp keyOp;
+            tableOp.walk([&](P4HIR::TableKeyOp tkOp) { keyOp = tkOp; });
+            assert(keyOp && "Expected keyop");
+            // Insert SymbolToValue -> ReadOp
+            auto &keyBlock = keyOp.getRegion().front();
+            rewriter.setInsertionPointToStart(&keyBlock);
+            auto keySymVal = rewriter.create<BMv2IR::SymToValueOp>(
+                op.getLoc(), instance.getHeaderType(),
+                SymbolRefAttr::get(rewriter.getContext(), instance.getSymName()));
+            auto fRef =
+                rewriter.create<P4HIR::StructFieldRefOp>(keyOp.getLoc(), keySymVal, fieldName);
+            auto readOp = rewriter.create<P4HIR::ReadOp>(keyOp.getLoc(), fRef);
+            rewriter.replaceAllUsesWith(keyOp.getRegion().front().getArgument(argNum), readOp);
+        }
+    }
+    rewriter.replaceOpWithNewOp<P4HIR::StructFieldRefOp>(op, symToVal, fieldName);
+
+    return success();
+}
+
 LogicalResult addInstanceForHeader(BlockArgument arg, P4HIR::HeaderType headerTy, ModuleOp moduleOp,
                                    PatternRewriter &rewriter, HeaderConversionContext *instances) {
+    if (tableApplyInForwardSlice(arg))
+        return arg.getParentRegion()->getParentOp()->emitError("Handling in TableKey NYI");
     PatternRewriter::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointToStart(moduleOp.getBody());
     BMv2IR::HeaderInstanceOp newInstance;
@@ -345,10 +407,14 @@ LogicalResult addInstanceForHeader(BlockArgument arg, P4HIR::HeaderType headerTy
         instances->insert({headerTy, newInstance});
     }
 
+    SmallVector<std::pair<Operation *, unsigned>> uses;
     for (auto &use : arg.getUses()) {
-        Operation *user = use.getOwner();
+        uses.push_back(std::make_pair(use.getOwner(), use.getOperandNumber()));
+    }
+    for (auto &use : uses) {
+        Operation *user = use.first;
         rewriter.setInsertionPointToStart(user->getBlock());
-        auto opIndex = use.getOperandNumber();
+        auto opIndex = use.second;
         auto symRef = rewriter.create<BMv2IR::SymToValueOp>(
             user->getLoc(), newInstance.getHeaderType(),
             SymbolRefAttr::get(rewriter.getContext(), newInstance.getSymName()));
@@ -356,7 +422,6 @@ LogicalResult addInstanceForHeader(BlockArgument arg, P4HIR::HeaderType headerTy
     }
 
     return success();
-    ;
 }
 
 struct ParserOpPattern : public OpRewritePattern<P4HIR::ParserOp> {
@@ -460,6 +525,11 @@ struct VariableOpPattern : public OpRewritePattern<P4HIR::VariableOp> {
                         return variableOp.emitError("Error translating variableOp");
                     return success();
                 })
+                .Case([&](P4HIR::BitsType bitTy) -> LogicalResult {
+                    if (failed(addInstanceForScalarVariable(variableOp, bitTy, name, rewriter)))
+                        return variableOp.emitError("Error translating variableOp");
+                    return success();
+                })
                 .Default([&](Type ty) -> LogicalResult {
                     return variableOp.emitError("Unsupported variable type");
                 });
@@ -488,11 +558,7 @@ struct LowerToHeaderInstancePass
                 return isHeaderOrRefToHeader(ty) || isStructOrRefToStruct(ty);
             });
         });
-        target.addDynamicallyLegalOp<P4HIR::VariableOp>([](P4HIR::VariableOp varOp) {
-            auto refTy = varOp.getType();
-            auto ty = refTy.getObjectType();
-            return !isa<P4HIR::HeaderType>(ty) && !isStructOrRefToStruct(ty);
-        });
+        target.addIllegalOp<P4HIR::VariableOp>();
 
         InstanceConversionContext instances;
         HeaderConversionContext instancesFromHeaderArgs;

@@ -28,7 +28,7 @@
 
 namespace P4::P4MLIR::BMv2IR {
 
-mlir::StringAttr getUniqueNameInParentModule(mlir::Operation *op, llvm::StringRef base);
+mlir::StringAttr getUniqueNameInParentModule(mlir::Operation *op, llvm::Twine base);
 
 llvm::FailureOr<bool> isTopLevelControl(P4HIR::ControlOp controlOp);
 
