@@ -85,7 +85,7 @@ module {
           p4hir.call @ingress::@a_with_control_params (%arg2) : (!b9i) -> ()
         }
       }
-      p4hir.table_default_action {
+      p4hir.table_default_action const {
         p4hir.call @ingress::@a () : () -> ()
       }
       p4hir.table_entries const {

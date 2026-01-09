@@ -31,11 +31,11 @@ control c(in bit<32> arg) {
     // CHECK:      p4hir.call @c::@b () : () -> ()
     // CHECK:    }
     // CHECK:  }
-    // CHECK:  p4hir.table_default_action {
+    // CHECK:  p4hir.table_default_action const {
     // CHECK:    p4hir.call @c::@b () : () -> ()
     // CHECK:  }
         actions = { a; b; }
-        default_action = b;
+        const default_action = b;
     }
 
     // CHECK-LABEL: p4hir.table @t2 {

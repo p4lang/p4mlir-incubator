@@ -215,18 +215,18 @@ def TableDefaultActionOp : P4HIR_Op<"table_default_action",
 
   }];
 
-  let arguments = (ins OptionalAttr<DictionaryAttr>:$annotations);
+  let arguments = (ins UnitAttr:$is_const, OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
 
   // TODO: Check
   let hasVerifier = 0;
   let skipDefaultBuilders = 1;
   let assemblyFormat = [{
-    (`annotations` $annotations^)? $body attr-dict
+    (`const` $is_const^)? (`annotations` $annotations^)? $body attr-dict
   }];
 
   let builders = [
-    OpBuilder<(ins "mlir::DictionaryAttr":$annotations,
+    OpBuilder<(ins "bool":$is_const, "mlir::DictionaryAttr":$annotations,
                    "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$entryBuilder)>,
   ];
 }
