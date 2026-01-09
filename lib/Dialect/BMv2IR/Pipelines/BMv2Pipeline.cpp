@@ -2,6 +2,8 @@
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
+#include "p4mlir/Conversion/P4HIRToBMv2IR/Passes.h"
+#include "p4mlir/Conversion/P4HIRToCoreLib/Passes.h"
 #include "p4mlir/Dialect/BMv2IR/Pipelines/Passes.h"
 #include "p4mlir/Transforms/Passes.h"
 
@@ -17,16 +19,30 @@ void P4::P4MLIR::buildBMv2Pipeline(OpPassManager &pm, const BMv2PipelineOpts &op
 
     // TODO: eliminate switches
 
+    // Inlining passes
     pm.addPass(mlir::createInlinerPass());
-    // TODO: add parsers and controls inlining once #246 is merged
+    pm.addPass(createInlineParsersPass());
+    pm.addPass(createInlineControlsPass());
 
-    // TODO: implement store to load forwarding
+    // Eliminate temporaries
+    pm.addPass(createCopyInCopyOutEliminationPass());
+
+    // Lower to P4CoreLib
+    pm.addPass(createSetCorelib());
+    pm.addPass(createLowerToP4CoreLib());
+    pm.addPass(createExpandEmitPass());
+
+    // Lower to a more BMv2 friendly representation
+    pm.addPass(createLowerToHeaderInstance());
+    pm.addPass(createLowerPackage());
+    pm.addPass(createSynthesizeActions());
+    pm.addPass(createSynthesizeTables());
 
     // TODO: flatten structs and headers
 
-    // TODO: implement action synthesis,
-
-    // TODO: implement action call to table conversion
+    // Final lowering to BMv2IR
+    pm.addPass(createP4HIRToBmv2IR());
+    pm.addPass(createCanonicalizerPass());
 }
 
 void P4::P4MLIR::registerBMv2Pipeline() {

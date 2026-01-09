@@ -394,6 +394,20 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
                 eraseList.push_back(readOp);
                 return success();
             })
+            .Case([&](P4HIR::ReadOp readOp) -> LogicalResult {
+                auto fieldRefOp = readOp.getRef().getDefiningOp<P4HIR::StructFieldRefOp>();
+                if (!fieldRefOp) return readOp.emitError("Expected input to come from FieldRefOp");
+                auto symRef = fieldRefOp.getInput().getDefiningOp<BMv2IR::SymToValueOp>();
+                if (!symRef) return fieldRefOp.emitError("Expected input to be an Header Instance");
+                ConversionPatternRewriter::InsertionGuard guard(rewriter);
+                rewriter.setInsertionPointToEnd(block);
+                rewriter.create<BMv2IR::FieldOp>(loc, readOp.getResult().getType(),
+                                                 symRef.getDecl(), fieldRefOp.getFieldNameAttr());
+                eraseList.push_back(readOp);
+                eraseList.push_back(fieldRefOp);
+                eraseList.push_back(symRef);
+                return success();
+            })
             .Default([](Operation *op) { return op->emitError("Unhandled transition key"); });
     }
 
