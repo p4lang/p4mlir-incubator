@@ -3398,7 +3398,8 @@ void P4HIR::TableActionsOp::build(
 //===----------------------------------------------------------------------===//
 
 void P4HIR::TableDefaultActionOp::build(
-    mlir::OpBuilder &builder, mlir::OperationState &result, mlir::DictionaryAttr annotations,
+    mlir::OpBuilder &builder, mlir::OperationState &result, bool isConst,
+    mlir::DictionaryAttr annotations,
     llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)> entryBuilder) {
     if (annotations && !annotations.empty())
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
@@ -3408,6 +3409,8 @@ void P4HIR::TableDefaultActionOp::build(
     Region *entryRegion = result.addRegion();
     builder.createBlock(entryRegion);
     entryBuilder(builder, result.location);
+
+    if (isConst) result.addAttribute(getIsConstAttrName(result.name), builder.getUnitAttr());
 }
 
 //===----------------------------------------------------------------------===//

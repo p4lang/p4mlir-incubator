@@ -3600,7 +3600,7 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
         assert(ins && "Expected unique table key");
     } else if (prop->name == P4::IR::TableProperties::defaultActionPropertyName) {
         builder.create<P4HIR::TableDefaultActionOp>(
-            loc, annotations, [&](mlir::OpBuilder &b, mlir::Location) {
+            loc, prop->isConstant, annotations, [&](mlir::OpBuilder &b, mlir::Location) {
                 ValueScope scope(*p4Values);
 
                 const auto *expr = prop->value->checkedTo<P4::IR::ExpressionValue>()->expression;
