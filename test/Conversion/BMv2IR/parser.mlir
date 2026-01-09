@@ -23,8 +23,10 @@ module {
 // CHECK:  bmv2ir.parser @prs init_state @prs::@start {
     %prs_e_0 = bmv2ir.symbol_ref @prs_e_0 : !p4hir.ref<!header_one>
     p4hir.state @start {
-      %prs1_top = bmv2ir.symbol_ref @prs1_top : !p4hir.ref<!header_top>
-      p4corelib.extract_header %prs1_top : <!header_top> from %arg0 : !p4corelib.packet_in
+      p4hir.scope {
+        %prs1_top = bmv2ir.symbol_ref @prs1_top : !p4hir.ref<!header_top>
+        p4corelib.extract_header %prs1_top : <!header_top> from %arg0 : !p4corelib.packet_in
+      }
       p4hir.transition to @prs::@parse_headers
     }
 // CHECK:    bmv2ir.state @start

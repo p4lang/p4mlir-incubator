@@ -1138,6 +1138,23 @@ struct RemovePackageInstantiationPattern : public OpConversionPattern<BMv2IR::V1
     }
 };
 
+// At this point in the pipeline all the "dataflow" goes through HeaderInstances, so we can safely
+// remove ScopeOp
+struct RemoveScopePattern : public OpConversionPattern<P4HIR::ScopeOp> {
+    using OpConversionPattern<P4HIR::ScopeOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ScopeOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto &block = op.getScopeRegion().front();
+        // Remove terminating yield
+        rewriter.eraseOp(block.getTerminator());
+
+        rewriter.inlineBlockBefore(&block, op);
+        rewriter.eraseOp(op);
+        return success();
+    }
+};
+
 struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv2IRPass> {
     void runOnOperation() override {
         MLIRContext &context = getContext();
@@ -1146,14 +1163,14 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         ConversionTarget target(context);
         RewritePatternSet patterns(&context);
         P4HIRToBMv2IRTypeConverter converter;
-        patterns.add<HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
-                     ParserStateOpConversionPattern, ExtractOpConversionPattern,
-                     AssignOpToAssignHeaderPattern, AssignOpPattern, ReadOpConversionPattern,
-                     FieldRefConversionPattern, StructExtractOpConversionPattern,
-                     SymToValConversionPattern, CompareValidityToD2BPattern,
-                     PipelineConversionPattern, DeparserConversionPattern,
-                     CalculationConversionPattern, RemovePackageInstantiationPattern>(converter,
-                                                                                      &context);
+        patterns.add<
+            HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
+            ParserStateOpConversionPattern, ExtractOpConversionPattern,
+            AssignOpToAssignHeaderPattern, AssignOpPattern, ReadOpConversionPattern,
+            FieldRefConversionPattern, StructExtractOpConversionPattern, SymToValConversionPattern,
+            CompareValidityToD2BPattern, PipelineConversionPattern, DeparserConversionPattern,
+            CalculationConversionPattern, RemovePackageInstantiationPattern, RemoveScopePattern>(
+            converter, &context);
 
         target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
 
@@ -1179,6 +1196,7 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         target.addIllegalOp<P4HIR::ControlOp>();
         target.addIllegalOp<P4HIR::StructExtractOp>();
         target.addIllegalOp<BMv2IR::V1SwitchOp>();
+        target.addIllegalOp<P4HIR::ScopeOp>();
 
         if (failed(applyPartialConversion(module, target, std::move(patterns))))
             signalPassFailure();
