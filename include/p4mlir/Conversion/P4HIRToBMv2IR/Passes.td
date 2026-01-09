@@ -92,4 +92,16 @@ def SynthesizeTables : Pass<"synth-tables", "mlir::ModuleOp"> {
   ];
 }
 
+def SetCorelib : Pass<"set-corelib", "mlir::ModuleOp"> {
+  let summary = "Identifies Corelib Ops";
+  let description = [{
+    Identifies Corelib operations and sets the `corelib` annotation, preparing for the lowering to
+    P4CoreLib.
+  }];
+  let dependentDialects = [
+      "::P4::P4MLIR::P4HIR::P4HIRDialect",
+      "::P4::P4MLIR::P4CoreLib::P4CoreLibDialect",
+  ];
+}
+
 #endif // P4MLIR_CONVERSION_P4HIRToBMv2IR_PASSES_TD

@@ -4,6 +4,7 @@ add_mlir_dialect_library(P4HIRToBMv2IR
   LowerPackage.cpp
   SynthesizeActions.cpp
   SynthesizeTables.cpp
+  SetCorelib.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/p4mlir/Conversion/P4HIRToBMv2IR
