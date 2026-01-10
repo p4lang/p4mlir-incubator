@@ -160,11 +160,14 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
             tableBuilder.create<P4HIR::TableEntriesOp>(
                 tableLoc, true, DictionaryAttr(),
                 [&](OpBuilder &b, Location entriesLoc) {
-                    for (auto [caseOp, actionName] : llvm::zip(cases, llvm::ArrayRef(actionNames).drop_back())) {
+                    for (auto enumItem : llvm::enumerate(cases)) {
+                        size_t i = enumItem.index();
+                        P4HIR::CaseOp caseOp = enumItem.value();
+                        auto actionName = actionNames[i];
                         for (auto valueAttr : caseOp.getValue()) {
                             auto tupleType = TupleType::get(ctx, {condType});
                             auto keyAttr = P4HIR::AggAttr::get(
-                                tupleType, b.getArrayAttr({valueAttr}));            
+                                tupleType, b.getArrayAttr({valueAttr}));
                             b.create<P4HIR::TableEntryOp>(
                                 entriesLoc, keyAttr, false, TypedAttr(), DictionaryAttr(),
                                 [&](OpBuilder &entryBuilder, Location entryLoc) {
@@ -203,7 +206,10 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
     (void)builder.create<P4HIR::SwitchOp>(
         loc, actionRunField.getResult(),
         [&](OpBuilder &switchBuilder, Location switchLoc) {
-            for (auto [caseOp, actionName] : llvm::zip(cases, llvm::ArrayRef(actionNames).drop_back())) {
+            for (auto enumItem : llvm::enumerate(cases)) {
+                size_t i = enumItem.index();
+                P4HIR::CaseOp caseOp = enumItem.value();
+                auto actionName = actionNames[i];
                 auto enumMemberAttr = P4HIR::EnumFieldAttr::get(actionEnumType, actionName);
                 switchBuilder.create<P4HIR::CaseOp>(
                     switchLoc, switchBuilder.getArrayAttr({enumMemberAttr}),
