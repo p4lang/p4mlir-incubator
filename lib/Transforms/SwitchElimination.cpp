@@ -1,6 +1,7 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/SymbolTable.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
@@ -19,15 +20,6 @@ using namespace P4::P4MLIR;
 
 namespace {
 
-class NameGenerator {
-public:
-    std::string newName(llvm::StringRef prefix) {
-        return llvm::formatv("{0}_{1}", prefix, counter++).str();
-    }
-
-private:
-    unsigned counter = 0;
-};
 
 struct SwitchEliminationPass
     : public P4::P4MLIR::impl::SwitchEliminationBase<SwitchEliminationPass> {
@@ -35,33 +27,42 @@ struct SwitchEliminationPass
     void runOnOperation() override;
 
 private:
-    LogicalResult eliminateSwitch(P4HIR::ControlOp control, P4HIR::SwitchOp switchOp,
-                                  NameGenerator &nameGen);
-    bool isActionRunSwitch(P4HIR::SwitchOp switchOp);
+    static LogicalResult eliminateSwitch(P4HIR::ControlOp control, P4HIR::SwitchOp switchOp);
+    static bool isActionRunSwitch(P4HIR::SwitchOp switchOp);
 };
 
 bool SwitchEliminationPass::isActionRunSwitch(P4HIR::SwitchOp switchOp) {
-    auto condType = switchOp.getCondition().getType();
-    if (auto structType = mlir::dyn_cast<P4HIR::StructType>(condType)) {
-        for (auto field : structType.getFields()) {
-            if (field.name == "action_run")
-                return true;
-        }
-    }
-    return mlir::isa<P4HIR::EnumType>(condType);
+    Value cond = switchOp.getCondition();
+    auto extractOp = cond.getDefiningOp<P4HIR::StructExtractOp>();
+    if (!extractOp)
+        return false;
+    if (extractOp.getFieldName() != "action_run")
+        return false;
+
+    auto tableApply =
+        extractOp.getInput().getDefiningOp<P4HIR::TableApplyOp>();
+    if (!tableApply)
+        return false;
+    return true;
 }
 
 LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
-                                                     P4HIR::SwitchOp switchOp,
-                                                     NameGenerator &nameGen) {
+                                                     P4HIR::SwitchOp switchOp) {
     if (isActionRunSwitch(switchOp))
         return success();
 
     auto loc = switchOp.getLoc();
     auto condType = switchOp.getCondition().getType();
     OpBuilder builder(switchOp);
-
-    std::string prefix = nameGen.newName("_switch");
+    auto ctx = builder.getContext();
+    SymbolTable symbolTable(control->getParentOp());
+    unsigned counter = 0;
+    std::string prefix = SymbolTable::generateSymbolName<256>(
+        "_switch",
+        [&](llvm::StringRef candidate) {
+            return symbolTable.lookup(candidate) != nullptr;
+        },
+        counter).str().str();
 
     llvm::SmallVector<P4HIR::CaseOp> cases;
     P4HIR::CaseOp defaultCase;
@@ -72,41 +73,38 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
             cases.push_back(caseOp);
     }
 
-    llvm::SmallVector<std::string> actionNames;
-    llvm::SmallVector<mlir::Attribute> enumFields;
-    auto ctx = builder.getContext();
-
+    llvm::SmallVector<mlir::StringAttr> actionNames;
+    mlir::StringAttr defaultActionName;
     builder.setInsertionPoint(control.getBody().front().getTerminator());
 
     auto hiddenAttr = builder.getDictionaryAttr(
         {builder.getNamedAttr("hidden", builder.getUnitAttr())});
 
-    for (size_t i = 0; i < cases.size(); ++i) {
-        std::string actionName = llvm::formatv("{0}_case_{1}", prefix, i).str();
-        actionNames.push_back(actionName);
-        enumFields.push_back(builder.getStringAttr(actionName));
-
+    auto createAction = [&](mlir::StringAttr actionName) {
         auto funcType = P4HIR::FuncType::get(ctx, {});
         auto funcOp = P4HIR::FuncOp::buildAction(builder, loc, actionName, funcType,
-                                                  {}, hiddenAttr);
+                                                 {}, hiddenAttr);
         OpBuilder funcBuilder(funcOp.getBody());
         funcBuilder.setInsertionPointToEnd(&funcOp.getBody().front());
         funcBuilder.create<P4HIR::ReturnOp>(loc);
+    };
+
+    for (auto [i, _] : llvm::enumerate(cases)) {
+        auto actionName =
+            builder.getStringAttr(llvm::formatv("{0}_case_{1}", prefix, i).str());
+        actionNames.push_back(actionName);
+        createAction(actionName);
     }
 
-    std::string defaultActionName = prefix + "_default";
+    defaultActionName = builder.getStringAttr(prefix + "_default");
     actionNames.push_back(defaultActionName);
-    enumFields.push_back(builder.getStringAttr(defaultActionName));
-
-    auto defaultFuncType = P4HIR::FuncType::get(ctx, {});
-    auto defaultFuncOp = P4HIR::FuncOp::buildAction(builder, loc, defaultActionName,
-                                                     defaultFuncType, {}, hiddenAttr);
-    OpBuilder defaultFuncBuilder(defaultFuncOp.getBody());
-    defaultFuncBuilder.setInsertionPointToEnd(&defaultFuncOp.getBody().front());
-    defaultFuncBuilder.create<P4HIR::ReturnOp>(loc);
+    createAction(defaultActionName);
 
     auto actionEnumType = P4HIR::EnumType::get(
-        ctx, prefix + "_action_enum", enumFields, DictionaryAttr());
+        ctx, prefix + "_action_enum",
+        llvm::SmallVector<Attribute>(actionNames.begin(), actionNames.end()),
+        DictionaryAttr());
+    
 
     auto applyResultType = P4HIR::StructType::get(
         ctx, prefix + "_result",
@@ -126,7 +124,7 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
             {
                 OpBuilder::InsertionGuard guard(tableBuilder);
                 tableBuilder.setInsertionPointToStart(&tableKeyOp.getBody().front());
-                auto keyArg = tableKeyOp.getBody().front().addArgument(condType, tableLoc);
+                auto keyArg = tableKeyOp.getBody().front().getArgument(0);
                 tableBuilder.create<P4HIR::TableKeyEntryOp>(
                     tableLoc, "exact", keyArg, mlir::DictionaryAttr::get(ctx, {}));
             }
@@ -134,9 +132,9 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
             tableBuilder.create<P4HIR::TableActionsOp>(
                 tableLoc, DictionaryAttr(),
                 [&](OpBuilder &actionsBuilder, Location actionsLoc) {
-                    for (size_t i = 0; i < actionNames.size(); ++i) {
+                    for (auto actionName : actionNames) {
                         auto actionFuncType = P4HIR::FuncType::get(ctx, {});
-                        auto actionRef = FlatSymbolRefAttr::get(ctx, actionNames[i]);
+                        auto actionRef = FlatSymbolRefAttr::get(actionName);
                         actionsBuilder.create<P4HIR::TableActionOp>(
                             actionsLoc, actionRef, actionFuncType,
                             ArrayRef<DictionaryAttr>{}, DictionaryAttr(),
@@ -144,7 +142,7 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
                                 Location actionBodyLoc) {
                                 auto controlRef = SymbolRefAttr::get(
                                     ctx, control.getName(),
-                                    {FlatSymbolRefAttr::get(ctx, actionNames[i])});
+                                    {FlatSymbolRefAttr::get(ctx, actionName)});
                                 actionBodyBuilder.create<P4HIR::CallOp>(
                                     actionBodyLoc, controlRef, ValueRange{});
                             });
@@ -152,29 +150,27 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
                 });
 
             tableBuilder.create<P4HIR::TableDefaultActionOp>(
-                tableLoc, DictionaryAttr(),
+                tableLoc, false, DictionaryAttr(),
                 [&](OpBuilder &defaultBuilder, Location defaultLoc) {
                     auto controlRef = SymbolRefAttr::get(
                         ctx, control.getName(),
                         {FlatSymbolRefAttr::get(ctx, defaultActionName)});
                     defaultBuilder.create<P4HIR::CallOp>(defaultLoc, controlRef, ValueRange{});
                 });
-
             tableBuilder.create<P4HIR::TableEntriesOp>(
                 tableLoc, true, DictionaryAttr(),
-                [&](OpBuilder &entriesBuilder, Location entriesLoc) {
-                    for (size_t i = 0; i < cases.size(); ++i) {
-                        auto caseOp = cases[i];
+                [&](OpBuilder &b, Location entriesLoc) {
+                    for (auto [caseOp, actionName] : llvm::zip(cases, llvm::ArrayRef(actionNames).drop_back())) {
                         for (auto valueAttr : caseOp.getValue()) {
                             auto tupleType = TupleType::get(ctx, {condType});
                             auto keyAttr = P4HIR::AggAttr::get(
-                                tupleType, builder.getArrayAttr({valueAttr}));
-                            entriesBuilder.create<P4HIR::TableEntryOp>(
+                                tupleType, b.getArrayAttr({valueAttr}));            
+                            b.create<P4HIR::TableEntryOp>(
                                 entriesLoc, keyAttr, false, TypedAttr(), DictionaryAttr(),
                                 [&](OpBuilder &entryBuilder, Location entryLoc) {
                                     auto controlRef = SymbolRefAttr::get(
                                         ctx, control.getName(),
-                                        {FlatSymbolRefAttr::get(ctx, actionNames[i])});
+                                        {FlatSymbolRefAttr::get(ctx, actionName)});
                                     entryBuilder.create<P4HIR::CallOp>(
                                         entryLoc, controlRef, ValueRange{});
                                 });
@@ -188,7 +184,7 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
     // Create a temporary variable for the switch key (following p4c's pattern)
     std::string keyName = prefix + "_key";
     auto keyVar = builder.create<P4HIR::VariableOp>(
-        loc, P4HIR::ReferenceType::get(ctx, condType), keyName, hiddenAttr);
+        loc, P4HIR::ReferenceType::get(condType), keyName, hiddenAttr);
 
     // Assign the condition expression to the key variable
     builder.create<P4HIR::AssignOp>(loc, switchOp.getCondition(), keyVar);
@@ -207,37 +203,28 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
     (void)builder.create<P4HIR::SwitchOp>(
         loc, actionRunField.getResult(),
         [&](OpBuilder &switchBuilder, Location switchLoc) {
-            for (size_t i = 0; i < cases.size(); ++i) {
-                auto caseOp = cases[i];
-                auto enumMemberAttr = P4HIR::EnumFieldAttr::get(
-                    actionEnumType, builder.getStringAttr(actionNames[i]));
-
+            for (auto [caseOp, actionName] : llvm::zip(cases, llvm::ArrayRef(actionNames).drop_back())) {
+                auto enumMemberAttr = P4HIR::EnumFieldAttr::get(actionEnumType, actionName);
                 switchBuilder.create<P4HIR::CaseOp>(
-                    switchLoc, builder.getArrayAttr({enumMemberAttr}),
+                    switchLoc, switchBuilder.getArrayAttr({enumMemberAttr}),
                     P4HIR::CaseOpKind::Equal,
                     [&](OpBuilder &caseBuilder, Location caseLoc) {
                         IRMapping mapper;
-                        for (auto &op : caseOp.getCaseRegion().front()) {
-                            if (!mlir::isa<P4HIR::YieldOp>(&op))
-                                caseBuilder.clone(op, mapper);
-                        }
+                        for (auto &op : caseOp.getCaseRegion().front().without_terminator())
+                            caseBuilder.clone(op, mapper);
                         caseBuilder.create<P4HIR::YieldOp>(caseLoc);
                     });
             }
 
             if (defaultCase) {
-                auto enumMemberAttr = P4HIR::EnumFieldAttr::get(
-                    actionEnumType, builder.getStringAttr(defaultActionName));
-
+                auto enumMemberAttr = P4HIR::EnumFieldAttr::get(actionEnumType, defaultActionName);
                 switchBuilder.create<P4HIR::CaseOp>(
-                    switchLoc, builder.getArrayAttr({enumMemberAttr}),
+                    switchLoc, switchBuilder.getArrayAttr({enumMemberAttr}),
                     P4HIR::CaseOpKind::Default,
                     [&](OpBuilder &caseBuilder, Location caseLoc) {
                         IRMapping mapper;
-                        for (auto &op : defaultCase.getCaseRegion().front()) {
-                            if (!mlir::isa<P4HIR::YieldOp>(&op))
-                                caseBuilder.clone(op, mapper);
-                        }
+                        for (auto &op : defaultCase.getCaseRegion().front().without_terminator())
+                            caseBuilder.clone(op, mapper);
                         caseBuilder.create<P4HIR::YieldOp>(caseLoc);
                     });
             }
@@ -251,21 +238,14 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
 
 void SwitchEliminationPass::runOnOperation() {
     auto module = getOperation();
-    NameGenerator nameGen;
-
-    llvm::SmallVector<std::pair<P4HIR::ControlOp, P4HIR::SwitchOp>> toProcess;
 
     module->walk([&](P4HIR::ControlOp control) {
-        control->walk([&](P4HIR::SwitchOp switchOp) {
-            if (!isActionRunSwitch(switchOp))
-                toProcess.emplace_back(control, switchOp);
+        return control->walk([&](P4HIR::SwitchOp switchOp) {
+            if (failed(eliminateSwitch(control, switchOp)))
+                return WalkResult::interrupt();
+            return WalkResult::advance();
         });
     });
-
-    for (auto [control, switchOp] : toProcess) {
-        if (failed(eliminateSwitch(control, switchOp, nameGen)))
-            return signalPassFailure();
-    }
 }
 
 }
