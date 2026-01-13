@@ -41,6 +41,7 @@ def BMv2IR_ActionTableAttr : BMv2IR_Attr<"ActionTable", "action_table"> {
   let description = [{
     This attribute contains a pair of symbol references, one for an action and one for the
     corresponding next table in the next_table section of the BMv2 description of Tables.
+    If the table symbol ref is not present, the current node is a terminating node in the pipeline.
   }];
   
   let parameters = (ins
@@ -53,6 +54,23 @@ def BMv2IR_ActionTableAttr : BMv2IR_Attr<"ActionTable", "action_table"> {
 
 def BMv2IR_ActionTableArrayAttr : TypedArrayAttrBase<
   BMv2IR_ActionTableAttr, "array of action-table pair attributes">;
+
+def BMv2IR_HitOrMissAttr : BMv2IR_Attr<"HitOrMiss", "hit_miss"> {
+  let summary = "Next table for hit/miss checks";
+  let description = [{
+    This attribute holds a symbol reference for the next table in case of a hit, and a symbol reference
+    for the miss. Both the symbol references are optional, but at least one of them should be present.
+  }];
+  
+  let parameters = (ins
+    OptionalParameter<"mlir::SymbolRefAttr">:$hitNode,
+    OptionalParameter<"mlir::SymbolRefAttr">:$missNode
+  );
+  
+  // TODO: add verifier, check that references are tables or conditionals and that at least one
+  // of them is available.
+  let assemblyFormat = "`<` (`hit` $hitNode^)? ` ` (`miss` $missNode^)? `>`";
+}
 
 def BMv2IR_TableMatchKind : IntEnum<"TableMatchKind", "BMv2IR table match kind", [
     I32EnumAttrCase<"Valid", 0, "valid">,

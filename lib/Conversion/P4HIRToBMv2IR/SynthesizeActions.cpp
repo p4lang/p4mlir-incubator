@@ -49,6 +49,8 @@ struct SynthActionInControlApplyPattern : public OpRewritePattern<P4HIR::Control
         // the conditional expression are now inside the BMv2IR::IfOp condition region, so we don't
         // encounter them when synthesizing actions.
         auto ifRes = controlApply.walk([&](P4HIR::IfOp ifOp) {
+            // if ops for hit or miss are handled when lowering to BMv2 pipelines
+            if (BMv2IR::isHitOrMissIf(ifOp)) return WalkResult::skip();
             if (failed(convertIfOp(ifOp, controlApply, rewriter))) return WalkResult::interrupt();
             return WalkResult::advance();
         });
@@ -237,8 +239,9 @@ struct SynthActionInControlApplyPattern : public OpRewritePattern<P4HIR::Control
             if (isa<BMv2IR::IfOp, P4HIR::TableApplyOp, BMv2IR::YieldOp, P4HIR::YieldOp>(op)) {
                 if (failed(doSynthAction(&op, nullptr))) return failure();
                 if (isa<P4HIR::TableApplyOp>(op)) {
-                    // If a table_apply is followed by a switch statement, we have to skip the
-                    // extract -> switch ops because we want them in the control_apply
+                    // If a table_apply is followed by a switch statement (or an if on hit/miss), we
+                    // have to skip the extract -> switch ops because we want them in the
+                    // control_apply for pipelines lowering
                     auto peekNext = std::next(it);
                     if (peekNext == block.end()) {
                         it++;
@@ -250,7 +253,8 @@ struct SynthActionInControlApplyPattern : public OpRewritePattern<P4HIR::Control
                         continue;
                     }
                     if (isa<P4HIR::StructExtractOp>(*peekNext) &&
-                        isa<P4HIR::SwitchOp>(*peekNextNext)) {
+                        (isa<P4HIR::SwitchOp>(*peekNextNext) ||
+                         BMv2IR::isHitOrMissIf(&*peekNextNext))) {
                         std::advance(it, 3);
                         continue;
                     } else {

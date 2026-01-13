@@ -315,7 +315,7 @@ def BMv2IR_TableOp : BMv2IR_Op<"table",
 
   let arguments = (ins SymbolNameAttr:$sym_name,
                        SymbolRefArrayAttr:$actions,
-                       BMv2IR_ActionTableArrayAttr:$next_tables,
+                       AnyAttrOf<[BMv2IR_HitOrMissAttr, BMv2IR_ActionTableArrayAttr]>:$next_tables,
                        BMv2IR_TableTypeAttr:$tableType,
                        BMv2IR_TableMatchKindAttr:$match_type,
                        BMv2IR_TableKeyArrayAttr:$keys,

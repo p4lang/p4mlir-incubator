@@ -104,8 +104,10 @@ LogicalResult ConditionalOp::verify() {
 
 LogicalResult TableOp::verify() {
     auto actions = getActions();
+    auto nextTablesPair = dyn_cast<ArrayAttr>(getNextTables());
+    if (!nextTablesPair) return success();
     auto nextTables = llvm::map_to_vector(
-        getNextTablesAttr(), [](Attribute a) { return cast<BMv2IR::ActionTableAttr>(a); });
+        nextTablesPair, [](Attribute a) { return cast<BMv2IR::ActionTableAttr>(a); });
     auto moduleOp = getParentModule(*this);
     for (auto a : actions) {
         auto actionRef = cast<SymbolRefAttr>(a);
@@ -216,6 +218,18 @@ FailureOr<bool> isCalculationControl(P4HIR_ControlOp controlOp) {
     auto symToCheck = controlOp.getSymName();
     return symToCheck == packageInstantiateOp->getVerifyChecksum().getLeafReference() ||
            symToCheck == packageInstantiateOp->getComputeChecksum().getLeafReference();
+}
+
+bool isHitOrMissIf(Operation *op) {
+    auto ifOp = dyn_cast<P4HIR::IfOp>(op);
+    if (!ifOp) return false;
+    auto extractOp = ifOp.getCondition().getDefiningOp<P4HIR::StructExtractOp>();
+    if (!extractOp) return false;
+    auto applyOp = extractOp.getInput().getDefiningOp<P4HIR::TableApplyOp>();
+    if (!applyOp) return false;
+
+    auto fieldName = extractOp.getFieldName();
+    return fieldName == "hit" || fieldName == "miss";
 }
 }  // namespace P4::P4MLIR::BMv2IR
 

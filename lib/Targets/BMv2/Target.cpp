@@ -358,13 +358,21 @@ json::Value to_JSON(BMv2IR::TableOp tableOp) {
     res["action_ids"] = std::move(actionIds);
 
     json::Object nextTables;
-    for (auto attr : tableOp.getNextTables()) {
-        auto actionTable = cast<BMv2IR::ActionTableAttr>(attr);
-        auto action = actionTable.getAction().getLeafReference().getValue();
-        auto nextTableAttr = actionTable.getTable();
-        auto table =
-            nextTableAttr ? nextTableAttr.getLeafReference().getValue() : json::Value(nullptr);
-        nextTables[action] = table;
+    if (auto nextTablesArray = dyn_cast_or_null<ArrayAttr>(tableOp.getNextTables())) {
+        for (auto attr : nextTablesArray) {
+            auto actionTable = cast<BMv2IR::ActionTableAttr>(attr);
+            auto action = actionTable.getAction().getLeafReference().getValue();
+            auto nextTableAttr = actionTable.getTable();
+            auto table =
+                nextTableAttr ? nextTableAttr.getLeafReference().getValue() : json::Value(nullptr);
+            nextTables[action] = table;
+        }
+    } else if (auto hitMissAttr =
+                   dyn_cast_or_null<BMv2IR::HitOrMissAttr>(tableOp.getNextTables())) {
+        nextTables["__HIT__"] = hitMissAttr.getHitNode().getLeafReference().getValue();
+        nextTables["__MISS__"] = hitMissAttr.getMissNode().getLeafReference().getValue();
+    } else {
+        llvm_unreachable("Unsupported next_tables attribute");
     }
     res["next_tables"] = std::move(nextTables);
 
@@ -431,6 +439,16 @@ json::Value to_JSON(P4HIR::BinOp binOp) {
         switch (kind) {
             case P4HIR::BinOpKind::Add:
                 return "+";
+            case P4HIR::BinOpKind::Sub:
+                return "-";
+            case P4HIR::BinOpKind::Mul:
+                return "*";
+            case P4HIR::BinOpKind::Div:
+                return "/";
+            case P4HIR::BinOpKind::And:
+                return "and";
+            case P4HIR::BinOpKind::Or:
+                return "or";
             default:
                 llvm_unreachable("Unhandled opkind");
         }
@@ -439,6 +457,31 @@ json::Value to_JSON(P4HIR::BinOp binOp) {
     value["op"] = op;
     value["left"] = to_JSON(binOp.getLhs());
     value["right"] = to_JSON(binOp.getRhs());
+    return asExpressionNode(std::move(value));
+}
+
+json::Value to_JSON(P4HIR::CmpOp cmpOp) {
+    json::Object value;
+    auto kindToString = [](P4HIR::CmpOpKind kind) {
+        switch (kind) {
+            case P4HIR::CmpOpKind::Eq:
+                return "==";
+            case P4HIR::CmpOpKind::Ne:
+                return "!=";
+            case P4HIR::CmpOpKind::Ge:
+                return ">=";
+            case P4HIR::CmpOpKind::Gt:
+                return ">";
+            case P4HIR::CmpOpKind::Le:
+                return "<=";
+            case P4HIR::CmpOpKind::Lt:
+                return "<";
+        }
+    };
+    StringRef op = kindToString(cmpOp.getKind());
+    value["op"] = op;
+    value["left"] = to_JSON(cmpOp.getLhs());
+    value["right"] = to_JSON(cmpOp.getRhs());
     return asExpressionNode(std::move(value));
 }
 
@@ -511,6 +554,7 @@ json::Value to_JSON(Operation *op) {
         .Case([](P4HIR::BinOp binOp) { return to_JSON(binOp); })
         .Case([](BMv2IR::YieldOp yieldOp) { return to_JSON(yieldOp); })
         .Case([](BMv2IR::DataToBoolOp d2bOp) { return to_JSON(d2bOp); })
+        .Case([](P4HIR::CmpOp cmpOp) { return to_JSON(cmpOp); })
         .Default([](Operation *op) -> json::Value {
             llvm::errs() << "Unsupported op: " << op->getName().getIdentifier() << "\n";
             llvm_unreachable("Unsupported op");
