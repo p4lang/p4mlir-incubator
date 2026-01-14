@@ -59,4 +59,25 @@ module {
     p4hir.return
   }
 
+  // CHECK-LABEL: f4
+  p4hir.func @f4(%arg0: !p4hir.bool) -> !i32i {
+    %c1_i32i = p4hir.const #int1_i32i
+    %c3_i32i = p4hir.const #int3_i32i
+
+    // CHECK:      %[[RESULT:.*]] = p4hir.if %arg0 -> !i32i {
+    // CHECK-NEXT:   p4hir.yield %c1_i32i : !i32i
+    // CHECK-NEXT: } else {
+    // CHECK-NEXT:   p4hir.yield %c3_i32i : !i32i
+    // CHECK-NEXT: }
+    // CHECK-NEXT: p4hir.return %[[RESULT]] : !i32i
+
+    %result = p4hir.if %arg0 -> !i32i {
+      p4hir.yield %c1_i32i : !i32i
+    } else {
+      p4hir.yield %c3_i32i : !i32i
+    }
+
+    p4hir.return %result : !i32i
+  }
+
 }

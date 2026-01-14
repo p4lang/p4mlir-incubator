@@ -242,7 +242,6 @@ module {
     // CHECK:     %eq_6 = p4hir.cmp(eq, %val_4 : !b8i, %val_5 : !b8i)
     // CHECK:     p4hir.if %eq_6 {
     // CHECK:       p4hir.assign %false, %[[CONTINUE_GUARD_1]] : <!p4hir.bool>
-    // CHECK:     } else {
     // CHECK:     }
     // CHECK:   }
     // CHECK:   %val_3 = p4hir.read %[[CONTINUE_GUARD_1]] : <!p4hir.bool>
