@@ -1170,8 +1170,14 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
 
 LogicalResult P4HIR::IfOp::canonicalize(P4HIR::IfOp op, PatternRewriter &rewriter) {
     auto isEmptyRegion = [](mlir::Region &region) {
-        return region.empty()
-               || (region.hasOneBlock() && mlir::isa<P4HIR::YieldOp>(region.front().front()));
+        if (region.empty()) return true;
+        if (region.hasOneBlock()) {
+            auto *firstOp = &region.front().front();
+            if (auto yieldOp = mlir::dyn_cast<P4HIR::YieldOp>(firstOp)) {
+                return yieldOp.getOperands().empty();
+            }
+        }
+        return false;
     };
 
     bool emptyThen = isEmptyRegion(op.getThenRegion()) && !op.getThenAnnotations();
