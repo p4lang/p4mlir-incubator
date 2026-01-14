@@ -14,23 +14,32 @@ module {
     // CHECK: "op": "extract"
     // CHECK: "type": "regular"
     // CHECK: "value": "hdr"
-    bmv2ir.state @start parser_ops {
-      bmv2ir.extract regular "hdr"
-    } transitions {
+    bmv2ir.state @start
+    transition_key {
+    ^bb0:
+    }
+    transitions {
       // CHECK: "type": "default"
       // CHECK: "next_state": "accept"
       bmv2ir.transition type default next_state @accept
-    } transition_keys {
+    }
+    parser_ops {
+      bmv2ir.extract regular "hdr"
     }
     
     // CHECK: "name": "accept"
     // CHECK: "id": 1
-    bmv2ir.state @accept parser_ops {
-    } transitions {
+    bmv2ir.state @accept
+    transition_key {
+    ^bb0:
+    }
+    transitions {
       // CHECK: "type": "default"
       // CHECK: "next_state": null
       bmv2ir.transition type default
-    } transition_keys {
+    }
+    parser_ops {
+    ^bb0:
     }
   }
 }
