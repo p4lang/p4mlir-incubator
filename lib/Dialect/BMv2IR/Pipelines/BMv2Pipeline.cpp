@@ -42,6 +42,7 @@ void P4::P4MLIR::buildBMv2Pipeline(OpPassManager &pm, const BMv2PipelineOpts &op
 
     // Final lowering to BMv2IR
     pm.addPass(createP4HIRToBmv2IR());
+    pm.addPass(createEnsureStandardMetadata());
     pm.addPass(createCanonicalizerPass());
 }
 

@@ -104,4 +104,16 @@ def SetCorelib : Pass<"set-corelib", "mlir::ModuleOp"> {
   ];
 }
 
+def EnsureStandardMetadata : Pass<"ensure-standard-metadata", "mlir::ModuleOp"> {
+  let summary = "Ensures that the standard_metadata header instance is in the Module";
+  let description = [{
+    Some BMv2 targets require the standard_metadata header instance to be in the module even if it's never
+    used. This pass ensures this.
+  }];
+  let dependentDialects = [
+      "::P4::P4MLIR::BMv2IR::BMv2IRDialect",
+      "::P4::P4MLIR::P4HIR::P4HIRDialect",
+  ];
+}
+
 #endif // P4MLIR_CONVERSION_P4HIRToBMv2IR_PASSES_TD

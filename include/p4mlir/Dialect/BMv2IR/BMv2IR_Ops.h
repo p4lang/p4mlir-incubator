@@ -28,6 +28,9 @@
 
 namespace P4::P4MLIR::BMv2IR {
 
+constexpr llvm::StringRef standardMetadataOldStructName = "standard_metadata_t";
+constexpr llvm::StringRef standardMetadataNewStructName = "standard_metadata";
+
 mlir::StringAttr getUniqueNameInParentModule(mlir::Operation *op, llvm::Twine base);
 
 llvm::FailureOr<bool> isTopLevelControl(P4HIR::ControlOp controlOp);

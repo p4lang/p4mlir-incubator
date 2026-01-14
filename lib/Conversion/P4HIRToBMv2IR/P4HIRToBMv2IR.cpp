@@ -53,8 +53,6 @@ namespace {
 BMv2IR::FieldInfo convertFieldInfo(P4HIR::FieldInfo p4Field) {
     return BMv2IR::FieldInfo(p4Field.name, p4Field.type);
 }
-constexpr StringRef standardMetadataOldStructName = "standard_metadata_t";
-constexpr StringRef standardMetadataNewStructName = "standard_metadata";
 
 StringRef getStructLikeName(P4HIR::StructLikeTypeInterface structLikeTy) {
     return llvm::TypeSwitch<P4HIR::StructLikeTypeInterface, StringRef>(structLikeTy)
@@ -63,7 +61,8 @@ StringRef getStructLikeName(P4HIR::StructLikeTypeInterface structLikeTy) {
             auto oldName = structTy.getName();
             // While doing type conversion we also convert the standard_metadata_t type name to
             // standard_metadata (this is required by the Simple Switch target)
-            if (oldName == standardMetadataOldStructName) return standardMetadataNewStructName;
+            if (oldName == BMv2IR::standardMetadataOldStructName)
+                return BMv2IR::standardMetadataNewStructName;
             return structTy.getName();
         })
         .Default([](P4HIR::StructLikeTypeInterface) -> StringRef {
@@ -126,10 +125,10 @@ struct HeaderInstanceOpConversionPattern : public OpConversionPattern<BMv2IR::He
         auto oldName = op.getSymName();
         // Rename the standard_metadata_t Header Instance to standard_metadata (the Simple Switch
         // target seems to require this)
-        if (oldName == standardMetadataOldStructName) {
+        if (oldName == BMv2IR::standardMetadataOldStructName) {
             auto moduleOp = op->getParentOfType<ModuleOp>();
             if (!moduleOp) return op.emitError("No module parent");
-            renameHeaderInstance(op, standardMetadataNewStructName, moduleOp);
+            renameHeaderInstance(op, BMv2IR::standardMetadataNewStructName, moduleOp);
         }
         auto convertedTy = getTypeConverter()->convertType(op.getHeaderType());
         rewriter.replaceOpWithNewOp<BMv2IR::HeaderInstanceOp>(op, op.getSymName(), convertedTy,
@@ -1255,7 +1254,7 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         target.addDynamicallyLegalOp<BMv2IR::HeaderInstanceOp>(
             [&](BMv2IR::HeaderInstanceOp headerInstanceOp) {
                 return isHeaderOrRef(headerInstanceOp.getHeaderType()) &&
-                       headerInstanceOp.getSymName() != standardMetadataOldStructName;
+                       headerInstanceOp.getSymName() != BMv2IR::standardMetadataOldStructName;
             });
         target.addDynamicallyLegalOp<BMv2IR::SymToValueOp>(
             [&](BMv2IR::SymToValueOp op) { return converter.isLegal(op); });
