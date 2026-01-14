@@ -612,7 +612,7 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
             keyOp = k;
         });
         auto maybeKeys = getKeys(keyOp);
-        if (failed(maybeKeys)) return failure();
+        if (failed(maybeKeys)) return op.emitError("Unable to retrieve key op");
         // TODO: add helper
         P4HIR::TableSizeOp sizeOp = nullptr;
         op.walk([&](P4HIR::TableSizeOp size) {
@@ -625,7 +625,7 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         auto size = sizeAttr.getValue().getSExtValue();
         auto defEntryAttr = getDefaultEntry(op);
         auto tableMatchKind = getTableMatchKind(maybeKeys.value(), rewriter);
-        if (failed(defEntryAttr)) return failure();
+        if (failed(defEntryAttr)) return op.emitError("Unable to compute table match kind");
 
         // TODO: implement support for indirect and indirect_ws table types
         auto tableType =

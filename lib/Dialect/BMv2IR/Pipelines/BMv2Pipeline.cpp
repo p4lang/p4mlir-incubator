@@ -37,6 +37,7 @@ void P4::P4MLIR::buildBMv2Pipeline(OpPassManager &pm, const BMv2PipelineOpts &op
     pm.addPass(createLowerPackage());
     pm.addPass(createSynthesizeActions());
     pm.addPass(createSynthesizeTables());
+    pm.addPass(createUseControlPlaneNamesPass());
 
     // TODO: flatten structs and headers
 
