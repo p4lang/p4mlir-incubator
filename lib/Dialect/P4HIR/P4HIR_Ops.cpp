@@ -1805,17 +1805,39 @@ OpFoldResult P4HIR::StructExtractOp::fold(FoldAdaptor adaptor) {
 LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
                                                    PatternRewriter &rewriter) {
     // Simple SROA / load shrinking: turn (struct_extract (read ref), field)
-    // into (read (struct_extract_ref ref, field)) if `read` operation has a
-    // single use. Usually these come from struct field access and it is
-    // beneficial to project from whole-width read to a single-field read. We do
-    // not do complete SROA here as it would require tracking writes as well as
-    // reads.
-    if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>(); readOp && readOp->hasOneUse()) {
-        auto ref = readOp.getRef();
+    // into (read (struct_extract_ref ref, field)) if `read` operation has only struct_extract ops
+    // as uses. Usually these come from struct field access and it is beneficial to project from
+    // whole-width read to a single-field read. We do not do complete SROA here as it would require
+    // tracking writes as well as reads.
+    if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>()) {
+        llvm::SmallVector<P4HIR::StructExtractOp, 4> users;
+        for (mlir::Operation *user : readOp->getUsers()) {
+            if (auto structExtract = mlir::dyn_cast<P4HIR::StructExtractOp>(user))
+                users.push_back(structExtract);
+            else
+                return failure();
+        }
+
+        // Use a map so we don't create duplicate reads of the same field.
+        llvm::DenseMap<mlir::Attribute, mlir::Value> fieldVals;
         rewriter.setInsertionPoint(readOp);
-        auto fieldRef = rewriter.create<P4HIR::StructFieldRefOp>(
-            op.getLoc(), P4HIR::ReferenceType::get(op.getType()), ref, op.getFieldIndexAttr());
-        rewriter.replaceOpWithNewOp<P4HIR::ReadOp>(op, fieldRef);
+        for (auto structExtract : users) {
+            auto indexAttr = structExtract.getFieldIndexAttr();
+            mlir::Value fieldVal;
+
+            auto it = fieldVals.find(indexAttr);
+            if (it != fieldVals.end()) {
+                fieldVal = it->second;
+            } else {
+                auto fieldRef = rewriter.create<P4HIR::StructFieldRefOp>(
+                    op.getLoc(), P4HIR::ReferenceType::get(structExtract.getType()),
+                    readOp.getRef(), structExtract.getFieldIndexAttr());
+                fieldVal = rewriter.create<P4HIR::ReadOp>(op.getLoc(), fieldRef);
+                fieldVals.insert({indexAttr, fieldVal});
+            }
+
+            rewriter.replaceOp(structExtract, fieldVal);
+        }
         rewriter.eraseOp(readOp);
         return success();
     }
