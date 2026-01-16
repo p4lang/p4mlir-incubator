@@ -333,6 +333,8 @@ json::Value to_JSON(BMv2IR::TableOp tableOp) {
         } else {
             keyEntry["target"] = json::Array{headerName, fieldNameAttr.getValue()};
         }
+        auto name = keyAttr.getName();
+        if (name) keyEntry["name"] = name.getValue();
         auto mask = keyAttr.getMask();
         if (mask) keyEntry["mask"] = mask.getInt();
         key.push_back(std::move(keyEntry));

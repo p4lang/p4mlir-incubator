@@ -45,7 +45,7 @@ module {
 // CHECK:     next_tables #bmv2ir.hit_miss<hit @ingress::@t3_0 miss @ingress::@t2_0>
 // CHECK:     type  simple
 // CHECK:     match_type  exact
-// CHECK:     keys [#bmv2ir.table_key<type exact, header @Headers_data["r1"]>]
+// CHECK:     keys [#bmv2ir.table_key<type exact, header @Headers_data["r1"] name = "hdr.data.r1">]
 // CHECK:     support_timeout false
 // CHECK:     default_entry <action @ingress::@noop, action_const true, action_entry_const true>
 // CHECK:     size 1024
@@ -54,7 +54,7 @@ module {
 // CHECK:     next_tables [#bmv2ir.action_table<@ingress::@setb2 : @ingress::@t3_0>, #bmv2ir.action_table<@ingress::@noop_1 : @ingress::@t3_0>]
 // CHECK:     type  simple
 // CHECK:     match_type  exact
-// CHECK:     keys [#bmv2ir.table_key<type exact, header @Headers_data["r2"]>]
+// CHECK:     keys [#bmv2ir.table_key<type exact, header @Headers_data["r2"] name = "hdr.data.r2">]
 // CHECK:     support_timeout false
 // CHECK:     default_entry <action @ingress::@noop_1, action_const true, action_entry_const true>
 // CHECK:     size 1024
@@ -63,7 +63,7 @@ module {
 // CHECK:     next_tables [#bmv2ir.action_table<@ingress::@setb3>, #bmv2ir.action_table<@ingress::@noop_2>, #bmv2ir.action_table<@ingress::@NoAction_1>]
 // CHECK:     type  simple
 // CHECK:     match_type  exact
-// CHECK:     keys [#bmv2ir.table_key<type exact, header @Headers_data["b1"]>, #bmv2ir.table_key<type exact, header @Headers_data["b2"]>]
+// CHECK:     keys [#bmv2ir.table_key<type exact, header @Headers_data["b1"] name = "hdr.data.b1">, #bmv2ir.table_key<type exact, header @Headers_data["b2"] name = "hdr.data.b2">]
 // CHECK:     support_timeout false
 // CHECK:     default_entry <action @ingress::@NoAction_1, action_const true, action_entry_const true>
 // CHECK:     size 1024

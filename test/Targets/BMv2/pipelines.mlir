@@ -84,7 +84,7 @@ module {
      next_tables [#bmv2ir.action_table<@ingress::@set_vrf : @ingress::@ipv4_fib_0>, #bmv2ir.action_table<@ingress::@NoAction_3 : @ingress::@ipv4_fib_0>]
      type simple
      match_type exact
-     keys [#bmv2ir.table_key<type exact, header @ingress1["bd"]>]
+     keys [#bmv2ir.table_key<type exact, header @ingress1["bd"] name = "foo.bar">]
      support_timeout false
      default_entry <action @ingress::@NoAction_3,  action_const true, action_entry_const true>
      size 65536
@@ -181,6 +181,7 @@ module {
 // CHECK-NEXT:          "key": [
 // CHECK-NEXT:            {
 // CHECK-NEXT:              "match_type": "exact",
+// CHECK-NEXT:              "name": "foo.bar"
 // CHECK-NEXT:              "target": [
 // CHECK-NEXT:                "ingress1",
 // CHECK-NEXT:                "bd"

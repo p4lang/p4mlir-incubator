@@ -142,7 +142,7 @@ module {
 // CHECK-NEXT:     next_tables [#bmv2ir.action_table<@ingress::@set_vrf : @ingress::@ipv4_fib_0>, #bmv2ir.action_table<@ingress::@NoAction_3 : @ingress::@ipv4_fib_0>]
 // CHECK-NEXT:     type simple
 // CHECK-NEXT:     match_type exact
-// CHECK-NEXT:     keys [#bmv2ir.table_key<type exact, header @ingress1["bd"]>]
+// CHECK-NEXT:     keys [#bmv2ir.table_key<type exact, header @ingress1["bd"] name = "meta.ingress_metadata.bd">]
 // CHECK-NEXT:     support_timeout false
 // CHECK-NEXT:     default_entry <action @ingress::@NoAction_3, action_const true, action_entry_const true>
 // CHECK-NEXT:     size 65536
@@ -172,7 +172,7 @@ module {
 // CHECK-NEXT:     next_tables [#bmv2ir.action_table<@ingress::@on_miss_2 : @ingress::@ipv4_fib_lpm_0>, #bmv2ir.action_table<@ingress::@fib_hit_nexthop : @ingress::@nexthop_0>, #bmv2ir.action_table<@ingress::@NoAction_4 : @ingress::@nexthop_0>]
 // CHECK-NEXT:     type simple
 // CHECK-NEXT:     match_type exact
-// CHECK-NEXT:     keys [#bmv2ir.table_key<type exact, header @ingress1["vrf"]>, #bmv2ir.table_key<type exact, header @ingress0_ipv4["dstAddr"]>]
+// CHECK-NEXT:     keys [#bmv2ir.table_key<type exact, header @ingress1["vrf"] name = "meta.ingress_metadata.vrf">, #bmv2ir.table_key<type exact, header @ingress0_ipv4["dstAddr"] name = "hdr.ipv4.dstAddr">]
 // CHECK-NEXT:     support_timeout false
 // CHECK-NEXT:     default_entry <action @ingress::@NoAction_4, action_const true, action_entry_const true>
 // CHECK-NEXT:     size 131072
@@ -208,7 +208,7 @@ module {
 // CHECK-NEXT:     next_tables [#bmv2ir.action_table<@ingress::@on_miss_3 : @ingress::@nexthop_0>, #bmv2ir.action_table<@ingress::@fib_hit_nexthop_1 : @ingress::@nexthop_0>, #bmv2ir.action_table<@ingress::@NoAction_5 : @ingress::@nexthop_0>]
 // CHECK-NEXT:     type simple
 // CHECK-NEXT:     match_type lpm
-// CHECK-NEXT:     keys [#bmv2ir.table_key<type exact, header @ingress1["vrf"]>, #bmv2ir.table_key<type lpm, header @ingress0_ipv4["dstAddr"]>]
+// CHECK-NEXT:     keys [#bmv2ir.table_key<type exact, header @ingress1["vrf"] name = "meta.ingress_metadata.vrf">, #bmv2ir.table_key<type lpm, header @ingress0_ipv4["dstAddr"] name = "hdr.ipv4.dstAddr">]
 // CHECK-NEXT:     support_timeout false
 // CHECK-NEXT:     default_entry <action @ingress::@NoAction_5, action_const true, action_entry_const true>
 // CHECK-NEXT:     size 16384
@@ -244,7 +244,7 @@ module {
 // CHECK-NEXT:     next_tables [#bmv2ir.action_table<@ingress::@on_miss_4>, #bmv2ir.action_table<@ingress::@set_egress_details>, #bmv2ir.action_table<@ingress::@NoAction_6>]
 // CHECK-NEXT:     type simple
 // CHECK-NEXT:     match_type exact
-// CHECK-NEXT:     keys [#bmv2ir.table_key<type exact, header @ingress1["nexthop_index"]>]
+// CHECK-NEXT:     keys [#bmv2ir.table_key<type exact, header @ingress1["nexthop_index"] name = "meta.ingress_metadata.nexthop_index">]
 // CHECK-NEXT:     support_timeout false
 // CHECK-NEXT:     default_entry <action @ingress::@NoAction_6, action_const true, action_entry_const true>
 // CHECK-NEXT:     size 32768
@@ -276,7 +276,7 @@ module {
 // CHECK-NEXT:     next_tables [#bmv2ir.action_table<@ingress::@set_bd : @ingress::@bd_1>, #bmv2ir.action_table<@ingress::@NoAction_7 : @ingress::@bd_1>]
 // CHECK-NEXT:     type simple
 // CHECK-NEXT:     match_type exact
-// CHECK-NEXT:     keys [#bmv2ir.table_key<type exact, header @ingress2["ingress_port"]>]
+// CHECK-NEXT:     keys [#bmv2ir.table_key<type exact, header @ingress2["ingress_port"] name = "standard_metadata.ingress_port">]
 // CHECK-NEXT:     support_timeout false
 // CHECK-NEXT:     default_entry <action @ingress::@NoAction_7, action_const true, action_entry_const true>
 // CHECK-NEXT:     size 32768

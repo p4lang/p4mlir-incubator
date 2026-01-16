@@ -714,7 +714,8 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
                 if (!symRefOp) return matchOp.emitError("Expected SymToValueOp");
                 auto header = symRefOp.getDecl();
                 return BMv2IR::TableKeyAttr::get(matchOp.getContext(), maybeMatchKind.value(),
-                                                 header, fieldName, nullptr, nullptr);
+                                                 header, fieldName, nullptr,
+                                                 BMv2IR::getControlPlaneName(matchOp));
             })
             .Case([&](P4HIR::StructExtractOp extractOp) -> FailureOr<BMv2IR::TableKeyAttr> {
                 auto readOp = dyn_cast_or_null<P4HIR::ReadOp>(extractOp.getInput().getDefiningOp());
@@ -724,7 +725,8 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
                 auto fieldName = StringAttr::get(matchOp.getContext(), extractOp.getFieldName());
                 auto header = symRefOp.getDecl();
                 return BMv2IR::TableKeyAttr::get(matchOp.getContext(), maybeMatchKind.value(),
-                                                 header, fieldName, nullptr, nullptr);
+                                                 header, fieldName, nullptr,
+                                                 BMv2IR::getControlPlaneName(matchOp));
             })
             .Default([](Operation *op) {
                 return op->emitError("Unhandled operation when handling key entry");

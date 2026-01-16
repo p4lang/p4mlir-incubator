@@ -42,6 +42,12 @@ llvm::FailureOr<bool> isCalculationControl(P4HIR::ControlOp controlOp);
 // Returns true if the if op is checking the result of a table_apply for hit or miss
 bool isHitOrMissIf(mlir::Operation *op);
 
+// TODO: this shouldn't be in the BMv2IR namespace
+inline mlir::StringAttr getControlPlaneName(P4HIR::Annotated annotatedOp) {
+    auto name = annotatedOp.getAnnotation("name");
+    return dyn_cast_or_null<mlir::StringAttr>(name);
+}
+
 }  // namespace P4::P4MLIR::BMv2IR
 
 #endif  // P4MLIR_DIALECT_BMv2IR_BMv2IR_OPS_H

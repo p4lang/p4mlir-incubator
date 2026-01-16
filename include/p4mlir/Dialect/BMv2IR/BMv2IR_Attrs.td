@@ -100,7 +100,7 @@ def BMv2IR_TableKeyAttr : BMv2IR_Attr<"TableKey", "table_key"> {
 
   // TODO: add verifier, symbol ref should be a header, field should be valid withing the header
   let assemblyFormat = [{
-      `<` `type` $match_type `,` `header` $header (`[` $field_name^ `]`)? (`,` `mask` `=` $mask^)? (`,` `name` `=` $name^)? `>`
+      `<` `type` $match_type `,` `header` $header (`[` $field_name^ `]`)? (`mask` `=` $mask^)? (`name` `=` $name^)? `>`
   }];
 }
 
