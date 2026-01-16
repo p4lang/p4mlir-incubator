@@ -168,8 +168,8 @@ module {
 // CHECK-NEXT:            0
 // CHECK-NEXT:          ],
 // CHECK-NEXT:          "actions": [
-// CHECK-NEXT:            "set_vrf",
-// CHECK-NEXT:            "NoAction_3"
+// CHECK-NEXT:            "ingress.set_vrf",
+// CHECK-NEXT:            ".NoAction"
 // CHECK-NEXT:          ],
 // CHECK-NEXT:          "default_entry": {
 // CHECK-NEXT:            "action_const": true,
@@ -192,8 +192,8 @@ module {
 // CHECK-NEXT:          "max_size": 65536,
 // CHECK-NEXT:          "name": "bd_1",
 // CHECK-NEXT:          "next_tables": {
-// CHECK-NEXT:            "NoAction_3": "ipv4_fib_0",
-// CHECK-NEXT:            "set_vrf": "ipv4_fib_0"
+// CHECK-NEXT:            ".NoAction": "ipv4_fib_0",
+// CHECK-NEXT:            "ingress.set_vrf": "ipv4_fib_0"
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "support_timeout": false,
 // CHECK-NEXT:          "type": "simple"
@@ -205,9 +205,9 @@ module {
 // CHECK-NEXT:            1
 // CHECK-NEXT:          ],
 // CHECK-NEXT:          "actions": [
-// CHECK-NEXT:            "on_miss_2",
-// CHECK-NEXT:            "fib_hit_nexthop",
-// CHECK-NEXT:            "NoAction_4"
+// CHECK-NEXT:            "ingress.on_miss",
+// CHECK-NEXT:            "ingress.fib_hit_nexthop",
+// CHECK-NEXT:            ".NoAction"
 // CHECK-NEXT:          ],
 // CHECK-NEXT:          "default_entry": {
 // CHECK-NEXT:            "action_const": true,
@@ -236,9 +236,9 @@ module {
 // CHECK-NEXT:          "max_size": 131072,
 // CHECK-NEXT:          "name": "ipv4_fib_0",
 // CHECK-NEXT:          "next_tables": {
-// CHECK-NEXT:            "NoAction_4": "nexthop_0",
-// CHECK-NEXT:            "fib_hit_nexthop": "nexthop_0",
-// CHECK-NEXT:            "on_miss_2": "ipv4_fib_lpm_0"
+// CHECK-NEXT:            ".NoAction": "nexthop_0",
+// CHECK-NEXT:            "ingress.fib_hit_nexthop": "nexthop_0",
+// CHECK-NEXT:            "ingress.on_miss": "ipv4_fib_lpm_0"
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "support_timeout": false,
 // CHECK-NEXT:          "type": "simple"
@@ -250,9 +250,9 @@ module {
 // CHECK-NEXT:            2
 // CHECK-NEXT:          ],
 // CHECK-NEXT:          "actions": [
-// CHECK-NEXT:            "on_miss_3",
-// CHECK-NEXT:            "fib_hit_nexthop_1",
-// CHECK-NEXT:            "NoAction_5"
+// CHECK-NEXT:            "ingress.on_miss",
+// CHECK-NEXT:            "ingress.fib_hit_nexthop",
+// CHECK-NEXT:            ".NoAction"
 // CHECK-NEXT:          ],
 // CHECK-NEXT:          "default_entry": {
 // CHECK-NEXT:            "action_const": true,
@@ -281,9 +281,9 @@ module {
 // CHECK-NEXT:          "max_size": 16384,
 // CHECK-NEXT:          "name": "ipv4_fib_lpm_0",
 // CHECK-NEXT:          "next_tables": {
-// CHECK-NEXT:            "NoAction_5": "nexthop_0",
-// CHECK-NEXT:            "fib_hit_nexthop_1": "nexthop_0",
-// CHECK-NEXT:            "on_miss_3": "nexthop_0"
+// CHECK-NEXT:            ".NoAction": "nexthop_0",
+// CHECK-NEXT:            "ingress.fib_hit_nexthop": "nexthop_0",
+// CHECK-NEXT:            "ingress.on_miss": "nexthop_0"
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "support_timeout": false,
 // CHECK-NEXT:          "type": "simple"
@@ -295,9 +295,9 @@ module {
 // CHECK-NEXT:            3
 // CHECK-NEXT:          ],
 // CHECK-NEXT:          "actions": [
-// CHECK-NEXT:            "on_miss_4",
-// CHECK-NEXT:            "set_egress_details",
-// CHECK-NEXT:            "NoAction_6"
+// CHECK-NEXT:            "ingress.on_miss",
+// CHECK-NEXT:            "ingress.set_egress_details",
+// CHECK-NEXT:            ".NoAction"
 // CHECK-NEXT:          ],
 // CHECK-NEXT:          "default_entry": {
 // CHECK-NEXT:            "action_const": true,
@@ -319,9 +319,9 @@ module {
 // CHECK-NEXT:          "max_size": 32768,
 // CHECK-NEXT:          "name": "nexthop_0",
 // CHECK-NEXT:          "next_tables": {
-// CHECK-NEXT:            "NoAction_6": null,
-// CHECK-NEXT:            "on_miss_4": null,
-// CHECK-NEXT:            "set_egress_details": null
+// CHECK-NEXT:            ".NoAction": null,
+// CHECK-NEXT:            "ingress.on_miss": null,
+// CHECK-NEXT:            "ingress.set_egress_details": null
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "support_timeout": false,
 // CHECK-NEXT:          "type": "simple"
@@ -332,8 +332,8 @@ module {
 // CHECK-NEXT:            4
 // CHECK-NEXT:          ],
 // CHECK-NEXT:          "actions": [
-// CHECK-NEXT:            "set_bd",
-// CHECK-NEXT:            "NoAction_7"
+// CHECK-NEXT:            "ingress.set_bd",
+// CHECK-NEXT:            ".NoAction"
 // CHECK-NEXT:          ],
 // CHECK-NEXT:          "default_entry": {
 // CHECK-NEXT:            "action_const": true,
@@ -355,8 +355,8 @@ module {
 // CHECK-NEXT:          "max_size": 32768,
 // CHECK-NEXT:          "name": "port_mapping_0",
 // CHECK-NEXT:          "next_tables": {
-// CHECK-NEXT:            "NoAction_7": "bd_1",
-// CHECK-NEXT:            "set_bd": "bd_1"
+// CHECK-NEXT:            ".NoAction": "bd_1",
+// CHECK-NEXT:            "ingress.set_bd": "bd_1"
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "support_timeout": false,
 // CHECK-NEXT:          "type": "simple"

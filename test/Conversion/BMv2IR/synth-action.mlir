@@ -44,7 +44,7 @@ module {
   bmv2ir.header_instance @ingress0_eth_hdr : !p4hir.ref<!ethernet_t>
   bmv2ir.header_instance @ingress0_h : !p4hir.ref<!H>
   p4hir.control @ingress(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "h"}, %arg1: !p4hir.ref<!Meta> {p4hir.dir = #inout, p4hir.param_name = "m"}, %arg2: !p4hir.ref<!standard_metadata_t1> {p4hir.dir = #inout, p4hir.param_name = "sm"})() {
-// CHECK:           p4hir.func action @dummy_action_2() {
+// CHECK:           p4hir.func action @dummy_action_2() annotations {name = "dummy_action_2"} {
 // CHECK:             %[[VAL_0:.*]] = bmv2ir.symbol_ref @ingress0_eth_hdr : !p4hir.ref<!ethernet_t>
 // CHECK:             %[[VAL_1:.*]] = p4hir.struct_field_ref %[[VAL_0]]["src_addr"] : <!ethernet_t>
 // CHECK:             %[[VAL_2:.*]] = p4hir.const #[[$ATTR_1]]
@@ -52,7 +52,7 @@ module {
 // CHECK:             p4hir.return
 // CHECK:           }
 
-// CHECK:           p4hir.func action @dummy_action_1() {
+// CHECK:           p4hir.func action @dummy_action_1() annotations {name = "dummy_action_1"} {
 // CHECK:             %[[VAL_0:.*]] = bmv2ir.symbol_ref @ingress0_eth_hdr : !p4hir.ref<!ethernet_t>
 // CHECK:             %[[VAL_1:.*]] = p4hir.struct_field_ref %[[VAL_0]]["dst_addr"] : <!ethernet_t>
 // CHECK:             %[[VAL_2:.*]] = p4hir.const #[[$ATTR_1]]
@@ -67,7 +67,7 @@ module {
 // CHECK:             p4hir.return
 // CHECK:           }
 
-// CHECK:           p4hir.func action @dummy_action_0() {
+// CHECK:           p4hir.func action @dummy_action_0() annotations {name = "dummy_action_0"} {
 // CHECK:             %[[VAL_8:.*]] = bmv2ir.symbol_ref @ingress0_h : !p4hir.ref<!H>
 // CHECK:             %[[VAL_9:.*]] = p4hir.struct_field_ref %[[VAL_8]]["a"] : <!H>
 // CHECK:             %[[VAL_10:.*]] = p4hir.const #[[$ATTR_2]]

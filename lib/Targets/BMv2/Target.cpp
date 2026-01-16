@@ -49,6 +49,18 @@ int64_t getId(Operation *op) {
     return attr.getSInt();
 }
 
+StringRef getControlPlaneName(Operation *op) {
+    auto attr = BMv2IR::getControlPlaneName(cast<P4HIR::Annotated>(op));
+    assert(attr && "No control plane name");
+    return attr.getValue();
+}
+
+StringRef getControlPlaneName(SymbolRefAttr ref, ModuleOp moduleOp) {
+    auto defOp = SymbolTable::lookupSymbolIn(moduleOp, ref);
+    assert(defOp && "No defining operation");
+    return getControlPlaneName(defOp);
+}
+
 void setUniqueIDS(ModuleOp moduleOp) {
     setID<BMv2IR::HeaderInstanceOp>(moduleOp);
     setID<BMv2IR::ParserOp>(moduleOp);
@@ -270,13 +282,18 @@ json::Value to_JSON(BMv2IR::ParserOp parserOp) {
 
 json::Value actionToJSON(P4HIR::FuncOp actionOp) {
     json::Object res;
-    res["name"] = actionOp.getSymName();
+    res["name"] = getControlPlaneName(actionOp);
     res["id"] = getId(actionOp);
 
     json::Array params;
+    auto annotations = actionOp.getArgAttrs();
     for (auto arg : actionOp.getArguments()) {
+        // TODO: add helper for control plane arg name
+        auto ann = cast<DictionaryAttr>((*annotations)[arg.getArgNumber()]);
         json::Object paramDesc;
-        paramDesc["name"] = actionOp.getArgumentName(arg.getArgNumber()).getValue();
+        auto argAnnot = cast<DictionaryAttr>(ann.get(actionOp.getParamAnnotationAttrName()));
+        auto argName = cast<StringAttr>(argAnnot.get("name"));
+        paramDesc["name"] = argName.getValue();
         paramDesc["bitwidth"] = cast<P4HIR::BitsType>(arg.getType()).getWidth();
         params.push_back(std::move(paramDesc));
     }
@@ -353,7 +370,9 @@ json::Value to_JSON(BMv2IR::TableOp tableOp) {
     };
     for (auto attr : tableOp.getActions()) {
         auto actionRef = cast<SymbolRefAttr>(attr);
-        actions.emplace_back(actionRef.getLeafReference().getValue());
+        // TODO: we are doing to symbol table lookups in a row here, consider refactoring to do only
+        // one
+        actions.emplace_back(getControlPlaneName(actionRef, moduleOp));
         actionIds.push_back(getIdForAction(actionRef));
     }
     res["actions"] = std::move(actions);
@@ -363,7 +382,7 @@ json::Value to_JSON(BMv2IR::TableOp tableOp) {
     if (auto nextTablesArray = dyn_cast_or_null<ArrayAttr>(tableOp.getNextTables())) {
         for (auto attr : nextTablesArray) {
             auto actionTable = cast<BMv2IR::ActionTableAttr>(attr);
-            auto action = actionTable.getAction().getLeafReference().getValue();
+            auto action = getControlPlaneName(actionTable.getAction(), moduleOp);
             auto nextTableAttr = actionTable.getTable();
             auto table =
                 nextTableAttr ? nextTableAttr.getLeafReference().getValue() : json::Value(nullptr);

@@ -122,8 +122,8 @@ module {
 // CHECK:            1
 // CHECK:          ],
 // CHECK:          "actions": [
-// CHECK:            "setb1",
-// CHECK:            "noop"
+// CHECK:            "ingress.setb1",
+// CHECK:            "ingress.noop"
 // CHECK:          ],
 // CHECK:          "default_entry": {
 // CHECK:            "action_const": true,

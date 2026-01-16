@@ -148,8 +148,9 @@ struct SynthActionInControlApplyPattern : public OpRewritePattern<P4HIR::Control
             counter);
         auto fTy =
             P4HIR::FuncType::get(ArrayRef<Type>{}, P4HIR::VoidType::get(rewriter.getContext()));
-        auto newAction =
-            rewriter.create<P4HIR::FuncOp>(loc, rewriter.getStringAttr(uniqueName), fTy);
+        auto uniqueNameAttr = rewriter.getStringAttr(uniqueName);
+        auto newAction = rewriter.create<P4HIR::FuncOp>(loc, uniqueNameAttr, fTy);
+        newAction.setAnnotation("name", uniqueNameAttr);
         newAction.setAction(true);
         return newAction;
     }

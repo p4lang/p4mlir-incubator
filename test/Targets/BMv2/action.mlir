@@ -28,7 +28,7 @@ module {
 // CHECK: "actions": [
 // CHECK-NEXT:     {
 // CHECK-NEXT:       "id": 0,
-// CHECK-NEXT:       "name": "rewrite_src_dst_mac",
+// CHECK-NEXT:       "name": "egress.rewrite_src_dst_mac",
 // CHECK-NEXT:       "primitives": [
 // CHECK-NEXT:         {
 // CHECK-NEXT:           "op": "assign",
@@ -76,7 +76,7 @@ module {
 // CHECK-NEXT:     }
 // CHECK-NEXT:    {
 // CHECK-NEXT:      "id": 1,
-// CHECK-NEXT:      "name": "fib_hit_nexthop",
+// CHECK-NEXT:      "name": "ingress.fib_hit_nexthop",
 // CHECK-NEXT:      "primitives": [
 // CHECK-NEXT:        {
 // CHECK-NEXT:          "op": "assign",
@@ -127,7 +127,7 @@ module {
 // CHECK-NEXT:      "runtime_data": [
 // CHECK-NEXT:        {
 // CHECK-NEXT:          "bitwidth": 16,
-// CHECK-NEXT:          "name": "nexthop_index_1"
+// CHECK-NEXT:          "name": "nexthop_index"
 // CHECK-NEXT:        }
 // CHECK-NEXT:      ]
 // CHECK-NEXT:    }
