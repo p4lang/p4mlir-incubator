@@ -51,13 +51,12 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
 
     // Generate unique prefix for symbols
     unsigned counter = 0;
-    llvm::SmallString<256> prefixStorage;
-    llvm::StringRef prefix = SymbolTable::generateSymbolName<256>(
+    auto prefix = SymbolTable::generateSymbolName<256>(
         "_switch",
         [&](llvm::StringRef candidate) {
             return symbolTable.lookup(candidate) != nullptr;
         },
-        counter, prefixStorage);
+        counter);
 
     auto hiddenAttr = rewriter.getDictionaryAttr(
         {rewriter.getNamedAttr("hidden", rewriter.getUnitAttr())});
@@ -97,7 +96,7 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
 
     for (auto actionNameAttr : actionNameAttrs) {
         auto actionName = mlir::cast<StringAttr>(actionNameAttr);
-        auto funcOp = P4HIR::FuncOp::buildAction(rewriter, loc, actionName, funcType,
+        auto funcOp = P4HIR::FuncOp::buildAction(rewriter, loc, actionName.getValue(), funcType,
                                                  {}, hiddenAttr);
         IRRewriter::InsertionGuard guard(rewriter);
         rewriter.setInsertionPointToEnd(&funcOp.getBody().front());
@@ -201,7 +200,7 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
                 if (caseOp.getKind() == P4HIR::CaseOpKind::Default)
                     continue;
                 auto actionName = mlir::cast<StringAttr>(actionNameAttrs[caseIndex]);
-                auto enumMemberAttr = P4HIR::EnumFieldAttr::get(actionEnumType, actionName);
+                auto enumMemberAttr = P4HIR::EnumFieldAttr::get(actionEnumType, actionName.getValue());
                 switchBuilder.create<P4HIR::CaseOp>(
                     switchLoc, switchBuilder.getArrayAttr({enumMemberAttr}),
                     P4HIR::CaseOpKind::Equal,
@@ -215,7 +214,7 @@ LogicalResult SwitchEliminationPass::eliminateSwitch(P4HIR::ControlOp control,
             }
 
             if (defaultCase) {
-                auto enumMemberAttr = P4HIR::EnumFieldAttr::get(actionEnumType, defaultActionName);
+                auto enumMemberAttr = P4HIR::EnumFieldAttr::get(actionEnumType, defaultActionName.getValue());
                 switchBuilder.create<P4HIR::CaseOp>(
                     switchLoc, switchBuilder.getArrayAttr({enumMemberAttr}),
                     P4HIR::CaseOpKind::Default,
