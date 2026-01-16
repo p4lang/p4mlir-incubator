@@ -7,30 +7,78 @@
 #int16_b32i = #p4hir.int<16> : !b32i
 #int32_b32i = #p4hir.int<32> : !b32i
 
+// Test: Switch on arbitrary expression is transformed to table-based switch on action_run.
 // CHECK-LABEL: p4hir.control @c
 module {
   p4hir.control @c(%arg0: !p4hir.ref<!b32i> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "b"})() {
-    // CHECK: p4hir.func action @_switch{{.*}}_case_0() annotations {hidden}
-    // CHECK: p4hir.func action @_switch{{.*}}_case_1() annotations {hidden}
-    // CHECK: p4hir.func action @_switch{{.*}}_default() annotations {hidden}
+    // Verify action functions are created with hidden annotation.
+    // CHECK-DAG: p4hir.func action @[[CASE_0:_switch[0-9]*_case_0]]() annotations {hidden} {
+    // CHECK-DAG:   p4hir.return
+    // CHECK-DAG: }
+    // CHECK-DAG: p4hir.func action @[[CASE_1:_switch[0-9]*_case_1]]() annotations {hidden} {
+    // CHECK-DAG:   p4hir.return
+    // CHECK-DAG: }
+    // CHECK-DAG: p4hir.func action @[[DEFAULT:_switch[0-9]*_default]]() annotations {hidden} {
+    // CHECK-DAG:   p4hir.return
+    // CHECK-DAG: }
 
-    // CHECK: p4hir.table @_switch{{.*}}_table annotations {hidden}
-    // CHECK: p4hir.table_key
-    // CHECK: p4hir.match_key #exact
-    // CHECK: p4hir.table_actions
-    // CHECK: p4hir.table_action @_switch{{.*}}_case_0
-    // CHECK: p4hir.table_action @_switch{{.*}}_case_1
-    // CHECK: p4hir.table_default_action
-    // CHECK: p4hir.table_entries const
+    // Verify table structure with key, actions, default, and entries.
+    // CHECK: p4hir.table @[[TABLE:_switch[0-9]*_table]] annotations {hidden} {
+    // CHECK:   p4hir.table_key
+    // CHECK:     p4hir.match_key #exact
+    // CHECK:   p4hir.table_actions {
+    // CHECK:     p4hir.table_action @[[CASE_0]]() {
+    // CHECK:       p4hir.call @c::@[[CASE_0]] () : () -> ()
+    // CHECK:     }
+    // CHECK:     p4hir.table_action @[[CASE_1]]() {
+    // CHECK:       p4hir.call @c::@[[CASE_1]] () : () -> ()
+    // CHECK:     }
+    // CHECK:     p4hir.table_action @[[DEFAULT]]() {
+    // CHECK:       p4hir.call @c::@[[DEFAULT]] () : () -> ()
+    // CHECK:     }
+    // CHECK:   }
+    // CHECK:   p4hir.table_default_action {
+    // CHECK:     p4hir.call @c::@[[DEFAULT]] () : () -> ()
+    // CHECK:   }
+    // CHECK:   p4hir.table_entries const {
+    // CHECK:     p4hir.table_entry(#p4hir.agg<tuple<!b32i>, [#int16_b32i]> : tuple<!b32i>) {
+    // CHECK:       p4hir.call @c::@[[CASE_0]] () : () -> ()
+    // CHECK:     }
+    // CHECK:     p4hir.table_entry(#p4hir.agg<tuple<!b32i>, [#int32_b32i]> : tuple<!b32i>) {
+    // CHECK:       p4hir.call @c::@[[CASE_0]] () : () -> ()
+    // CHECK:     }
+    // CHECK:     p4hir.table_entry(#p4hir.agg<tuple<!b32i>, [#int2_b32i]> : tuple<!b32i>) {
+    // CHECK:       p4hir.call @c::@[[CASE_1]] () : () -> ()
+    // CHECK:     }
+    // CHECK:   }
+    // CHECK: }
 
+    // Verify table is applied directly with the condition (no intermediate variable).
+    // CHECK: p4hir.control_apply {
+    // CHECK:   %[[VAL:.*]] = p4hir.read %arg0 : <!b32i>
+    // CHECK-NEXT: %[[APPLY:.*]] = p4hir.table_apply @c::@[[TABLE]] with key{{.*}}%[[VAL]]
+    // CHECK:   %[[ACTION_RUN:.*]] = p4hir.struct_extract %[[APPLY]]["action_run"]
+    // CHECK:   p4hir.switch (%[[ACTION_RUN]]
+    // CHECK:     p4hir.case(equal, [#p4hir.enum_field<[[CASE_0]]{{.*}}])
+    // CHECK:       %[[CONST_1:.*]] = p4hir.const #int1_b32i
+    // CHECK:       p4hir.assign %[[CONST_1]], %arg0 : <!b32i>
+    // CHECK:       p4hir.yield
+    // CHECK:     }
+    // CHECK:     p4hir.case(equal, [#p4hir.enum_field<[[CASE_1]]{{.*}}])
+    // CHECK:       %[[CONST_2:.*]] = p4hir.const #int2_b32i
+    // CHECK:       p4hir.assign %[[CONST_2]], %arg0 : <!b32i>
+    // CHECK:       p4hir.yield
+    // CHECK:     }
+    // CHECK:     p4hir.case(default
+    // CHECK:       %[[CONST_3:.*]] = p4hir.const #int3_b32i
+    // CHECK:       p4hir.assign %[[CONST_3]], %arg0 : <!b32i>
+    // CHECK:       p4hir.yield
+    // CHECK:     }
+    // CHECK:     p4hir.yield
+    // CHECK:   }
+    // CHECK: }
     p4hir.control_apply {
       %val = p4hir.read %arg0 : <!b32i>
-      // CHECK: %{{.*}} = p4hir.variable ["_switch{{.*}}_key"] annotations {hidden}
-      // CHECK: p4hir.assign %{{.*}}, %{{.*}} : <!b32i>
-      // CHECK: %{{.*}} = p4hir.read %{{.*}} : <!b32i>
-      // CHECK: %{{.*}} = p4hir.table_apply @c::@_switch{{.*}}_table with key
-      // CHECK: %{{.*}} = p4hir.struct_extract %{{.*}}["action_run"]
-      // CHECK: p4hir.switch (%{{.*}}
       p4hir.switch (%val : !b32i) {
         p4hir.case(anyof, [#int16_b32i, #int32_b32i]) {
           %c1_b32i = p4hir.const #int1_b32i
@@ -55,13 +103,8 @@ module {
 
 // -----
 
-// This test checks that switches which are already on action_run (i.e., produced
-// by the translator from code like `switch (t.apply().action_run)`) are NOT
-// transformed again by the switch-elimination pass.
-//
-// The shape below is inspired by existing tests such as
-//   - test/Translate/Ops/switch-action-run.p4
-//   - test/Transforms/Passes/InlineControls/inline-6.mlir
+// Test: Switches which are already on action_run (from `switch (t.apply().action_run)`)
+// are NOT transformed again by the switch-elimination pass.
 //
 // CHECK-LABEL: p4hir.control @c_action_run
 !anon = !p4hir.enum<a1, a2>
@@ -70,7 +113,21 @@ module {
 
 module {
   p4hir.control @c_action_run()() {
-    // Pre-existing table that already follows the action_run pattern.
+    // The table should remain unchanged - no new tables created.
+    // CHECK: p4hir.table @t {
+    // CHECK:   p4hir.table_actions {
+    // CHECK:     p4hir.table_action @a1() {
+    // CHECK:       p4hir.call @c_action_run::@a1 () : () -> ()
+    // CHECK:     }
+    // CHECK:     p4hir.table_action @a2() {
+    // CHECK:       p4hir.call @c_action_run::@a2 () : () -> ()
+    // CHECK:     }
+    // CHECK:   }
+    // CHECK:   p4hir.table_default_action {
+    // CHECK:     p4hir.call @c_action_run::@a1 () : () -> ()
+    // CHECK:   }
+    // CHECK: }
+    // CHECK-NOT: p4hir.table @_switch
     p4hir.table @t {
       p4hir.table_actions {
         p4hir.table_action @a1() {
@@ -92,10 +149,20 @@ module {
       p4hir.return
     }
 
-    // CHECK: p4hir.control_apply
-    // CHECK: %[[APPLY:.*]] = p4hir.table_apply @c_action_run::@t with key
-    // CHECK: %[[AR:.*]] = p4hir.struct_extract %[[APPLY]]["action_run"]
-    // CHECK: p4hir.switch (%[[AR]]
+    // The switch on action_run should remain unchanged.
+    // CHECK: p4hir.control_apply {
+    // CHECK:   %[[APPLY:.*]] = p4hir.table_apply @c_action_run::@t with key()
+    // CHECK:   %[[AR:.*]] = p4hir.struct_extract %[[APPLY]]["action_run"]
+    // CHECK:   p4hir.switch (%[[AR]] : !anon) {
+    // CHECK:     p4hir.case(equal, [#anon_a1]) {
+    // CHECK:       p4hir.yield
+    // CHECK:     }
+    // CHECK:     p4hir.case(default, []) {
+    // CHECK:       p4hir.yield
+    // CHECK:     }
+    // CHECK:     p4hir.yield
+    // CHECK:   }
+    // CHECK: }
     p4hir.control_apply {
       %t_apply_result = p4hir.table_apply @c_action_run::@t with key()
         : () -> !t
