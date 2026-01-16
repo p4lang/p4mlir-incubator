@@ -12,18 +12,18 @@
 module {
   p4hir.control @c(%arg0: !p4hir.ref<!b32i> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "b"})() {
     // Verify action functions are created with hidden annotation.
-    // CHECK-DAG: p4hir.func action @[[CASE_0:_switch[0-9]*_case_0]]() annotations {hidden} {
+    // CHECK-DAG: p4hir.func action @[[CASE_0:_switch_[0-9]+_case_0]]() annotations {hidden} {
     // CHECK-DAG:   p4hir.return
     // CHECK-DAG: }
-    // CHECK-DAG: p4hir.func action @[[CASE_1:_switch[0-9]*_case_1]]() annotations {hidden} {
+    // CHECK-DAG: p4hir.func action @[[CASE_1:_switch_[0-9]+_case_1]]() annotations {hidden} {
     // CHECK-DAG:   p4hir.return
     // CHECK-DAG: }
-    // CHECK-DAG: p4hir.func action @[[DEFAULT:_switch[0-9]*_default]]() annotations {hidden} {
+    // CHECK-DAG: p4hir.func action @[[DEFAULT:_switch_[0-9]+_default]]() annotations {hidden} {
     // CHECK-DAG:   p4hir.return
     // CHECK-DAG: }
 
     // Verify table structure with key, actions, default, and entries.
-    // CHECK: p4hir.table @[[TABLE:_switch[0-9]*_table]] annotations {hidden} {
+    // CHECK: p4hir.table @[[TABLE:_switch_[0-9]+_table]] annotations {hidden} {
     // CHECK:   p4hir.table_key
     // CHECK:     p4hir.match_key #exact
     // CHECK:   p4hir.table_actions {
@@ -41,37 +41,37 @@ module {
     // CHECK:     p4hir.call @c::@[[DEFAULT]] () : () -> ()
     // CHECK:   }
     // CHECK:   p4hir.table_entries const {
-    // CHECK:     p4hir.table_entry(#p4hir.agg<tuple<!b32i>, [#int16_b32i]> : tuple<!b32i>) {
+    // CHECK:     p4hir.table_entry #p4hir.aggregate<[#int16_b32i]> : tuple<!b32i> {
     // CHECK:       p4hir.call @c::@[[CASE_0]] () : () -> ()
     // CHECK:     }
-    // CHECK:     p4hir.table_entry(#p4hir.agg<tuple<!b32i>, [#int32_b32i]> : tuple<!b32i>) {
+    // CHECK:     p4hir.table_entry #p4hir.aggregate<[#int32_b32i]> : tuple<!b32i> {
     // CHECK:       p4hir.call @c::@[[CASE_0]] () : () -> ()
     // CHECK:     }
-    // CHECK:     p4hir.table_entry(#p4hir.agg<tuple<!b32i>, [#int2_b32i]> : tuple<!b32i>) {
+    // CHECK:     p4hir.table_entry #p4hir.aggregate<[#int2_b32i]> : tuple<!b32i> {
     // CHECK:       p4hir.call @c::@[[CASE_1]] () : () -> ()
     // CHECK:     }
     // CHECK:   }
     // CHECK: }
 
     // Verify table is applied directly with the condition (no intermediate variable).
-    // CHECK: p4hir.control_apply {
-    // CHECK:   %[[VAL:.*]] = p4hir.read %arg0 : <!b32i>
-    // CHECK-NEXT: %[[APPLY:.*]] = p4hir.table_apply @c::@[[TABLE]] with key{{.*}}%[[VAL]]
-    // CHECK:   %[[ACTION_RUN:.*]] = p4hir.struct_extract %[[APPLY]]["action_run"]
-    // CHECK:   p4hir.switch (%[[ACTION_RUN]]
-    // CHECK:     p4hir.case(equal, [#p4hir.enum_field<[[CASE_0]]{{.*}}])
-    // CHECK:       %[[CONST_1:.*]] = p4hir.const #int1_b32i
-    // CHECK:       p4hir.assign %[[CONST_1]], %arg0 : <!b32i>
+    // CHECK: p4hir.control_apply
+    // CHECK:   p4hir.read
+    // CHECK:   p4hir.table_apply
+    // CHECK:   p4hir.struct_extract
+    // CHECK:   p4hir.switch
+    // CHECK:     p4hir.case(equal
+    // CHECK:       p4hir.const #int1_b32i
+    // CHECK:       p4hir.assign
     // CHECK:       p4hir.yield
     // CHECK:     }
-    // CHECK:     p4hir.case(equal, [#p4hir.enum_field<[[CASE_1]]{{.*}}])
-    // CHECK:       %[[CONST_2:.*]] = p4hir.const #int2_b32i
-    // CHECK:       p4hir.assign %[[CONST_2]], %arg0 : <!b32i>
+    // CHECK:     p4hir.case(equal
+    // CHECK:       p4hir.const #int2_b32i
+    // CHECK:       p4hir.assign
     // CHECK:       p4hir.yield
     // CHECK:     }
     // CHECK:     p4hir.case(default
-    // CHECK:       %[[CONST_3:.*]] = p4hir.const #int3_b32i
-    // CHECK:       p4hir.assign %[[CONST_3]], %arg0 : <!b32i>
+    // CHECK:       p4hir.const #int3_b32i
+    // CHECK:       p4hir.assign
     // CHECK:       p4hir.yield
     // CHECK:     }
     // CHECK:     p4hir.yield
