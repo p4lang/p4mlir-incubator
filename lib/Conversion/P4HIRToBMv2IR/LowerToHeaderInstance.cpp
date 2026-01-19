@@ -69,17 +69,23 @@ using InstanceConversionContext =
 // Map used for raw headers in control/parser args
 using HeaderConversionContext = llvm::DenseMap<P4HIR::HeaderType, BMv2IR::HeaderInstanceOp>;
 
+struct StructUses {
+    // FieldRefs accessessing header fields
+    SmallVector<Operation *> fieldRefs;
+    // FieldRefs accessing bit fields
+    SmallVector<Operation *> bitRefs;
+};
+
 LogicalResult handleFieldAccess(StringRef name, Operation *op, P4HIR::StructType structTy,
-                                SmallVector<Operation *> &fieldRefs,
-                                SmallVector<Operation *> &bitRefs) {
+                                StructUses &structUses) {
     auto fieldTy = structTy.getFieldType(name);
     return llvm::TypeSwitch<Type, LogicalResult>(fieldTy)
         .Case([&](P4HIR::HeaderType) {
-            fieldRefs.push_back(op);
+            structUses.fieldRefs.push_back(op);
             return success();
         })
         .Case<P4HIR::BitsType, P4HIR::VarBitsType>([&](mlir::Type) {
-            bitRefs.push_back(op);
+            structUses.bitRefs.push_back(op);
             return success();
         })
         .Default([&](Type) { return op->emitError("Unsupported field access"); });
@@ -87,25 +93,21 @@ LogicalResult handleFieldAccess(StringRef name, Operation *op, P4HIR::StructType
     return success();
 };
 
-LogicalResult handleStructUse(OpOperand &use, P4HIR::StructType structTy,
-                              SmallVector<Operation *> &fieldRefs,
-                              SmallVector<Operation *> &bitRefs,
+LogicalResult handleStructUse(OpOperand &use, P4HIR::StructType structTy, StructUses &structUses,
                               SmallVector<Operation *> &eraseList) {
     return llvm::TypeSwitch<Operation *, LogicalResult>(use.getOwner())
         .Case([&](P4HIR::StructFieldRefOp fieldRefOp) {
-            return handleFieldAccess(fieldRefOp.getFieldName(), fieldRefOp, structTy, fieldRefs,
-                                     bitRefs);
+            return handleFieldAccess(fieldRefOp.getFieldName(), fieldRefOp, structTy, structUses);
         })
         .Case([&](P4HIR::StructExtractOp extractOp) {
-            return handleFieldAccess(extractOp.getFieldName(), extractOp, structTy, fieldRefs,
-                                     bitRefs);
+            return handleFieldAccess(extractOp.getFieldName(), extractOp, structTy, structUses);
         })
         .Case([&](P4HIR::ReadOp readOp) -> LogicalResult {
             for (auto readUser : readOp.getResult().getUsers()) {
                 auto extract = dyn_cast<P4HIR::StructExtractOp>(readUser);
                 if (!extract) return readUser->emitError("Unsupported read use");
-                if (failed(handleFieldAccess(extract.getFieldName(), extract, structTy, fieldRefs,
-                                             bitRefs)))
+                if (failed(
+                        handleFieldAccess(extract.getFieldName(), extract, structTy, structUses)))
                     return failure();
             }
             // Explicitly remove readOp to avoid unrealized_casts
@@ -130,7 +132,7 @@ LogicalResult handleStructUse(OpOperand &use, P4HIR::StructType structTy,
             if (!tableKey) return tableApplyOp->emitError("No table key");
             auto blockArg = tableKey.getBody().getArgument(argIndex);
             for (auto &use : blockArg.getUses()) {
-                if (failed(handleStructUse(use, structTy, fieldRefs, bitRefs, eraseList)))
+                if (failed(handleStructUse(use, structTy, structUses, eraseList)))
                     return tableKey->emitError("Error processing block argument at index ")
                            << argIndex;
             }
@@ -140,20 +142,18 @@ LogicalResult handleStructUse(OpOperand &use, P4HIR::StructType structTy,
     return success();
 }
 
-FailureOr<std::pair<SmallVector<Operation *>, SmallVector<Operation *>>> findFieldRefs(
-    P4HIR::ControlLocalOp controlLocal, P4HIR::StructType structTy,
-    SmallVector<Operation *> &eraseList) {
+FailureOr<StructUses> findFieldRefs(P4HIR::ControlLocalOp controlLocal, P4HIR::StructType structTy,
+                                    SmallVector<Operation *> &eraseList) {
     auto parent = controlLocal->getParentOfType<P4HIR::ControlOp>();
     auto moduleOp = controlLocal->getParentOfType<ModuleOp>();
     if (!parent || !moduleOp) return {};
-    SmallVector<Operation *> fieldRefs;
-    SmallVector<Operation *> bitRefs;
+    StructUses structUses;
     auto walkRes = parent->walk([&](P4HIR::SymToValueOp symRef) {
         auto decl = symRef.getDecl();
         auto op = mlir::SymbolTable::lookupSymbolIn(moduleOp, decl);
         if (op == controlLocal.getOperation()) {
             for (auto &use : symRef->getUses()) {
-                if (failed(handleStructUse(use, structTy, fieldRefs, bitRefs, eraseList)))
+                if (failed(handleStructUse(use, structTy, structUses, eraseList)))
                     return WalkResult::interrupt();
             }
         }
@@ -161,7 +161,7 @@ FailureOr<std::pair<SmallVector<Operation *>, SmallVector<Operation *>>> findFie
     });
     if (walkRes.wasInterrupted()) return failure();
 
-    return {{fieldRefs, bitRefs}};
+    return structUses;
 }
 
 // Adds instances from a StructType, splitting the struct to create separate instances for
@@ -203,8 +203,7 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
         return instanceOp;
     };
 
-    SmallVector<Operation *> fieldRefs;  // FieldRefs accessessing header fields
-    SmallVector<Operation *> bitRefs;    // FieldRefs accessing bit fields
+    StructUses structUses;
     SmallVector<Operation *> eraseList;
     P4HIR::ControlLocalOp controlLocal = nullptr;
 
@@ -218,7 +217,7 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
             controlLocal = cLocal;
             continue;
         }
-        if (failed(handleStructUse(use, structTy, fieldRefs, bitRefs, eraseList))) return failure();
+        if (failed(handleStructUse(use, structTy, structUses, eraseList))) return failure();
     }
 
     // Add uses coming from ControlLocalOp
@@ -226,13 +225,13 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
         const auto maybeRefs = findFieldRefs(controlLocal, structTy, eraseList);
         if (failed(maybeRefs))
             return controlLocal->emitError("Error while processing control local op");
-        auto [fRefs, bRefs] = maybeRefs.value();
-        for (auto op : fRefs) fieldRefs.push_back(op);
-        for (auto op : bRefs) bitRefs.push_back(op);
+        auto controlLocalUses = maybeRefs.value();
+        for (auto op : controlLocalUses.fieldRefs) structUses.fieldRefs.push_back(op);
+        for (auto op : controlLocalUses.bitRefs) structUses.bitRefs.push_back(op);
     }
 
     // Add HeaderInstanceOps for StructFieldRefOps that reference header fields
-    for (auto op : fieldRefs) {
+    for (auto op : structUses.fieldRefs) {
         StringRef name =
             llvm::TypeSwitch<Operation *, StringRef>(op)
                 .Case([](P4HIR::StructFieldRefOp fieldRefOp) { return fieldRefOp.getFieldName(); })
@@ -250,7 +249,7 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
         rewriter.replaceOp(op, newOp->getResult(0));
     }
 
-    if (bitRefs.empty()) {
+    if (structUses.bitRefs.empty()) {
         for (auto op : eraseList) rewriter.eraseOp(op);
         return success();
     }
@@ -284,7 +283,7 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
     auto newTy = P4HIR::StructType::get(rewriter.getContext(), structTy.getName(), bitFields,
                                         structTy.getAnnotations());
     auto newInstance = getOrInsertInstance(newTy, newTy.getName(), true);
-    for (auto op : bitRefs) {
+    for (auto op : structUses.bitRefs) {
         StringRef name =
             llvm::TypeSwitch<Operation *, StringRef>(op)
                 .Case([](P4HIR::StructFieldRefOp fieldRefOp) { return fieldRefOp.getFieldName(); })
@@ -424,6 +423,42 @@ LogicalResult addInstanceForHeader(BlockArgument arg, P4HIR::HeaderType headerTy
     return success();
 }
 
+struct AssignBreakdownPattern : public OpRewritePattern<P4HIR::AssignOp> {
+    using OpRewritePattern<P4HIR::AssignOp>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(P4HIR::AssignOp assignOp,
+                                        mlir::PatternRewriter &rewriter) const override {
+        auto loc = assignOp.getLoc();
+        auto ref = assignOp.getRef();
+        auto val = assignOp.getValue();
+        auto valTy = val.getType();
+        if (!isStructWithHeaders(valTy)) return failure();
+        auto structTy = cast<P4HIR::StructType>(valTy);
+        if (llvm::any_of(structTy.getFields(),
+                         [](P4HIR::FieldInfo info) { return isa<P4HIR::BitsType>(info.type); }))
+            return assignOp.emitError("Bit fields not supported");
+        for (auto field : structTy.getFields()) {
+            auto fieldRef = rewriter.create<P4HIR::StructFieldRefOp>(loc, ref, field.name);
+            auto fieldVal = rewriter.create<P4HIR::StructExtractOp>(loc, val, field.name);
+            rewriter.create<P4HIR::AssignOp>(loc, fieldVal, fieldRef);
+        }
+        rewriter.eraseOp(assignOp);
+
+        return mlir::success();
+    }
+
+    static bool isStructWithHeaders(Type ty) {
+        auto refTy = dyn_cast<P4HIR::ReferenceType>(ty);
+        auto typeToProcess = ty;
+        if (refTy) typeToProcess = refTy.getObjectType();
+        auto structTy = dyn_cast<P4HIR::StructType>(ty);
+        if (!structTy) return false;
+        return llvm::any_of(structTy.getFields(), [](P4HIR::FieldInfo info) {
+            return isa<P4HIR::HeaderType>(info.type);
+        });
+    }
+};
+
 struct ParserOpPattern : public OpRewritePattern<P4HIR::ParserOp> {
     ParserOpPattern(MLIRContext *context, InstanceConversionContext *instances,
                     HeaderConversionContext *instancesFromHeaderArgs)
@@ -541,6 +576,15 @@ struct LowerToHeaderInstancePass
     : public P4::P4MLIR::impl::LowerToHeaderInstanceBase<LowerToHeaderInstancePass> {
     void runOnOperation() override {
         auto &context = getContext();
+        // First we break down Assign ops that work on full structs into assigns on the fields
+        {
+            RewritePatternSet patterns(&context);
+            ConversionTarget target(context);
+            patterns.add<AssignBreakdownPattern>(&context);
+
+            if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
+                signalPassFailure();
+        }
         RewritePatternSet patterns(&context);
         ConversionTarget target(context);
         target.addLegalDialect<BMv2IR::BMv2IRDialect>();

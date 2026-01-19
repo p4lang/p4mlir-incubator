@@ -204,6 +204,7 @@ module {
 #exact = #p4hir.match_kind<"exact">
 #int32768_infint = #p4hir.int<32768> : !infint
 #int-1_b8i = #p4hir.int<255> : !b8i
+#int1_b12i = #p4hir.int<1> : !b12i
 module {
 // CHECK: bmv2ir.header_instance @ingress_metadata_t : !p4hir.ref<!ingress_metadata_t>
 // CHECK: bmv2ir.header_instance @headers_ethernet : !p4hir.ref<!ethernet_t>
@@ -234,6 +235,8 @@ module {
       p4hir.assign %arg4, %dstAddr_field_ref : <!b48i>
       %__local_egress_meta_0 = p4hir.symbol_ref @egress::@__local_egress_meta_0 : !p4hir.ref<!ingress_metadata_t>
       %vrf_ref = p4hir.struct_field_ref %__local_egress_meta_0["vrf"] : <!ingress_metadata_t>
+      %const = p4hir.const #int1_b12i
+      p4hir.assign %const, %vrf_ref : <!b12i>
 // CHECK: %[[REF2:.*]] = bmv2ir.symbol_ref @ingress_metadata_t : !p4hir.ref<!ingress_metadata_t>
 // CHECK: %{{.*}} = p4hir.struct_field_ref %[[REF2]]["vrf"] : <!ingress_metadata_t>
       p4hir.return
@@ -325,6 +328,7 @@ module {
     p4hir.state @start {
 // CHECK:  bmv2ir.symbol_ref @headers_ethernet : !p4hir.ref<!ethernet_t>
       %ethernet_field_ref = p4hir.struct_field_ref %arg1["ethernet"] : <!headers>
+      p4corelib.extract_header %ethernet_field_ref : <!ethernet_t> from %arg0 : !p4corelib.packet_in
       p4hir.transition to @prs::@accept
     }
     p4hir.state @accept {
@@ -448,3 +452,32 @@ module {
   bmv2ir.v1switch @main parser @p, verify_checksum @verifyChecksum, ingress @c, egress @egress, compute_checksum @computeChecksum, deparser @deparser
 }
 
+// -----
+
+// Check that we break down assigns of whole structs with header fields
+!b8i = !p4hir.bit<8>
+!b9i = !p4hir.bit<9>
+!validity_bit = !p4hir.validity.bit
+!header_one = !p4hir.header<"header_one", skip: !b8i, __valid: !validity_bit>
+!header_two = !p4hir.header<"header_two", skip: !b8i, __valid: !validity_bit>
+!headers = !p4hir.struct<"headers", h1: !header_one, h2: !header_two>
+module {
+  // CHECK:  bmv2ir.header_instance @top_0_h1 : !p4hir.ref<!header_one>
+  // CHECK:  bmv2ir.header_instance @top_0_h2 : !p4hir.ref<!header_two>
+  // CHECK:  bmv2ir.header_instance @headers_h1 : !p4hir.ref<!header_one>
+  // CHECK:  bmv2ir.header_instance @headers_h2 : !p4hir.ref<!header_two>
+    p4hir.parser @prs_only_bit(%arg0: !p4corelib.packet_in {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "p"}, %arg1: !p4hir.ref<!headers> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "headers"})() {
+    %var = p4hir.variable ["top_0"] annotations {name = "ParserImpl.e"} : <!headers>
+    p4hir.state @start {
+      %val = p4hir.read %arg1 : <!headers>
+      p4hir.assign %val, %var : <!headers>
+      // CHECK: p4hir.assign {{.*}} : <!header_one>
+      // CHECK: p4hir.assign {{.*}} : <!header_two>
+      p4hir.transition to @prs_only_bit::@accept
+    }
+    p4hir.state @accept {
+      p4hir.parser_accept
+    }
+    p4hir.transition to @prs_only_bit::@start
+  }
+}
