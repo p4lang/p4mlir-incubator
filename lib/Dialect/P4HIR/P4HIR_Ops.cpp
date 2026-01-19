@@ -4317,8 +4317,11 @@ struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
     using DialectInlinerInterface::DialectInlinerInterface;
 
     bool isLegalToInline(Operation *call, Operation *callable, bool wouldBeCloned) const final {
+        auto tableAction = call->getParentOfType<P4HIR::TableActionOp>();
+        auto tableDefaultAction = call->getParentOfType<P4HIR::TableDefaultActionOp>();
         if (mlir::isa<P4HIR::CallOp>(call) &&
-            mlir::isa<P4HIR::FuncOp, P4HIR::OverloadSetOp>(callable))
+            mlir::isa<P4HIR::FuncOp, P4HIR::OverloadSetOp>(callable) &&
+            !(tableAction || tableDefaultAction))
             return true;
 
         return false;
