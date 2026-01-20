@@ -1010,17 +1010,25 @@ struct DeparserConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         if (!isDeparser.value()) return failure();
         SmallVector<Attribute> headersRef;
         auto walkRes = op.walk([&](P4CoreLib::PacketEmitOp emitOp) {
-            auto readOp = emitOp.getHdr().getDefiningOp<P4HIR::ReadOp>();
-            if (!readOp) {
-                emitOp.emitError("Expected header to come from a ReadOp");
+            auto defOp = emitOp.getHdr().getDefiningOp();
+            if (!defOp) {
+                emitOp.emitError("Expected defining op for emit header");
                 return WalkResult::interrupt();
             }
-            auto symRefOp = readOp.getRef().getDefiningOp<BMv2IR::SymToValueOp>();
-            if (!symRefOp) {
-                readOp.emitError("Expected SymToValueOp");
-                return WalkResult::interrupt();
-            }
-            headersRef.push_back(symRefOp.getDecl());
+            auto ref = llvm::TypeSwitch<Operation *, FailureOr<SymbolRefAttr>>(defOp)
+                           .Case([&](P4HIR::ReadOp readOp) -> FailureOr<SymbolRefAttr> {
+                               auto symRefOp =
+                                   readOp.getRef().getDefiningOp<BMv2IR::SymToValueOp>();
+                               if (!symRefOp) {
+                                   return readOp.emitError("Expected symref op");
+                               }
+                               return symRefOp.getDecl();
+                           })
+                           .Default([](Operation *op) {
+                               return op->emitError("Unsupported op for emit header");
+                           });
+            if (failed(ref)) return WalkResult::interrupt();
+            headersRef.push_back(ref.value());
             return WalkResult::advance();
         });
         if (walkRes.wasInterrupted()) return failure();

@@ -481,3 +481,57 @@ module {
     p4hir.transition to @prs_only_bit::@start
   }
 }
+
+// -----
+
+!Meta = !p4hir.struct<"Meta">
+!b16i = !p4hir.bit<16>
+!b19i = !p4hir.bit<19>
+!b1i = !p4hir.bit<1>
+!b32i = !p4hir.bit<32>
+!b3i = !p4hir.bit<3>
+!b48i = !p4hir.bit<48>
+!b8i = !p4hir.bit<8>
+!b9i = !p4hir.bit<9>
+!error = !p4hir.error<NoError, PacketTooShort, NoMatch, StackOutOfBounds, HeaderTooShort, ParserTimeout, ParserInvalidArgument>
+!string = !p4hir.string
+!type_H = !p4hir.type_var<"H">
+!type_M = !p4hir.type_var<"M">
+!validity_bit = !p4hir.validity.bit
+#in = #p4hir<dir in>
+#inout = #p4hir<dir inout>
+#out = #p4hir<dir out>
+#undir = #p4hir<dir undir>
+!H1 = !p4hir.header<"H1", a: !b8i, __valid: !validity_bit>
+!H2 = !p4hir.header<"H2", b: !b16i, __valid: !validity_bit>
+!ethernet_t = !p4hir.header<"ethernet_t", dst_addr: !b48i, src_addr: !b48i, eth_type: !b16i, index: !b32i, __valid: !validity_bit>
+!standard_metadata_t = !p4hir.struct<"standard_metadata_t" {metadata = [], name = "standard_metadata"}, ingress_port: !b9i, egress_spec: !b9i, egress_port: !b9i, instance_type: !b32i, packet_length: !b32i, enq_timestamp: !b32i {alias = ["queueing_metadata.enq_timestamp"]}, enq_qdepth: !b19i {alias = ["queueing_metadata.enq_qdepth"]}, deq_timedelta: !b32i {alias = ["queueing_metadata.deq_timedelta"]}, deq_qdepth: !b19i {alias = ["queueing_metadata.deq_qdepth"]}, ingress_global_timestamp: !b48i {alias = ["intrinsic_metadata.ingress_global_timestamp"]}, egress_global_timestamp: !b48i {alias = ["intrinsic_metadata.egress_global_timestamp"]}, mcast_grp: !b16i {alias = ["intrinsic_metadata.mcast_grp"]}, egress_rid: !b16i {alias = ["intrinsic_metadata.egress_rid"]}, checksum_error: !b1i, parser_error: !error, priority: !b3i {alias = ["intrinsic_metadata.priority"]}>
+#invalid = #p4hir<validity.bit invalid> : !validity_bit
+#valid = #p4hir<validity.bit valid> : !validity_bit
+!HU1 = !p4hir.header_union<"HU1", h1: !H1, h2: !H2>
+!Ingress_type_H_type_M = !p4hir.control<"Ingress"<!type_H, !type_M> annotations {pipeline = []}, (!p4hir.ref<!type_H>, !p4hir.ref<!type_M>, !p4hir.ref<!standard_metadata_t>)>
+!headers = !p4hir.struct<"headers", eth_hdr: !ethernet_t, hu: !HU1>
+!ingress = !p4hir.control<"ingress", (!p4hir.ref<!headers>, !p4hir.ref<!Meta>, !p4hir.ref<!standard_metadata_t>)>
+module {
+// CHECK-DAG:  bmv2ir.header_instance @HU1.h1 : !p4hir.ref<!H1>
+// CHECK-DAG:  bmv2ir.header_instance @HU1.h2 : !p4hir.ref<!H2>
+// CHECK-DAG:  bmv2ir.header_union_instance @HU1 : !HU1 headers [@HU1.h1, @HU1.h2]
+  p4hir.control @ingress(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "h"}, %arg1: !p4hir.ref<!Meta> {p4hir.dir = #inout, p4hir.param_name = "m"}, %arg2: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "sm"})() {
+    %invalid = p4hir.const #invalid
+    %valid = p4hir.const #valid
+    p4hir.control_local @__local_ingress_h_0 = %arg0 : !p4hir.ref<!headers>
+    p4hir.control_local @__local_ingress_m_0 = %arg1 : !p4hir.ref<!Meta>
+    p4hir.control_local @__local_ingress_sm_0 = %arg2 : !p4hir.ref<!standard_metadata_t>
+    p4hir.control_apply {
+// CHECK: {{.*}} = bmv2ir.symbol_ref @HU1.h1 : !p4hir.ref<!H1>
+      %hu_field_ref = p4hir.struct_field_ref %arg0["hu"] : <!headers>
+      %h1_field_ref = p4hir.struct_field_ref %hu_field_ref["h1"] : <!HU1>
+      %__valid_field_ref_0 = p4hir.struct_field_ref %h1_field_ref["__valid"] : <!H1>
+      p4hir.assign %invalid, %__valid_field_ref_0 : <!validity_bit>
+// CHECK: %HU1.h2 = bmv2ir.symbol_ref @HU1.h2 : !p4hir.ref<!H2>
+      %h2_field_ref = p4hir.struct_field_ref %hu_field_ref["h2"] : <!HU1>
+      %__valid_field_ref_1 = p4hir.struct_field_ref %h2_field_ref["__valid"] : <!H2>
+      p4hir.assign %valid, %__valid_field_ref_1 : <!validity_bit>
+    }
+  }
+}

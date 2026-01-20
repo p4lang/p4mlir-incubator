@@ -92,6 +92,12 @@ unsigned BMv2IR::HeaderType::computeMaxLength(ArrayRef<BMv2IR::FieldInfo> fields
     return lenInBits / bitsInByte;
 }
 
+llvm::LogicalResult BMv2IR::HeaderUnionType::verify(llvm::function_ref<mlir::InFlightDiagnostic()>,
+                                                    llvm::StringRef,
+                                                    llvm::ArrayRef<P4::P4MLIR::BMv2IR::FieldInfo>) {
+    // TODO: check that every field is of header type
+    return success();
+}
 #define GET_TYPEDEF_CLASSES
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Types.cpp.inc"
 

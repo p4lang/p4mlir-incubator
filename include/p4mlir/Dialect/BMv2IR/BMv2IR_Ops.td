@@ -46,6 +46,32 @@ def BMv2IR_HeaderInstanceOp : BMv2IR_Op<"header_instance", [
   }];
 }
 
+def BMv2IR_HeaderUnionInstanceOp : BMv2IR_Op<"header_union_instance", [
+    Symbol
+  ]> {
+  let summary = "Declares a header union instance";
+  let description = [{
+    Represents a header union instance in a P4 program.     
+    Carries an array of SymbolRefAttrs that point to the header instances for the union.
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    TypeAttr:$union_type,
+    SymbolRefArrayAttr:$headers
+  );
+
+  // TODO: add verifier, check that all the header symbols point to header instances and that there's
+  // an header instance of the right type for every field in the union type.
+  let assemblyFormat = [{
+    $sym_name `:` $union_type `headers` $headers attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+      BMv2IR::HeaderInstanceOp getInstanceByName(llvm::StringRef);
+  }];
+}
+
 def BMv2IR_SymToValueOp : BMv2IR_Op<"symbol_ref",
   [Pure, NoRegionArguments, AllowedParserOp,
    DeclareOpInterfaceMethods<SymbolUserOpInterface>,

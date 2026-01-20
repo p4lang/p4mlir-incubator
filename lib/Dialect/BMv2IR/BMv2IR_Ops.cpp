@@ -1,6 +1,7 @@
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Ops.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"
@@ -177,6 +178,17 @@ static FailureOr<V1SwitchOp> getPackageInstantiationFromParentModule(Operation *
     if (!packageInstantiateOp)
         return op->emitError("Expected package instantiation op in the module");
     return packageInstantiateOp;
+}
+
+HeaderInstanceOp HeaderUnionInstanceOp::getInstanceByName(StringRef name) {
+    auto type = dyn_cast<P4HIR::HeaderUnionType>(getUnionType());
+    if (!type) return nullptr;
+    auto moduleOp = getParentModule(*this);
+    assert(moduleOp && "No parent module");
+    auto index = type.getFieldIndex(name);
+    assert(index.has_value() && "No index for field name");
+    auto ref = cast<SymbolRefAttr>(getHeaders()[index.value()]);
+    return cast<HeaderInstanceOp>(SymbolTable::lookupSymbolIn(moduleOp, ref));
 }
 
 namespace P4::P4MLIR::BMv2IR {

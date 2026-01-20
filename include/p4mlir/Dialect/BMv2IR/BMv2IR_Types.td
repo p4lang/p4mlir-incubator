@@ -27,7 +27,6 @@ def BMv2IR_HeaderType : BMv2IR_Type<"Header", "header"> {
     - An array of fields (name, bitwidth, optional signed flag)
     - Optional maximum length for variable-length headers
     
-    Variable-length fields are represented with bitwidth = -1.
     At most one field can be variable-length.
   }];
   
@@ -61,5 +60,23 @@ def BMv2IR_HeaderType : BMv2IR_Type<"Header", "header"> {
 }
 
 def BMv2IR_FieldType : AnyTypeOf<[BitsType, VarBitsType]>;
+
+def BMv2IR_HeaderUnionType : BMv2IR_Type<"HeaderUnion", "header_union"> {
+  let summary = "BMv2 header union type";
+  let description = [{
+    Represents a BMv2 Header Union.
+  }];
+  
+  let parameters = (ins
+    StringRefParameter<"struct name">:$name,
+    ArrayRefParameter<"BMv2IR::FieldInfo", "struct fields">:$fields
+  );
+  
+  let assemblyFormat = [{
+    `<` $name `,` `[` $fields `]` `>`
+  }];
+  
+  let genVerifyDecl = 1;
+}
 
 #endif // P4MLIR_DIALECT_BMv2IR_BMv2IR_TYPES_TD

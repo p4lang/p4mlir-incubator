@@ -64,8 +64,7 @@ P4HIR::HeaderType isHeaderOrRefToHeader(mlir::Type ty) {
 }
 
 // Map for <struct type name, field name> -> header instance
-using InstanceConversionContext =
-    std::map<std::pair<mlir::Type *, std::string>, BMv2IR::HeaderInstanceOp>;
+using InstanceConversionContext = std::map<std::pair<mlir::Type *, std::string>, Operation *>;
 // Map used for raw headers in control/parser args
 using HeaderConversionContext = llvm::DenseMap<P4HIR::HeaderType, BMv2IR::HeaderInstanceOp>;
 
@@ -74,6 +73,8 @@ struct StructUses {
     SmallVector<Operation *> fieldRefs;
     // FieldRefs accessing bit fields
     SmallVector<Operation *> bitRefs;
+    // FieldRef accessiong header unions
+    SmallVector<Operation *> unionRefs;
 };
 
 LogicalResult handleFieldAccess(StringRef name, Operation *op, P4HIR::StructType structTy,
@@ -86,6 +87,10 @@ LogicalResult handleFieldAccess(StringRef name, Operation *op, P4HIR::StructType
         })
         .Case<P4HIR::BitsType, P4HIR::VarBitsType>([&](mlir::Type) {
             structUses.bitRefs.push_back(op);
+            return success();
+        })
+        .Case([&](P4HIR::HeaderUnionType) {
+            structUses.unionRefs.push_back(op);
             return success();
         })
         .Default([&](Type) { return op->emitError("Unsupported field access"); });
@@ -142,12 +147,12 @@ LogicalResult handleStructUse(OpOperand &use, P4HIR::StructType structTy, Struct
     return success();
 }
 
-FailureOr<StructUses> findFieldRefs(P4HIR::ControlLocalOp controlLocal, P4HIR::StructType structTy,
-                                    SmallVector<Operation *> &eraseList) {
+LogicalResult findFieldRefs(P4HIR::ControlLocalOp controlLocal, P4HIR::StructType structTy,
+                            StructUses &structUses, SmallVector<Operation *> &eraseList) {
     auto parent = controlLocal->getParentOfType<P4HIR::ControlOp>();
     auto moduleOp = controlLocal->getParentOfType<ModuleOp>();
-    if (!parent || !moduleOp) return {};
-    StructUses structUses;
+    if (!parent || !moduleOp) return controlLocal.emitError("No module or control parent");
+    ;
     auto walkRes = parent->walk([&](P4HIR::SymToValueOp symRef) {
         auto decl = symRef.getDecl();
         auto op = mlir::SymbolTable::lookupSymbolIn(moduleOp, decl);
@@ -161,7 +166,22 @@ FailureOr<StructUses> findFieldRefs(P4HIR::ControlLocalOp controlLocal, P4HIR::S
     });
     if (walkRes.wasInterrupted()) return failure();
 
-    return structUses;
+    return success();
+}
+
+// Create a header union instance and the corresponding header instances
+BMv2IR::HeaderUnionInstanceOp createUnionInstance(Location loc, PatternRewriter &rewriter,
+                                                  ModuleOp moduleOp, P4HIR::HeaderUnionType type) {
+    SmallVector<Attribute> instances;
+    for (auto info : type.getFields()) {
+        auto name = rewriter.getStringAttr(type.getName() + "." + info.name.getValue());
+        auto instance = rewriter.create<BMv2IR::HeaderInstanceOp>(
+            loc, name, P4HIR::ReferenceType::get(info.type));
+        instances.push_back(SymbolRefAttr::get(moduleOp.getContext(), instance.getSymName()));
+    }
+
+    return rewriter.create<BMv2IR::HeaderUnionInstanceOp>(loc, type.getName(), type,
+                                                          rewriter.getArrayAttr(instances));
 }
 
 // Adds instances from a StructType, splitting the struct to create separate instances for
@@ -174,7 +194,8 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
     llvm::StringMap<BMv2IR::HeaderInstanceOp> localInstance;
     auto getOrInsertInstance = [&localInstance, &rewriter, &instances, &moduleOp, &loc,
                                 &parentName](P4HIR::StructType ty, StringRef name,
-                                             bool referenceFullStruct) -> BMv2IR::HeaderInstanceOp {
+                                             bool referenceFullStruct,
+                                             bool useHeaderInstance) -> Operation * {
         auto instanceTy = referenceFullStruct ? P4HIR::ReferenceType::get(ty)
                                               : P4HIR::ReferenceType::get(ty.getFieldType(name));
         auto symName = referenceFullStruct ? rewriter.getStringAttr(ty.getName())
@@ -186,7 +207,14 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
             }
             PatternRewriter::InsertionGuard guard(rewriter);
             rewriter.setInsertionPointToStart(moduleOp.getBody());
-            auto instanceOp = rewriter.create<BMv2IR::HeaderInstanceOp>(loc, symName, instanceTy);
+            Operation *instanceOp;
+            if (useHeaderInstance) {
+                instanceOp = rewriter.create<BMv2IR::HeaderInstanceOp>(loc, symName, instanceTy);
+            } else {
+                instanceOp =
+                    createUnionInstance(loc, rewriter, moduleOp,
+                                        cast<P4HIR::HeaderUnionType>(instanceTy.getObjectType()));
+            }
             instances->insert({{&ty, name.str()}, instanceOp});
             return instanceOp;
         }
@@ -222,12 +250,46 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
 
     // Add uses coming from ControlLocalOp
     if (controlLocal) {
-        const auto maybeRefs = findFieldRefs(controlLocal, structTy, eraseList);
-        if (failed(maybeRefs))
-            return controlLocal->emitError("Error while processing control local op");
-        auto controlLocalUses = maybeRefs.value();
-        for (auto op : controlLocalUses.fieldRefs) structUses.fieldRefs.push_back(op);
-        for (auto op : controlLocalUses.bitRefs) structUses.bitRefs.push_back(op);
+        auto res = findFieldRefs(controlLocal, structTy, structUses, eraseList);
+        if (failed(res)) return controlLocal->emitError("Error while processing control local op");
+    }
+
+    // Handle header unions
+    for (auto unionRef : structUses.unionRefs) {
+        StringRef name =
+            llvm::TypeSwitch<Operation *, StringRef>(unionRef)
+                .Case([](P4HIR::StructFieldRefOp fieldRefOp) { return fieldRefOp.getFieldName(); })
+                .Case([](P4HIR::StructExtractOp extractOp) { return extractOp.getFieldName(); });
+        auto unionInstance =
+            cast<BMv2IR::HeaderUnionInstanceOp>(getOrInsertInstance(structTy, name, false, false));
+        // The union header instance already points to the header instances for its type, just query
+        // for them and replace the uses
+        SmallVector<Operation *> refs;
+        for (auto user : unionRef->getUsers()) {
+            if (!isa<P4HIR::StructFieldRefOp, P4HIR::StructExtractOp>(user))
+                return user->emitError("Unsupported union user");
+            refs.push_back(user);
+        }
+        for (auto ref : refs) {
+            PatternRewriter::InsertionGuard guard(rewriter);
+            rewriter.setInsertionPoint(ref);
+            StringRef name = llvm::TypeSwitch<Operation *, StringRef>(ref)
+                                 .Case([](P4HIR::StructFieldRefOp fieldRefOp) {
+                                     return fieldRefOp.getFieldName();
+                                 })
+                                 .Case([](P4HIR::StructExtractOp extractOp) {
+                                     return extractOp.getFieldName();
+                                 });
+            auto instance = unionInstance.getInstanceByName(name);
+            Operation *newOp = rewriter.create<BMv2IR::SymToValueOp>(
+                loc, instance.getHeaderType(), SymbolRefAttr::get(ctx, instance.getSymName()));
+            if (isa<P4HIR::StructExtractOp>(ref))
+                newOp = rewriter.create<P4HIR::ReadOp>(
+                    loc, cast<P4HIR::ReferenceType>(instance.getHeaderType()).getObjectType(),
+                    newOp->getResult(0));
+            rewriter.replaceOp(ref, newOp);
+        }
+        eraseList.push_back(unionRef);
     }
 
     // Add HeaderInstanceOps for StructFieldRefOps that reference header fields
@@ -236,7 +298,8 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
             llvm::TypeSwitch<Operation *, StringRef>(op)
                 .Case([](P4HIR::StructFieldRefOp fieldRefOp) { return fieldRefOp.getFieldName(); })
                 .Case([](P4HIR::StructExtractOp extractOp) { return extractOp.getFieldName(); });
-        auto instanceOp = getOrInsertInstance(structTy, name.str(), false);
+        auto instanceOp =
+            cast<BMv2IR::HeaderInstanceOp>(getOrInsertInstance(structTy, name.str(), false, true));
         rewriter.setInsertionPointAfter(op);
         Operation *newOp =
             rewriter.create<BMv2IR::SymToValueOp>(op->getLoc(), instanceOp.getHeaderType(),
@@ -282,7 +345,8 @@ LogicalResult splitStructAndAddInstances(Value val, P4HIR::StructType structTy, 
     rewriter.setInsertionPointToStart(moduleOp.getBody());
     auto newTy = P4HIR::StructType::get(rewriter.getContext(), structTy.getName(), bitFields,
                                         structTy.getAnnotations());
-    auto newInstance = getOrInsertInstance(newTy, newTy.getName(), true);
+    auto newInstance =
+        cast<BMv2IR::HeaderInstanceOp>(getOrInsertInstance(newTy, newTy.getName(), true, true));
     for (auto op : structUses.bitRefs) {
         StringRef name =
             llvm::TypeSwitch<Operation *, StringRef>(op)
