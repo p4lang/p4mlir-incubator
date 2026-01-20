@@ -269,6 +269,32 @@ def BMv2IR_DataToBoolOp : BMv2IR_Op<"d2b"> {
   }];
 }
 
+def BMv2IR_AddHeaderOp : BMv2IR_Op<"add_header"> {
+  let summary = "Add Header operation";
+  let description = [{
+    Unary operatation on a header instance, corresponds to `setValid` calls in P4.
+  }];
+
+  let arguments = (ins SymbolRefAttr:$input);
+  // TODO add verification for symbol ref
+  let assemblyFormat = [{
+    $input attr-dict
+  }];
+}
+
+def BMv2IR_RemoveHeaderOp : BMv2IR_Op<"remove_header"> {
+  let summary = "Remove Header operation";
+  let description = [{
+    Unary operatation on a header instance, corresponds to `setInvalid` calls in P4.
+  }];
+
+  let arguments = (ins SymbolRefAttr:$input);
+  // TODO add verification for symbol ref
+  let assemblyFormat = [{
+    $input attr-dict
+  }];
+}
+
 def BMv2IR_YieldOp : BMv2IR_Op<"yield", [ReturnLike, Terminator, NoMemoryEffect,
     ParentOneOf<["ConditionalOp, CalculationOp, ChecksumOp, BMv2IR::IfOp"]>]> {
   let summary = "BMv2 region terminator";

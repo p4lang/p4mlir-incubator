@@ -495,3 +495,107 @@ module {
   }
   bmv2ir.v1switch @main parser @p, verify_checksum @verifyChecksum, ingress @ingress, egress @egress, compute_checksum @computeChecksum, deparser @deparser
 }
+
+// -----
+
+!Meta = !p4hir.struct<"Meta">
+!b16i = !p4hir.bit<16>
+!b19i = !p4hir.bit<19>
+!b1i = !p4hir.bit<1>
+!b32i = !p4hir.bit<32>
+!b3i = !p4hir.bit<3>
+!b48i = !p4hir.bit<48>
+!b8i = !p4hir.bit<8>
+!b9i = !p4hir.bit<9>
+!packet_in = !p4hir.extern<"packet_in">
+!packet_out = !p4hir.extern<"packet_out">
+#in = #p4hir<dir in>
+#inout = #p4hir<dir inout>
+#out = #p4hir<dir out>
+#undir = #p4hir<dir undir>
+!error = !p4hir.error<NoError, PacketTooShort, NoMatch, StackOutOfBounds, HeaderTooShort, ParserTimeout, ParserInvalidArgument>
+!validity_bit = !p4hir.validity.bit
+!H1 = !p4hir.header<"H1", a: !b8i, __valid: !validity_bit>
+!H2 = !p4hir.header<"H2", b: !b16i, __valid: !validity_bit>
+!ethernet_t = !p4hir.header<"ethernet_t", dst_addr: !b48i, src_addr: !b48i, eth_type: !b16i, index: !b32i, __valid: !validity_bit>
+!standard_metadata_t = !p4hir.struct<"standard_metadata_t" {metadata = [], name = "standard_metadata"}, ingress_port: !b9i, egress_spec: !b9i, egress_port: !b9i, instance_type: !b32i, packet_length: !b32i, enq_timestamp: !b32i {alias = ["queueing_metadata.enq_timestamp"]}, enq_qdepth: !b19i {alias = ["queueing_metadata.enq_qdepth"]}, deq_timedelta: !b32i {alias = ["queueing_metadata.deq_timedelta"]}, deq_qdepth: !b19i {alias = ["queueing_metadata.deq_qdepth"]}, ingress_global_timestamp: !b48i {alias = ["intrinsic_metadata.ingress_global_timestamp"]}, egress_global_timestamp: !b48i {alias = ["intrinsic_metadata.egress_global_timestamp"]}, mcast_grp: !b16i {alias = ["intrinsic_metadata.mcast_grp"]}, egress_rid: !b16i {alias = ["intrinsic_metadata.egress_rid"]}, checksum_error: !b1i, parser_error: !error, priority: !b3i {alias = ["intrinsic_metadata.priority"]}>
+#invalid = #p4hir<validity.bit invalid> : !validity_bit
+#valid = #p4hir<validity.bit valid> : !validity_bit
+!HU1 = !p4hir.header_union<"HU1", h1: !H1, h2: !H2>
+!headers = !p4hir.struct<"headers", eth_hdr: !ethernet_t, hu: !HU1>
+!p = !p4hir.parser<"p", (!packet_in, !p4hir.ref<!headers>, !p4hir.ref<!Meta>, !p4hir.ref<!standard_metadata_t>)>
+!ingress = !p4hir.control<"ingress", (!p4hir.ref<!headers>, !p4hir.ref<!Meta>, !p4hir.ref<!standard_metadata_t>)>
+!egress = !p4hir.control<"egress", (!p4hir.ref<!headers>, !p4hir.ref<!Meta>, !p4hir.ref<!standard_metadata_t>)>
+!deparser = !p4hir.control<"deparser", (!packet_out, !headers)>
+!update = !p4hir.control<"update", (!p4hir.ref<!headers>, !p4hir.ref<!Meta>)>
+!vrfy = !p4hir.control<"vrfy", (!p4hir.ref<!headers>, !p4hir.ref<!Meta>)>
+!infint = !p4hir.infint
+#int1024_infint = #p4hir.int<1024> : !infint
+!dummy_apply_res = !p4hir.struct<"dummy_apply_res">
+module {
+  bmv2ir.header_instance @HU1.h1 : !p4hir.ref<!H1>
+  bmv2ir.header_instance @HU1.h2 : !p4hir.ref<!H2>
+  bmv2ir.header_union_instance @HU1 : !HU1 headers [@HU1.h1, @HU1.h2]
+  p4hir.control @ingress(%arg0: !p4hir.ref<!headers> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "h"}, %arg1: !p4hir.ref<!Meta> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "m"}, %arg2: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "sm"})() {
+    p4hir.func action @dummy_action_0() annotations {name = "dummy_action_0"} {
+      %valid = p4hir.const #valid
+      %invalid = p4hir.const #invalid
+      %HU1.h1 = bmv2ir.symbol_ref @HU1.h1 : !p4hir.ref<!H1>
+      %__valid_field_ref = p4hir.struct_field_ref %HU1.h1["__valid"] : <!H1>
+      p4hir.assign %invalid, %__valid_field_ref : <!validity_bit>
+// CHECK: bmv2ir.remove_header @HU1.h1
+      %HU1.h2 = bmv2ir.symbol_ref @HU1.h2 : !p4hir.ref<!H2>
+      %__valid_field_ref_0 = p4hir.struct_field_ref %HU1.h2["__valid"] : <!H2>
+      p4hir.assign %valid, %__valid_field_ref_0 : <!validity_bit>
+// CHECK: bmv2ir.add_header @HU1.h2
+      p4hir.return
+    }
+    p4hir.table @dummy_table_0 {
+      p4hir.table_action @dummy_action_0() {
+        p4hir.call @ingress::@dummy_action_0 () : () -> ()
+      }
+      p4hir.table_default_action {
+        p4hir.call @ingress::@dummy_action_0 () : () -> ()
+      }
+      %size = p4hir.table_size #int1024_infint
+    }
+    p4hir.control_apply {
+      %dummy_table_0_apply_result = p4hir.table_apply @ingress::@dummy_table_0 with key() : () -> !dummy_apply_res
+    }
+  }
+  p4hir.parser @p(%arg0: !packet_in {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !p4hir.ref<!headers> {p4hir.dir = #out, p4hir.param_name = "hdr"}, %arg2: !p4hir.ref<!Meta> {p4hir.dir = #inout, p4hir.param_name = "m"}, %arg3: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "sm"})() {
+    p4hir.state @start {
+      p4hir.transition to @p::@accept
+    }
+    p4hir.state @accept {
+      p4hir.parser_accept
+    }
+    p4hir.transition to @p::@start
+  }
+  p4hir.control @vrfy(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "h"}, %arg1: !p4hir.ref<!Meta> {p4hir.dir = #inout, p4hir.param_name = "m"})() {
+    p4hir.control_local @__local_vrfy_h_0 = %arg0 : !p4hir.ref<!headers>
+    p4hir.control_local @__local_vrfy_m_0 = %arg1 : !p4hir.ref<!Meta>
+    p4hir.control_apply {
+    }
+  }
+  p4hir.control @update(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"}, %arg1: !p4hir.ref<!Meta> {p4hir.dir = #inout, p4hir.param_name = "m"})() {
+    p4hir.control_local @__local_update_hdr_0 = %arg0 : !p4hir.ref<!headers>
+    p4hir.control_local @__local_update_m_0 = %arg1 : !p4hir.ref<!Meta>
+    p4hir.control_apply {
+    }
+  }
+  p4hir.control @egress(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "h"}, %arg1: !p4hir.ref<!Meta> {p4hir.dir = #inout, p4hir.param_name = "m"}, %arg2: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "sm"})() {
+    p4hir.control_local @__local_egress_h_0 = %arg0 : !p4hir.ref<!headers>
+    p4hir.control_local @__local_egress_m_0 = %arg1 : !p4hir.ref<!Meta>
+    p4hir.control_local @__local_egress_sm_0 = %arg2 : !p4hir.ref<!standard_metadata_t>
+    p4hir.control_apply {
+    }
+  }
+  p4hir.control @deparser(%arg0: !packet_out {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !headers {p4hir.dir = #in, p4hir.param_name = "h"})() {
+    p4hir.control_local @__local_deparser_pkt_0 = %arg0 : !packet_out
+    p4hir.control_local @__local_deparser_h_0 = %arg1 : !headers
+    p4hir.control_apply {
+    }
+  }
+  bmv2ir.v1switch @main parser @p, verify_checksum @vrfy, ingress @ingress, egress @egress, compute_checksum @update, deparser @deparser
+}

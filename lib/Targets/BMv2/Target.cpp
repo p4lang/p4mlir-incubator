@@ -230,8 +230,8 @@ json::Value to_JSON(BMv2IR::ExtractOp extractOp) {
 // Returns true for Operations that we want to emit directly (basically "root" operations for
 // expression trees etc)
 bool isPrimitive(Operation *op) {
-    return isa<BMv2IR::AssignOp, BMv2IR::AssignHeaderOp, BMv2IR::ExtractOp, BMv2IR::LookaheadOp>(
-        op);
+    return isa<BMv2IR::AssignOp, BMv2IR::AssignHeaderOp, BMv2IR::ExtractOp, BMv2IR::LookaheadOp,
+               BMv2IR::AddHeaderOp, BMv2IR::RemoveHeaderOp>(op);
 }
 
 json::Value to_JSON(BMv2IR::ParserStateOp stateOp) {
@@ -564,6 +564,26 @@ json::Value to_JSON(BMv2IR::ChecksumOp checksumOp) {
     return res;
 }
 
+json::Value to_JSON(BMv2IR::RemoveHeaderOp removeOp) {
+    json::Object res;
+    res["op"] = "remove_header";
+    json::Object param;
+    param["type"] = "header";
+    param["value"] = removeOp.getInput().getLeafReference().getValue();
+    res["parameters"] = json::Array{std::move(param)};
+    return res;
+}
+
+json::Value to_JSON(BMv2IR::AddHeaderOp addOp) {
+    json::Object res;
+    res["op"] = "add_header";
+    json::Object param;
+    param["type"] = "header";
+    param["value"] = addOp.getInput().getLeafReference().getValue();
+    res["parameters"] = json::Array{std::move(param)};
+    return res;
+}
+
 json::Value to_JSON(Operation *op) {
     return llvm::TypeSwitch<Operation *, json::Value>(op)
         .Case([](BMv2IR::AssignHeaderOp assignOp) { return to_JSON(assignOp); })
@@ -576,6 +596,8 @@ json::Value to_JSON(Operation *op) {
         .Case([](BMv2IR::YieldOp yieldOp) { return to_JSON(yieldOp); })
         .Case([](BMv2IR::DataToBoolOp d2bOp) { return to_JSON(d2bOp); })
         .Case([](P4HIR::CmpOp cmpOp) { return to_JSON(cmpOp); })
+        .Case([](BMv2IR::AddHeaderOp op) { return to_JSON(op); })
+        .Case([](BMv2IR::RemoveHeaderOp op) { return to_JSON(op); })
         .Default([](Operation *op) -> json::Value {
             llvm::errs() << "Unsupported op: " << op->getName().getIdentifier() << "\n";
             llvm_unreachable("Unsupported op");

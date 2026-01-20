@@ -190,6 +190,63 @@ struct AssignOpToAssignHeaderPattern : public OpConversionPattern<P4HIR::AssignO
     static constexpr unsigned benefit = 100;
 };
 
+// Converts AssignOp on a header validity bit to AddHeaderOp
+struct AssignOpToValidityPattern : public OpConversionPattern<P4HIR::AssignOp> {
+    AssignOpToValidityPattern(TypeConverter &typeConverter, MLIRContext *context)
+        : OpConversionPattern<P4HIR::AssignOp>(typeConverter, context, benefit) {}
+
+    LogicalResult matchAndRewrite(P4HIR::AssignOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto src = op.getValue();
+        auto dst = op.getRef();
+        auto constOp = src.getDefiningOp<P4HIR::ConstOp>();
+        if (!isa<P4HIR::ValidBitType>(src.getType()) || !constOp) return failure();
+        auto constVal = constOp.getValueAs<P4HIR::ValidityBitAttr>();
+        if (!constVal) return failure();
+        auto isValid = constVal.getValue() == P4HIR::ValidityBit::Valid;
+
+        auto fieldRef = dst.getDefiningOp<P4HIR::StructFieldRefOp>();
+        if (!fieldRef || fieldRef.getFieldName() != P4HIR::HeaderType::validityBit)
+            return failure();
+        auto symRef = fieldRef.getInput().getDefiningOp<BMv2IR::SymToValueOp>();
+
+        if (isValid)
+            rewriter.replaceOpWithNewOp<BMv2IR::AddHeaderOp>(op, symRef.getDecl());
+        else
+            rewriter.replaceOpWithNewOp<BMv2IR::RemoveHeaderOp>(op, symRef.getDecl());
+
+        return success();
+    }
+    static constexpr unsigned benefit = 100;
+};
+
+// Converts AssignOp from p4hir.struct ops to an header, breaking them down to assigns on individual
+// fields
+struct StructAssignOpPattern : public OpConversionPattern<P4HIR::AssignOp> {
+    StructAssignOpPattern(TypeConverter &typeConverter, MLIRContext *context)
+        : OpConversionPattern<P4HIR::AssignOp>(typeConverter, context, benefit) {}
+
+    LogicalResult matchAndRewrite(P4HIR::AssignOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto src = op.getValue();
+        auto dst = op.getRef();
+        auto structOp = src.getDefiningOp<P4HIR::StructOp>();
+        if (!structOp) return failure();
+        auto type = cast<P4HIR::StructLikeTypeInterface>(structOp.getResult().getType());
+        auto values = structOp.getInput();
+        for (auto [val, field] : llvm::zip(values, type.getFields())) {
+            auto fieldRef = rewriter.create<P4HIR::StructFieldRefOp>(op.getLoc(), dst, field.name);
+            rewriter.create<P4HIR::AssignOp>(op.getLoc(), val, fieldRef);
+        }
+
+        rewriter.eraseOp(structOp);
+        rewriter.eraseOp(op);
+
+        return success();
+    }
+    static constexpr unsigned benefit = 100;
+};
+
 // Converts generic P4HIR::AssignOp to BMv2IR::AssignOp. This pattern has a lower benefit
 // than AssignOpToAssignHeaderPattern because we want explictly emit AssignHeaderOps when
 // possible.
@@ -1245,13 +1302,14 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         ConversionTarget target(context);
         RewritePatternSet patterns(&context);
         P4HIRToBMv2IRTypeConverter converter;
-        patterns.add<
-            HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
-            ParserStateOpConversionPattern, ExtractOpConversionPattern,
-            AssignOpToAssignHeaderPattern, AssignOpPattern, ReadOpConversionPattern,
-            FieldRefConversionPattern, StructExtractOpConversionPattern, SymToValConversionPattern,
-            CompareValidityToD2BPattern, PipelineConversionPattern, DeparserConversionPattern,
-            CalculationConversionPattern, RemovePackageInstantiationPattern, RemoveScopePattern>(
+        patterns.add<HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
+                     ParserStateOpConversionPattern, ExtractOpConversionPattern,
+                     AssignOpToAssignHeaderPattern, AssignOpPattern, ReadOpConversionPattern,
+                     FieldRefConversionPattern, StructExtractOpConversionPattern,
+                     SymToValConversionPattern, CompareValidityToD2BPattern,
+                     PipelineConversionPattern, DeparserConversionPattern,
+                     CalculationConversionPattern, RemovePackageInstantiationPattern,
+                     RemoveScopePattern, AssignOpToValidityPattern, StructAssignOpPattern>(
             converter, &context);
 
         target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
