@@ -627,9 +627,8 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
     }
 
  private:
-    static SymbolRefAttr getUniqueIfOpName(BMv2IR::IfOp ifOp,
-                                           P4HIR::ControlApplyOp controlApplyOp) {
-        auto controlParent = cast<P4HIR::ControlOp>(controlApplyOp.getParentOp());
+    static SymbolRefAttr getUniqueIfOpName(BMv2IR::IfOp ifOp) {
+        auto controlParent = ifOp->getParentOfType<P4HIR::ControlOp>();
         return SymbolRefAttr::get(controlParent.getSymNameAttr(),
                                   {SymbolRefAttr::get(ifOp.getContext(), ifOp.getSymNameAttr())});
     }
@@ -641,7 +640,7 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         if (!op) return controlApplyOp.emitError("Error retrieving initial table");
         if (auto applyOp = dyn_cast<P4HIR::TableApplyOp>(op)) return applyOp.getTable();
         auto ifOp = cast<BMv2IR::IfOp>(op);
-        return getUniqueIfOpName(ifOp, controlApplyOp);
+        return getUniqueIfOpName(ifOp);
     }
 
     static LogicalResult convertTable(P4HIR::TableOp op, P4HIR::ControlApplyOp controlApply,
@@ -876,7 +875,7 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
             })
             .Case([&](BMv2IR::IfOp ifOp) -> FailureOr<Attribute> {
                 SmallVector<Attribute> result;
-                auto nextTable = getUniqueIfOpName(ifOp, controlApply);
+                auto nextTable = getUniqueIfOpName(ifOp);
                 for (auto attr : actions) {
                     auto action = cast<SymbolRefAttr>(attr);
                     result.push_back(
@@ -914,21 +913,13 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         return nextOp;
     }
 
-    static FailureOr<Attribute> getActionTablePairsForYieldOp(Operation *yieldOp,
-                                                              P4HIR::ControlApplyOp controlApply,
-                                                              ArrayRef<Attribute> actions) {
+    // Returns the next node from a terminating yield op. If the returned Operation* is null it
+    // means that the yield op is the one terminating the control apply block
+    static FailureOr<Operation *> getNextApplyOrConditionalForYield(
+        Operation *yieldOp, P4HIR::ControlApplyOp controlApply) {
         bool isYield = isa<P4HIR::YieldOp, BMv2IR::YieldOp>(yieldOp);
         assert(isYield && "Expected YieldOp");
-        if (yieldOp->getParentOp() == controlApply) {
-            // This is the final table, return `null` as next table for every action
-            SmallVector<Attribute> result;
-            for (auto attr : actions) {
-                auto action = cast<SymbolRefAttr>(attr);
-                result.push_back(
-                    BMv2IR::ActionTableAttr::get(yieldOp->getContext(), action, nullptr));
-            }
-            return ArrayAttr::get(yieldOp->getContext(), result);
-        }
+        if (yieldOp->getParentOp() == controlApply) return {nullptr};
         auto nextOp = llvm::TypeSwitch<Operation *, FailureOr<Operation *>>(yieldOp->getParentOp())
                           .Case([&](P4HIR::CaseOp caseOp) -> FailureOr<Operation *> {
                               if (!caseOp) return yieldOp->emitError("Expected CaseOp parent");
@@ -941,6 +932,26 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
                               return yieldOp->emitError("Unhandled yield parent");
                           });
         if (failed(nextOp)) return failure();
+        return nextOp;
+    }
+
+    static FailureOr<Attribute> getActionTablePairsForYieldOp(Operation *yieldOp,
+                                                              P4HIR::ControlApplyOp controlApply,
+                                                              ArrayRef<Attribute> actions) {
+        bool isYield = isa<P4HIR::YieldOp, BMv2IR::YieldOp>(yieldOp);
+        assert(isYield && "Expected YieldOp");
+        auto nextOp = getNextApplyOrConditionalForYield(yieldOp, controlApply);
+        if (failed(nextOp)) return failure();
+        if (nextOp.value() == nullptr) {
+            // This is the final table, return `null` as next table for every action
+            SmallVector<Attribute> result;
+            for (auto attr : actions) {
+                auto action = cast<SymbolRefAttr>(attr);
+                result.push_back(
+                    BMv2IR::ActionTableAttr::get(yieldOp->getContext(), action, nullptr));
+            }
+            return ArrayAttr::get(yieldOp->getContext(), result);
+        }
         return getActionTablePairsForNextNode(nextOp.value(), controlApply, actions);
     }
 
@@ -1013,24 +1024,46 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         return ArrayAttr::get(switchOp.getContext(), result);
     }
 
+    // FIXME: remove control_apply arg
+    static FailureOr<SymbolRefAttr> getSymRef(Operation *op, P4HIR::ControlApplyOp controlApply) {
+        if (auto tableApply = dyn_cast<P4HIR::TableApplyOp>(op)) return tableApply.getTable();
+        if (auto ifOp = dyn_cast<BMv2IR::IfOp>(op)) {
+            return getUniqueIfOpName(ifOp);
+        }
+        return failure();
+    }
+
     static LogicalResult convertIfOp(BMv2IR::IfOp op, P4HIR::ControlApplyOp controlApply,
                                      ConversionPatternRewriter &rewriter) {
         ConversionPatternRewriter::InsertionGuard guard(rewriter);
         rewriter.setInsertionPoint(controlApply);
-        auto getNextSym = [&controlApply,
+        auto getNextSym = [&controlApply, &op,
                            ctx = op.getContext()](Region &r) -> FailureOr<SymbolRefAttr> {
-            if (r.empty()) return {nullptr};
-            if (r.front().getOperations().size() == 1) return {nullptr};
-            Operation *op = &r.front().front();
-            while (op) {
-                if (auto tableApply = dyn_cast<P4HIR::TableApplyOp>(op))
-                    return tableApply.getTable();
-                if (auto ifOp = dyn_cast<BMv2IR::IfOp>(op)) {
-                    return getUniqueIfOpName(ifOp, controlApply);
+            // First we check for empty regions by looking at the next node after the if
+            if (r.empty() || r.front().getOperations().size() == 1) {
+                auto nextNode = getNextApplyOrConditionalNode(op);
+                if (isa<P4HIR::YieldOp, BMv2IR::YieldOp>(nextNode)) {
+                    auto yieldNextNode = getNextApplyOrConditionalForYield(nextNode, controlApply);
+                    if (failed(yieldNextNode)) return failure();
+                    if (yieldNextNode.value() == nullptr) return {nullptr};
+                    nextNode = yieldNextNode.value();
                 }
-                op = op->getNextNode();
+                auto symRef = getSymRef(nextNode, controlApply);
+                if (failed(symRef)) return failure();
+                return symRef.value();
             }
-            return failure();
+            // At this point we have already checked for an empty region (or a region with just a
+            // yield) Any other op should be either a table_apply or an if op
+            Operation *regionOp = &r.front().front();
+            while (regionOp) {
+                if (auto tableApply = dyn_cast<P4HIR::TableApplyOp>(regionOp))
+                    return tableApply.getTable();
+                if (auto ifOp = dyn_cast<BMv2IR::IfOp>(regionOp)) {
+                    return getUniqueIfOpName(ifOp);
+                }
+                regionOp = regionOp->getNextNode();
+            }
+            return op.emitError("Unexpected region");
         };
         auto maybeThenSym = getNextSym(op.getThenRegion());
         auto maybeElseSym = getNextSym(op.getElseRegion());
