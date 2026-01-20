@@ -59,7 +59,7 @@ module {
 // CHECK:             p4hir.assign %[[VAL_2]], %[[VAL_1]] : <!b48i>
 // CHECK:             %[[VAL_3:.*]] = bmv2ir.symbol_ref @ingress0_eth_hdr : !p4hir.ref<!ethernet_t>
 // CHECK:             %[[VAL_4:.*]] = p4hir.struct_field_ref %[[VAL_3]]["src_addr"] : <!ethernet_t>
-// CHECK:             p4hir.assign %[[VAL_2]], %[[VAL_4]] : <!b48i>
+// CHECK:             p4hir.assign %{{.*}}, %[[VAL_4]] : <!b48i>
 // CHECK:             %[[VAL_5:.*]] = bmv2ir.symbol_ref @ingress0_eth_hdr : !p4hir.ref<!ethernet_t>
 // CHECK:             %[[VAL_6:.*]] = p4hir.struct_field_ref %[[VAL_5]]["eth_type"] : <!ethernet_t>
 // CHECK:             %[[VAL_7:.*]] = p4hir.const #[[$ATTR_0]]
@@ -113,10 +113,10 @@ module {
 // CHECK:           p4hir.control_apply {
 // CHECK:             p4hir.call @ingress::@dummy_action_1 () : () -> ()
 // CHECK:             bmv2ir.if @cond_node_0 expr {
-// CHECK:               %[[VAL_18:.*]] = p4hir.const #[[$ATTR_4]]
 // CHECK:               %[[VAL_19:.*]] = bmv2ir.symbol_ref @ingress0_h : !p4hir.ref<!H>
 // CHECK:               %[[VAL_20:.*]] = p4hir.struct_field_ref %[[VAL_19]]["__valid"] : <!H>
 // CHECK:               %[[VAL_21:.*]] = p4hir.read %[[VAL_20]] : <!validity_bit>
+// CHECK:               %[[VAL_18:.*]] = p4hir.const #[[$ATTR_4]]
 // CHECK:               %[[VAL_22:.*]] = p4hir.cmp(eq, %[[VAL_21]] : !validity_bit, %[[VAL_18]] : !validity_bit)
 // CHECK:               bmv2ir.yield %[[VAL_22]] : !p4hir.bool
 // CHECK:             } then {

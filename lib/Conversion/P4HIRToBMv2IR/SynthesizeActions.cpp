@@ -3,6 +3,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -48,10 +49,12 @@ struct SynthActionInControlApplyPattern : public OpRewritePattern<P4HIR::Control
         // Convert IfOps inside control_apply to BMv2IR::IfOp, this makes it so the ops that compute
         // the conditional expression are now inside the BMv2IR::IfOp condition region, so we don't
         // encounter them when synthesizing actions.
+        unsigned id = 0;
         auto ifRes = controlApply.walk([&](P4HIR::IfOp ifOp) {
             // if ops for hit or miss are handled when lowering to BMv2 pipelines
             if (BMv2IR::isHitOrMissIf(ifOp)) return WalkResult::skip();
-            if (failed(convertIfOp(ifOp, controlApply, rewriter))) return WalkResult::interrupt();
+            if (failed(convertIfOp(ifOp, controlApply, rewriter, id++)))
+                return WalkResult::interrupt();
             return WalkResult::advance();
         });
         if (ifRes.wasInterrupted()) return failure();
@@ -82,8 +85,9 @@ struct SynthActionInControlApplyPattern : public OpRewritePattern<P4HIR::Control
 
  private:
     static LogicalResult convertIfOp(P4HIR::IfOp op, P4HIR::ControlApplyOp controlApply,
-                                     PatternRewriter &rewriter) {
-        auto name = BMv2IR::getUniqueNameInParentModule(op, "cond_node");
+                                     PatternRewriter &rewriter, unsigned id) {
+        // TODO: we can't use the usual helper for unique names here because IfOp aren't symbols
+        auto name = "cond_node_" + std::to_string(id);
 
         ConversionPatternRewriter::InsertionGuard guard(rewriter);
         rewriter.setInsertionPoint(op);
@@ -107,7 +111,7 @@ struct SynthActionInControlApplyPattern : public OpRewritePattern<P4HIR::Control
         // are Header Instances.
         // TODO: could there be other kinds of ops as leaf? Constants?
         SmallVector<Operation *> expressionOps;
-        if (failed(getIfOpConditionOps(op.getLoc(), op.getCondition(), expressionOps)))
+        if (failed(getIfOpConditionOps(op.getLoc(), op.getCondition(), expressionOps, rewriter)))
             return op.emitError("Error retrieving expression ops");
         auto &block = newIf.getConditionRegion().emplaceBlock();
         rewriter.setInsertionPointToStart(&block);
@@ -122,14 +126,16 @@ struct SynthActionInControlApplyPattern : public OpRewritePattern<P4HIR::Control
         return success();
     }
 
-    static LogicalResult getIfOpConditionOps(Location loc, Value v, SmallVector<Operation *> &ops) {
+    static LogicalResult getIfOpConditionOps(Location loc, Value v, SmallVector<Operation *> &ops,
+                                             PatternRewriter &rewriter) {
         auto defOp = v.getDefiningOp();
         if (!defOp) return emitError(loc, "Expected defining operation");
         ops.push_back(defOp);
+        if (failed(cloneOpOperandsFromOutsideRegion(defOp, ops, rewriter))) return failure();
         if (isa<BMv2IR::SymToValueOp>(defOp)) return success();
 
         for (auto &operand : defOp->getOpOperands()) {
-            if (failed(getIfOpConditionOps(loc, operand.get(), ops))) return failure();
+            if (failed(getIfOpConditionOps(loc, operand.get(), ops, rewriter))) return failure();
         }
         return success();
     }
@@ -194,7 +200,7 @@ struct SynthActionInControlApplyPattern : public OpRewritePattern<P4HIR::Control
                 return op->emitError("Unsupported op from outside region");
             rewriter.setInsertionPoint(op);
             auto newOp = rewriter.clone(*defOp);
-            rewriter.replaceOpUsesWithinBlock(defOp, newOp->getResults(), op->getBlock());
+            op->setOperand(operand.getOperandNumber(), newOp->getResult(0));
             res.push_back(newOp);
         }
         return success();
