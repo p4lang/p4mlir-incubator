@@ -130,8 +130,9 @@ void P4HIRDialect::printType(mlir::Type type, mlir::DialectAsmPrinter &os) const
 }
 
 FuncType FuncType::clone(TypeRange inputs, TypeRange results) const {
-    assert(results.size() == 1 && "expected exactly one result type");
-    return get(llvm::to_vector(inputs), results[0]);
+    assert(results.size() <= 1 && "expected at most one result type");
+    return get(llvm::to_vector(inputs),
+               results.empty() ? P4HIR::VoidType::get(getContext()) : results[0]);
 }
 
 static mlir::ParseResult parseFuncType(mlir::AsmParser &p, llvm::SmallVector<mlir::Type> &params) {
