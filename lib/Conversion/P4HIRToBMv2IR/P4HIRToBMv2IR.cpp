@@ -675,10 +675,14 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
             assert(!sizeOp && "Multiple size ops");
             sizeOp = size;
         });
-        if (!sizeOp) return op.emitError("Expected table size op");
+        int tableSize = 0;
+        if (!sizeOp) {
+            tableSize = BMv2IR::defaultTableSize;
+        } else {
+            auto sizeAttr = dyn_cast<P4HIR::IntAttr>(sizeOp.getValue());
+            tableSize = sizeAttr.getValue().getSExtValue();
+        }
 
-        auto sizeAttr = dyn_cast<P4HIR::IntAttr>(sizeOp.getValue());
-        auto size = sizeAttr.getValue().getSExtValue();
         auto defEntryAttr = getDefaultEntry(op);
         auto tableMatchKind = getTableMatchKind(maybeKeys.value(), rewriter);
         if (failed(defEntryAttr)) return op.emitError("Unable to compute table match kind");
@@ -692,7 +696,7 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
             op, op.getSymNameAttr(), rewriter.getArrayAttr(actionCallees),
             maybeActionTables.value(), tableType, tableMatchKind,
             rewriter.getArrayAttr(maybeKeys.value()), supportTimeout, defEntryAttr.value(),
-            rewriter.getI32IntegerAttr(size));
+            rewriter.getI32IntegerAttr(tableSize));
         return success();
     }
 

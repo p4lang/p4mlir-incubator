@@ -83,10 +83,8 @@ struct SynthTableFromActionCall : public OpRewritePattern<P4HIR::CallOp> {
                 builder.create<P4HIR::CallOp>(loc, callOp.getCalleeAttr(), ValueRange{});
             });
 
-        constexpr unsigned defaultTableSize =
-            1024;  // Same default size as p4c, see backends/bmv2/common/helpers.cpp
         auto infIntTy = P4HIR::InfIntType::get(rewriter.getContext());
-        auto sizeAttr = P4HIR::IntAttr::get(infIntTy, llvm::APInt(32, defaultTableSize));
+        auto sizeAttr = P4HIR::IntAttr::get(infIntTy, llvm::APInt(32, BMv2IR::defaultTableSize));
         rewriter.create<P4HIR::TableSizeOp>(callOp.getLoc(), infIntTy, sizeAttr, nullptr);
         return newTable;
     }

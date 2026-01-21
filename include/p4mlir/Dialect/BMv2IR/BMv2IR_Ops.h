@@ -48,6 +48,9 @@ inline mlir::StringAttr getControlPlaneName(P4HIR::Annotated annotatedOp) {
     return dyn_cast_or_null<mlir::StringAttr>(name);
 }
 
+// Same default size as p4c, see backends/bmv2/common/helpers.cpp
+constexpr unsigned defaultTableSize = 1024;
+
 }  // namespace P4::P4MLIR::BMv2IR
 
 #endif  // P4MLIR_DIALECT_BMv2IR_BMv2IR_OPS_H
