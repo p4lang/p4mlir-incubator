@@ -74,14 +74,25 @@ void setUniqueIDS(ModuleOp moduleOp) {
     setID<BMv2IR::ChecksumOp>(moduleOp);
 }
 
-std::string asHexstr(P4HIR::IntAttr intAttr) {
+json::Value asHexStrNode(const std::string &s) {
+    json::Object res;
+    res["type"] = "hexstr";
+    res["value"] = s;
+    return res;
+}
+
+std::string asHexstr(uint64_t value, unsigned width) {
     std::string s;
     llvm::raw_string_ostream ss(s);
-    auto bitTy = cast<P4HIR::BitsType>(intAttr.getType());
-    auto bytes = llvm::divideCeil(bitTy.getWidth(), 8);
-    auto width = bytes * 2;
-    ss << llvm::format_hex_no_prefix(intAttr.getUInt(), width);
+    auto bytes = llvm::divideCeil(width, 8);
+    auto widthInBits = bytes * 2;
+    ss << llvm::format_hex_no_prefix(value, widthInBits);
     return "0x" + ss.str();
+}
+
+std::string asHexstr(P4HIR::IntAttr intAttr) {
+    auto bitTy = cast<P4HIR::BitsType>(intAttr.getType());
+    return asHexstr(intAttr.getUInt(), bitTy.getWidth());
 }
 
 json::Value to_JSON(Value val);
@@ -438,12 +449,7 @@ json::Value to_JSON(BMv2IR::PipelineOp pipeline) {
 
 json::Value to_JSON(P4HIR::ConstOp constOp) {
     return llvm::TypeSwitch<TypedAttr, json::Value>(constOp.getValue())
-        .Case([](P4HIR::IntAttr intAttr) {
-            json::Object res;
-            res["type"] = "hexstr";
-            res["value"] = asHexstr(intAttr);
-            return res;
-        })
+        .Case([](P4HIR::IntAttr intAttr) { return asHexStrNode(asHexstr(intAttr)); })
         .Case([](P4HIR::BoolAttr boolAttr) { return json::Value(boolAttr.getValue()); });
 }
 
@@ -452,6 +458,24 @@ json::Value asExpressionNode(json::Value val) {
     res["type"] = "expression";
     res["value"] = std::move(val);
     return res;
+}
+
+json::Value getHexstr(char c, unsigned bitWidth) {
+    auto width = llvm::divideCeil(bitWidth, 8) * 2;
+    std::string hexStr(width, c);
+
+    return asHexStrNode("0x" + hexStr);
+}
+
+// BMv2 uses a bitwise and with 0xFFF (with the right padding) to propagate
+// information about the bitwidth of the values we are computing
+json::Value withBitwidth(json::Value val, unsigned bitWidth) {
+    json::Value hexNode = getHexstr('f', bitWidth);
+    json::Object res;
+    res["op"] = "&";
+    res["left"] = val;
+    res["right"] = std::move(hexNode);
+    return asExpressionNode(std::move(res));
 }
 
 json::Value to_JSON(P4HIR::BinOp binOp) {
@@ -478,7 +502,8 @@ json::Value to_JSON(P4HIR::BinOp binOp) {
     value["op"] = op;
     value["left"] = to_JSON(binOp.getLhs());
     value["right"] = to_JSON(binOp.getRhs());
-    return asExpressionNode(std::move(value));
+    auto outTy = cast<P4HIR::BitsType>(binOp.getResult().getType());
+    return withBitwidth(asExpressionNode(std::move(value)), outTy.getWidth());
 }
 
 json::Value to_JSON(P4HIR::CmpOp cmpOp) {
@@ -584,6 +609,58 @@ json::Value to_JSON(BMv2IR::AddHeaderOp addOp) {
     return res;
 }
 
+json::Value bitsToBitsCast(P4HIR::CastOp castOp) {
+    auto outputTy = cast<P4HIR::BitsType>(castOp.getResult().getType());
+    return asExpressionNode(withBitwidth(to_JSON(castOp.getSrc()), outputTy.getWidth()));
+}
+
+json::Value boolToDataCast(P4HIR::CastOp castOp) {
+    // boolean to data casts are represented in BMv2 using a ternary operation, e.g.
+    // condition ? : 0x1 : 0x0.
+    // TODO: it would be better to correctly model this in the BMv2IR MLIR dialect
+    auto outputTy = cast<P4HIR::BitsType>(castOp.getResult().getType());
+    auto width = outputTy.getWidth();
+    auto trueNode = asHexStrNode(asHexstr(1, width));
+    auto falseNode = asHexStrNode(asHexstr(0, width));
+    json::Object res;
+    res["op"] = "?";
+    res["left"] = trueNode;
+    res["right"] = falseNode;
+    res["cond"] = to_JSON(castOp.getSrc());
+
+    return asExpressionNode(withBitwidth(asExpressionNode(std::move(res)), width));
+}
+
+json::Value to_JSON(P4HIR::CastOp castOp) {
+    auto inputTy = castOp.getSrc().getType();
+    auto outputTy = castOp.getResult().getType();
+
+    if (isa<P4HIR::BitsType>(inputTy) && isa<P4HIR::BitsType>(outputTy))
+        return bitsToBitsCast(castOp);
+    if (isa<P4HIR::BoolType>(inputTy) && isa<P4HIR::BitsType>(outputTy))
+        return boolToDataCast(castOp);
+
+    llvm_unreachable("Unsupported cast");
+}
+
+json::Value to_JSON(P4HIR::ShrOp shrOp) {
+    json::Object res;
+    res["op"] = ">>";
+    res["left"] = to_JSON(shrOp.getLhs());
+    res["right"] = to_JSON(shrOp.getRhs());
+
+    return asExpressionNode(std::move(res));
+}
+
+json::Value to_JSON(P4HIR::ShlOp shlOp) {
+    json::Object res;
+    res["op"] = "<<";
+    res["left"] = to_JSON(shlOp.getLhs());
+    res["right"] = to_JSON(shlOp.getRhs());
+
+    return asExpressionNode(std::move(res));
+}
+
 json::Value to_JSON(Operation *op) {
     return llvm::TypeSwitch<Operation *, json::Value>(op)
         .Case([](BMv2IR::AssignHeaderOp assignOp) { return to_JSON(assignOp); })
@@ -598,6 +675,9 @@ json::Value to_JSON(Operation *op) {
         .Case([](P4HIR::CmpOp cmpOp) { return to_JSON(cmpOp); })
         .Case([](BMv2IR::AddHeaderOp op) { return to_JSON(op); })
         .Case([](BMv2IR::RemoveHeaderOp op) { return to_JSON(op); })
+        .Case([](P4HIR::CastOp op) { return to_JSON(op); })
+        .Case([](P4HIR::ShrOp op) { return to_JSON(op); })
+        .Case([](P4HIR::ShlOp op) { return to_JSON(op); })
         .Default([](Operation *op) -> json::Value {
             llvm::errs() << "Unsupported op: " << op->getName().getIdentifier() << "\n";
             llvm_unreachable("Unsupported op");
