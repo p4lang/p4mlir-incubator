@@ -196,7 +196,7 @@ struct SynthActionInControlApplyPattern : public OpRewritePattern<P4HIR::Control
             if (!defOp) return op->emitError("Expected operands to come from other ops");
             if (defOp->getParentOp() == parentOp) continue;
 
-            if (!isa<P4HIR::ConstOp>(defOp))
+            if (!isa<P4HIR::ConstOp, BMv2IR::SymToValueOp>(defOp))
                 return op->emitError("Unsupported op from outside region");
             rewriter.setInsertionPoint(op);
             auto newOp = rewriter.clone(*defOp);
