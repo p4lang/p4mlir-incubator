@@ -465,3 +465,110 @@ module {
 // CHECK:       ]
 // CHECK:     }
 // CHECK:   ]
+
+// -----
+
+
+!b32i = !p4hir.bit<32>
+#int32_b32i = #p4hir.int<32> : !b32i
+module {
+  %c32_b32i = p4hir.const #int32_b32i
+  bmv2ir.header_instance @headers_h : !bmv2ir.header<"H", [s:!p4hir.bit<8>, v:!p4hir.varbit<32>], max_length = 5>
+  bmv2ir.parser @parser init_state @parser::@start {
+    bmv2ir.state @start
+     transition_key {
+    }
+     transitions {
+      bmv2ir.transition type  default next_state @parser::@accept
+    }
+     parser_ops {
+      bmv2ir.extract_vl  regular @headers_h(%c32_b32i : !b32i)
+    }
+    bmv2ir.state @accept
+     transition_key {
+    }
+     transitions {
+      bmv2ir.transition type  default
+    }
+     parser_ops {
+    }
+    bmv2ir.state @reject
+     transition_key {
+    }
+     transitions {
+      bmv2ir.transition type  default
+    }
+     parser_ops {
+    }
+  }
+
+}
+
+// CHECK:  "parsers": [
+// CHECK-NEXT:    {
+// CHECK-NEXT:      "id": 0,
+// CHECK-NEXT:      "init_state": "start",
+// CHECK-NEXT:      "name": "parser",
+// CHECK-NEXT:      "parse_states": [
+// CHECK-NEXT:        {
+// CHECK-NEXT:          "id": 0,
+// CHECK-NEXT:          "name": "start",
+// CHECK-NEXT:          "parser_ops": [
+// CHECK-NEXT:            {
+// CHECK-NEXT:              "op": "extract_VL",
+// CHECK-NEXT:              "parameters": [
+// CHECK-NEXT:                {
+// CHECK-NEXT:                  "type": "regular",
+// CHECK-NEXT:                  "value": "headers_h"
+// CHECK-NEXT:                },
+// CHECK-NEXT:                {
+// CHECK-NEXT:                  "type": "expression",
+// CHECK-NEXT:                  "value": {
+// CHECK-NEXT:                    "type": "hexstr",
+// CHECK-NEXT:                    "value": "0x00000020"
+// CHECK-NEXT:                  }
+// CHECK-NEXT:                }
+// CHECK-NEXT:              ]
+// CHECK-NEXT:            }
+// CHECK-NEXT:          ],
+// CHECK-NEXT:          "transition_key": [],
+// CHECK-NEXT:          "transitions": [
+// CHECK-NEXT:            {
+// CHECK-NEXT:              "mask": null,
+// CHECK-NEXT:              "next_state": "accept",
+// CHECK-NEXT:              "type": "default",
+// CHECK-NEXT:              "value": null
+// CHECK-NEXT:            }
+// CHECK-NEXT:          ]
+// CHECK-NEXT:        },
+// CHECK-NEXT:        {
+// CHECK-NEXT:          "id": 1,
+// CHECK-NEXT:          "name": "accept",
+// CHECK-NEXT:          "parser_ops": [],
+// CHECK-NEXT:          "transition_key": [],
+// CHECK-NEXT:          "transitions": [
+// CHECK-NEXT:            {
+// CHECK-NEXT:              "mask": null,
+// CHECK-NEXT:              "next_state": null,
+// CHECK-NEXT:              "type": "default",
+// CHECK-NEXT:              "value": null
+// CHECK-NEXT:            }
+// CHECK-NEXT:          ]
+// CHECK-NEXT:        },
+// CHECK-NEXT:        {
+// CHECK-NEXT:          "id": 2,
+// CHECK-NEXT:          "name": "reject",
+// CHECK-NEXT:          "parser_ops": [],
+// CHECK-NEXT:          "transition_key": [],
+// CHECK-NEXT:          "transitions": [
+// CHECK-NEXT:            {
+// CHECK-NEXT:              "mask": null,
+// CHECK-NEXT:              "next_state": null,
+// CHECK-NEXT:              "type": "default",
+// CHECK-NEXT:              "value": null
+// CHECK-NEXT:            }
+// CHECK-NEXT:          ]
+// CHECK-NEXT:        }
+// CHECK-NEXT:      ]
+// CHECK-NEXT:    }
+// CHECK-NEXT:  ],

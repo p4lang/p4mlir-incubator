@@ -168,6 +168,28 @@ struct ExtractOpConversionPattern : public OpConversionPattern<P4CoreLib::Packet
     }
 };
 
+struct ExtractVLOpConversionPattern
+    : public OpConversionPattern<P4CoreLib::PacketExtractVariableOp> {
+    using OpConversionPattern<P4CoreLib::PacketExtractVariableOp>::OpConversionPattern;
+
+    LogicalResult matchAndRewrite(P4CoreLib::PacketExtractVariableOp op, OpAdaptor operands,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto context = op.getContext();
+        auto hdr = op.getHdr();
+        auto referredTy = hdr.getType().getObjectType();
+        if (!isa<P4HIR::HeaderType>(referredTy))
+            return op->emitError("Only headers supported as BMv2 extract arguments");
+        auto symRefOp = op.getHdr().getDefiningOp<BMv2IR::SymToValueOp>();
+        auto fieldName = symRefOp.getDecl().getLeafReference();
+        auto lengthExpr = op.getVariableFieldSizeInBits();
+        // TODO: support non-regular extracts
+        rewriter.replaceOpWithNewOp<BMv2IR::ExtractVLOp>(
+            op, BMv2IR::ExtractKindAttr::get(context, BMv2IR::ExtractKind::Regular),
+            SymbolRefAttr::get(rewriter.getContext(), fieldName), lengthExpr, nullptr);
+        return success();
+    }
+};
+
 // Converts AssignOp between headers to AssignHeadersOp
 struct AssignOpToAssignHeaderPattern : public OpConversionPattern<P4HIR::AssignOp> {
     AssignOpToAssignHeaderPattern(TypeConverter &typeConverter, MLIRContext *context)
@@ -1339,15 +1361,16 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         ConversionTarget target(context);
         RewritePatternSet patterns(&context);
         P4HIRToBMv2IRTypeConverter converter;
-        patterns.add<HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
-                     ParserStateOpConversionPattern, ExtractOpConversionPattern,
-                     AssignOpToAssignHeaderPattern, AssignOpPattern, ReadOpConversionPattern,
-                     FieldRefConversionPattern, StructExtractOpConversionPattern,
-                     SymToValConversionPattern, CompareValidityToD2BPattern,
-                     PipelineConversionPattern, DeparserConversionPattern,
-                     CalculationConversionPattern, RemovePackageInstantiationPattern,
-                     RemoveScopePattern, AssignOpToValidityPattern, StructAssignOpPattern>(
-            converter, &context);
+        patterns
+            .add<HeaderInstanceOpConversionPattern, ParserOpConversionPattern,
+                 ParserStateOpConversionPattern, ExtractOpConversionPattern,
+                 ExtractVLOpConversionPattern, AssignOpToAssignHeaderPattern, AssignOpPattern,
+                 ReadOpConversionPattern, FieldRefConversionPattern,
+                 StructExtractOpConversionPattern, SymToValConversionPattern,
+                 CompareValidityToD2BPattern, PipelineConversionPattern, DeparserConversionPattern,
+                 CalculationConversionPattern, RemovePackageInstantiationPattern,
+                 RemoveScopePattern, AssignOpToValidityPattern, StructAssignOpPattern>(converter,
+                                                                                       &context);
 
         target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
 
@@ -1366,6 +1389,7 @@ struct P4HIRToBMv2IRPass : public P4::P4MLIR::impl::P4HIRToBmv2IRBase<P4HIRToBMv
         target.addIllegalOp<P4HIR::ParserOp>();
         target.addIllegalOp<P4HIR::ParserStateOp>();
         target.addIllegalOp<P4CoreLib::PacketExtractOp>();
+        target.addIllegalOp<P4CoreLib::PacketExtractVariableOp>();
         target.addIllegalOp<P4HIR::AssignOp>();
         target.addIllegalOp<P4HIR::StructFieldRefOp>();
         target.addIllegalOp<P4HIR::ReadOp>();

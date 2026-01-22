@@ -95,6 +95,13 @@ std::string asHexstr(P4HIR::IntAttr intAttr) {
     return asHexstr(intAttr.getUInt(), bitTy.getWidth());
 }
 
+json::Value asExpressionNode(json::Value val) {
+    json::Object res;
+    res["type"] = "expression";
+    res["value"] = std::move(val);
+    return res;
+}
+
 json::Value to_JSON(Value val);
 json::Value to_JSON(Operation *op);
 
@@ -220,6 +227,26 @@ json::Value to_JSON(BMv2IR::AssignOp assignOp) {
     return res;
 }
 
+json::Value to_JSON(BMv2IR::ExtractVLOp extractOp) {
+    json::Object res;
+    res["op"] = "extract_VL";
+    // TODO: add support for non-regular extracts
+    json::Array parameters;
+    auto type = extractOp.getExtractType();
+    if (type == BMv2IR::ExtractKind::Regular) {
+        json::Object desc;
+        desc["type"] = "regular";
+        desc["value"] = extractOp.getHeaderInstance().getLeafReference().getValue();
+        parameters.push_back(std::move(desc));
+    } else {
+        llvm_unreachable("Non-regular extracts not yet supported");
+    }
+    auto lengthExpr = asExpressionNode(to_JSON(extractOp.getLengthExpr()));
+    parameters.push_back(std::move(lengthExpr));
+    res["parameters"] = std::move(parameters);
+    return res;
+}
+
 json::Value to_JSON(BMv2IR::ExtractOp extractOp) {
     json::Object res;
     res["op"] = "extract";
@@ -241,8 +268,8 @@ json::Value to_JSON(BMv2IR::ExtractOp extractOp) {
 // Returns true for Operations that we want to emit directly (basically "root" operations for
 // expression trees etc)
 bool isPrimitive(Operation *op) {
-    return isa<BMv2IR::AssignOp, BMv2IR::AssignHeaderOp, BMv2IR::ExtractOp, BMv2IR::LookaheadOp,
-               BMv2IR::AddHeaderOp, BMv2IR::RemoveHeaderOp>(op);
+    return isa<BMv2IR::AssignOp, BMv2IR::AssignHeaderOp, BMv2IR::ExtractOp, BMv2IR::ExtractVLOp,
+               BMv2IR::LookaheadOp, BMv2IR::AddHeaderOp, BMv2IR::RemoveHeaderOp>(op);
 }
 
 json::Value to_JSON(BMv2IR::ParserStateOp stateOp) {
@@ -453,13 +480,6 @@ json::Value to_JSON(P4HIR::ConstOp constOp) {
         .Case([](P4HIR::BoolAttr boolAttr) { return json::Value(boolAttr.getValue()); });
 }
 
-json::Value asExpressionNode(json::Value val) {
-    json::Object res;
-    res["type"] = "expression";
-    res["value"] = std::move(val);
-    return res;
-}
-
 json::Value getHexstr(char c, unsigned bitWidth) {
     auto width = llvm::divideCeil(bitWidth, 8) * 2;
     std::string hexStr(width, c);
@@ -667,6 +687,7 @@ json::Value to_JSON(Operation *op) {
         .Case([](BMv2IR::LookaheadOp lookAheadOp) { return to_JSON(lookAheadOp); })
         .Case([](BMv2IR::AssignOp assignOp) { return to_JSON(assignOp); })
         .Case([](BMv2IR::ExtractOp extractOp) { return to_JSON(extractOp); })
+        .Case([](BMv2IR::ExtractVLOp extractOp) { return to_JSON(extractOp); })
         .Case([](BMv2IR::FieldOp fieldOp) { return to_JSON(fieldOp); })
         .Case([](P4HIR::ConstOp constOp) { return to_JSON(constOp); })
         .Case([](P4HIR::BinOp binOp) { return to_JSON(binOp); })

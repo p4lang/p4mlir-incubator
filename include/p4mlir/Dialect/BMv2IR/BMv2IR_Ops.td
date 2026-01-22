@@ -199,6 +199,27 @@ def BMv2IR_ExtractOp : BMv2IR_Op<"extract", [HasParent<"ParserStateOp">, Allowed
   }];
 }
 
+def BMv2IR_ExtractVLOp : BMv2IR_Op<"extract_vl", [HasParent<"ParserStateOp">, AllowedParserOp]> {
+  let summary = "Extract variable length header operation";
+  let description = [{
+    Extracts the field of a variable length header instance, header stack, or union stack element.
+    `extract_type` works in the same way as a normal `extract` op.
+    
+    
+  }];
+  
+  let arguments = (ins
+    BMv2IR_ExtractKindAttr:$extract_type,
+    SymbolRefAttr:$header_instance,
+    BitsType:$length_expr,
+    OptionalAttr<StrAttr>:$union_member
+  );
+  
+  let assemblyFormat = [{
+    $extract_type $header_instance `(` $length_expr `:` type($length_expr) `)` (`union_member` $union_member^)? attr-dict
+  }];
+}
+
 def BMv2IR_AssignHeaderOp : BMv2IR_Op<"assign_header", [AllowedParserOp]> {
   let summary = "Assign header operation";
   let description = [{
