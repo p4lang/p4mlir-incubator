@@ -394,6 +394,7 @@ def BMv2IR_TableOp : BMv2IR_Op<"table",
                        BMv2IR_TableKeyArrayAttr:$keys,
                        BoolAttr:$support_timeout,
                        OptionalAttr<BMv2IR_TableDefaultEntryAttr>:$default_entry,
+                       OptionalAttr<BMv2IR_TableEntriesArrayAttr>:$const_entries,
                        I32Attr:$size
   );
 
@@ -405,6 +406,7 @@ def BMv2IR_TableOp : BMv2IR_Op<"table",
     `\n` `keys` $keys
     `\n` `support_timeout` $support_timeout
     (`\n` `default_entry` $default_entry^)?
+    (`\n` `const_entries` $const_entries^)?
     `\n` `size` $size attr-dict
   }];
   let hasVerifier = 1;

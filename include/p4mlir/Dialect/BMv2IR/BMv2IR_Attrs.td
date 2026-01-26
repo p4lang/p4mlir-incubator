@@ -98,16 +98,20 @@ def BMv2IR_TableKeyAttr : BMv2IR_Attr<"TableKey", "table_key"> {
       OptionalParameter<"mlir::StringAttr">:$name
   );
 
-  // TODO: add verifier, symbol ref should be a header, field should be valid withing the header
+  // TODO: add verifier, symbol ref should be a header, field should be valid within the header
   let assemblyFormat = [{
       `<` `type` $match_type `,` `header` $header (`[` $field_name^ `]`)? (`mask` `=` $mask^)? (`name` `=` $name^)? `>`
+  }];
+
+  let extraClassDeclaration = [{
+    llvm::FailureOr<unsigned> getWidth(mlir::ModuleOp moduleOp);
   }];
 }
 
 def BMv2IR_TableKeyArrayAttr : TypedArrayAttrBase<BMv2IR_TableKeyAttr,
     "Array of match key elements">;
 
-def BMv2IR_TableDefaultEntryAttr : BMv2IR_Attr<"TableDefaultEntry", "table-default-entry"> {
+def BMv2IR_TableDefaultEntryAttr : BMv2IR_Attr<"TableDefaultEntry", "table_default_entry"> {
   let summary = "Table default entry description attribute";
   let description = [{
     Represents the default entry of a table.
@@ -125,6 +129,53 @@ def BMv2IR_TableDefaultEntryAttr : BMv2IR_Attr<"TableDefaultEntry", "table-defau
       `<` `action` $action `,` (`action_data`  `[` $action_data^ `]`)? `action_const` $action_const `,` `action_entry_const` $action_entry_const `>`
   }];
 }
+
+def BMv2IR_MatchKeyAttr : BMv2IR_Attr<"MatchKey", "match-key"> {
+  let summary = "Table match key description attribute";
+  let description = [{
+    Represents the match key of a table's constant entries according to the BMv2
+    [match-action format](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#match-action-entry-format).
+    Depending on the match kind:
+    * `first` represents either the key or the start of a range
+    * `second` represents either the prefix length, mask or end of a range
+  }];
+
+  let parameters = (ins
+      "TableMatchKind":$match_type,
+      "mlir::Attribute":$first,
+      OptionalParameter<"mlir::Attribute">:$second
+  );
+
+  let genVerifyDecl = 1;
+  let assemblyFormat = [{
+      `<` `match_type` $match_type `first` $first (`second` $second^)? `>`
+  }];
+}
+
+def BMv2IR_MatchKeyArrayAttr : TypedArrayAttrBase<BMv2IR_MatchKeyAttr,
+    "Array of match_key entries">;
+
+def BMv2IR_TableEntryAttr : BMv2IR_Attr<"TableEntry", "table_entry"> {
+  let summary = "Table entry description attribute";
+  let description = [{
+    Represents a constant entry of a table according to the BMv2
+    [match-action format](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#match-action-entry-format).
+  }];
+
+  let parameters = (ins
+      ArrayRefParameter<"MatchKeyAttr", "array of match keys">:$match_keys,
+      "mlir::SymbolRefAttr":$action,
+      OptionalArrayRefParameter<"mlir::Attribute">:$action_data
+  );
+
+  // TODO: add verifier: symbol ref should be an action, actionData should have as many entries as action args
+  let assemblyFormat = [{
+      `<` `match_key` $match_keys `action` $action (`action_data`  `[` $action_data^ `]`)? `>`
+  }];
+}
+
+def BMv2IR_TableEntriesArrayAttr : TypedArrayAttrBase<BMv2IR_TableEntryAttr,
+    "Array of table entries">;
 
 def BMv2IR_TableType : IntEnum<"TableType",
     "BMv2 Table Type",

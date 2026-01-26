@@ -3,6 +3,7 @@
 
 // We explicitly do not use push / pop for diagnostic in
 // order to propagate pragma further on
+#include "mlir/IR/MLIRContext.h"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include "mlir/Bytecode/BytecodeOpInterface.h"
@@ -51,6 +52,9 @@ inline mlir::StringAttr getControlPlaneName(P4HIR::Annotated annotatedOp) {
 // Same default size as p4c, see backends/bmv2/common/helpers.cpp
 constexpr unsigned defaultTableSize = 1024;
 
+llvm::FailureOr<P4HIR::IntAttr> getTrueMask(mlir::MLIRContext *ctx, unsigned width);
+
+llvm::FailureOr<P4HIR::IntAttr> getWithWidth(mlir::MLIRContext *ctx, int64_t val, unsigned width);
 }  // namespace P4::P4MLIR::BMv2IR
 
 #endif  // P4MLIR_DIALECT_BMv2IR_BMv2IR_OPS_H

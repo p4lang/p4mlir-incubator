@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 
+#include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -10,6 +11,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/ADT/bit.h"
 #include "llvm/Support/AllocatorBase.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -24,6 +26,7 @@
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -677,7 +680,7 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         for (auto actionOp : tableActions) {
             auto maybeActionRef = getAction(actionOp);
             if (failed(maybeActionRef)) return actionOp.emitError("Unexpected table_action");
-            actionCallees.push_back(maybeActionRef.value());
+            actionCallees.push_back(maybeActionRef->actionRef);
         }
 
         auto maybeActionTables = getActionTablePairs(op, controlApply, actionCallees);
@@ -705,6 +708,9 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
             tableSize = sizeAttr.getValue().getSExtValue();
         }
 
+        auto constEntries = getConstantEntries(op, maybeKeys.value());
+        if (failed(constEntries)) return op.emitError("Error retrieving constant entries");
+
         auto defEntryAttr = getDefaultEntry(op);
         auto tableMatchKind = getTableMatchKind(maybeKeys.value(), rewriter);
         if (failed(defEntryAttr)) return op.emitError("Unable to compute table match kind");
@@ -718,8 +724,196 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
             op, op.getSymNameAttr(), rewriter.getArrayAttr(actionCallees),
             maybeActionTables.value(), tableType, tableMatchKind,
             rewriter.getArrayAttr(maybeKeys.value()), supportTimeout, defEntryAttr.value(),
+            constEntries.value().size() > 0 ? constEntries.value() : nullptr,
             rewriter.getI32IntegerAttr(tableSize));
         return success();
+    }
+
+    static FailureOr<BMv2IR::MatchKeyAttr> getTableMatchKey(Attribute attr,
+                                                            P4HIR::TableEntryOp entryOp,
+                                                            BMv2IR::TableKeyAttr tableKey) {
+        // If the table key is ternary, we have to mask the constant with 0xFFF (with the
+        // appropriate width)
+        auto getExactOrTernaryFromIntAttr =
+            [&](P4HIR::IntAttr intAttr) -> FailureOr<BMv2IR::MatchKeyAttr> {
+            switch (tableKey.getMatchType()) {
+                case BMv2IR::TableMatchKind::Ternary: {
+                    auto width = tableKey.getWidth(entryOp->getParentOfType<ModuleOp>());
+                    if (failed(width)) return entryOp.emitError("Error retrieving table key width");
+                    auto trueMask = BMv2IR::getTrueMask(entryOp.getContext(), width.value());
+                    if (failed(trueMask))
+                        return entryOp.emitError("Error creating true mask for ") << width.value();
+                    return BMv2IR::MatchKeyAttr::get(entryOp.getContext(),
+                                                     BMv2IR::TableMatchKind::Ternary, intAttr,
+                                                     trueMask.value());
+                }
+                case BMv2IR::TableMatchKind::Exact: {
+                    return BMv2IR::MatchKeyAttr::get(
+                        entryOp.getContext(), BMv2IR::TableMatchKind::Exact, intAttr, nullptr);
+                }
+                case BMv2IR::TableMatchKind::LPM: {
+                    auto width = tableKey.getWidth(entryOp->getParentOfType<ModuleOp>());
+                    if (failed(width)) return entryOp.emitError("Error retrieving table key width");
+                    return BMv2IR::MatchKeyAttr::get(
+                        entryOp.getContext(), BMv2IR::TableMatchKind::LPM, intAttr,
+                        IntegerAttr::get(entryOp.getContext(), APSInt::get(width.value())));
+                }
+                default: {
+                    return entryOp.emitError("Unsupported match kind for IntAttr");
+                }
+            }
+        };
+        return llvm::TypeSwitch<Attribute, FailureOr<BMv2IR::MatchKeyAttr>>(attr)
+            .Case([&](P4HIR::IntAttr intAttr) { return getExactOrTernaryFromIntAttr(intAttr); })
+            .Case([&](P4HIR::UniversalSetAttr universalAttr) -> FailureOr<BMv2IR::MatchKeyAttr> {
+                switch (tableKey.getMatchType()) {
+                    case BMv2IR::TableMatchKind::Ternary: {
+                        // p4c for this case emits a `ternary` type match key, with 0x0000, 0x0000
+                        // as key and mask
+                        auto width = tableKey.getWidth(entryOp->getParentOfType<ModuleOp>());
+                        if (failed(width))
+                            return entryOp.emitError("Error retrieving table key width");
+                        auto zero = BMv2IR::getWithWidth(entryOp.getContext(), 0, width.value());
+                        if (failed(zero)) return entryOp.emitError("Error creating zero attribute");
+                        return BMv2IR::MatchKeyAttr::get(entryOp.getContext(),
+                                                         BMv2IR::TableMatchKind::Ternary,
+                                                         zero.value(), zero.value());
+                    }
+                    case BMv2IR::TableMatchKind::LPM: {
+                        auto width = tableKey.getWidth(entryOp->getParentOfType<ModuleOp>());
+                        if (failed(width))
+                            return entryOp.emitError("Error retrieving table key width");
+                        auto zero = BMv2IR::getWithWidth(entryOp.getContext(), 0, width.value());
+                        if (failed(zero)) return entryOp.emitError("Error creating zero attribute");
+                        auto zeroAttr = IntegerAttr::get(entryOp.getContext(), APSInt::get(0));
+                        return BMv2IR::MatchKeyAttr::get(entryOp.getContext(),
+                                                         BMv2IR::TableMatchKind::LPM, zero.value(),
+                                                         zeroAttr);
+                    }
+                    default:
+                        return entryOp.emitError("Unsupported key type for UniversalSet");
+                }
+            })
+            .Case([&](P4HIR::SetAttr setAttr) -> FailureOr<BMv2IR::MatchKeyAttr> {
+                auto kind = setAttr.getKind();
+                SmallVector<Attribute> bmv2Entries;
+                switch (kind) {
+                    case P4HIR::SetKind::Range: {
+                        auto members = setAttr.getMembers();
+                        if (members.size() != 2)
+                            return entryOp.emitError("Expected two set members");
+                        return BMv2IR::MatchKeyAttr::get(entryOp.getContext(),
+                                                         BMv2IR::TableMatchKind::Range, members[0],
+                                                         members[1]);
+                    }
+                    case P4HIR::SetKind::Mask: {
+                        auto members = setAttr.getMembers();
+                        if (members.size() != 2)
+                            return entryOp.emitError("Expected two set members");
+                        switch (tableKey.getMatchType()) {
+                            case BMv2IR::TableMatchKind::Ternary: {
+                                return BMv2IR::MatchKeyAttr::get(entryOp.getContext(),
+                                                                 BMv2IR::TableMatchKind::Ternary,
+                                                                 members[0], members[1]);
+                            }
+                            case BMv2IR::TableMatchKind::LPM: {
+                                // The prefix_length calculation is takes from
+                                // p4c/backends/bmv2/common/control.h
+                                auto mask = dyn_cast<P4HIR::IntAttr>(members[1]);
+                                if (!mask) return entryOp.emitError("Expected IntAttr for mask");
+                                auto maskVal = mask.getUInt();
+                                auto trailingZeros = llvm::countr_zero(maskVal);
+                                auto width =
+                                    tableKey.getWidth(entryOp->getParentOfType<ModuleOp>());
+                                if (failed(width))
+                                    return entryOp.emitError("Error retrieving table key width");
+                                auto prefixLen = width.value() - trailingZeros;
+                                auto prefixLenAttr =
+                                    IntegerAttr::get(entryOp.getContext(), APSInt::get(prefixLen));
+                                return BMv2IR::MatchKeyAttr::get(entryOp.getContext(),
+                                                                 BMv2IR::TableMatchKind::LPM,
+                                                                 members[0], prefixLenAttr);
+                            }
+                            default: {
+                                return entryOp.emitError("Unsupported Mask MatchType");
+                            }
+                        }
+                    }
+                    case P4HIR::SetKind::Constant: {
+                        auto members = setAttr.getMembers();
+                        if (members.size() != 1)
+                            return entryOp.emitError("Expected one set member");
+                        auto intAttr = dyn_cast<P4HIR::IntAttr>(members[0]);
+                        if (!intAttr) return entryOp.emitError("Expected IntAttr");
+                        return getExactOrTernaryFromIntAttr(intAttr);
+                    }
+                    default: {
+                        return entryOp.emitError("Unsupported SetAttr kind");
+                    }
+                }
+            })
+            .Case([&](P4HIR::BoolAttr boolAttr) -> FailureOr<BMv2IR::MatchKeyAttr> {
+                auto val = boolAttr.getValue();
+                auto type = P4HIR::BitsType::get(entryOp.getContext(), 1, false);
+                auto intAttr = P4HIR::IntAttr::get(type, val);
+                if (tableKey.getMatchType() != BMv2IR::TableMatchKind::Exact)
+                    return entryOp.emitError("Expected exact match on BoolAttr");
+                return BMv2IR::MatchKeyAttr::get(entryOp.getContext(),
+                                                 BMv2IR::TableMatchKind::Exact, intAttr, nullptr);
+            })
+            .Default([&](Attribute attr) {
+                return entryOp.emitError("Unsupported match key attribute ")
+                       << attr.getAbstractAttribute().getName();
+            });
+    }
+
+    // Returns a SmallVector of BMv2IR::MatchKeyAttr for SetAttr of `product` kind or AggAttr
+    static FailureOr<SmallVector<BMv2IR::MatchKeyAttr>> getTableMatchKeyForCollection(
+        TypedAttr attr, P4HIR::TableEntryOp entryOp, ArrayRef<Attribute> tableKeys) {
+        auto members =
+            llvm::TypeSwitch<TypedAttr, FailureOr<ArrayAttr>>(attr)
+                .Case([&](P4HIR::SetAttr setAttr) -> FailureOr<ArrayAttr> {
+                    if (setAttr.getKind() != P4HIR::SetKind::Product)
+                        return entryOp.emitError("Expected product set attribute");
+                    return setAttr.getMembers();
+                })
+                .Case([&](P4HIR::AggAttr aggAttr) { return aggAttr.getFields(); })
+                .Default([&](TypedAttr) { return entryOp.emitError("Unsupported TypedAttr"); });
+
+        if (failed(members)) return failure();
+        SmallVector<BMv2IR::MatchKeyAttr> bmv2Entries;
+        if (tableKeys.size() != members->size())
+            return entryOp.emitError("Expected same number of keys");
+        for (auto [constKeyAttr, tableKeyAttr] : llvm::zip(members.value(), tableKeys)) {
+            auto matchKey =
+                getTableMatchKey(constKeyAttr, entryOp, cast<BMv2IR::TableKeyAttr>(tableKeyAttr));
+            if (failed(matchKey)) return failure();
+            bmv2Entries.push_back(matchKey.value());
+        }
+        return bmv2Entries;
+    }
+
+    static FailureOr<ArrayAttr> getConstantEntries(P4HIR::TableOp tableOp,
+                                                   ArrayRef<Attribute> keys) {
+        SmallVector<Attribute> bmv2Entries;
+        auto walkRes = tableOp.walk([&](P4HIR::TableEntryOp entryOp) {
+            auto matchKey = getTableMatchKeyForCollection(entryOp.getKeys(), entryOp, keys);
+            if (failed(matchKey)) {
+                entryOp.emitError("Error processing match key");
+                return WalkResult::interrupt();
+            }
+            auto action = getAction(entryOp);
+            if (failed(action)) {
+                entryOp.emitError("Error processing table action");
+                return WalkResult::interrupt();
+            }
+            bmv2Entries.push_back(BMv2IR::TableEntryAttr::get(
+                entryOp.getContext(), matchKey.value(), action->actionRef, action->constArgs));
+            return WalkResult::advance();
+        });
+
+        if (walkRes.wasInterrupted()) return failure();
+        return ArrayAttr::get(tableOp.getContext(), bmv2Entries);
     }
 
     static BMv2IR::TableMatchKindAttr getTableMatchKind(ArrayRef<Attribute> keys,
@@ -728,9 +922,9 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         // The match_type for the table needs to follow the following rules:
         // * If one match field is range, the table match_type has to be range
         // * If one match field is ternary, the table match_type has to be ternary
-        // * If one match field is lpm, the table match_type is either ternary or lpm Note that it
-        // is not correct to have more than one lpm match field in the same table.
-        // See also p4c/backends/bmv2/common/control.h
+        // * If one match field is lpm, the table match_type is either ternary or lpm Note that
+        // it is not correct to have more than one lpm match field in the same table. See also
+        // p4c/backends/bmv2/common/control.h
         auto hasOneOf = [&](BMv2IR::TableMatchKind kind) {
             return llvm::any_of(keys, [&](Attribute a) {
                 return cast<BMv2IR::TableKeyAttr>(a).getMatchType() == kind;
@@ -762,8 +956,8 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         bool actionConst = true;
         bool actionEntryConst = true;
         std::vector<std::string> actionData;
-        return BMv2IR::TableDefaultEntryAttr::get(tableOp.getContext(), action.value(), actionConst,
-                                                  actionData, actionEntryConst);
+        return BMv2IR::TableDefaultEntryAttr::get(tableOp.getContext(), action->actionRef,
+                                                  actionConst, actionData, actionEntryConst);
     }
 
     static FailureOr<BMv2IR::TableMatchKind> getBMv2TableMatchKind(
@@ -780,10 +974,11 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
     static FailureOr<BMv2IR::TableKeyAttr> getKey(P4HIR::TableKeyEntryOp matchOp) {
         auto maybeMatchKind = getBMv2TableMatchKind(matchOp.getMatchKindAttr());
         if (failed(maybeMatchKind)) return matchOp.emitError("Error converting match kind");
-        // Note that this would probably be more straight forward if we applied this pattern after
-        // converting to BMv2IR ops
+        // Note that this would probably be more straight forward if we applied this pattern
+        // after converting to BMv2IR ops
         // TODO: implement support for other match kinds
         auto defOp = matchOp.getValue().getDefiningOp();
+
         if (!defOp) return matchOp.emitError("Expected defining operation for TableKeyEntryOp");
         return llvm::TypeSwitch<Operation *, FailureOr<BMv2IR::TableKeyAttr>>(defOp)
             .Case([&](P4HIR::ReadOp readOp) -> FailureOr<BMv2IR::TableKeyAttr> {
@@ -810,6 +1005,38 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
                                                  header, fieldName, nullptr,
                                                  BMv2IR::getControlPlaneName(matchOp));
             })
+            .Case([&](P4HIR::CmpOp cmpOp) -> FailureOr<BMv2IR::TableKeyAttr> {
+                // p4c seems to emit `exact` match kind keys even if technically it should support
+                // `valid`, so we emit `exact` matches to the `$valid$` field ref.
+                if (maybeMatchKind.value() != BMv2IR::TableMatchKind::Exact)
+                    return matchOp.emitError("Unexpected match kind");
+                auto lhs = cmpOp.getLhs();
+                auto rhs = cmpOp.getRhs();
+                if (!isValid(lhs) && !isValid(rhs))
+                    return matchOp.emitError("Expected validity check");
+                auto validVal = isValid(lhs) ? lhs : rhs;
+                auto validAttr =
+                    validVal.getDefiningOp<P4HIR::ConstOp>().getValueAs<P4HIR::ValidityBitAttr>();
+                if (!validAttr) return matchOp.emitError("Expected validity bit attr");
+                if (validAttr.getValue() != P4HIR::ValidityBit::Valid)
+                    return matchOp.emitError("Expected check for valid");
+                auto fieldVal = isValid(lhs) ? rhs : lhs;
+                auto readOp = fieldVal.getDefiningOp<P4HIR::ReadOp>();
+                if (!readOp) return matchOp.emitError("Expected ReadOp");
+                auto fieldRef = readOp.getRef().getDefiningOp<P4HIR::StructFieldRefOp>();
+                if (!fieldRef) return matchOp.emitError("Expected StructFieldRefOp");
+                auto symRefOp = fieldRef.getInput().getDefiningOp<BMv2IR::SymToValueOp>();
+                if (!symRefOp) return matchOp.emitError("Expected SymToValueOp");
+                auto header = symRefOp.getDecl();
+                auto fieldName = fieldRef.getFieldName();
+                if (fieldName != P4HIR::HeaderType::validityBit)
+                    return matchOp.emitError("Expected match on validity bit field");
+                auto newFieldName =
+                    StringAttr::get(matchOp.getContext(), BMv2IR::HeaderType::validBitFieldName);
+                return BMv2IR::TableKeyAttr::get(matchOp.getContext(), maybeMatchKind.value(),
+                                                 header, newFieldName, nullptr,
+                                                 BMv2IR::getControlPlaneName(matchOp));
+            })
             .Default([](Operation *op) {
                 return op->emitError("Unhandled operation when handling key entry");
             });
@@ -828,37 +1055,55 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         return res;
     }
 
-    static FailureOr<SymbolRefAttr> getAction(Operation *op) {
-        bool supported = isa<P4HIR::TableActionOp, P4HIR::TableDefaultActionOp>(op);
+    // Represents the call operation for TableActionOp, TableDefaultActionOp and TableEntryOp, with
+    // the SymbolRef to the actual control action and the optional constant arguments
+    struct TableActionCall {
+        SymbolRefAttr actionRef;
+        SmallVector<Attribute> constArgs;
+    };
+
+    static FailureOr<TableActionCall> getAction(Operation *op) {
+        bool supported =
+            isa<P4HIR::TableActionOp, P4HIR::TableDefaultActionOp, P4HIR::TableEntryOp>(op);
         assert(supported && "Unhandled op");
         Region &region = op->getRegion(0);
-        if (!region.hasOneBlock()) return failure();
+        if (!region.hasOneBlock()) return op->emitError("Expected region with one block");
 
         Block &block = region.front();
 
-        if (!llvm::hasSingleElement(block)) return failure();
+        if (!llvm::hasSingleElement(block))
+            return op->emitError("Expected region with one element");
 
         Operation &firstOp = block.front();
 
         auto callOp = dyn_cast<P4HIR::CallOp>(&firstOp);
-        if (!callOp) return failure();
+        if (!callOp) return callOp.emitError("Expected call operation");
 
-        if (auto callee = callOp.getCallee()) return callee;
+        SmallVector<Attribute> constArgs;
+        for (auto operand : callOp.getArgOperands()) {
+            // BlockArgs are handled by using HeaderInstances in the corresponding control actions
+            if (isa<BlockArgument>(operand)) continue;
+            auto defOp = operand.getDefiningOp<P4HIR::ConstOp>();
+            if (!defOp) return callOp.emitError("Unsupported call operand");
+            auto val = dyn_cast<P4HIR::IntAttr>(defOp.getValue());
+            if (!val) return callOp.emitError("Unsupported const value");
+            constArgs.push_back(val);
+        }
 
-        return failure();
+        return {{callOp.getCallee(), std::move(constArgs)}};
     }
 
     // In BMv2, control flow between table_apply operations in control_apply blocks is expressed
-    // by the next_table entries in the table node. So in order to fill the next_table node we need
-    // to:
-    // * Retrieve the table_apply operation corresponding to tableOp (TODO: can there be more than
-    // one?)
+    // by the next_table entries in the table node. So in order to fill the next_table node we
+    // need to:
+    // * Retrieve the table_apply operation corresponding to tableOp (TODO: can there be more
+    // than one?)
     // * Look at the next operation after the table_apply:
-    //   - If it's another table_apply, then the next_table node contains all entries that point to
-    //   the next table (one for every action)
+    //   - If it's another table_apply, then the next_table node contains all entries that point
+    //   to the next table (one for every action)
     //   - If it's a check on hit/miss, we need to add __HIT__ and __MISS__ entries to the table
-    //   - If it's a switch, we need to add an entry for every action, with the first table in the
-    //   case block as next table
+    //   - If it's a switch, we need to add an entry for every action, with the first table in
+    //   the case block as next table
     //   - If it's a yield, we check the next node of the parent op.
     static FailureOr<Attribute> getActionTablePairs(P4HIR::TableOp tableOp,
                                                     P4HIR::ControlApplyOp controlApply,
@@ -1010,7 +1255,8 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
         SmallPtrSet<Attribute, 5> processedActions;
         for (auto caseOp : switchOp.cases()) {
             if (caseOp.getKind() == P4HIR::CaseOpKind::Equal) {
-                // This assumes that the enum field and the corresponding action have the same name
+                // This assumes that the enum field and the corresponding action have the same
+                // name
                 auto vals = caseOp.getValue();
                 assert(vals.size() == 1 && "More than value in equal case");
                 auto enumField = dyn_cast<P4HIR::EnumFieldAttr>(vals[0]);
@@ -1032,8 +1278,8 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
                 processedActions.insert(*actionIt);
             }
         }
-        // For the actions that aren't covered by explicit cases, we look at the next table from the
-        // default case.
+        // For the actions that aren't covered by explicit cases, we look at the next table from
+        // the default case.
         auto defaultCase = switchOp.getDefaultCase();
         if (!defaultCase) return switchOp.emitError("Expected default case");
         auto &firstCaseOp = defaultCase.getCaseRegion().front().front();
@@ -1078,8 +1324,8 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
                 if (failed(symRef)) return failure();
                 return symRef.value();
             }
-            // At this point we have already checked for an empty region (or a region with just a
-            // yield) Any other op should be either a table_apply or an if op
+            // At this point we have already checked for an empty region (or a region with just
+            // a yield) Any other op should be either a table_apply or an if op
             Operation *regionOp = &r.front().front();
             while (regionOp) {
                 if (auto tableApply = dyn_cast<P4HIR::TableApplyOp>(regionOp))

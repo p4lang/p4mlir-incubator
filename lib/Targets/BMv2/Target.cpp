@@ -364,6 +364,34 @@ json::Value to_JSON(BMv2IR::ConditionalOp conditional) {
     return res;
 }
 
+json::Object getMatchKeyNode(BMv2IR::MatchKeyAttr matchKey) {
+    json::Object res;
+    res["match_type"] = BMv2IR::stringifyTableMatchKind(matchKey.getMatchType());
+    switch (matchKey.getMatchType()) {
+        case BMv2IR::TableMatchKind::Range: {
+            res["start"] = asHexstr(cast<P4HIR::IntAttr>(matchKey.getFirst()));
+            res["end"] = asHexstr(cast<P4HIR::IntAttr>(matchKey.getSecond()));
+            return res;
+        }
+        case BMv2IR::TableMatchKind::Ternary: {
+            res["key"] = asHexstr(cast<P4HIR::IntAttr>(matchKey.getFirst()));
+            res["mask"] = asHexstr(cast<P4HIR::IntAttr>(matchKey.getSecond()));
+            return res;
+        }
+        case BMv2IR::TableMatchKind::Exact: {
+            res["key"] = asHexstr(cast<P4HIR::IntAttr>(matchKey.getFirst()));
+            return res;
+        }
+        case BMv2IR::TableMatchKind::LPM: {
+            res["key"] = asHexstr(cast<P4HIR::IntAttr>(matchKey.getFirst()));
+            res["prefix_length"] = cast<IntegerAttr>(matchKey.getSecond()).getSInt();
+            return res;
+        }
+        default:
+            llvm_unreachable("Unsupported table kind");
+    }
+}
+
 json::Value to_JSON(BMv2IR::TableOp tableOp) {
     json::Object res;
     res["name"] = tableOp.getSymName();
@@ -447,6 +475,32 @@ json::Value to_JSON(BMv2IR::TableOp tableOp) {
         }
         defaultEntry["action_data"] = std::move(actionData);
         res["default_entry"] = std::move(defaultEntry);
+    }
+
+    auto constEntries = tableOp.getConstEntries();
+    if (constEntries.has_value() && constEntries.value().size() > 0) {
+        json::Array entries;
+        for (auto attr : constEntries.value()) {
+            json::Object matchActionNode;
+            auto entry = cast<BMv2IR::TableEntryAttr>(attr);
+            json::Array matchKeys;
+            for (auto a : entry.getMatchKeys()) {
+                auto matchKey = cast<BMv2IR::MatchKeyAttr>(a);
+                matchKeys.push_back(getMatchKeyNode(matchKey));
+            }
+            matchActionNode["match_key"] = std::move(matchKeys);
+            json::Object actionEntry;
+            actionEntry["action_id"] = getIdForAction(entry.getAction());
+            json::Array actionData;
+            for (auto a : entry.getActionData()) {
+                auto actionDataEntry = cast<P4HIR::IntAttr>(a);
+                actionData.push_back(asHexstr(actionDataEntry));
+            }
+            actionEntry["action_data"] = std::move(actionData);
+            matchActionNode["action_entry"] = std::move(actionEntry);
+            entries.push_back(std::move(matchActionNode));
+        }
+        res["entries"] = std::move(entries);
     }
 
     return res;

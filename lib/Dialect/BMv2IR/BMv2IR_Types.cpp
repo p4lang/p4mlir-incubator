@@ -87,6 +87,13 @@ bool BMv2IR::HeaderType::hasField(StringRef name) {
     return hasField || name == validBitFieldName;
 }
 
+FailureOr<BMv2IR::FieldInfo> BMv2IR::HeaderType::getField(StringRef name) {
+    for (auto field : getFields()) {
+        if (field.name == name) return field;
+    }
+    return failure();
+}
+
 unsigned BMv2IR::HeaderType::computeMaxLength(ArrayRef<BMv2IR::FieldInfo> fields) {
     unsigned lenInBits = computeTotalHeaderLenghtInBits(fields);
     return lenInBits / bitsInByte;

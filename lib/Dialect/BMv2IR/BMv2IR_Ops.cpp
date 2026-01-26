@@ -1,11 +1,15 @@
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Ops.h"
 
+#include <cstdint>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SymbolTable.h"
 #include "p4mlir//Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir//Dialect/P4HIR/P4HIR_Types.h"
@@ -243,7 +247,33 @@ bool isHitOrMissIf(Operation *op) {
     auto fieldName = extractOp.getFieldName();
     return fieldName == "hit" || fieldName == "miss";
 }
+
+FailureOr<P4HIR::IntAttr> getTrueMask(MLIRContext *ctx, unsigned width) {
+    // TODO: how do we represent values that don't fit in int64_t ?
+    if (llvm::divideCeil(width, 8) > sizeof(int64_t)) return failure();
+    int64_t one = 1;
+    auto res = (one << width) - 1;
+    return getWithWidth(ctx, res, width);
+}
+
+FailureOr<P4HIR::IntAttr> getWithWidth(MLIRContext *ctx, int64_t val, unsigned width) {
+    auto type = P4HIR::BitsType::get(ctx, width, false);
+    return P4HIR::IntAttr::get(type, val);
+}
+
 }  // namespace P4::P4MLIR::BMv2IR
+
+llvm::FailureOr<unsigned> P4::P4MLIR::BMv2IR::TableKeyAttr::getWidth(ModuleOp moduleOp) {
+    auto headerDef = SymbolTable::lookupSymbolIn(moduleOp, getHeader());
+    auto header = dyn_cast<HeaderInstanceOp>(headerDef);
+    auto headerTy = dyn_cast<HeaderType>(header.getHeaderType());
+    if (!headerTy) return failure();
+    auto fieldInfo = headerTy.getField(getFieldName().getValue());
+    if (failed(fieldInfo)) return failure();
+    auto fieldTy = dyn_cast<P4HIR::BitsType>(fieldInfo->type);
+    if (!fieldTy) return failure();
+    return fieldTy.getWidth();
+}
 
 void BMv2IRDialect::initialize() {
     registerTypes();
