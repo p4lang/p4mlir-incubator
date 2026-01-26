@@ -463,13 +463,6 @@ class StructLikeType<string name, string typeMnemonic>
       return {subfieldType, subfieldID};
     }
 
-    mlir::Type getTypeAtIndex(mlir::Attribute index) const {
-      auto indexAttr = mlir::dyn_cast<mlir::IntegerAttr>(index);
-      if (!indexAttr) return {};
-
-      return getSubTypeByFieldID(indexAttr.getInt()).first;
-    }
-
     unsigned getFieldID(unsigned index) const {
       auto [maxId, fieldIDs] = getFieldIDsStruct();
       return fieldIDs[index];
@@ -502,6 +495,14 @@ class StructLikeType<string name, string typeMnemonic>
       return std::make_pair(fieldID - childRoot, fieldID >= childRoot && fieldID <= rangeEnd);
     }
 
+    // DestructurableTypeInterface implementation
+    mlir::Type getTypeAtIndex(mlir::Attribute index) const {
+      auto indexAttr = mlir::dyn_cast<mlir::IntegerAttr>(index);
+      if (!indexAttr) return {};
+
+      return getElements()[indexAttr.getInt()].type;
+    }
+
     std::optional<llvm::DenseMap<mlir::Attribute, mlir::Type>> getSubelementIndexMap() const {
       llvm::DenseMap<mlir::Attribute, mlir::Type> destructured;
       for (auto [i, field] : llvm::enumerate(getElements()))
@@ -509,6 +510,7 @@ class StructLikeType<string name, string typeMnemonic>
       return destructured;
     }
 
+    // HasDefaultValue interface implementation
     mlir::TypedAttr getDefaultValue() { return getStructLikeDefaultValue(*this); }
   }];
   let extraClassDeclaration = commonClassDeclaration;
