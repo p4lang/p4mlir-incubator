@@ -1799,6 +1799,8 @@ def SwitchOp : P4HIR_Op<"switch",
 
   let hasVerifier = 1;
 
+  let hasCanonicalizeMethod = 1;
+
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$condition,
