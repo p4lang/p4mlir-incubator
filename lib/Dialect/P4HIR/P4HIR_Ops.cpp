@@ -3676,6 +3676,20 @@ void P4HIR::SwitchOp::build(OpBuilder &builder, OperationState &result, mlir::Va
     switchBuilder(builder, result.location);
 }
 
+LogicalResult P4HIR::SwitchOp::canonicalize(P4HIR::SwitchOp op, PatternRewriter &rewriter) {
+    for (auto switchCase : op.cases()) {
+        auto &region = switchCase.getCaseRegion();
+        if (region.empty()) continue;
+        if (!region.hasOneBlock()) return failure();
+        auto &block = region.front();
+        bool onlyYield =
+            (block.getOperations().size() == 1 && mlir::isa<P4HIR::YieldOp>(block.front()));
+        if (!onlyYield) return failure();
+    }
+    rewriter.eraseOp(op);
+    return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ForOp
 //===----------------------------------------------------------------------===//
