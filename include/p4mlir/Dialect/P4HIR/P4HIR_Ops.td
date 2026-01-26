@@ -94,8 +94,8 @@ def FullMemWrite : MemWrite<DefaultResource, 0, FullEffect>;
 def VariableOp : P4HIR_Op<"variable", [
                  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
                  Annotated,
-                 DeclareOpInterfaceMethods<PromotableAllocationOpInterface>/*,
-                 DeclareOpInterfaceMethods<DestructurableAllocationOpInterface>*/]> {
+                 DeclareOpInterfaceMethods<PromotableAllocationOpInterface>,
+                 DeclareOpInterfaceMethods<DestructurableAllocationOpInterface>]> {
   let summary = "Defines a scope-local variable";
   let description = [{
     The `p4hir.alloca` operation defines a scope-local variable.
@@ -168,6 +168,8 @@ def ReadOp : P4HIR_Op<"read", [
                  "ref", "result",
                  "mlir::cast<P4HIR::ReferenceType>($_self).getObjectType()">,
   DeclareOpInterfaceMethods<PromotableMemOpInterface>,
+  DeclareOpInterfaceMethods<DestructurableAccessorOpInterface>,
+  DeclareOpInterfaceMethods<SafeMemorySlotAccessOpInterface>,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
 
   let summary = "Read value from variable";
@@ -201,7 +203,9 @@ def AssignOp : P4HIR_Op<"assign", [
   TypesMatchWith<"type of 'value' matches object type of 'addr'",
                  "ref", "value",
                  "mlir::cast<ReferenceType>($_self).getObjectType()">,
-                 DeclareOpInterfaceMethods<PromotableMemOpInterface>]> {
+  DeclareOpInterfaceMethods<PromotableMemOpInterface>,
+  DeclareOpInterfaceMethods<SafeMemorySlotAccessOpInterface>,
+  DeclareOpInterfaceMethods<DestructurableAccessorOpInterface>]> {
   let summary = "Assign value to variable";
   let description = [{
     `p4hir.assign` stores a value (first operand) to the object referenced
@@ -1111,6 +1115,8 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
 def StructFieldRefOp : P4HIR_Op<"struct_field_ref",
     [Pure,
      DeclareOpInterfaceMethods<ViewLikeOpInterface>,
+     DeclareOpInterfaceMethods<DestructurableAccessorOpInterface>,
+     DeclareOpInterfaceMethods<SafeMemorySlotAccessOpInterface>,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]> {
   let summary = "Project from a struct reference to a reference to a named struct field";
@@ -1975,6 +1981,8 @@ def ArrayGetOp : P4HIR_Op<"array_get",
 def ArrayElementRefOp : P4HIR_Op<"array_element_ref",
     [Pure, ArrayRefElementResultTypeConstraint<"result", "input">,
      DeclareOpInterfaceMethods<ViewLikeOpInterface>,
+     DeclareOpInterfaceMethods<DestructurableAccessorOpInterface>,
+     DeclareOpInterfaceMethods<SafeMemorySlotAccessOpInterface>,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Project from an array reference to a reference to array element";
   let arguments = (ins ArrayRefType:$input, AnyIntP4Type:$index);
