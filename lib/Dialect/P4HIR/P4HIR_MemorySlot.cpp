@@ -289,9 +289,8 @@ bool P4HIR::ArrayElementRefOp::canRewire(const DestructurableMemorySlot &slot,
                                          const DataLayout &dataLayout) {
     if (slot.ptr != getInput()) return false;
 
-    // Cano only rewire constant indices
-    auto cstIndex = dyn_cast<P4HIR::ConstOp>(getIndex().getDefiningOp());
-    ;
+    // Can only rewire constant indices
+    auto cstIndex = getIndex().getDefiningOp<P4HIR::ConstOp>();
     if (!cstIndex) return false;
 
     auto indexAttr = IntegerAttr::get(IndexType::get(getContext()),
