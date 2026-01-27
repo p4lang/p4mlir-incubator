@@ -9,6 +9,7 @@
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "p4mlir/Conversion/ConversionPatterns.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Ops.h"
@@ -104,9 +105,66 @@ struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMet
             if (methodSym == "extract") {
                 size_t sz = op.getArgOperands().size();
                 if (sz == 1) {
-                    rewriter.replaceOpWithNewOp<P4CoreLib::PacketExtractOp>(op, op.getResultTypes(),
-                                                                            operands.getOperands());
-                    return success();
+                    auto headerArg = op.getArgOperands()[0];
+                    auto headerType = headerArg.getType();
+
+                    // check if objType is HeaderStack or Header
+                    if (auto refType = dyn_cast<P4HIR::ReferenceType>(headerType)) {
+                        auto objType = refType.getObjectType();
+
+                        if (auto hsType = dyn_cast<P4HIR::HeaderStackType>(objType)) {
+                            // header stack type
+                            auto loc = op.getLoc();
+                            auto context = op.getContext();
+
+                            // Get nextIndex and size
+                            auto nextIndexField = rewriter.create<P4HIR::StructExtractOp>(
+                                loc, headerArg, P4HIR::HeaderStackType::nextIndexFieldName);
+
+                            auto stackSize = hsType.getArraySize();
+                            auto sizeValue = rewriter.create<P4HIR::ConstOp>(
+                                loc, P4HIR::IntAttr::get(
+                                    P4HIR::BitsType::get(context, 32, false), stackSize));
+
+                            // check if nextIndex < sizeValue
+                            auto boundCheck = rewriter.create<mlir::arith::CmpIOp>(
+                                loc, mlir::arith::CmpIPredicate::slt, nextIndexField, sizeValue);
+
+                            // verify operation
+                            auto verifySym = mlir::SymbolRefAttr::get(context, "verify");
+                            rewriter.create<P4HIR::CallOp>(loc, verifySym, mlir::TypeRange(),
+                                llvm::ArrayRef<mlir::Value>{boundCheck});
+
+                            // Create increment: nextIndex + 1
+                            auto one = rewriter.create<P4HIR::ConstOp>(loc, P4HIR::IntAttr::get(
+                                                            P4HIR::BitsType::get(context, 32, false), 1));
+
+                            auto incremented = rewriter.create<mlir::arith::AddIOp>(
+                                                            loc, nextIndexField, one);
+
+                            // get ref to next index field.
+                            auto nextIndexFieldRef = rewriter.create<P4HIR::StructFieldRefOp>(
+                                    loc, headerArg, P4HIR::HeaderStackType::nextIndexFieldName);
+
+                            // assign updated nextIndex ref
+                            rewriter.create<P4HIR::AssignOp>(
+                                    loc, incremented, nextIndexFieldRef);
+
+
+                             // Extract operation
+                            rewriter.replaceOpWithNewOp<P4CoreLib::PacketExtractOp>(
+                                        op, op.getResultTypes(), operands.getOperands());
+
+                            return success();
+                        }
+
+                        // Regular header (not header stack)
+                        rewriter.replaceOpWithNewOp<P4CoreLib::PacketExtractOp>(op, op.getResultTypes(),
+                                                                                operands.getOperands());
+                        return success();
+
+                    }
+
                 } else if (sz == 2) {
                     rewriter.replaceOpWithNewOp<P4CoreLib::PacketExtractVariableOp>(
                         op, op.getResultTypes(), operands.getOperands());
