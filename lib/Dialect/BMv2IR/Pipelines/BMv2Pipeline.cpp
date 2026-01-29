@@ -13,8 +13,6 @@ using namespace P4::P4MLIR;
 void P4::P4MLIR::buildBMv2Pipeline(OpPassManager &pm, const BMv2PipelineOpts &options) {
     pm.addPass(createCanonicalizerPass());
 
-    pm.addPass(createEnumEliminationPass());
-    pm.addPass(createSerEnumEliminationPass());
     pm.addPass(createRemoveAliasesPass());
     pm.addPass(createFlattenStructsPass());
 

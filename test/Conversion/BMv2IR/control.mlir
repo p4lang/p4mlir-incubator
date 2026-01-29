@@ -396,8 +396,8 @@ module {
       %dstAddr = p4hir.struct_extract %val_19["dstAddr"] : !ipv4_t
       %tuple = p4hir.tuple (%version, %ihl, %diffserv, %totalLen, %identification, %flags, %fragOffset, %ttl, %protocol, %srcAddr, %dstAddr) : tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>
       %verifyChecksum0_ipv4_20 = bmv2ir.symbol_ref @verifyChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
-      %val_21 = p4hir.read %verifyChecksum0_ipv4_20 : <!ipv4_t>
-      %hdrChecksum = p4hir.struct_extract %val_21["hdrChecksum"] : !ipv4_t
+      %hdrChecksum_field_ref = p4hir.struct_field_ref %verifyChecksum0_ipv4_20["hdrChecksum"] : <!ipv4_t>
+      %hdrChecksum = p4hir.read %hdrChecksum_field_ref : <!b16i>
       %true = p4hir.const #true
       %HashAlgorithm_csum16 = p4hir.const #HashAlgorithm_csum16
       p4hir.call @verify_checksum<[tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>, !b16i]> (%true, %tuple, %hdrChecksum, %HashAlgorithm_csum16) : (!p4hir.bool, tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>, !b16i, !HashAlgorithm) -> ()
@@ -467,12 +467,7 @@ module {
         %HashAlgorithm_csum16 = p4hir.const #HashAlgorithm_csum16
         %computeChecksum0_ipv4_20 = bmv2ir.symbol_ref @computeChecksum0_ipv4 : !p4hir.ref<!ipv4_t>
         %hdrChecksum_field_ref = p4hir.struct_field_ref %computeChecksum0_ipv4_20["hdrChecksum"] : <!ipv4_t>
-        %checksum_inout_arg = p4hir.variable ["checksum_inout_arg", init] : <!b16i>
-        %val_21 = p4hir.read %hdrChecksum_field_ref : <!b16i>
-        p4hir.assign %val_21, %checksum_inout_arg : <!b16i>
-        p4hir.call @update_checksum<[tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>, !b16i]> (%true, %tuple, %checksum_inout_arg, %HashAlgorithm_csum16) : (!p4hir.bool, tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>, !p4hir.ref<!b16i>, !HashAlgorithm) -> ()
-        %val_22 = p4hir.read %checksum_inout_arg : <!b16i>
-        p4hir.assign %val_22, %hdrChecksum_field_ref : <!b16i>
+        p4hir.call @update_checksum<[tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>, !b16i]> (%true, %tuple, %hdrChecksum_field_ref, %HashAlgorithm_csum16) : (!p4hir.bool, tuple<!b4i, !b4i, !b8i, !b16i, !b16i, !b3i, !b13i, !b8i, !b8i, !b32i, !b32i>, !p4hir.ref<!b16i>, !HashAlgorithm) -> ()
       }
     }
   }

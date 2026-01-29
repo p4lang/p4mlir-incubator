@@ -1258,9 +1258,11 @@ struct PipelineConversionPattern : public OpConversionPattern<P4HIR::ControlOp> 
                 // This assumes that the enum field and the corresponding action have the same
                 // name
                 auto vals = caseOp.getValue();
-                assert(vals.size() == 1 && "More than value in equal case");
+                assert(vals.size() == 1 && "More than one value in equal case");
                 auto enumField = dyn_cast<P4HIR::EnumFieldAttr>(vals[0]);
-                if (!enumField) return caseOp.emitError("Expected EnumFieldAttr");
+                if (!enumField)
+                    return caseOp.emitError("Expected EnumFieldAttr, got ")
+                           << vals[0].getAbstractAttribute().getName();
                 auto enumVal = enumField.getField().getValue();
                 auto actionIt = llvm::find_if(actions, [&](Attribute a) {
                     return cast<SymbolRefAttr>(a).getLeafReference() == enumVal;
@@ -1469,54 +1471,24 @@ struct CalculationConversionPattern : public OpConversionPattern<P4HIR::ControlO
         // We expect the target field for the checksum to come from a StructExtractOp
         auto args = callOp.getArgOperands();
         if (args.size() != 4) return callOp.emitError("Expected 4 arguments to verify_checksum");
-        auto extract = args[2].getDefiningOp<P4HIR::StructExtractOp>();
-        if (!extract)
-            return callOp.emitError(
-                "Expected verify_checksum target field to come from an extract op");
-        auto read = extract.getInput().getDefiningOp<P4HIR::ReadOp>();
-        if (!read) return callOp.emitError("Expected extract input to come from a read op");
-        auto symRef = read.getRef().getDefiningOp<BMv2IR::SymToValueOp>();
+        auto read = args[2].getDefiningOp<P4HIR::ReadOp>();
+        if (!read)
+            return callOp.emitError("Expected verify_checksum target field to come from a read op");
+        auto fieldRef = read.getRef().getDefiningOp<P4HIR::StructFieldRefOp>();
+        if (!fieldRef) return callOp.emitError("Expected read input to come from a fieldref op");
+        auto symRef = fieldRef.getInput().getDefiningOp<BMv2IR::SymToValueOp>();
         if (!symRef) return callOp.emitError("Expected read input to be an Header Instance");
-        return {{symRef.getDecl(), extract.getFieldNameAttr()}};
+        return {{symRef.getDecl(), fieldRef.getFieldNameAttr()}};
     }
 
-    static FailureOr<std::pair<SymbolRefAttr, StringAttr>> getUpdateTargetField(
+    static FailureOr<std::pair<SymbolRefAttr, StringAttr>> getUpdateTargetFieldFromFieldRef(
         P4HIR::CallOp callOp, PatternRewriter &rewriter) {
-        // This pattern is pretty complex since the target field for the update_checksum function is
-        // `inout`, e.g.
-
-        //  %computeChecksum0_ipv4_20 = bmv2ir.symbol_ref @computeChecksum0_ipv4 :
-        //  !p4hir.ref<!ipv4_t> %hdrChecksum_field_ref = p4hir.struct_field_ref
-        //  %computeChecksum0_ipv4_20["hdrChecksum"] : <!ipv4_t> %checksum_inout_arg =
-        //  p4hir.variable ["checksum_inout_arg", init] : <!b16i> %val_21 = p4hir.read
-        //  %hdrChecksum_field_ref : <!b16i> p4hir.assign %val_21, %checksum_inout_arg : <!b16i>
-        //  p4hir.call @update_checksum (%true, %tuple, %checksum_inout_arg, %HashAlgorithm_csum16)
-        //  %val_22 = p4hir.read %checksum_inout_arg : <!b16i>
-        //  p4hir.assign %val_22, %hdrChecksum_field_ref : <!b16i>
-
-        // so we need to match to try and find the field_ref op for the target.
-        // This pattern could be greatly simplified once we implement copy elision for inout field
-        // args
-
         auto args = callOp.getArgOperands();
         if (args.size() != 4) return callOp.emitError("Expected 4 arguments to verify_checksum");
-        auto var = args[2].getDefiningOp<P4HIR::VariableOp>();
-        if (!var) return callOp.emitError("Expected var op");
-        P4HIR::StructFieldRefOp fieldRef = nullptr;
-        for (auto user : var->getUsers()) {
-            auto assignCandidate = dyn_cast<P4HIR::AssignOp>(user);
-            if (!assignCandidate) continue;
-            auto readLhs = assignCandidate.getValue().getDefiningOp<P4HIR::ReadOp>();
-            auto ref = assignCandidate.getRef().getDefiningOp();
-            if (!readLhs || !ref || ref != var) continue;
-            auto fieldRefCandidate = readLhs.getRef().getDefiningOp<P4HIR::StructFieldRefOp>();
-            if (!fieldRefCandidate) continue;
-            fieldRef = fieldRefCandidate;
-        }
-        if (!fieldRef) return callOp.emitError("Couldn't find field ref op for target field");
+        auto fieldRef = args[2].getDefiningOp<P4HIR::StructFieldRefOp>();
+        if (!fieldRef) return callOp.emitError("Expected update field to come from fieldref op");
         auto symRef = fieldRef.getInput().getDefiningOp<BMv2IR::SymToValueOp>();
         if (!symRef) return callOp.emitError("Expected field ref input to be an Header Instance");
-
         return {{symRef.getDecl(), fieldRef.getFieldNameAttr()}};
     }
 
@@ -1524,8 +1496,8 @@ struct CalculationConversionPattern : public OpConversionPattern<P4HIR::ControlO
         P4HIR::CallOp callOp, PatternRewriter &rewriter) {
         return llvm::StringSwitch<function_ref<FailureOr<std::pair<SymbolRefAttr, StringAttr>>(
             P4HIR::CallOp, PatternRewriter &)>>(callOp.getCallee().getLeafReference())
-            .Case("verify_checksum", getVerifyTargetField)
-            .Case("update_checksum", getUpdateTargetField)
+            .Case(BMv2IR::verifyFuncName, getVerifyTargetField)
+            .Case(BMv2IR::updateFuncName, getUpdateTargetFieldFromFieldRef)
             .Default([](P4HIR::CallOp callOp, PatternRewriter &) {
                 return callOp.emitError("Unhandled function call");
             })(callOp, rewriter);
