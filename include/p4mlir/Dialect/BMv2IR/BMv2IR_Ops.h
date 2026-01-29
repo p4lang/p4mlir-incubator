@@ -3,6 +3,7 @@
 
 // We explicitly do not use push / pop for diagnostic in
 // order to propagate pragma further on
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/MLIRContext.h"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
@@ -51,6 +52,9 @@ inline mlir::StringAttr getControlPlaneName(P4HIR::Annotated annotatedOp) {
 
 // Same default size as p4c, see backends/bmv2/common/helpers.cpp
 constexpr unsigned defaultTableSize = 1024;
+
+constexpr llvm::StringLiteral verifyFuncName = "verify_checksum";
+constexpr llvm::StringLiteral updateFuncName = "update_checksum";
 
 llvm::FailureOr<P4HIR::IntAttr> getTrueMask(mlir::MLIRContext *ctx, unsigned width);
 

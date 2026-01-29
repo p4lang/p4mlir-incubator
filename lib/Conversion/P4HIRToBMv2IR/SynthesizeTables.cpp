@@ -100,6 +100,9 @@ struct SynthesizeTablesPass : public P4::P4MLIR::impl::SynthesizeTablesBase<Synt
         target.addLegalDialect<P4HIR::P4HIRDialect, BMv2IR::BMv2IRDialect,
                                P4CoreLib::P4CoreLibDialect>();
         target.addDynamicallyLegalOp<P4HIR::CallOp>([](P4HIR::CallOp callOp) {
+            auto calleeName = callOp.getCallee().getLeafReference();
+            if (calleeName == BMv2IR::verifyFuncName || calleeName == BMv2IR::updateFuncName)
+                return true;
             auto controlApplyParent = callOp->getParentOfType<P4HIR::ControlApplyOp>();
             return controlApplyParent == nullptr;
         });
