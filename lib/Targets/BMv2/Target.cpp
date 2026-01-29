@@ -222,7 +222,27 @@ json::Value to_JSON(BMv2IR::AssignOp assignOp) {
     res["op"] = "assign";
     json::Array params;
     params.push_back(to_JSON(assignOp.getDst()));
-    params.push_back(to_JSON(assignOp.getSrc()));
+    auto srcNode = to_JSON(assignOp.getSrc());
+
+    // The BMv2 JSON spec says that expression nodes contain as "value" a JSON object with 3
+    // attributes (op, left, right), but the behavioral-model simple switch expects an expression
+    // node with another expression as value.
+    auto needsWrapping = [](const json::Value &node) {
+        auto obj = node.getAsObject();
+        if (!obj) return false;
+        auto typeIt = obj->find("type");
+        if (typeIt == obj->end() || typeIt->getSecond().getAsString().value() != "expression")
+            return false;
+        auto valIt = obj->find("value");
+        if (valIt == obj->end()) return false;
+        auto valueObj = valIt->getSecond().getAsObject();
+        if (!valueObj) return false;
+        return valueObj->find("left") != valueObj->end();
+    };
+
+    if (needsWrapping(srcNode)) srcNode = asExpressionNode(srcNode);
+
+    params.push_back(std::move(srcNode));
     res["parameters"] = std::move(params);
     return res;
 }
@@ -531,7 +551,12 @@ json::Value to_JSON(BMv2IR::PipelineOp pipeline) {
 json::Value to_JSON(P4HIR::ConstOp constOp) {
     return llvm::TypeSwitch<TypedAttr, json::Value>(constOp.getValue())
         .Case([](P4HIR::IntAttr intAttr) { return asHexStrNode(asHexstr(intAttr)); })
-        .Case([](P4HIR::BoolAttr boolAttr) { return json::Value(boolAttr.getValue()); });
+        .Case([](P4HIR::BoolAttr boolAttr) {
+            json::Object res;
+            res["type"] = "bool";
+            res["value"] = boolAttr.getValue();
+            return res;
+        });
 }
 
 json::Value getHexstr(char c, unsigned bitWidth) {
@@ -645,6 +670,7 @@ json::Value to_JSON(BMv2IR::CalculationOp calcOp) {
         input.push_back(to_JSON(op));
     }
     res["input"] = std::move(input);
+    res["algo"] = calcOp.getAlgo();
     return res;
 }
 

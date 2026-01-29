@@ -107,28 +107,31 @@ module {
 // CHECK-NEXT:            {
 // CHECK-NEXT:              "type": "expression",
 // CHECK-NEXT:              "value": {
-// CHECK-NEXT:                "left": {
-// CHECK-NEXT:                  "type": "expression",
-// CHECK-NEXT:                  "value": {
-// CHECK-NEXT:                    "left": {
-// CHECK-NEXT:                      "type": "field",
-// CHECK-NEXT:                      "value": [
-// CHECK-NEXT:                        "egress0_ethernet",
-// CHECK-NEXT:                        "etherType"
-// CHECK-NEXT:                      ]
-// CHECK-NEXT:                    },
-// CHECK-NEXT:                    "op": "+",
-// CHECK-NEXT:                    "right": {
-// CHECK-NEXT:                      "type": "hexstr",
-// CHECK-NEXT:                      "value": "0xffff"
-// CHECK-NEXT:                    }
-// CHECK-NEXT:                  }
-// CHECK-NEXT:                },
-// CHECK-NEXT:                "op": "&",
-// CHECK-NEXT:                "right": {
-// CHECK-NEXT:                  "type": "hexstr",
-// CHECK-NEXT:                  "value": "0xffff"
-// CHECK-NEXT:                }
+// CHECK-NEXT:                 "type": "expression",
+// CHECK-NEXT:                 "value": {
+// CHECK-NEXT:                   "left": {
+// CHECK-NEXT:                     "type": "expression",
+// CHECK-NEXT:                     "value": {
+// CHECK-NEXT:                       "left": {
+// CHECK-NEXT:                         "type": "field",
+// CHECK-NEXT:                         "value": [
+// CHECK-NEXT:                           "egress0_ethernet",
+// CHECK-NEXT:                           "etherType"
+// CHECK-NEXT:                         ]
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "op": "+",
+// CHECK-NEXT:                       "right": {
+// CHECK-NEXT:                         "type": "hexstr",
+// CHECK-NEXT:                         "value": "0xffff"
+// CHECK-NEXT:                       }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "op": "&",
+// CHECK-NEXT:                   "right": {
+// CHECK-NEXT:                     "type": "hexstr",
+// CHECK-NEXT:                     "value": "0xffff"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
 // CHECK-NEXT:              }
 // CHECK-NEXT:            }
 // CHECK-NEXT:          ]

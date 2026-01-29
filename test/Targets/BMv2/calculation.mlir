@@ -50,6 +50,7 @@ module {
 
 // CHECK:  "calculations": [
 // CHECK-NEXT:    {
+// CHECK-NEXT:      "algo": "csum16",
 // CHECK-NEXT:      "id": 0,
 // CHECK-NEXT:      "input": [
 // CHECK-NEXT:        {
@@ -133,6 +134,7 @@ module {
 // CHECK-NEXT:      "name": "calculation_0"
 // CHECK-NEXT:    },
 // CHECK-NEXT:    {
+// CHECK-NEXT:      "algo": "csum16",
 // CHECK-NEXT:      "id": 1,
 // CHECK-NEXT:      "input": [
 // CHECK-NEXT:        {

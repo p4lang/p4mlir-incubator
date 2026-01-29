@@ -70,7 +70,10 @@ module {
 // CHECK-NEXT:    {
 // CHECK-NEXT:      "calculation": "calculation_0",
 // CHECK-NEXT:      "id": 0,
-// CHECK-NEXT:      "if_cond": true,
+// CHECK-NEXT:      "if_cond": {
+// CHECK-NEXT:          "type": "bool", 
+// CHECK-NEXT:         "value": true 
+// CHECK-NEXT:      }
 // CHECK-NEXT:      "name": "checksum_0",
 // CHECK-NEXT:      "target": [
 // CHECK-NEXT:        "verifyChecksum0_ipv4",
@@ -83,7 +86,10 @@ module {
 // CHECK-NEXT:    {
 // CHECK-NEXT:      "calculation": "calculation_1",
 // CHECK-NEXT:      "id": 1,
-// CHECK-NEXT:      "if_cond": true,
+// CHECK-NEXT:      "if_cond": {
+// CHECK-NEXT:          "type": "bool", 
+// CHECK-NEXT:         "value": true 
+// CHECK-NEXT:      }
 // CHECK-NEXT:      "name": "checksum_1",
 // CHECK-NEXT:      "target": [
 // CHECK-NEXT:        "computeChecksum0_ipv4",
