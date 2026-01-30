@@ -344,4 +344,19 @@ def SymbolDCE : Pass<"p4hir-symbol-dce"> {
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// FlattenStructs
+//===----------------------------------------------------------------------===//
+
+def FlattenStructs : Pass<"p4hir-flatten-structs", "mlir::ModuleOp"> {
+  let summary = "Flattens Structs";
+  let description = [{
+    This pass performs struct and header flattening, ensuring that all the struct types in
+    the module contain only headers and scalars, and that headers contain only scalars.
+  }];
+
+  let constructor = "P4MLIR::createFlattenStructsPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
 #endif // P4MLIR_TRANSFORMS_PASSES_TD
