@@ -142,6 +142,13 @@ LogicalResult TableOp::verify() {
     return success();
 }
 
+LogicalResult SetOp::verify() {
+    if (!getDst().getDefiningOp<BMv2IR::FieldOp>())
+        return emitError("Destination field of SetOp must be a field");
+    // TODO: check that src defining operation is valid
+    return success();
+}
+
 void SymToValueOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), getDecl().getLeafReference());
 }

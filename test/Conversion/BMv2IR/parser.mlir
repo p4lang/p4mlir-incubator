@@ -162,9 +162,9 @@ module {
 // CHECK:      bmv2ir.extract  regular @prs_only_bit_top_0
 // CHECK:      %[[SRC:.*]] = bmv2ir.field @prs_only_bit_top_0["skip"] -> !b8i
 // CHECK:      %[[DST:.*]] = bmv2ir.field @prs_only_bit1["bit"] -> !b8i
-// CHECK:      bmv2ir.assign %[[SRC]] : !b8i to %[[DST]] : !b8i
+// CHECK:      bmv2ir.set %[[SRC]] : !b8i to %[[DST]] : !b8i
 // CHECK:      %[[DST2:.*]] = bmv2ir.field @prs_only_bit2["skip"] -> !b8i
-// CHECK:      bmv2ir.assign %[[DST]] : !b8i to %[[DST2]] : !b8i
+// CHECK:      bmv2ir.set %[[DST]] : !b8i to %[[DST2]] : !b8i
     }
     p4hir.state @accept {
       p4hir.parser_accept

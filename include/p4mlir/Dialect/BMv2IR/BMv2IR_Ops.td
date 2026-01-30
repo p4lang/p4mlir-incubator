@@ -237,7 +237,7 @@ def BMv2IR_AssignHeaderOp : BMv2IR_Op<"assign_header", [AllowedParserOp]> {
   }];
 }
 
-def BMv2IR_AssignOp : BMv2IR_Op<"assign", [AllowedParserOp]> {
+def BMv2IR_AssignOp : BMv2IR_Op<"assign"> {
   let summary = "Assign operation";
   let description = [{
     Assigns the first argument to the second argument.
@@ -248,6 +248,25 @@ def BMv2IR_AssignOp : BMv2IR_Op<"assign", [AllowedParserOp]> {
   let arguments = (ins AnyType:$src,
                        AnyType:$dst);
   
+  let assemblyFormat = [{
+    $src `:` type($src) `to` $dst `:` type($dst) attr-dict
+  }];
+}
+
+def BMv2IR_SetOp : BMv2IR_Op<"set", [AllowedParserOp]> {
+  let summary = "Set operation";
+  let description = [{
+    Assign-like operation for parser ops.
+    See [parser ops](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#parser-operations).
+    Assigns the first argument to the second argument.
+    First argument is a field, second argument can be field, hexstr, lookahead or expression.
+  }];
+
+  // TODO: refine types
+  let arguments = (ins AnyType:$src,
+                       AnyType:$dst);
+  
+  let hasVerifier = 1;
   let assemblyFormat = [{
     $src `:` type($src) `to` $dst `:` type($dst) attr-dict
   }];

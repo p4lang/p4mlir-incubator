@@ -321,9 +321,9 @@ module {
       bmv2ir.extract  regular @prs_only_bit_top_0
       %3 = bmv2ir.field @prs_only_bit_top_0["skip"] -> !b8i
       %4 = bmv2ir.field @prs_only_bit1["bit"] -> !b8i
-      bmv2ir.assign %3 : !b8i to %4 : !b8i
+      bmv2ir.set %3 : !b8i to %4 : !b8i
       %5 = bmv2ir.field @prs_only_bit2["skip"] -> !b8i
-      bmv2ir.assign %4 : !b8i to %5 : !b8i
+      bmv2ir.set %4 : !b8i to %5 : !b8i
     }
     bmv2ir.state @accept
      transition_key {
@@ -400,7 +400,7 @@ module {
 // CHECK:               ]
 // CHECK:             },
 // CHECK:             {
-// CHECK:               "op": "assign",
+// CHECK:               "op": "set",
 // CHECK:               "parameters": [
 // CHECK:                 {
 // CHECK:                   "type": "field",
@@ -419,7 +419,7 @@ module {
 // CHECK:               ]
 // CHECK:             },
 // CHECK:             {
-// CHECK:               "op": "assign",
+// CHECK:               "op": "set",
 // CHECK:               "parameters": [
 // CHECK:                 {
 // CHECK:                   "type": "field",

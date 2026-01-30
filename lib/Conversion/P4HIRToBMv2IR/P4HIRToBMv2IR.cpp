@@ -283,6 +283,12 @@ struct AssignOpPattern : public OpConversionPattern<P4HIR::AssignOp> {
                                   ConversionPatternRewriter &rewriter) const override {
         auto src = operands.getValue();
         auto dst = operands.getRef();
+        if (op->getParentOfType<P4HIR::ParserOp>() || op->getParentOfType<BMv2IR::ParserOp>()) {
+            // AssignOp in parsers needs to be lowered to `set` op
+            rewriter.replaceOpWithNewOp<BMv2IR::SetOp>(op, src, dst);
+            return success();
+        }
+
         rewriter.replaceOpWithNewOp<BMv2IR::AssignOp>(op, src, dst);
         return success();
     }

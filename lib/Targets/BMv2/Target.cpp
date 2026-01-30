@@ -247,6 +247,14 @@ json::Value to_JSON(BMv2IR::AssignOp assignOp) {
     return res;
 }
 
+json::Value to_JSON(BMv2IR::SetOp setOp) {
+    json::Object res;
+    res["op"] = "set";
+    json::Array params{to_JSON(setOp.getDst()), to_JSON(setOp.getSrc())};
+    res["parameters"] = std::move(params);
+    return res;
+}
+
 json::Value to_JSON(BMv2IR::ExtractVLOp extractOp) {
     json::Object res;
     res["op"] = "extract_VL";
@@ -289,7 +297,7 @@ json::Value to_JSON(BMv2IR::ExtractOp extractOp) {
 // expression trees etc)
 bool isPrimitive(Operation *op) {
     return isa<BMv2IR::AssignOp, BMv2IR::AssignHeaderOp, BMv2IR::ExtractOp, BMv2IR::ExtractVLOp,
-               BMv2IR::LookaheadOp, BMv2IR::AddHeaderOp, BMv2IR::RemoveHeaderOp>(op);
+               BMv2IR::LookaheadOp, BMv2IR::AddHeaderOp, BMv2IR::RemoveHeaderOp, BMv2IR::SetOp>(op);
 }
 
 json::Value to_JSON(BMv2IR::ParserStateOp stateOp) {
@@ -766,6 +774,7 @@ json::Value to_JSON(Operation *op) {
         .Case([](BMv2IR::AssignHeaderOp assignOp) { return to_JSON(assignOp); })
         .Case([](BMv2IR::LookaheadOp lookAheadOp) { return to_JSON(lookAheadOp); })
         .Case([](BMv2IR::AssignOp assignOp) { return to_JSON(assignOp); })
+        .Case([](BMv2IR::SetOp setOp) { return to_JSON(setOp); })
         .Case([](BMv2IR::ExtractOp extractOp) { return to_JSON(extractOp); })
         .Case([](BMv2IR::ExtractVLOp extractOp) { return to_JSON(extractOp); })
         .Case([](BMv2IR::FieldOp fieldOp) { return to_JSON(fieldOp); })
