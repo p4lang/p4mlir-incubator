@@ -1,17 +1,14 @@
 #include <optional>
 
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Conversion/ConversionPatterns.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Transforms/Passes.h"
 
@@ -249,8 +246,8 @@ struct StructFlatteningPass : public P4::P4MLIR::impl::FlattenStructsBase<Struct
         StructFlatteningTypeConverter typeConverter;
 
         ConversionTarget target(getContext());
-        target.addLegalDialect<P4HIR::P4HIRDialect>();
 
+        configureUnknownOpDynamicallyLegalByTypes(target, typeConverter);
         target.addDynamicallyLegalOp<P4HIR::StructFieldRefOp>([&](P4HIR::StructFieldRefOp op) {
             return typeConverter.isLegal(op.getInput().getType());
         });
@@ -259,53 +256,6 @@ struct StructFlatteningPass : public P4::P4MLIR::impl::FlattenStructsBase<Struct
             return typeConverter.isLegal(op.getInput().getType());
         });
 
-        target.addDynamicallyLegalOp<P4HIR::FuncOp>(
-            [&](P4HIR::FuncOp op) { return typeConverter.isLegal(op.getFunctionType()); });
-
-        target.addDynamicallyLegalOp<P4HIR::TableKeyOp>(
-            [&](P4HIR::TableKeyOp op) { return typeConverter.isLegal(op.getApplyType()); });
-
-        target.addDynamicallyLegalOp<P4HIR::ControlOp>(
-            [&](P4HIR::ControlOp op) { return typeConverter.isLegal(op.getApplyType()); });
-
-        target.addDynamicallyLegalOp<P4HIR::ParserOp>(
-            [&](P4HIR::ParserOp op) { return typeConverter.isLegal(op.getApplyType()); });
-
-        target.addDynamicallyLegalOp<P4HIR::CallOp>([&](P4HIR::CallOp op) {
-            return typeConverter.isLegal(op.getResultTypes()) &&
-                   typeConverter.isLegal(op.getOperandTypes());
-        });
-
-        target.addDynamicallyLegalOp<P4HIR::CallMethodOp>([&](P4HIR::CallMethodOp op) {
-            return typeConverter.isLegal(op.getResultTypes()) &&
-                   typeConverter.isLegal(op.getOperandTypes());
-        });
-
-        target.addDynamicallyLegalOp<P4HIR::TableApplyOp>(
-            [&](P4HIR::TableApplyOp op) { return typeConverter.isLegal(op.getOperandTypes()); });
-
-        target.addDynamicallyLegalOp<P4HIR::ConstructOp>(
-            [&](P4HIR::ConstructOp op) { return typeConverter.isLegal(op.getType()); });
-
-        target.addDynamicallyLegalOp<P4HIR::VariableOp>(
-            [&](P4HIR::VariableOp op) { return typeConverter.isLegal(op.getType()); });
-
-        target.addDynamicallyLegalOp<P4HIR::ControlLocalOp>(
-            [&](P4HIR::ControlLocalOp op) { return typeConverter.isLegal(op.getVal().getType()); });
-
-        target.addDynamicallyLegalOp<P4HIR::SymToValueOp>(
-            [&](P4HIR::SymToValueOp op) { return typeConverter.isLegal(op.getType()); });
-
-        target.addDynamicallyLegalOp<P4HIR::ReadOp>(
-            [&](P4HIR::ReadOp op) { return typeConverter.isLegal(op.getType()); });
-
-        target.addDynamicallyLegalOp<P4HIR::InstantiateOp>([&](P4HIR::InstantiateOp op) {
-            auto types = op.getTypeParameters();
-            if (!types) return true;
-            return llvm::all_of(types.value(), [&](Attribute ty) {
-                return typeConverter.isLegal(cast<TypeAttr>(ty).getValue());
-            });
-        });
 
         RewritePatternSet patterns(&getContext());
         patterns.add<FlattenStructAccess<P4HIR::StructFieldRefOp>,
