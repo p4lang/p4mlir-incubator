@@ -29,6 +29,28 @@ struct mlir::FieldParser<P4::P4MLIR::BMv2IR::FieldInfo> {
     }
 };
 
+// Custom parser that allows an empty array of fields
+template <>
+struct mlir::FieldParser<llvm::ArrayRef<P4::P4MLIR::BMv2IR::FieldInfo>> {
+    static FailureOr<llvm::SmallVector<P4::P4MLIR::BMv2IR::FieldInfo>> parse(AsmParser &parser) {
+        llvm::SmallVector<P4::P4MLIR::BMv2IR::FieldInfo> result;
+
+        if (parser.parseLSquare()) return failure();
+
+        if (succeeded(parser.parseOptionalRSquare())) return result;
+
+        do {
+            auto field = FieldParser<BMv2IR::FieldInfo>::parse(parser);
+            if (failed(field)) return failure();
+            result.push_back(*field);
+        } while (succeeded(parser.parseOptionalComma()));
+
+        if (parser.parseRSquare()) return failure();
+
+        return result;
+    }
+};
+
 constexpr unsigned bitsInByte = 8;
 static unsigned computeTotalHeaderLenghtInBits(ArrayRef<BMv2IR::FieldInfo> fields) {
     unsigned total = 0;

@@ -572,3 +572,24 @@ module {
 // CHECK-NEXT:      ]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  ],
+
+// -----
+
+module {
+  bmv2ir.header_instance @H_ipv4 : !bmv2ir.header<"ipv4_t", []>
+}
+
+// CHECK:  "header_types": [
+// CHECK:    {
+// CHECK:      "fields": [],
+// CHECK:      "id": 0,
+// CHECK:      "name": "ipv4_t"
+// CHECK:    }
+// CHECK:  ],
+// CHECK:  "headers": [
+// CHECK:    {
+// CHECK:      "header_type": "ipv4_t",
+// CHECK:      "id": 0,
+// CHECK:      "metadata": false,
+// CHECK:      "name": "H_ipv4"
+// CHECK:    }

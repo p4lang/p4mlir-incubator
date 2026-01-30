@@ -16,6 +16,18 @@ class BMv2IR_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
+// We use a custom parameter here to allow for an empty array of fields
+def FieldInfoArrayParameter : ArrayRefParameter<"BMv2IR::FieldInfo", "struct fields"> {
+  let parser = "::mlir::FieldParser<::llvm::ArrayRef<BMv2IR::FieldInfo>>::parse($_parser)";
+  let printer = [{
+     $_printer << '[';
+     llvm::interleaveComma($_self, $_printer, [&](BMv2IR::FieldInfo field) {
+         $_printer << field;
+     });
+     $_printer << ']';
+   }];
+}
+
 def BMv2IR_HeaderType : BMv2IR_Type<"Header", "header"> {
   let summary = "BMv2 header type";
   let description = [{
@@ -32,12 +44,12 @@ def BMv2IR_HeaderType : BMv2IR_Type<"Header", "header"> {
   
   let parameters = (ins
     StringRefParameter<"struct name">:$name,
-    ArrayRefParameter<"BMv2IR::FieldInfo", "struct fields">:$fields,
+    FieldInfoArrayParameter:$fields,
     OptionalParameter<"unsigned">:$max_length
   );
   
   let assemblyFormat = [{
-    `<` $name `,` `[` $fields `]`
+    `<` $name `,` $fields
     (`,` `max_length` `=` $max_length^)?
     `>`
   }];
