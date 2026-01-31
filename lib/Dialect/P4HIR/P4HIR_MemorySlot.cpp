@@ -144,7 +144,7 @@ DeletionKind P4HIR::ReadOp::rewire(const DestructurableMemorySlot &slot,
     for (auto [_, val] : elements) vals.push_back(builder.create<P4HIR::ReadOp>(getLoc(), val));
 
     Value repl = mlir::TypeSwitch<Type, Value>(getType())
-                     .Case<P4HIR::StructType>([&](auto) {
+                     .Case<StructLikeTypeInterface>([&](auto) {
                          return builder.create<P4HIR::StructOp>(getLoc(), slot.elemType, vals);
                      })
                      .Case<P4HIR::ArrayType>([&](auto) {
