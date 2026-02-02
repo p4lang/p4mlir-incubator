@@ -938,6 +938,14 @@ def FuncOp : P4HIR_Op<"func", [
       return ParamDirection::None;
     }
 
+    /// Return the `i`th argument direction.
+    mlir::StringAttr getArgumentName(unsigned i) {
+      if (auto attr = getArgAttrOfType<mlir::StringAttr>(i, getParamNameAttrName()))
+        return attr;
+
+      return nullptr;
+    }
+
     /// Returns 0 or 1 result type of this function (0 in the case of a function
     /// returing void or action)
     llvm::ArrayRef<mlir::Type> getResultTypes() {
