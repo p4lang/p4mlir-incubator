@@ -40,6 +40,8 @@ std::unique_ptr<mlir::Pass> createInlineParsersPass();
 std::unique_ptr<mlir::Pass> createInlineControlsPass();
 std::unique_ptr<mlir::Pass> createExpandEmitPass();
 std::unique_ptr<mlir::Pass> createSymbolDCEPass();
+std::unique_ptr<mlir::Pass> createP4HIRStrengthReductionPass();
+void registerP4HIRStrengthReductionPass();
 
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"
