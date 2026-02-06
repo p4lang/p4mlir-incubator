@@ -856,13 +856,14 @@ LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewri
 
 void P4HIR::ScopeOp::getSuccessorRegions(mlir::RegionBranchPoint point,
                                          SmallVectorImpl<RegionSuccessor> &regions) {
-    // The only region always branch back to the parent operation.
+    // The only region always branches back to the parent operation.
     if (!point.isParent()) {
-        regions.push_back(RegionSuccessor(getODSResults(0)));
+        // TODO: switch to RegionSuccessor::parent() once
+        // https://github.com/llvm/llvm-project/pull/175815 is in third-party
+        regions.push_back(RegionSuccessor(getOperation(), getODSResults(0)));
         return;
     }
 
-    // If the condition isn't constant, both regions may be executed.
     regions.push_back(RegionSuccessor(&getScopeRegion()));
 }
 
@@ -1084,7 +1085,9 @@ void P4HIR::IfOp::getSuccessorRegions(mlir::RegionBranchPoint point,
                                       SmallVectorImpl<RegionSuccessor> &regions) {
     // The `then` and the `else` region branch back to the parent operation.
     if (!point.isParent()) {
-        regions.push_back(RegionSuccessor(getResults()));
+        // TODO: switch to RegionSuccessor::parent() once
+        // https://github.com/llvm/llvm-project/pull/175815 is in third-party
+        regions.push_back(RegionSuccessor(getOperation(), getResults()));
         return;
     }
 
@@ -1093,7 +1096,9 @@ void P4HIR::IfOp::getSuccessorRegions(mlir::RegionBranchPoint point,
     // Don't consider the else region if it is empty.
     Region *elseRegion = &this->getElseRegion();
     if (elseRegion->empty())
-        regions.push_back(RegionSuccessor());
+        // TODO: switch to RegionSuccessor::parent() once
+        // https://github.com/llvm/llvm-project/pull/175815 is in third-party
+        regions.push_back(RegionSuccessor(getOperation(), getResults()));
     else
         regions.push_back(RegionSuccessor(elseRegion));
 }
@@ -3603,7 +3608,9 @@ void P4HIR::TableEntryOp::build(
 void P4HIR::CaseOp::getSuccessorRegions(mlir::RegionBranchPoint point,
                                         SmallVectorImpl<RegionSuccessor> &regions) {
     if (!point.isParent()) {
-        regions.push_back(RegionSuccessor());
+        // TODO: switch to RegionSuccessor::parent() once
+        // https://github.com/llvm/llvm-project/pull/175815 is in third-party
+        regions.push_back(RegionSuccessor(getOperation(), getOperation()->getResults()));
         return;
     }
 
@@ -3657,7 +3664,9 @@ void P4HIR::SwitchOp::getSuccessorRegions(mlir::RegionBranchPoint point,
     // If any index all the underlying regions branch back to the parent
     // operation.
     if (!point.isParent()) {
-        regions.push_back(RegionSuccessor());
+        // TODO: switch to RegionSuccessor::parent() once
+        // https://github.com/llvm/llvm-project/pull/175815 is in third-party
+        regions.push_back(RegionSuccessor(getOperation(), getOperation()->getResults()));
         return;
     }
 
@@ -3733,7 +3742,9 @@ void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
         return;
     }
 
-    Region *from = point.getRegionOrNull();
+    auto terminator = point.getTerminatorPredecessorOrNull();
+    assert(terminator && "expected non-null parent region terminator");
+    Region *from = terminator->getParentRegion();
     assert(from && "expected non-null origin region");
 
     // After evaluating the loop condition:
@@ -3741,7 +3752,9 @@ void P4HIR::ForOp::getSuccessorRegions(mlir::RegionBranchPoint point,
     // - Or exit the loop if false
     if (from == &getCondRegion()) {
         regions.push_back(RegionSuccessor(&getBodyRegion()));
-        regions.push_back(RegionSuccessor());
+        // TODO: switch to RegionSuccessor::parent() once
+        // https://github.com/llvm/llvm-project/pull/175815 is in third-party
+        regions.push_back(RegionSuccessor(getOperation(), getOperation()->getResults()));
         return;
     }
 
@@ -3885,7 +3898,9 @@ void P4HIR::ForInOp::print(mlir::OpAsmPrinter &printer) {
 void P4HIR::ForInOp::getSuccessorRegions(mlir::RegionBranchPoint point,
                                          SmallVectorImpl<RegionSuccessor> &regions) {
     regions.push_back(RegionSuccessor(&getBodyRegion()));
-    regions.push_back(RegionSuccessor());
+    // TODO: switch to RegionSuccessor::parent() once
+    // https://github.com/llvm/llvm-project/pull/175815 is in third-party
+    regions.push_back(RegionSuccessor(getOperation(), getOperation()->getResults()));
 }
 
 llvm::SmallVector<Region *> P4HIR::ForInOp::getLoopRegions() { return {&getBodyRegion()}; }
@@ -3894,9 +3909,10 @@ llvm::SmallVector<Region *> P4HIR::ForInOp::getLoopRegions() { return {&getBodyR
 // ConditionOp
 //===----------------------------------------------------------------------===//
 
-mlir::MutableOperandRange P4HIR::ConditionOp::getMutableSuccessorOperands(RegionBranchPoint point) {
+mlir::MutableOperandRange P4HIR::ConditionOp::getMutableSuccessorOperands(
+    RegionSuccessor successor) {
     auto parent = mlir::cast<P4HIR::ForOp>(getOperation()->getParentOp());
-    assert((point.isParent() || point.getRegionOrNull() == &parent.getBodyRegion()) &&
+    assert((successor.isParent() || (successor.getSuccessor() == &parent.getBodyRegion())) &&
            "condition op can only exit the loop or branch to the body region");
 
     // No values are yielded to the successor region
