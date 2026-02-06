@@ -138,7 +138,7 @@ mlir::LogicalResult handleDiagnostic(mlir::Diagnostic &diag) {
 
     // Try to get FileLineColLoc for snippet printing
     mlir::FileLineColLoc fileLoc;
-    fileLoc = loc.dyn_cast<mlir::FileLineColLoc>();
+    fileLoc = mlir::dyn_cast<mlir::FileLineColLoc>(loc);
 
     if (!fileLoc) {
         return mlir::success();

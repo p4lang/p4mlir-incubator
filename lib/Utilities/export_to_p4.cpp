@@ -946,7 +946,7 @@ class P4HirToP4Exporter {
 
         // Only emit the main package instantiation itself.
         if (auto packageDef = mlir::dyn_cast<P4HIR::PackageOp>(definition)) {
-            auto resultType = instantiateOp.getResult().getType();
+            auto resultType = instantiateOp.getOperation()->getResult(0).getType();
             auto packageType = mlir::dyn_cast<P4HIR::PackageType>(resultType);
             if (!packageType) {
                 return instantiateOp.emitError()
@@ -1556,12 +1556,12 @@ class P4HirToP4Exporter {
             ss << "[" << sliceOp.getHighBit() << ":" << sliceOp.getLowBit() << "]";
             return mlir::success();
         }
-        if (auto sliceRefOp = mlir::dyn_cast<P4HIR::SliceRefOp>(op)) {
+        if (auto readSliceOp = mlir::dyn_cast<P4HIR::ReadSliceOp>(op)) {
             // P4 syntax: expression[high:low].
-            if (failed(exportExpression(sliceRefOp.getInput(), ss))) {
+            if (failed(exportExpression(readSliceOp.getInput(), ss))) {
                 return mlir::failure();
             }
-            ss << "[" << sliceRefOp.getHighBit() << ":" << sliceRefOp.getLowBit() << "]";
+            ss << "[" << readSliceOp.getHighBit() << ":" << readSliceOp.getLowBit() << "]";
             return mlir::success();
         }
         if (auto callOp = mlir::dyn_cast<P4HIR::CallOp>(op)) {
@@ -1578,11 +1578,11 @@ class P4HirToP4Exporter {
         if (auto callMethodOp = mlir::dyn_cast<P4HIR::CallMethodOp>(op)) {
             // Extern method call expression: extern_instance.method<type_args>(args).
             // Export extern instance.
-            if (failed(exportExpression(callMethodOp.getBase(), ss))) {
+            if (failed(exportExpression(callMethodOp.getArgOperands()[0], ss))) {
                 return mlir::failure();
             }
             // Method name.
-            ss << "." << callMethodOp.getCallee().getLeafReference().getValue();
+            ss << "." << callMethodOp.getMethod().getLeafReference().getValue();
             // Type arguments <T, U>.
             if (auto typeOperands = callMethodOp.getTypeOperandsAttr()) {
                 if (failed(exportTypeAttributes(typeOperands.getValue(), ss))) {
@@ -1601,12 +1601,13 @@ class P4HirToP4Exporter {
         }
         if (auto tableApplyOp = mlir::dyn_cast<P4HIR::TableApplyOp>(op)) {
             // Table apply expression: table_instance.apply().
-            ss << tableApplyOp.getCallee().getLeafReference().strref() << ".apply()";
+            ss << tableApplyOp.getTable().getLeafReference().strref() << ".apply()";
             return mlir::success();
         }
-        if (auto ternaryOp = mlir::dyn_cast<P4HIR::TernaryOp>(op)) {
+        if (auto ifOp = mlir::dyn_cast<P4HIR::IfOp>(op)) {
             // P4 syntax: (condition ? true_expr : false_expr).
-            return exportTernaryOp(ternaryOp, ss);
+            // P4HIR::IfOp can represent ternary expressions if its regions yield values.
+            return exportIfOpAsTernary(ifOp, ss);
         }
         if (auto arrayGetOp = mlir::dyn_cast<P4HIR::ArrayGetOp>(op)) {
             // Array/header stack element access: array_instance[index].
@@ -1693,31 +1694,31 @@ class P4HirToP4Exporter {
         return exportExpression(*op, ss);
     }
 
-    mlir::LogicalResult exportTernaryOp(P4HIR::TernaryOp &ternaryOp, ExtendedFormattedOStream &ss) {
+    mlir::LogicalResult exportIfOpAsTernary(P4HIR::IfOp &ifOp, ExtendedFormattedOStream &ss) {
         // Parenthesize for precedence.
         ss << "(";
         // 1. Export the condition.
-        if (failed(exportExpression(ternaryOp.getCond(), ss))) {
+        if (failed(exportExpression(ifOp.getCondition(), ss))) {
             return mlir::failure();
         }
 
         ss << " ? ";
 
         // 2. Export the true expression (value yielded from trueRegion).
-        auto &trueRegion = ternaryOp.getTrueRegion();
+        auto &trueRegion = ifOp.getThenRegion();
         if (trueRegion.empty() || !trueRegion.hasOneBlock()) {
-            return ternaryOp.emitError()
-                   << "TernaryOp trueRegion must have exactly one block for P4 export.";
+            return ifOp.emitError()
+                   << "IfOp trueRegion must have exactly one block for P4 ternary export.";
         }
         mlir::Block &trueBlock = trueRegion.front();
         auto trueYield = mlir::dyn_cast_if_present<P4HIR::YieldOp>(trueBlock.getTerminator());
         if (!trueYield) {
-            return ternaryOp.emitError()
-                   << "TernaryOp trueRegion block must terminate with p4hir.yield.";
+            return ifOp.emitError()
+                   << "IfOp trueRegion block must terminate with p4hir.yield.";
         }
         if (trueYield.getNumOperands() != 1) {
             return trueYield.emitError()
-                   << "TernaryOp trueRegion yield must have exactly one operand.";
+                   << "IfOp trueRegion yield must have exactly one operand.";
         }
         // Parenthesize the sub-expression.
         ss << "(";
@@ -1729,20 +1730,20 @@ class P4HirToP4Exporter {
         ss << " : ";
 
         // 3. Export the false expression (value yielded from falseRegion).
-        auto &falseRegion = ternaryOp.getFalseRegion();
+        auto &falseRegion = ifOp.getElseRegion();
         if (falseRegion.empty() || !falseRegion.hasOneBlock()) {
-            return ternaryOp.emitError()
-                   << "TernaryOp falseRegion must have exactly one block for P4 export.";
+            return ifOp.emitError()
+                   << "IfOp falseRegion must have exactly one block for P4 ternary export.";
         }
         mlir::Block &falseBlock = falseRegion.front();
         auto falseYield = mlir::dyn_cast_if_present<P4HIR::YieldOp>(falseBlock.getTerminator());
         if (!falseYield) {
-            return ternaryOp.emitError()
-                   << "TernaryOp falseRegion block must terminate with p4hir.yield.";
+            return ifOp.emitError()
+                   << "IfOp falseRegion block must terminate with p4hir.yield.";
         }
         if (falseYield.getNumOperands() != 1) {
             return falseYield.emitError()
-                   << "TernaryOp falseRegion yield must have exactly one operand.";
+                   << "IfOp falseRegion yield must have exactly one operand.";
         }
         // Parenthesize the sub-expression.
         ss << "(";
@@ -1900,7 +1901,7 @@ class P4HirToP4Exporter {
             }
             return varOp.emitError() << "VariableOp used as LValue has no name.";
         }
-        if (auto extractRefOp = mlir::dyn_cast<P4HIR::StructExtractRefOp>(op)) {
+        if (auto extractRefOp = mlir::dyn_cast<P4HIR::StructFieldRefOp>(op)) {
             // Field access: base.field.
             // Recursively export the base L-Value.
             if (failed(exportLValue(extractRefOp.getInput(), ss))) {
@@ -1928,12 +1929,12 @@ class P4HirToP4Exporter {
             ss << "]";
             return mlir::success();
         }
-        if (auto sliceRefOp = mlir::dyn_cast<P4HIR::SliceRefOp>(op)) {
+        if (auto readSliceOp = mlir::dyn_cast<P4HIR::ReadSliceOp>(op)) {
             // Slice access: base[H:L].
-            if (failed(exportLValue(sliceRefOp.getInput(), ss))) {
+            if (failed(exportLValue(readSliceOp.getInput(), ss))) {
                 return mlir::failure();
             }
-            ss << "[" << sliceRefOp.getHighBit() << ":" << sliceRefOp.getLowBit() << "]";
+            ss << "[" << readSliceOp.getHighBit() << ":" << readSliceOp.getLowBit() << "]";
             return mlir::success();
         }
         return op->emitError() << "Unsupported operation '" << op->getName() << "' for LValue use";
@@ -2094,7 +2095,7 @@ class P4HirToP4Exporter {
         mlir::Value rvalue = assignOp.getValue();
 
         // Special case: Assigning true/false to header validity bit.
-        if (auto extractRef = lvalue.getDefiningOp<P4HIR::StructExtractRefOp>()) {
+        if (auto extractRef = lvalue.getDefiningOp<P4HIR::StructFieldRefOp>()) {
             if (extractRef.getFieldName() == P4HIR::HeaderType::validityBit) {
                 // Check the R-Value to determine setValid or setInvalid.
                 if (auto constOp = rvalue.getDefiningOp<P4HIR::ConstOp>()) {
@@ -2318,10 +2319,10 @@ class P4HirToP4Exporter {
         // Operations that primarily define values used in expressions are skipped
         // when they appear standalone, assuming their result is used later.
         if (mlir::isa<P4HIR::ReadOp, P4HIR::CastOp, P4HIR::StructExtractOp,
-                      P4HIR::StructExtractRefOp, P4HIR::TupleExtractOp, P4HIR::SliceOp,
-                      P4HIR::SliceRefOp, P4HIR::ConstOp, P4HIR::UnaryOp, P4HIR::BinOp, P4HIR::CmpOp,
+                      P4HIR::StructFieldRefOp, P4HIR::TupleExtractOp, P4HIR::SliceOp,
+                      P4HIR::ReadSliceOp, P4HIR::ConstOp, P4HIR::UnaryOp, P4HIR::BinOp, P4HIR::CmpOp,
                       P4HIR::ConcatOp, P4HIR::ShlOp, P4HIR::ShrOp, P4HIR::StructOp, P4HIR::ArrayOp,
-                      P4HIR::ArrayGetOp, P4HIR::UninitializedOp, P4HIR::TernaryOp>(op)) {
+                      P4HIR::ArrayGetOp, P4HIR::UninitializedOp, P4HIR::IfOp>(op)) {
             // Assume used later by exportExpression, so skip statement emission here.
             return true;
         }
@@ -2387,10 +2388,10 @@ class P4HirToP4Exporter {
         }
         if (auto callMethodOp = mlir::dyn_cast<P4HIR::CallMethodOp>(op)) {
             // Method call as a statement.
-            if (failed(exportExpression(callMethodOp.getBase(), ss))) {
+            if (failed(exportExpression(callMethodOp.getArgOperands()[0], ss))) {
                 return mlir::failure();
             }
-            ss << "." << callMethodOp.getCallee().getLeafReference().getValue();
+            ss << "." << callMethodOp.getMethod().getLeafReference().getValue();
             if (auto typeOperands = callMethodOp.getTypeOperandsAttr()) {
                 if (failed(exportTypeAttributes(typeOperands.getValue(), ss))) {
                     return mlir::failure();
@@ -2419,9 +2420,7 @@ class P4HirToP4Exporter {
         }
         if (auto applyOp = mlir::dyn_cast<P4HIR::ApplyOp>(op)) {
             // parser.apply() or control.apply().
-            if (failed(exportExpression(applyOp.getCallee(), ss))) {
-                return mlir::failure();
-            }
+            ss << applyOp.getCallee().getLeafReference().strref(); // Directly print the symbol name
             ss << ".apply(";
             if (failed(Utilities::interleaveCommaWithError(
                     applyOp.getArgOperands(), ss,
@@ -2434,7 +2433,7 @@ class P4HirToP4Exporter {
         }
         if (auto tableApplyOp = mlir::dyn_cast<P4HIR::TableApplyOp>(op)) {
             // table.apply().
-            ss << tableApplyOp.getCallee().getLeafReference().strref() << ".apply()";
+            ss << tableApplyOp.getTable().getLeafReference().strref() << ".apply()";
             ss.semicolon();
             return true;
         }
@@ -2727,7 +2726,7 @@ class P4HirToP4Exporter {
                 }
 
                 // Get property name.
-                std::string propName = entryOp.getName().lower();
+                std::string propName = entryOp.getOperation()->getName().getStringRef().lower();
                 bool isConstant = entryOp.getIsConst();
 
                 if (isConstant) {
@@ -2794,7 +2793,7 @@ class P4HirToP4Exporter {
             }
 
             // Export the type being instantiated (e.g., "MyCounter<bit<32>>").
-            mlir::Type instanceType = instOp.getResult().getType();
+            mlir::Type instanceType = instOp.getOperation()->getResult(0).getType();
             if (failed(exportP4Type(instanceType, ss))) {
                 return mlir::failure();
             }
@@ -2898,7 +2897,7 @@ class P4HirToP4Exporter {
                     return mlir::failure();
                 }
             }
-            mlir::Type instanceType = instOp.getResult().getType();
+            mlir::Type instanceType = instOp.getOperation()->getResult(0).getType();
             if (failed(exportP4Type(instanceType, ss))) {
                 return mlir::failure();
             }
