@@ -1,41 +1,125 @@
-action bit_binops() {
-    bit<10> res;
-    bit<10> lhs = (bit<10>)(10w1);
-    bit<10> rhs = (bit<10>)(10w2);
-    bit<10> r1 = (lhs + rhs);
-    bit<10> r2 = (lhs - rhs);
-    bit<10> r3 = (lhs * rhs);
-    bit<10> r4 = (lhs * 10w3);
-    bit<10> r5 = (10w2 * rhs);
-    bit<10> r6 = (rhs * rhs);
-    bit<10> r7 = ((lhs + (rhs * 10w3)) + (10w2 - rhs));
-    bit<10> r8 = (lhs / rhs);
-    bit<10> r9 = (lhs % lhs);
-    bit<10> r10 = (lhs |+| rhs);
-    bit<10> r11 = (lhs |-| rhs);
-    bit<10> r12 = (lhs | rhs);
-    bit<10> r13 = (lhs & rhs);
-    bit<10> r14 = (lhs ^ rhs);
-
+action bit_add_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = (lhs + rhs);
     return;
 }
 
-action int_binops() {
-    int<10> res;
-    int<10> lhs = (int<10>)(10s1);
-    int<10> rhs = (int<10>)(10s2);
-    int<10> r1 = (lhs + rhs);
-    int<10> r2 = (lhs - rhs);
-    int<10> r3 = (lhs * rhs);
-    int<10> r4 = (lhs * 10s3);
-    int<10> r5 = (10s2 * rhs);
-    int<10> r6 = (rhs * rhs);
-    int<10> r7 = (lhs |+| rhs);
-    int<10> r8 = (lhs |-| rhs);
-    int<10> r11 = (lhs | rhs);
-    int<10> r12 = (lhs & rhs);
-    int<10> r13 = (lhs ^ rhs);
+action int_add_int(in int<10> lhs, in int<10> rhs, out int<10> res) {
+    res = (lhs + rhs);
+    return;
+}
 
+action bit_sub_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = (lhs - rhs);
+    return;
+}
+
+action int_sub_int(in int<10> lhs, in int<10> rhs, out int<10> res) {
+    res = (lhs - rhs);
+    return;
+}
+
+action bit_mul_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = (lhs * rhs);
+    return;
+}
+
+action int_mul_int(in int<10> lhs, in int<10> rhs, out int<10> res) {
+    res = (lhs * rhs);
+    return;
+}
+
+action bit_mul_const(in bit<10> lhs, out bit<10> res) {
+    res = (lhs * 10w2);
+    return;
+}
+
+action const_mul_bit(in bit<10> rhs, out bit<10> res) {
+    res = (10w2 * rhs);
+    return;
+}
+
+action int_mul_const(in int<10> lhs, out int<10> res) {
+    res = (lhs * 10s2);
+    return;
+}
+
+action const_mul_int(in int<10> rhs, out int<10> res) {
+    res = (10s2 * rhs);
+    return;
+}
+
+action bit_mul_the_same_bit(in bit<10> same, out bit<10> res) {
+    res = (same * same);
+    return;
+}
+
+action int_mul_the_same_int(in int<10> same, out int<10> res) {
+    res = (same * same);
+    return;
+}
+
+action bit_div_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = (lhs / rhs);
+    return;
+}
+
+action bit_mod_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = (lhs % rhs);
+    return;
+}
+
+action bit_sadd_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = (lhs |+| rhs);
+    return;
+}
+
+action int_sadd_int(in int<10> lhs, in int<10> rhs, out int<10> res) {
+    res = (lhs |+| rhs);
+    return;
+}
+
+action bit_ssub_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = (lhs |-| rhs);
+    return;
+}
+
+action int_ssub_int(in int<10> lhs, in int<10> rhs, out int<10> res) {
+    res = (lhs |-| rhs);
+    return;
+}
+
+action bit_or_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = (lhs | rhs);
+    return;
+}
+
+action int_or_int(in int<10> lhs, in int<10> rhs, out int<10> res) {
+    res = (lhs | rhs);
+    return;
+}
+
+action bit_and_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = (lhs & rhs);
+    return;
+}
+
+action int_and_int(in int<10> lhs, in int<10> rhs, out int<10> res) {
+    res = (lhs & rhs);
+    return;
+}
+
+action bit_xor_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = (lhs ^ rhs);
+    return;
+}
+
+action int_xor_int(in int<10> lhs, in int<10> rhs, out int<10> res) {
+    res = (lhs ^ rhs);
+    return;
+}
+
+action complex_sequence(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
+    res = ((lhs + (rhs * 10w3)) + (10w2 - rhs));
     return;
 }
 

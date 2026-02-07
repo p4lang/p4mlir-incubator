@@ -1,55 +1,20 @@
-struct t1 {
-    bool hit;
-    bool miss;
-    action_enum action_run;
-}
-struct t2 {
-    bool hit;
-    bool miss;
-    action_enum action_run;
-}
-extern ActionProfile {
-    ActionProfile(bit<32> size);
-}
-
-control c(in bit<32> arg) {
-    action a(bit<32> carg) {
-        return;
-    }
-    action aa(in bit<32> arg, int<8> carg) {
-        return;
-    }
-    action b() {
-        return;
-    }
-    table t1 {
-        actions = {
-            a;
-            b;
-        }
-        default_action = b();
-    }
-    table t2 {
-        key = {
-            arg : exact @name("arg.key") ;
-            false : lpm @name("false.key") ;
-        }
-        actions = {
-            a;
-            b;
-            aa;
-        }
-        default_action = b();
-        const size = 42;
-        largest_priority_wins = false;
-        priority_delta = 10;
-        some_entry = 10;
-        implementation = ActionProfile((bit<32>)(32));
-    }
-    apply {
-        t1.apply();
-        if (t1.apply().hit) {
-            t2.apply();
-        }
-    }
-}
+error: loc("test/Translate/Control/table_basic.p4":50:8): exportParameterReference called with non-FunctionOp parent: 
+"p4hir.table_key"() <{applyType = !p4hir.func<(!p4hir.bit<32>)>}> ({
+^bb0(%arg0: !p4hir.bit<32>):
+  "p4hir.match_key"(%arg0) <{annotations = {name = "arg.key"}, match_kind = #p4hir.match_kind<"exact">}> : (!p4hir.bit<32>) -> ()
+  %0 = "p4hir.const"() <{value = #p4hir.bool<false> : !p4hir.bool}> : () -> !p4hir.bool
+  "p4hir.match_key"(%0) <{annotations = {name = "false.key"}, match_kind = #p4hir.match_kind<"lpm">}> : (!p4hir.bool) -> ()
+}) : () -> ()
+note: loc("test/Translate/Control/table_basic.p4":50:8): see current operation: 
+"p4hir.table_key"() <{applyType = !p4hir.func<(!p4hir.bit<32>)>}> ({
+^bb0(%arg0: !p4hir.bit<32>):
+  "p4hir.match_key"(%arg0) <{annotations = {name = "arg.key"}, match_kind = #p4hir.match_kind<"exact">}> : (!p4hir.bit<32>) -> ()
+  %0 = "p4hir.const"() <{value = #p4hir.bool<false> : !p4hir.bool}> : () -> !p4hir.bool
+  "p4hir.match_key"(%0) <{annotations = {name = "false.key"}, match_kind = #p4hir.match_kind<"lpm">}> : (!p4hir.bool) -> ()
+}) : () -> ()
+  48 |         size = 42;
+  49 |      // CHECK:  %size = p4hir.table_size #int42_infint
+  50 |         largest_priority_wins = false;
+     |        ^
+  51 |       // CHECK: %largest_priority_wins = p4hir.table_property "largest_priority_wins" {
+  52 |         priority_delta = 10;

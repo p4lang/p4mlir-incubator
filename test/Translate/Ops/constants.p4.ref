@@ -6,121 +6,64 @@ struct T {
     S a;
     S b;
 }
-const bit<32> bzero = 32w0;
+action reference() {
+    bit<32> local_bzero = 32w0;
+    bool local_cfalse = false;
+    bool local_ctrue = true;
+    bit<48> local_btooLarge = 48w206488571150080;
+    bit<32> local_bone = 32w1;
+    bit<32> local_bmax = 32w4294967295;
+    bit<32> local_bz = 32w1;
+    bit<8> local_blarge = 8w0;
+    bit<32> local_btwo = 32w2;
+    int<32> local_btwotwo = 32s2;
+    bit<32> local_btwothree = 32w2;
+    bit<6> local_btwofour = 6w2;
+    S local_v = {32w3, 32w1};
+    T local_zz = {{32w0, 32w1}, {32w2, 32w3}};
+    bit<32> local_x = 32w0;
+    bit<32> local_x1 = 32w4294967295;
+    int<32> local_izero = 32s0;
+    bit<4> local_fa = 4w5;
+    bit<7> local_fc = 7w5;
+    int<4> local_fd = 4s15;
+    bit<7> local_ff = (bit<7>)(7w127);
+    int<7> local_fg = 7s127;
+    int<8> local_sa = 8s0;
+    int<8> local_sb = 8s255;
+    int<8> local_sc = 8s254;
+    int<8> local_sd = 8s129;
+    int<8> local_se = 8s128;
+    int<8> local_sf = 8s127;
+    int<8> local_sg = 8s1;
+    int<8> local_sh = 8s0;
+    int<8> local_si = 8s1;
+    int<8> local_sj = 8s2;
+    int<8> local_sk = 8s127;
+    int<8> local_sl = 8s128;
+    int<8> local_sm = 8s129;
+    int<8> local_sn = 8s255;
+    int<8> local_so = 8s0;
+    int<8> local_sa0 = 8s0;
+    int<8> local_sb0 = 8s255;
+    int<8> local_sc0 = 8s254;
+    int<8> local_sd0 = 8s129;
+    int<8> local_se0 = 8s128;
+    int<8> local_sf0 = 8s127;
+    int<8> local_sg0 = 8s1;
+    int<8> local_sh0 = 8s0;
+    int<8> local_si0 = 8s1;
+    int<8> local_sj0 = 8s2;
+    int<8> local_sk0 = 8s127;
+    int<8> local_sl0 = 8s128;
+    int<8> local_sm0 = 8s129;
+    int<8> local_sn0 = 8s255;
+    int<8> local_so0 = 8s0;
+    int<1> local_ssz0 = 1s0;
+    int<1> local_szz1 = 1s1;
+    int<2> local_szz2 = 2s2;
+    int<1> local_szz3 = 1s0;
 
-const bool cfalse = false;
-
-const bool ctrue = true;
-
-const bit<48> btooLarge = 48w206488571150080;
-
-const bit<32> bone = 32w1;
-
-const bit<32> bmax = 32w4294967295;
-
-const bit<32> bz = 32w1;
-
-const bit<8> blarge = 8w0;
-
-const bit<32> btwo = 32w2;
-
-const int<32> btwotwo = 32s2;
-
-const bit<32> btwothree = 32w2;
-
-const bit<6> btwofour = 6w2;
-
-const S v = {32w3, 32w1};
-
-const T zz = {{32w0, 32w1}, {32w2, 32w3}};
-
-const bit<32> x = 32w0;
-
-const bit<32> x1 = 32w4294967295;
-
-const int<32> izero = 32s0;
-
-const bit<4> fa = 4w5;
-
-const int fb = 5;
-
-const bit<7> fc = 7w5;
-
-const int<4> fd = 4s15;
-
-const int fe = -1;
-
-const bit<7> ff = 7w127;
-
-const int<7> fg = 7s127;
-
-const int fh = -1;
-
-const int<8> sa = 8s0;
-
-const int<8> sb = 8s255;
-
-const int<8> sc = 8s254;
-
-const int<8> sd = 8s129;
-
-const int<8> se = 8s128;
-
-const int<8> sf = 8s127;
-
-const int<8> sg = 8s1;
-
-const int<8> sh = 8s0;
-
-const int<8> si = 8s1;
-
-const int<8> sj = 8s2;
-
-const int<8> sk = 8s127;
-
-const int<8> sl = 8s128;
-
-const int<8> sm = 8s129;
-
-const int<8> sn = 8s255;
-
-const int<8> so = 8s0;
-
-const int<8> sa0 = 8s0;
-
-const int<8> sb0 = 8s255;
-
-const int<8> sc0 = 8s254;
-
-const int<8> sd0 = 8s129;
-
-const int<8> se0 = 8s128;
-
-const int<8> sf0 = 8s127;
-
-const int<8> sg0 = 8s1;
-
-const int<8> sh0 = 8s0;
-
-const int<8> si0 = 8s1;
-
-const int<8> sj0 = 8s2;
-
-const int<8> sk0 = 8s127;
-
-const int<8> sl0 = 8s128;
-
-const int<8> sm0 = 8s129;
-
-const int<8> sn0 = 8s255;
-
-const int<8> so0 = 8s0;
-
-const int<1> szz0 = 1s0;
-
-const int<1> szz1 = 1s1;
-
-const int<2> szz2 = 2s2;
-
-const int<1> szz3 = 1s0;
+    return;
+}
 

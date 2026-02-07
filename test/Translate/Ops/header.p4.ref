@@ -39,12 +39,6 @@ action test2() {
     h = (H) {x = 32w10, y = 32w12};
     h = (H) {x = 32w12, y = 32w10};
     h.setInvalid();
-    if (!h.isValid()) {
-        h.x = (bit<32>)(32w42);
-    }
-     else {
-        h.y = (bit<32>)(32w36);
-    }
     return;
 }
 
@@ -58,21 +52,6 @@ action test3() {
 }
 
 action test1(inout Headers h) {
-    bool hasReturned = false;
-
-    if ((!h.eth.isValid())) {
-        hasReturned = true;
-    }
-     else {
-        if ((h.eth.type == EthTypes.IPv4)) {
-        }
-         else {
-            h.eth.type = (EthTypes)(16w0);
-            h.eth.setValid();
-        }
-    }
-    if ((!hasReturned)) {
-    }
     return;
 }
 
@@ -81,10 +60,6 @@ action test4(inout H h, inout E e) {
 
     h.setInvalid();
     e.setInvalid();
-    if (e.isValid()) {
-        h.setValid();
-        h.x = x;
-    }
     return;
 }
 
@@ -104,16 +79,8 @@ action assign_invalid_header() {
 }
 
 action compare_varbits(inout Hwvb h) {
-    bool hasReturned_0 = false;
     Hwvb h1;
 
-    if ((h1.v == h.v)) {
-        {
-            hasReturned_0 = true;
-        }
-    }
-    if ((!hasReturned_0)) {
-    }
     return;
 }
 

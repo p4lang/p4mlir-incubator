@@ -1,276 +1,188 @@
 enum bit<10> Serenum {
     first = 10w42
 }
-action assign() {
-    bit<10> a;
-    bit<10> b;
-    bit<10> res;
-
+action assign(in bit<10> a, in bit<10> b, out bit<10> res) {
     res = a;
     res = (a + b);
     return;
 }
 
-action mul_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_mul_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs * rhs);
     return;
 }
 
-action mul_assign_with_const() {
-    bit<10> lhs;
-
+action bit_mul_assign_const(inout bit<10> lhs) {
     lhs = (lhs * (bit<10>)(10w3));
     return;
 }
 
-action mul_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_mul_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs * (bit<10>)(Serenum.first));
     return;
 }
 
-action div_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_div_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs / rhs);
     return;
 }
 
-action div_assign_with_const() {
-    bit<10> lhs;
-
+action bit_div_assign_const(inout bit<10> lhs) {
     lhs = (lhs / (bit<10>)(10w3));
     return;
 }
 
-action div_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_div_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs / (bit<10>)(Serenum.first));
     return;
 }
 
-action mod_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_mod_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs % rhs);
     return;
 }
 
-action mod_assign_with_const() {
-    bit<10> lhs;
-
+action bit_mod_assign_const(inout bit<10> lhs) {
     lhs = (lhs % (bit<10>)(10w3));
     return;
 }
 
-action mod_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_mod_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs % (bit<10>)(Serenum.first));
     return;
 }
 
-action add_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_add_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs + rhs);
     return;
 }
 
-action add_assign_with_const() {
-    bit<10> lhs;
-
+action bit_add_assign_const(inout bit<10> lhs) {
     lhs = (lhs + (bit<10>)(10w3));
     return;
 }
 
-action add_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_add_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs + (bit<10>)(Serenum.first));
     return;
 }
 
-action sub_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_sub_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs - rhs);
     return;
 }
 
-action sub_assign_with_const() {
-    bit<10> lhs;
-
+action bit_sub_assign_const(inout bit<10> lhs) {
     lhs = (lhs - (bit<10>)(10w3));
     return;
 }
 
-action sub_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_sub_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs - (bit<10>)(Serenum.first));
     return;
 }
 
-action sadd_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_sadd_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs |+| rhs);
     return;
 }
 
-action sadd_assign_with_const() {
-    bit<10> lhs;
-
+action bit_sadd_assign_const(inout bit<10> lhs) {
     lhs = (lhs |+| (bit<10>)(10w3));
     return;
 }
 
-action sadd_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_sadd_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs |+| (bit<10>)(Serenum.first));
     return;
 }
 
-action ssub_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_ssub_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs |-| rhs);
     return;
 }
 
-action ssub_assign_with_const() {
-    bit<10> lhs;
-
+action bit_ssub_assign_const(inout bit<10> lhs) {
     lhs = (lhs |-| (bit<10>)(10w3));
     return;
 }
 
-action ssub_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_ssub_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs |-| (bit<10>)(Serenum.first));
     return;
 }
 
-action shl_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_shl_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs << rhs);
     return;
 }
 
-action shl_assign_with_const() {
-    bit<10> lhs;
-
+action bit_shl_assign_const(inout bit<10> lhs) {
     lhs = (lhs << (bit<10>)(3));
     return;
 }
 
-action shl_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_shl_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs << (bit<10>)(Serenum.first));
     return;
 }
 
-action shr_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_shr_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs >> rhs);
     return;
 }
 
-action shr_assign_with_const() {
-    bit<10> lhs;
-
+action bit_shr_assign_const(inout bit<10> lhs) {
     lhs = (lhs >> (bit<10>)(3));
     return;
 }
 
-action shr_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_shr_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs >> (bit<10>)(Serenum.first));
     return;
 }
 
-action and_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_and_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs & rhs);
     return;
 }
 
-action and_assign_with_const() {
-    bit<10> lhs;
-
+action bit_and_assign_const(inout bit<10> lhs) {
     lhs = (lhs & (bit<10>)(10w3));
     return;
 }
 
-action and_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_and_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs & (bit<10>)(Serenum.first));
     return;
 }
 
-action or_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_or_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs | rhs);
     return;
 }
 
-action or_assign_with_const() {
-    bit<10> lhs;
-
+action bit_or_assign_const(inout bit<10> lhs) {
     lhs = (lhs | (bit<10>)(10w3));
     return;
 }
 
-action or_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_or_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs | (bit<10>)(Serenum.first));
     return;
 }
 
-action xor_assign_with_var() {
-    bit<10> lhs;
-    bit<10> rhs;
-
+action bit_xor_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
     lhs = (lhs ^ rhs);
     return;
 }
 
-action xor_assign_with_const() {
-    bit<10> lhs;
-
+action bit_xor_assign_const(inout bit<10> lhs) {
     lhs = (lhs ^ (bit<10>)(10w3));
     return;
 }
 
-action xor_assign_with_serenum() {
-    bit<10> lhs;
-
+action bit_xor_assign_serenum_field(inout bit<10> lhs) {
     lhs = (lhs ^ (bit<10>)(Serenum.first));
     return;
 }

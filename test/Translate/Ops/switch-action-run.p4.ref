@@ -1,7 +1,11 @@
+enum  {
+    a,
+    b
+}
 struct t {
     bool hit;
     bool miss;
-    action_enum action_run;
+     action_run;
 }
 control ctrl() {
     action a() {
@@ -18,20 +22,13 @@ control ctrl() {
         default_action = a();
     }
     apply {
-        bool hasReturned = false;
-
         t.apply();
         switch (t.apply().action_run) {
             b: {
                 exit;
             }
             default: {
-                {
-                    hasReturned = true;
-                }
             }
-        }
-        if ((!hasReturned)) {
         }
     }
 }

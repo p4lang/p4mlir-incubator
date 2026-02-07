@@ -4,19 +4,9 @@ enum Suits {
     Hearths,
     Spades
 }
-const Suits cEnum = Suits.Hearths;
-
 action test(inout bit<42> a, Suits b) {
     Suits d = Suits.Diamonds;
 
-    if ((b == Suits.Spades)) {
-        a = (a + 42w1);
-    }
-     else {
-        if ((b == d)) {
-            a = (a - 42w1);
-        }
-    }
     return;
 }
 

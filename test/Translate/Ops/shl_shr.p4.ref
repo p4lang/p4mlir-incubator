@@ -1,16 +1,48 @@
-action shl_shr() {
-    bit<32> u32i_value = (bit<32>)(32w1);
-    int<32> s32i_value = (int<32>)(32s2);
-    bit<8> shift = (bit<8>)(8w3);
-    bit<32> u32i_shl_u8i = (u32i_value << shift);
-    bit<32> u32i_shl_int = (u32i_value << 1);
-    int<32> s32i_shl_u8i = (s32i_value << shift);
-    int<32> s32i_shl_int = (s32i_value << 1);
-    bit<32> u32i_shr_u8i = (u32i_value >> shift);
-    bit<32> u32i_shr_int = (u32i_value >> 1);
-    int<32> s32i_shr_u8i = (s32i_value >> shift);
-    int<32> s32i_shr_int = (s32i_value >> 1);
+action bit_shl_bit(in bit<32> lhs, in bit<8> rhs, out bit<32> res) {
+    res = (lhs << rhs);
+    return;
+}
 
+action int_shl_bit(in int<32> lhs, in bit<8> rhs, out int<32> res) {
+    res = (lhs << rhs);
+    return;
+}
+
+action bit_shl_const(in bit<32> lhs, out bit<32> res) {
+    res = (lhs << 1);
+    return;
+}
+
+action int_shl_const(in int<32> lhs, out int<32> res) {
+    res = (lhs << 1);
+    return;
+}
+
+action const_shl_const() {
+    return;
+}
+
+action bit_shr_bit(in bit<32> lhs, in bit<8> rhs, out bit<32> res) {
+    res = (lhs >> rhs);
+    return;
+}
+
+action int_shr_bit(in int<32> lhs, in bit<8> rhs, out int<32> res) {
+    res = (lhs >> rhs);
+    return;
+}
+
+action bit_shr_const(in bit<32> lhs, out bit<32> res) {
+    res = (lhs >> 1);
+    return;
+}
+
+action int_shr_const(in int<32> lhs, out int<32> res) {
+    res = (lhs >> 1);
+    return;
+}
+
+action const_shr_const() {
     return;
 }
 

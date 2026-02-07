@@ -7,22 +7,13 @@ action foo(in int<16> arg2, bit<10> arg1) {
 }
 
 action bar() {
-    bool hasReturned = false;
     int<16> x1 = (int<16>)(16s2);
 
-    {
-        hasReturned = true;
-    }
     return;
 }
 
 action baz(inout int<16> x) {
-    bool hasReturned_0 = false;
-
     x = (x + 16s1);
-    {
-        hasReturned_0 = true;
-    }
     return;
 }
 
@@ -32,7 +23,6 @@ action quuz(out int<16> a) {
 }
 
 action bazz(in int<16> arg1) {
-    bool hasReturned_1 = false;
     bit<10> x1 = (bit<10>)(10w5);
     int<16> val;
 
@@ -50,9 +40,6 @@ action bazz(in int<16> arg1) {
         x_inout_arg = val;
         baz(x_inout_arg);
         val = x_inout_arg;
-    }
-    {
-        hasReturned_1 = true;
     }
     return;
 }

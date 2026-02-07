@@ -1,0 +1,8 @@
+error: loc("test/Translate/Control/table-entries.p4":38:47): Unsupported operation 'p4hir.symbol_ref' in common statement context: 
+note: loc("test/Translate/Control/table-entries.p4":38:47): see current operation: %0 = "p4hir.symbol_ref"() <{decl = @ingress::@__local_ingress_m_0}> : () -> !p4hir.ref<!p4hir.struct<"Meta_t", egress_spec: !p4hir.bit<9>>>
+  36 |     // CHECK-LABEL: p4hir.table @t_exact
+  37 |     table t_exact {
+  38 |   	key = {
+     |   	                                           ^
+  39 |             h.h.e : exact;
+  40 |         }

@@ -14,33 +14,18 @@ struct PortId_t {
 struct metadata_t {
     PortId_t foo;
 }
-const T t = {32s10, 32s20};
+action reference() {
+    int<32> a = (((((32s10 + 32s25) + 32s10) + 32s10) + 32s25) + 32s10);
+    T local_t2 = {32s15, 32s25};
+    T local_t1 = {32s10, 32s20};
+    S local_s1 = {{32s15, 32s25}, {32s10, 32s20}};
+    Empty local_e = {};
+    T local_tt1 = {32s15, 32s25};
+    T local_t = {32s10, 32s20};
+    S local_s = {{32s15, 32s25}, {32s10, 32s20}};
 
-const S s = {{32s15, 32s25}, {32s10, 32s20}};
-
-const int<32> x = 32s10;
-
-const int<32> y = 32s25;
-
-const int<32> w = 32s10;
-
-const T tt1 = {32s15, 32s25};
-
-const Empty e = {};
-
-const T t1 = {32s10, 32s20};
-
-const S s1 = {{32s15, 32s25}, {32s10, 32s20}};
-
-const int<32> x1 = 32s10;
-
-const int<32> y1 = 32s25;
-
-const int<32> w1 = 32s10;
-
-const T t2 = {32s15, 32s25};
-
-const PortId_t PSA_CPU_PORT = {9w192};
+    return;
+}
 
 action test2(inout PortId_t port) {
     port._v = (port._v + 9w1);
@@ -61,9 +46,6 @@ action test(inout metadata_t meta) {
         port_inout_arg = meta.foo;
         test2(port_inout_arg);
         meta.foo = port_inout_arg;
-    }
-    if ((meta.foo == {9w192})) {
-        meta.foo._v = (meta.foo._v + 9w1);
     }
     return;
 }
