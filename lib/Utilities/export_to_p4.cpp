@@ -471,6 +471,12 @@ class P4HirToP4Exporter {
             }
             return mlir::success();
         }
+        // P4HIR::ConstructOp operations produce values that are typically consumed by
+        // P4HIR::InstantiateOp. They should not be directly emitted as standalone top-level
+        // P4 statements.
+        if (mlir::isa<P4HIR::ConstructOp>(op)) {
+            return mlir::success();
+        }
         return op.emitError() << "Unsupported top-level operation '" << op.getName() << "'";
     }
 
@@ -1104,6 +1110,10 @@ class P4HirToP4Exporter {
                 ss << P4HIR::VoidType::getMnemonic();
                 return mlir::success();
             })
+            .Case<P4HIR::DontcareType>([&](P4HIR::DontcareType) {
+                ss << "_";
+                return mlir::success();
+            })
             // Enums and Errors use their names (or fixed 'error').
             .Case<P4HIR::EnumType>([&](P4HIR::EnumType enumType) {
                 ss << enumType.getName();
@@ -1400,6 +1410,27 @@ class P4HirToP4Exporter {
         if (auto constOp = mlir::dyn_cast<P4HIR::ConstOp>(op)) {
             auto valueAttr = constOp.getValueAttr();
             return exportConstantAttr(valueAttr, ss);
+        }
+        if (auto constructOp = mlir::dyn_cast<P4HIR::ConstructOp>(op)) {
+            // Export the callee name (e.g., "nothing" or "P").
+            ss << constructOp.getCallee();
+
+            // Export type arguments (e.g., "<_,_>").
+            if (auto typeParams = constructOp.getTypeParameters()) {
+                if (failed(exportTypeAttributes(*typeParams, ss))) {
+                    return mlir::failure();
+                }
+            }
+
+            // Export constructor arguments (e.g., "()").
+            ss << "(";
+            if (failed(Utilities::interleaveCommaWithError(
+                    constructOp.getArgOperands(), ss,
+                    [&](mlir::Value arg) { return exportExpression(arg, ss); }))) {
+                return mlir::failure();
+            }
+            ss << ")";
+            return mlir::success();
         }
         if (auto readOp = mlir::dyn_cast<P4HIR::ReadOp>(op)) {
             // Reading the value *from* a variable reference. Export the L-Value being read.
@@ -1713,12 +1744,10 @@ class P4HirToP4Exporter {
         mlir::Block &trueBlock = trueRegion.front();
         auto trueYield = mlir::dyn_cast_if_present<P4HIR::YieldOp>(trueBlock.getTerminator());
         if (!trueYield) {
-            return ifOp.emitError()
-                   << "IfOp trueRegion block must terminate with p4hir.yield.";
+            return ifOp.emitError() << "IfOp trueRegion block must terminate with p4hir.yield.";
         }
         if (trueYield.getNumOperands() != 1) {
-            return trueYield.emitError()
-                   << "IfOp trueRegion yield must have exactly one operand.";
+            return trueYield.emitError() << "IfOp trueRegion yield must have exactly one operand.";
         }
         // Parenthesize the sub-expression.
         ss << "(";
@@ -1738,8 +1767,7 @@ class P4HirToP4Exporter {
         mlir::Block &falseBlock = falseRegion.front();
         auto falseYield = mlir::dyn_cast_if_present<P4HIR::YieldOp>(falseBlock.getTerminator());
         if (!falseYield) {
-            return ifOp.emitError()
-                   << "IfOp falseRegion block must terminate with p4hir.yield.";
+            return ifOp.emitError() << "IfOp falseRegion block must terminate with p4hir.yield.";
         }
         if (falseYield.getNumOperands() != 1) {
             return falseYield.emitError()
@@ -2318,11 +2346,11 @@ class P4HirToP4Exporter {
     llvm::FailureOr<bool> exportCommonStatement(mlir::Operation &op, ExtendedFormattedOStream &ss) {
         // Operations that primarily define values used in expressions are skipped
         // when they appear standalone, assuming their result is used later.
-        if (mlir::isa<P4HIR::ReadOp, P4HIR::CastOp, P4HIR::StructExtractOp,
-                      P4HIR::StructFieldRefOp, P4HIR::TupleExtractOp, P4HIR::SliceOp,
-                      P4HIR::ReadSliceOp, P4HIR::ConstOp, P4HIR::UnaryOp, P4HIR::BinOp, P4HIR::CmpOp,
-                      P4HIR::ConcatOp, P4HIR::ShlOp, P4HIR::ShrOp, P4HIR::StructOp, P4HIR::ArrayOp,
-                      P4HIR::ArrayGetOp, P4HIR::UninitializedOp, P4HIR::IfOp>(op)) {
+        if (mlir::isa<P4HIR::ReadOp, P4HIR::CastOp, P4HIR::StructExtractOp, P4HIR::StructFieldRefOp,
+                      P4HIR::TupleExtractOp, P4HIR::SliceOp, P4HIR::ReadSliceOp, P4HIR::ConstOp,
+                      P4HIR::UnaryOp, P4HIR::BinOp, P4HIR::CmpOp, P4HIR::ConcatOp, P4HIR::ShlOp,
+                      P4HIR::ShrOp, P4HIR::StructOp, P4HIR::ArrayOp, P4HIR::ArrayGetOp,
+                      P4HIR::UninitializedOp, P4HIR::IfOp, P4HIR::SoftReturnOp>(op)) {
             // Assume used later by exportExpression, so skip statement emission here.
             return true;
         }
@@ -2420,7 +2448,9 @@ class P4HirToP4Exporter {
         }
         if (auto applyOp = mlir::dyn_cast<P4HIR::ApplyOp>(op)) {
             // parser.apply() or control.apply().
-            ss << applyOp.getCallee().getLeafReference().strref(); // Directly print the symbol name
+            ss << applyOp.getCallee()
+                      .getLeafReference()
+                      .strref();  // Directly print the symbol name
             ss << ".apply(";
             if (failed(Utilities::interleaveCommaWithError(
                     applyOp.getArgOperands(), ss,
@@ -2769,6 +2799,13 @@ class P4HirToP4Exporter {
             return mlir::success();
         }
 
+        // Local variable declarations (these are likely just parameters that are being
+        // defined in the current scope for internal MLIR representation, and do not
+        // need to be re-exported in P4).
+        if (mlir::isa<P4HIR::ControlLocalOp>(op)) {
+            return mlir::success();
+        }
+
         // Action Definitions.
         if (auto funcOp = mlir::dyn_cast<P4HIR::FuncOp>(op)) {
             if (funcOp.getAction()) {
@@ -2791,9 +2828,47 @@ class P4HirToP4Exporter {
                     return mlir::failure();
                 }
             }
-
             // Export the type being instantiated (e.g., "MyCounter<bit<32>>").
-            mlir::Type instanceType = instOp.getOperation()->getResult(0).getType();
+            // Declared outside the if-else for wider scope if needed, but
+            // not for 0-result case
+            mlir::Type instanceType;
+            if (instOp.getOperation()->getNumResults() > 0) {
+                instanceType = instOp.getOperation()->getResult(0).getType();
+            } else {
+                // If InstantiateOp has no results, this is a side-effect instantiation like
+                // "MyControl() myInstance;".
+                // We directly print the type and instance name.
+                auto definitionOpt = findInstantiatedOpDefinition(instOp);
+
+                if (failed(definitionOpt)) {
+                    return instOp.emitError() << "InstantiateOp has no results, and could not "
+                                                 "resolve definition for symbol '"
+
+                                              << instOp.getCallee() << "'.";
+                }
+                // Print the type name (callee name).
+                // This should be the control/parser name.
+                ss << instOp.getCalleeAttr()
+                          .getLeafReference()
+                          .getValue();
+                // Print constructor arguments.
+                ss << "(";
+                if (failed(Utilities::interleaveCommaWithError(
+                        instOp.getArgOperands(), ss,
+                        [&](mlir::Value arg) { return exportExpression(arg, ss); }))) {
+                    return mlir::failure();
+                }
+
+                ss << ")";
+                ss << " " << instOp.getName();  // Print instance name
+                ss.semicolon();
+                return mlir::success();  // Handle this branch here.
+            }
+
+            // This part is only reached if instOp.getOperation()->getNumResults() > 0.
+            if (failed(exportP4Type(instanceType, ss))) {
+                return mlir::failure();
+            }
             if (failed(exportP4Type(instanceType, ss))) {
                 return mlir::failure();
             }
