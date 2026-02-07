@@ -1,0 +1,28 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+action iftest() {
+    bool b;
+
+    return;
+}
+
+action iftest2() {
+    int<16> x1 = (int<16>)(16s1);
+    int<16> x4 = (int<16>)(16s5);
+
+    return;
+}
+
+action iftest3() {
+    int<16> x1 = (int<16>)(16s1);
+    int<16> x2 = (int<16>)(16s3);
+    int<16> x3 = (int<16>)(16s4);
+
+    x2 = (int<16>)(16s1);
+    return;
+}
+

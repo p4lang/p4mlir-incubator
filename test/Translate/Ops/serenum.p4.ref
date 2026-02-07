@@ -1,0 +1,27 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+enum bit<16> EthTypes {
+    ARP = 16w2054,
+    EtherTalk = 16w32923,
+    IPX = 16w33079,
+    IPv4 = 16w2048,
+    IPv6 = 16w34525,
+    RARP = 16w32821,
+    VLAN = 16w33024
+}
+struct Ethernet {
+    bit<48> src;
+    bit<48> dest;
+    EthTypes type;
+}
+struct Headers {
+    Ethernet eth;
+}
+action test(inout Headers h) {
+    return;
+}
+

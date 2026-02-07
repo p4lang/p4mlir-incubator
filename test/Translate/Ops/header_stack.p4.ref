@@ -1,0 +1,1 @@
+error: loc(unknown): Unsupported P4HIR type for P4 export: '!p4hir.header_stack<4x!p4hir.header<"h", __valid: !p4hir.validity.bit>>'

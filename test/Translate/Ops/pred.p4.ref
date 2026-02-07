@@ -1,0 +1,17 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+action cond_0(bool in_b) {
+    bit<32> a;
+    bool tmp_1;
+    bool tmp_2;
+
+    tmp_1 = ((!in_b) ? (tmp_2) : (tmp_1));
+    tmp_2 = (((!in_b) ? ((!(!in_b))) : (false)) ? ((a == 32w5)) : (tmp_2));
+    tmp_1 = (((!in_b) ? ((!(!in_b))) : (false)) ? ((((!in_b) ? ((!(!in_b))) : (false)) ? ((a == 32w5)) : (tmp_2))) : ((((!in_b) ? ((!in_b)) : (false)) ? (false) : (tmp_1))));
+    return;
+}
+

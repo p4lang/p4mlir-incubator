@@ -1,0 +1,72 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+struct empty {
+}
+struct Foo {
+    bit<32> bar;
+}
+@size("100") extern Annotated {
+    Annotated();
+    void execute(bit<8> index);
+}
+
+extern Virtual {
+    Virtual();
+    void run(in bit<16> ix);
+    bit<16> f(in bit<16> ix);
+}
+
+@pure extern bit<32> log(in bit<32> data);
+
+@pkginfo(bar = "42", foo = 10) parser p(in empty e, in int<10> sinit) {
+    int<10> s = sinit;
+
+    state start {
+        s = 10s1;
+        transition next;
+    }
+    state next {
+        s = (int<10>)(10s2);
+        transition accept;
+    }
+    state drop {
+        transition reject;
+    }
+}
+@pkginfo(bar = "42", foo = 10) control c(in Foo ff, bool bb) {
+    action a() {
+        return;
+    }
+    action b() {
+        return;
+    }
+    action cc() {
+        return;
+    }
+    table t {
+        key = {
+            10w42 : exact @name("exact.key") ;
+            false : lpm @name("false.key") ;
+        }
+        actions = {
+            a;
+            @tableonly b;
+            @defaultonly cc;
+        }
+        @name("bar") default_action = cc();
+        @name("dummy.size") const size = 42;
+    }
+    apply {
+        @unlikely {
+        }
+        {
+            bit<8> i = (bit<8>)(8w0);
+            @unroll for (; (i < (bit<8>)(10)); i = (i + 8w1)) {
+            }
+        }
+    }
+}
