@@ -1,27 +1,8 @@
-error: loc("test/Translate/Ops/for.p4":21:4): Unsupported operation 'p4hir.for' in common statement context: 
-note: loc("test/Translate/Ops/for.p4":21:4): see current operation: 
-"p4hir.for"() ({
-  %13 = "p4hir.const"() <{value = #p4hir.int<10> : !p4hir.infint}> : () -> !p4hir.infint
-  %14 = "p4hir.cast"(%13) : (!p4hir.infint) -> !p4hir.bit<32>
-  %15 = "p4hir.read"(%6) : (!p4hir.ref<!p4hir.bit<32>>) -> !p4hir.bit<32>
-  %16 = "p4hir.cmp"(%15, %14) <{kind = 1 : i32}> : (!p4hir.bit<32>, !p4hir.bit<32>) -> !p4hir.bool
-  "p4hir.condition"(%16) : (!p4hir.bool) -> ()
-}, {
-  %10 = "p4hir.const"() <{value = #p4hir.int<1> : !p4hir.bit<32>}> : () -> !p4hir.bit<32>
-  %11 = "p4hir.read"(%2) : (!p4hir.ref<!p4hir.bit<32>>) -> !p4hir.bit<32>
-  %12 = "p4hir.binop"(%11, %10) <{kind = 4 : i32}> : (!p4hir.bit<32>, !p4hir.bit<32>) -> !p4hir.bit<32>
-  "p4hir.assign"(%12, %2) : (!p4hir.bit<32>, !p4hir.ref<!p4hir.bit<32>>) -> ()
-  "p4hir.yield"() : () -> ()
-}, {
-  %7 = "p4hir.const"() <{value = #p4hir.int<1> : !p4hir.bit<32>}> : () -> !p4hir.bit<32>
-  %8 = "p4hir.read"(%6) : (!p4hir.ref<!p4hir.bit<32>>) -> !p4hir.bit<32>
-  %9 = "p4hir.binop"(%8, %7) <{kind = 4 : i32}> : (!p4hir.bit<32>, !p4hir.bit<32>) -> !p4hir.bit<32>
-  "p4hir.assign"(%9, %6) : (!p4hir.bit<32>, !p4hir.ref<!p4hir.bit<32>>) -> ()
-  "p4hir.yield"() : () -> ()
-}) : () -> ()
+error: loc("test/Translate/Ops/for.p4":21:40): Unsupported operation 'p4hir.const' in for-loop update clause
+note: loc("test/Translate/Ops/for.p4":21:40): see current operation: %7 = "p4hir.const"() <{value = #p4hir.int<1> : !p4hir.bit<32>}> : () -> !p4hir.bit<32>
   19 |         // CHECK:      } body {
   20 |         // CHECK:        %[[CONST_1:.*]] = p4hir.const #int1_b32i
   21 |         // CHECK:        %[[CURR_SUM:.*]] = p4hir.read %[[SUM]] : <!b32i>
-     |    ^
+     |                                        ^
   22 |         // CHECK:        %[[NEW_SUM:.*]] = p4hir.binop(add, %[[CURR_SUM]], %[[CONST_1]]) : !b32i
   23 |         // CHECK:        p4hir.assign %[[NEW_SUM]], %[[SUM]] : <!b32i>

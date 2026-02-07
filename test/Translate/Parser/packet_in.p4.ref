@@ -1,19 +1,59 @@
-error: loc("test/Translate/Parser/packet_in.p4":62:19):  Unsupported parser state statement 'p4hir.transition_select'
-note: loc("test/Translate/Parser/packet_in.p4":62:19): see current operation: 
-"p4hir.transition_select"(%20) ({
-  "p4hir.select_case"() <{state = @parserI::@parse_ipv4}> ({
-    %22 = "p4hir.const"() <{value = #p4hir.int<2048> : !p4hir.bit<16>}> : () -> !p4hir.bit<16>
-    %23 = "p4hir.set"(%22) : (!p4hir.bit<16>) -> !p4hir.set<!p4hir.bit<16>>
-    "p4hir.yield"(%23) : (!p4hir.set<!p4hir.bit<16>>) -> ()
-  }) : () -> ()
-  "p4hir.select_case"() <{state = @parserI::@accept}> ({
-    %21 = "p4hir.const"() <{value = #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>}> : () -> !p4hir.set<!p4hir.dontcare>
-    "p4hir.yield"(%21) : (!p4hir.set<!p4hir.dontcare>) -> ()
-  }) : () -> ()
-}) : (!p4hir.bit<16>) -> ()
-  60 |     state parse_ipv4 {
-  61 | // CHECK: p4hir.call_method @packet_in::@extract<[!ipv4_t]> (%{{.*}}) of %{{.*}} : ![[packet_in]] : (!p4hir.ref<!ipv4_t>) -> ()
-  62 |         pkt.extract(hdr.ipv4);
-     |                   ^
-  63 |         transition select(hdr.ipv4.version, hdr.ipv4.protocol) {
-  64 |           (4w0x4, 8w0x06): accept;
+header Ethernet_h {
+    bit<48> dstAddr;
+    bit<48> srcAddr;
+    bit<16> etherType;
+}
+header ipv4_t {
+    bit<4> version;
+    bit<4> ihl;
+    bit<6> dscp;
+    bit<2> ecn;
+    bit<16> totalLen;
+    bit<16> identification;
+    bit<1> flag_rsvd;
+    bit<1> flag_noFrag;
+    bit<1> flag_more;
+    bit<13> fragOffset;
+    bit<8> ttl;
+    bit<8> protocol;
+    bit<16> hdrChecksum;
+    bit<32> srcAddr;
+    bit<32> dstAddr;
+}
+struct Parsed_packet {
+    Ethernet_h ethernet;
+    ipv4_t ipv4;
+}
+extern packet_in {
+    void extract<T>(out T hdr);
+    void extract<T>(out T variableSizeHeader, in bit<32> variableFieldSizeInBits);
+    T lookahead<T>();
+    void advance(in bit<32> sizeInBits);
+    bit<32> length();
+}
+
+parser parserI(packet_in pkt, out Parsed_packet hdr) {
+    state start {
+        {
+            Ethernet_h hdr_out_arg;
+            hdr_out_arg.extract<Ethernet_h>(hdr_out_arg);
+            hdr.ethernet = hdr_out_arg;
+        }
+        transition select(hdr.ethernet.etherType) {
+            16w2048 : parse_ipv4;
+            _ : accept;
+        }
+    }
+    state parse_ipv4 {
+        {
+            ipv4_t hdr_out_arg;
+            hdr_out_arg.extract<ipv4_t>(hdr_out_arg);
+            hdr.ipv4 = hdr_out_arg;
+        }
+        transition select(hdr.ipv4.version, hdr.ipv4.protocol) {
+            (4w4, 8w6) : accept;
+            (4w4, 8w23) : accept;
+            _ : accept;
+        }
+    }
+}

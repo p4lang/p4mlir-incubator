@@ -1,31 +1,8 @@
-error: loc("test/Translate/Parser/select.p4":8:19):  Unsupported parser state statement 'p4hir.transition_select'
-note: loc("test/Translate/Parser/select.p4":8:19): see current operation: 
-"p4hir.transition_select"(%arg0) ({
-  "p4hir.select_case"() <{state = @p1::@drop}> ({
-    %8 = "p4hir.const"() <{value = #p4hir.int<1> : !p4hir.bit<10>}> : () -> !p4hir.bit<10>
-    %9 = "p4hir.set"(%8) : (!p4hir.bit<10>) -> !p4hir.set<!p4hir.bit<10>>
-    "p4hir.yield"(%9) : (!p4hir.set<!p4hir.bit<10>>) -> ()
-  }) : () -> ()
-  "p4hir.select_case"() <{state = @p1::@next}> ({
-    %5 = "p4hir.const"() <{value = #p4hir.int<10> : !p4hir.bit<10>}> : () -> !p4hir.bit<10>
-    %6 = "p4hir.const"() <{value = #p4hir.int<20> : !p4hir.bit<10>}> : () -> !p4hir.bit<10>
-    %7 = "p4hir.range"(%5, %6) : (!p4hir.bit<10>, !p4hir.bit<10>) -> !p4hir.set<!p4hir.bit<10>>
-    "p4hir.yield"(%7) : (!p4hir.set<!p4hir.bit<10>>) -> ()
-  }) : () -> ()
-  "p4hir.select_case"() <{state = @p1::@next}> ({
-    %2 = "p4hir.const"() <{value = #p4hir.int<0> : !p4hir.bit<10>}> : () -> !p4hir.bit<10>
-    %3 = "p4hir.const"() <{value = #p4hir.int<0> : !p4hir.bit<10>}> : () -> !p4hir.bit<10>
-    %4 = "p4hir.mask"(%2, %3) : (!p4hir.bit<10>, !p4hir.bit<10>) -> !p4hir.set<!p4hir.bit<10>>
-    "p4hir.yield"(%4) : (!p4hir.set<!p4hir.bit<10>>) -> ()
-  }) : () -> ()
-  "p4hir.select_case"() <{state = @p1::@reject}> ({
-    %1 = "p4hir.const"() <{value = #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>}> : () -> !p4hir.set<!p4hir.dontcare>
-    "p4hir.yield"(%1) : (!p4hir.set<!p4hir.dontcare>) -> ()
-  }) : () -> ()
-}) : (!p4hir.bit<10>) -> ()
-   6 |     state start {
-   7 |         transition select(foo) {
-   8 |           1 : drop;
-     |                   ^
-   9 |           10..20 : next;
-  10 |           0 &&& 0 : next;
+error: loc("test/Translate/Parser/select.p4":130:33):  Unsupported parser state statement 'p4hir.tuple'
+note: loc("test/Translate/Parser/select.p4":130:33): see current operation: %49 = "p4hir.tuple"(%46, %47, %48) : (!p4hir.bit<32>, !p4hir.bit<32>, !p4hir.bit<32>) -> tuple<!p4hir.bit<32>, !p4hir.bit<32>, !p4hir.bit<32>>
+ 128 |         transition select (arg1) {
+ 129 |                    4..10: foo2;
+ 130 |                    (4..10): foo2;
+     |                                 ^
+ 131 |                    2..(arg2+arg1*7): foo3;
+ 132 |                    (2..(arg2-3)): foo3;

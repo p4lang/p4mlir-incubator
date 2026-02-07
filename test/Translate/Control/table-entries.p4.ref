@@ -1,8 +1,93 @@
-error: loc("test/Translate/Control/table-entries.p4":38:47): Unsupported operation 'p4hir.symbol_ref' in common statement context: 
-note: loc("test/Translate/Control/table-entries.p4":38:47): see current operation: %0 = "p4hir.symbol_ref"() <{decl = @ingress::@__local_ingress_m_0}> : () -> !p4hir.ref<!p4hir.struct<"Meta_t", egress_spec: !p4hir.bit<9>>>
-  36 |     // CHECK-LABEL: p4hir.table @t_exact
-  37 |     table t_exact {
-  38 |   	key = {
-     |   	                                           ^
-  39 |             h.h.e : exact;
-  40 |         }
+header hdr {
+    bit<8> e;
+    bit<16> t;
+    bit<8> l;
+    bit<8> r;
+    bit<8> v;
+}
+struct Header_t {
+    hdr h;
+}
+struct Meta_t {
+    bit<9> egress_spec;
+}
+enum  {
+    a,
+    a_with_control_params
+}
+struct t_exact {
+    bool hit;
+    bool miss;
+     action_run;
+}
+struct t_lpm {
+    bool hit;
+    bool miss;
+     action_run;
+}
+struct t_ternary {
+    bool hit;
+    bool miss;
+     action_run;
+}
+struct t_range {
+    bool hit;
+    bool miss;
+     action_run;
+}
+control ingress(inout Header_t h, inout Meta_t m) {
+    action a() {
+        m.egress_spec = (bit<9>)(9w0);
+        return;
+    }
+    action a_with_control_params(bit<9> x) {
+        m.egress_spec = x;
+        return;
+    }
+    table t_exact {
+        key = {
+            h.h.e : exact @name("h.h.e") ;
+        }
+        actions = {
+            a;
+            a_with_control_params;
+        }
+        default_action = a();
+    }
+    table t_lpm {
+        key = {
+            h.h.l : lpm @name("h.h.l") ;
+        }
+        actions = {
+            a;
+            a_with_control_params;
+        }
+        default_action = a();
+    }
+    table t_ternary {
+        key = {
+            h.h.t : ternary @name("h.h.t") ;
+        }
+        actions = {
+            a;
+            a_with_control_params;
+        }
+        default_action = a();
+    }
+    table t_range {
+        key = {
+            h.h.r : range @name("h.h.r") ;
+        }
+        actions = {
+            a;
+            a_with_control_params;
+        }
+        default_action = a();
+    }
+    apply {
+        t_exact.apply();
+        t_lpm.apply();
+        t_ternary.apply();
+        t_range.apply();
+    }
+}

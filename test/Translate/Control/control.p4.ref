@@ -1,8 +1,22 @@
-error: loc("test/Translate/Control/control.p4":6:39): Unsupported operation 'p4hir.symbol_ref' in exportExpression
-note: loc("test/Translate/Control/control.p4":6:39): see current operation: %1 = "p4hir.symbol_ref"() <{decl = @Pipe1::@__local_Pipe1_arg2_0}> : () -> !p4hir.int<16>
-   4 | // CHECK-LABEL:   p4hir.control @Pipe1(%arg0: !b10i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "arg1"}, %arg1: !i16i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "arg2"}, %arg2: !p4hir.ref<!b10i> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "oarg2"})()
-   5 | control Pipe1(bit<10> arg1, in int<16> arg2, out bit<10> oarg2) {
-   6 | // CHECK:     p4hir.func action @foo() {
-     |                                       ^
-   7 |     action foo() {
-   8 |         int<16> x1 = 3 + arg2;
+control Pipe1(bit<10> arg1, in int<16> arg2, out bit<10> oarg2) {
+    action foo() {
+        int<16> x1 = (16s3 + arg2);
+
+        x1 = (int<16>)(16s4);
+        return;
+    }
+    action bar() {
+        bit<10> x1 = (bit<10>)(10w2);
+
+        x1 = (x1 - arg1);
+        oarg2 = x1;
+        return;
+    }
+    apply {
+        bit<10> x1 = arg1;
+        int<16> x2 = (int<16>)(16s5);
+
+        x2 = arg2;
+        bar();
+    }
+}
