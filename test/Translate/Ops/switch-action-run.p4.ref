@@ -1,11 +1,12 @@
-enum  {
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+enum action_run_0 {
     a,
     b
-}
-struct t {
-    bool hit;
-    bool miss;
-     action_run;
 }
 control ctrl() {
     action a() {

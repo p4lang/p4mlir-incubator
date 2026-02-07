@@ -1,17 +1,56 @@
-error: loc("test/Translate/Control/table.p4":45:20): Method calls are not supported yet in table action lists.
-note: loc("test/Translate/Control/table.p4":45:20): see current operation: 
-"p4hir.scope"() ({
-  %27 = "p4hir.variable"() <{init, name = "x2_inout_arg"}> : () -> !p4hir.ref<!p4hir.int<16>>
-  %28 = "p4hir.read"(%arg2) : (!p4hir.ref<!p4hir.int<16>>) -> !p4hir.int<16>
-  "p4hir.assign"(%28, %27) : (!p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>) -> ()
-  "p4hir.call"(%arg1, %27) <{callee = @Pipe::@foo}> : (!p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>) -> ()
-  %29 = "p4hir.read"(%27) : (!p4hir.ref<!p4hir.int<16>>) -> !p4hir.int<16>
-  "p4hir.assign"(%29, %arg2) : (!p4hir.int<16>, !p4hir.ref<!p4hir.int<16>>) -> ()
-  "p4hir.yield"() : () -> ()
-}) : () -> ()
-  43 |     apply {
-  44 |         myTable.apply();
-  45 |         test = test + 1;
-     |                    ^
-  46 |         local_hdr.f1 = 3;
-  47 |     }
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+header MyHeader {
+    int<16> f1;
+}
+enum action_run_0 {
+    foo,
+    bar,
+    bak
+}
+extern Ext {
+    Ext(int<16> tmp);
+}
+
+extern int<16> baz(in int<16> arg);
+
+action bak() {
+    return;
+}
+
+control Pipe(in MyHeader arg1, in int<16> arg2, inout int<16> arg3)(int<16> ctr_arg1) {
+    MyHeader local_hdr = (MyHeader) {f1 = 16s23};
+    int<16> test = (int<16>)(16s52);
+
+    action foo(in int<16> x1, inout int<16> x2) {
+        return;
+    }
+    action bar(int<16> x1, int<16> x2, int<16> x3) {
+        local_hdr.f1 = arg2;
+        return;
+    }
+    table myTable {
+        key = {
+            (arg1.f1 - 16s1) : exact @name("arg1.key") ;
+            (arg3 & 16s43707) : lpm @name("arg3.key") ;
+            16s3 : lpm @name("cst.key") ;
+            baz(test) : exact @name("baz.key") ;
+            local_hdr.f1 : lpm @name("local_hdr.key") ;
+        }
+        actions = {
+            foo(arg2, arg3);
+            bar;
+            bak;
+        }
+        default_action = bak();
+    }
+    apply {
+        myTable.apply();
+        test = (test + 16s1);
+        local_hdr.f1 = (int<16>)(16s3);
+    }
+}

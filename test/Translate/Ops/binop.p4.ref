@@ -1,3 +1,9 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
 action bit_add_bit(in bit<10> lhs, in bit<10> rhs, out bit<10> res) {
     res = (lhs + rhs);
     return;

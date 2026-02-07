@@ -1,3 +1,9 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
 header hdr {
     bit<8> e;
     bit<16> t;
@@ -11,29 +17,9 @@ struct Header_t {
 struct Meta_t {
     bit<9> egress_spec;
 }
-enum  {
+enum action_run_0 {
     a,
     a_with_control_params
-}
-struct t_exact {
-    bool hit;
-    bool miss;
-     action_run;
-}
-struct t_lpm {
-    bool hit;
-    bool miss;
-     action_run;
-}
-struct t_ternary {
-    bool hit;
-    bool miss;
-     action_run;
-}
-struct t_range {
-    bool hit;
-    bool miss;
-     action_run;
 }
 control ingress(inout Header_t h, inout Meta_t m) {
     action a() {

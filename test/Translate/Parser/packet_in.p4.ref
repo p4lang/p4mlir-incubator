@@ -1,3 +1,9 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
 header Ethernet_h {
     bit<48> dstAddr;
     bit<48> srcAddr;
@@ -36,7 +42,7 @@ parser parserI(packet_in pkt, out Parsed_packet hdr) {
     state start {
         {
             Ethernet_h hdr_out_arg;
-            hdr_out_arg.extract<Ethernet_h>(hdr_out_arg);
+            pkt.extract<Ethernet_h>(hdr_out_arg);
             hdr.ethernet = hdr_out_arg;
         }
         transition select(hdr.ethernet.etherType) {
@@ -47,7 +53,7 @@ parser parserI(packet_in pkt, out Parsed_packet hdr) {
     state parse_ipv4 {
         {
             ipv4_t hdr_out_arg;
-            hdr_out_arg.extract<ipv4_t>(hdr_out_arg);
+            pkt.extract<ipv4_t>(hdr_out_arg);
             hdr.ipv4 = hdr_out_arg;
         }
         transition select(hdr.ipv4.version, hdr.ipv4.protocol) {

@@ -1,8 +1,80 @@
-error: loc("test/Translate/Parser/select.p4":130:33):  Unsupported parser state statement 'p4hir.tuple'
-note: loc("test/Translate/Parser/select.p4":130:33): see current operation: %49 = "p4hir.tuple"(%46, %47, %48) : (!p4hir.bit<32>, !p4hir.bit<32>, !p4hir.bit<32>) -> tuple<!p4hir.bit<32>, !p4hir.bit<32>, !p4hir.bit<32>>
- 128 |         transition select (arg1) {
- 129 |                    4..10: foo2;
- 130 |                    (4..10): foo2;
-     |                                 ^
- 131 |                    2..(arg2+arg1*7): foo3;
- 132 |                    (2..(arg2-3)): foo3;
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+parser p1(in bit<10> foo, out bool matches) {
+    state start {
+        transition select(foo) {
+            10w1 : drop;
+            10w10..10w20 : next;
+            10w0 &&& 10w0 : next;
+            _ : reject;
+        }
+    }
+    state drop {
+        transition reject;
+    }
+    state next {
+        matches = true;
+        transition accept;
+    }
+}
+parser p2(in bit<10> foo, out bool matches) {
+    state start {
+        transition select(foo, true) {
+            (10w1, false) : drop;
+            (10w10..10w20, true) : next;
+            (10w0 &&& 10w0, _) : next;
+            (_, _) : reject;
+            _ : reject;
+        }
+    }
+    state drop {
+        transition reject;
+    }
+    state next {
+        matches = true;
+        transition accept;
+    }
+}
+parser weird(in int<32> arg1, inout int<32> arg2) {
+    bit<32> val1 = (bit<32>)(32w2);
+    bool flag;
+
+    state start {
+        transition select(arg1, {val1, val1, val1}) {
+            (arg1, {32w1, 32w2, 32w3}) : foo1;
+            (32s3..32s7, _) : foo2;
+            (arg1 &&& (arg2 + 32s42), _) : foo3;
+            (_, _) : accept;
+        }
+    }
+    state foo1 {
+        transition select(arg1) {
+            32s4..32s10 : foo2;
+            32s4..32s10 : foo2;
+            (int<32>)(2)..(arg2 + (arg1 * 32s7)) : foo3;
+            (int<32>)(2)..(arg2 - 32s3) : foo3;
+            32s1 : reject;
+            _ : accept;
+        }
+    }
+    state foo2 {
+        transition select(arg1, val1) {
+            (32s1, 32w3..32w4) : foo2;
+            _ : accept;
+        }
+    }
+    state foo3 {
+        bool local_flag;
+
+        local_flag = flag;
+        transition select(local_flag) {
+            false : foo2;
+            true : foo1;
+            _ : reject;
+        }
+    }
+}

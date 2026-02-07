@@ -1,5 +1,11 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
 bit<16> max(in bit<16> left, in bit<16> right) {
-    return;
+    return right;
 }
 
 action bar(in bit<16> arg1, in bit<16> arg2, out bit<16> res) {
@@ -24,7 +30,16 @@ action test_param() {
             g(z_inout_arg);
             a = z_inout_arg;
         }
-        f(x_inout_arg, g(z_inout_arg));
+        bit<1> __scope_tmp_0;
+        {
+            bit<1> z_inout_arg;
+
+            z_inout_arg = a;
+            g(z_inout_arg);
+            a = z_inout_arg;
+            __scope_tmp_0 = g(z_inout_arg);
+        }
+        f(x_inout_arg, __scope_tmp_0);
         a = x_inout_arg;
     }
     return;

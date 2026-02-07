@@ -1,3 +1,9 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
 action foo(in int<16> arg2, bit<10> arg1) {
     int<16> x1 = (int<16>)(16s3);
     bit<10> x2 = arg1;

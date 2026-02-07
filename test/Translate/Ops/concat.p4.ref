@@ -1,3 +1,9 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
 action bit5_concat_bit5(in bit<5> lhs, in bit<5> rhs, out bit<10> res) {
     res = (lhs ++ rhs);
     return;

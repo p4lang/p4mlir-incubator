@@ -1,3 +1,9 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
 control Pipe1(bit<10> arg1, in int<16> arg2, out bit<10> oarg2) {
     action foo() {
         int<16> x1 = (16s3 + arg2);

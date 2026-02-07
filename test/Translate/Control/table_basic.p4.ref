@@ -1,21 +1,17 @@
-enum  {
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+enum action_run_0 {
     a,
     b
 }
-struct t1 {
-    bool hit;
-    bool miss;
-     action_run;
-}
-enum  {
+enum action_run_1 {
     a,
     b,
     aa
-}
-struct t2 {
-    bool hit;
-    bool miss;
-     action_run;
 }
 extern ActionProfile {
     ActionProfile(bit<32> size);
@@ -46,7 +42,7 @@ control c(in bit<32> arg) {
         actions = {
             a;
             b;
-            aa;
+            aa(arg);
         }
         default_action = b();
         const size = 42;

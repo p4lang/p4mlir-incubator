@@ -1,3 +1,9 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
 enum bit<8> PreservedFieldList {
     Field = 8w1
 }

@@ -1,3 +1,9 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
 enum bit<16> EthTypes {
     ARP = 16w2054,
     EtherTalk = 16w32923,

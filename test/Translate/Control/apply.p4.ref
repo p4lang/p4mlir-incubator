@@ -1,3 +1,9 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
 control InnerPipe(bit<10> arg1, in int<16> arg2, out int<16> arg3) {
     apply {
     }

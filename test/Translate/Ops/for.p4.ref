@@ -1,8 +1,72 @@
-error: loc("test/Translate/Ops/for.p4":21:40): Unsupported operation 'p4hir.const' in for-loop update clause
-note: loc("test/Translate/Ops/for.p4":21:40): see current operation: %7 = "p4hir.const"() <{value = #p4hir.int<1> : !p4hir.bit<32>}> : () -> !p4hir.bit<32>
-  19 |         // CHECK:      } body {
-  20 |         // CHECK:        %[[CONST_1:.*]] = p4hir.const #int1_b32i
-  21 |         // CHECK:        %[[CURR_SUM:.*]] = p4hir.read %[[SUM]] : <!b32i>
-     |                                        ^
-  22 |         // CHECK:        %[[NEW_SUM:.*]] = p4hir.binop(add, %[[CURR_SUM]], %[[CONST_1]]) : !b32i
-  23 |         // CHECK:        p4hir.assign %[[NEW_SUM]], %[[SUM]] : <!b32i>
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+header __array_elem_0 {
+    bit<32> value;
+}
+
+bit<32> loop() {
+    bit<32> sum = (bit<32>)(32w0);
+
+    {
+        bit<32> i = (bit<32>)(32w0);
+        for (; (i < (bit<32>)(10)); i = (i + 32w1)) {
+            sum = (sum + 32w1);
+        }
+    }
+    return sum;
+}
+
+void empty_statements() {
+    {
+        bit<32> i = (bit<32>)(32w0);
+        for (; (i < (bit<32>)(10)); ) {
+        }
+    }
+    for (; false; ) {
+    }
+    return;
+}
+
+action multiple_statements() {
+    {
+        bit<8> i = (bit<8>)(8w0);
+        bit<8> j = (bit<8>)(8w0);
+        for (; ((i <= (bit<8>)(10)) ? (true) : ((j <= (bit<8>)(5)))); i = (i + j), j = (j + 8w1)) {
+        }
+    }
+    return;
+}
+
+action for_no_decls() {
+    bit<32> i;
+
+    i = (bit<32>)(32w0);
+    for (; (i < (bit<32>)(10)); i = (i + 32w1)) {
+    }
+    return;
+}
+
+bit<32> for_in() {
+    bit<32> sum = (bit<32>)(32w0);
+
+    {
+        for (bit<32> iter0 in (bit<32>)(32w0)..(bit<32>)(9)) {
+            sum = (sum + iter0);
+        }
+    }
+    return sum;
+}
+
+bit<32> for_in_array(__array_elem_0[16] array) {
+    bit<32> sum = (bit<32>)(32w0);
+
+    for (__array_elem_0 iter1 in array) {
+        sum = (sum + iter1.value);
+    }
+    return sum;
+}
+

@@ -1,6 +1,7 @@
 #include "export_to_p4.h"
 
 #include <cassert>
+#include <functional>
 #include <string>
 #include <system_error>
 
@@ -11,6 +12,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
@@ -191,8 +193,40 @@ class P4HirToP4Exporter {
     /// @param ss The output stream.
     /// @return Success or failure.
     mlir::LogicalResult writeProgram(mlir::ModuleOp module, ExtendedFormattedOStream &ss) {
+        definedParsers_.clear();
+        definedControls_.clear();
+        emittedParserDecls_.clear();
+        emittedControlDecls_.clear();
+        inferredParserDecls_.clear();
+        inferredControlDecls_.clear();
+        arrayElemWrapperNames_.clear();
+        arrayElemWrapperOrder_.clear();
+        arrayElemWrapperCounter_ = 0;
+        module_ = module;
+        ss << "match_kind ";
+        ss.openBrace();
+        ss << "exact";
+        ss << ",";
+        ss.newline();
+        ss << "ternary";
+        ss << ",";
+        ss.newline();
+        ss << "lpm";
+        ss.newline();
+        ss.closeBrace();
+        ss.newline();
+        for (auto parserOp : module.getOps<P4HIR::ParserOp>()) {
+            definedParsers_.insert(parserOp.getName().str());
+        }
+        for (auto controlOp : module.getOps<P4HIR::ControlOp>()) {
+            definedControls_.insert(controlOp.getName().str());
+        }
+        collectArrayElementWrappers(module);
         // 1. Try to find all the used types, and declare all complex types.
         llvm::SetVector<mlir::Type> allTypes = getAllTypesToDeclare(module);
+        if (failed(emitArrayElementWrappers(ss))) {
+            return mlir::failure();
+        }
         for (mlir::Type type : allTypes) {
             if (failed(declareComplexType(type, ss))) {
                 return mlir::failure();
@@ -218,7 +252,28 @@ class P4HirToP4Exporter {
     llvm::DenseMap<mlir::Value, mlir::Value> valueSubst_;
     /// Optional name overrides for block arguments (e.g., foreach iterator).
     llvm::DenseMap<mlir::Value, std::string> blockArgNameOverride_;
+    /// Parser/control names defined in this module (to avoid duplicate declarations).
+    llvm::StringSet<> definedParsers_;
+    llvm::StringSet<> definedControls_;
+    /// Declarations already emitted for parser/control types.
+    llvm::StringSet<> emittedParserDecls_;
+    llvm::StringSet<> emittedControlDecls_;
+    /// Module currently being exported.
+    mlir::ModuleOp module_;
+    /// Inferred parser/control declarations keyed by type name.
+    llvm::StringMap<mlir::Operation *> inferredParserDecls_;
+    llvm::StringMap<mlir::Operation *> inferredControlDecls_;
+    /// Wrapper header names for array element types that are not headers.
+    llvm::DenseMap<mlir::Type, std::string> arrayElemWrapperNames_;
+    llvm::SmallVector<mlir::Type, 4> arrayElemWrapperOrder_;
+    int arrayElemWrapperCounter_ = 0;
+    /// Pending statement emissions that must be flushed before the next statement.
+    llvm::SmallVector<std::function<mlir::LogicalResult(ExtendedFormattedOStream &)>, 4>
+        preludeEmitters_;
     int foreachCounter_ = 0;
+    int scopeTmpCounter_ = 0;
+    int anonEnumCounter_ = 0;
+    llvm::DenseMap<mlir::Type, std::string> anonEnumNames_;
 
     struct ScopedValueSubst {
         P4HirToP4Exporter &exporter;
@@ -275,6 +330,46 @@ class P4HirToP4Exporter {
             return value;
         }
         return it->second;
+    }
+
+    mlir::FailureOr<std::string> exportExpressionToString(mlir::Value value) {
+        std::string buffer;
+        llvm::raw_string_ostream rso(buffer);
+        ExtendedFormattedOStream tmp(rso, options_.style, options_.indentLevel);
+        if (failed(exportExpression(value, tmp))) {
+            return mlir::failure();
+        }
+        tmp.flush();
+        return rso.str();
+    }
+
+    mlir::FailureOr<std::string> exportLValueToString(mlir::Value value) {
+        std::string buffer;
+        llvm::raw_string_ostream rso(buffer);
+        ExtendedFormattedOStream tmp(rso, options_.style, options_.indentLevel);
+        if (failed(exportLValue(value, tmp))) {
+            return mlir::failure();
+        }
+        tmp.flush();
+        return rso.str();
+    }
+
+    void enqueuePrelude(std::function<mlir::LogicalResult(ExtendedFormattedOStream &)> emit) {
+        preludeEmitters_.push_back(std::move(emit));
+    }
+
+    mlir::LogicalResult flushPrelude(ExtendedFormattedOStream &ss) {
+        if (preludeEmitters_.empty()) {
+            return mlir::success();
+        }
+        auto emitters = std::move(preludeEmitters_);
+        preludeEmitters_.clear();
+        for (auto &emit : emitters) {
+            if (failed(emit(ss))) {
+                return mlir::failure();
+            }
+        }
+        return mlir::success();
     }
 
     static bool isAllDigits(llvm::StringRef str) {
@@ -355,6 +450,170 @@ class P4HirToP4Exporter {
         return simplifyLocalSymbolName(leaf, controlName);
     }
 
+    std::string getEnumTypeName(P4HIR::EnumType enumType) {
+        auto name = enumType.getName();
+        if (!name.empty()) {
+            return name.str();
+        }
+        auto it = anonEnumNames_.find(enumType);
+        if (it != anonEnumNames_.end()) {
+            return it->second;
+        }
+        std::string generated =
+            (llvm::Twine("action_run_") + llvm::Twine(anonEnumCounter_++)).str();
+        anonEnumNames_[enumType] = generated;
+        return generated;
+    }
+
+    static bool needsArrayElementWrapper(mlir::Type elementType) {
+        return !mlir::isa<P4HIR::HeaderType>(elementType);
+    }
+
+    std::string getArrayElementWrapperName(mlir::Type elementType) {
+        auto it = arrayElemWrapperNames_.find(elementType);
+        if (it != arrayElemWrapperNames_.end()) {
+            return it->second;
+        }
+        std::string name =
+            (llvm::Twine("__array_elem_") + llvm::Twine(arrayElemWrapperCounter_++)).str();
+        arrayElemWrapperNames_[elementType] = name;
+        arrayElemWrapperOrder_.push_back(elementType);
+        return name;
+    }
+
+    void collectArrayElementWrappers(mlir::ModuleOp module) {
+        auto collectType = [&](mlir::Type type, auto &&collectTypeRef) -> void {
+            if (!type) {
+                return;
+            }
+            if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(type)) {
+                collectTypeRef(refType.getObjectType(), collectTypeRef);
+                return;
+            }
+            if (auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(type)) {
+                auto elemType = arrayType.getElementType();
+                if (needsArrayElementWrapper(elemType)) {
+                    (void)getArrayElementWrapperName(elemType);
+                }
+                collectTypeRef(elemType, collectTypeRef);
+                return;
+            }
+        };
+
+        module.walk([&](mlir::Operation *op) {
+            for (mlir::Type type : op->getOperandTypes()) {
+                collectType(type, collectType);
+            }
+            for (mlir::Type type : op->getResultTypes()) {
+                collectType(type, collectType);
+            }
+            for (auto &region : op->getRegions()) {
+                for (auto &block : region) {
+                    for (auto arg : block.getArguments()) {
+                        collectType(arg.getType(), collectType);
+                    }
+                }
+            }
+        });
+    }
+
+    mlir::LogicalResult emitArrayElementWrappers(ExtendedFormattedOStream &ss) {
+        for (mlir::Type elementType : arrayElemWrapperOrder_) {
+            ss << "header " << getArrayElementWrapperName(elementType) << " ";
+            ss.openBrace();
+            if (failed(exportP4Type(elementType, ss))) {
+                return mlir::failure();
+            }
+            ss << " value";
+            ss.semicolon();
+            ss.closeBrace();
+            ss.newline();
+        }
+        return mlir::success();
+    }
+
+    void recordInferredBlockDecls(P4HIR::PackageOp packageDef,
+                                  P4HIR::InstantiateOp instantiateOp) {
+        if (!module_) {
+            return;
+        }
+        auto ctorTypeAttr = packageDef.getCtorTypeAttr();
+        if (!ctorTypeAttr) {
+            return;
+        }
+        auto ctorType = mlir::dyn_cast<P4HIR::CtorType>(ctorTypeAttr.getValue());
+        if (!ctorType) {
+            return;
+        }
+        auto ctorParams = ctorType.getInputs();
+        auto args = instantiateOp.getArgOperands();
+        size_t count = std::min(ctorParams.size(), args.size());
+        for (size_t i = 0; i < count; ++i) {
+            mlir::Type paramType = ctorParams[i].second;
+            mlir::Value arg = args[i];
+            if (!arg || mlir::isa<P4HIR::UninitializedOp>(arg.getDefiningOp())) {
+                continue;
+            }
+            auto resolveArgDef = [&](mlir::Value value) -> mlir::Operation * {
+                if (auto constructOp = value.getDefiningOp<P4HIR::ConstructOp>()) {
+                    return module_.lookupSymbol(constructOp.getCallee());
+                }
+                if (auto argInstOp = value.getDefiningOp<P4HIR::InstantiateOp>()) {
+                    auto def = findInstantiatedOpDefinition(argInstOp);
+                    if (succeeded(def)) {
+                        return *def;
+                    }
+                }
+                return nullptr;
+            };
+            if (auto parserType = mlir::dyn_cast<P4HIR::ParserType>(paramType)) {
+                auto name = parserType.getName().str();
+                if (definedParsers_.count(name) != 0U ||
+                    inferredParserDecls_.count(name) != 0U) {
+                    continue;
+                }
+                if (auto *defOp = resolveArgDef(arg)) {
+                    if (mlir::isa<P4HIR::ParserOp>(defOp)) {
+                        inferredParserDecls_.insert({name, defOp});
+                    }
+                }
+                continue;
+            }
+            if (auto controlType = mlir::dyn_cast<P4HIR::ControlType>(paramType)) {
+                auto name = controlType.getName().str();
+                if (definedControls_.count(name) != 0U ||
+                    inferredControlDecls_.count(name) != 0U) {
+                    continue;
+                }
+                if (auto *defOp = resolveArgDef(arg)) {
+                    if (mlir::isa<P4HIR::ControlOp>(defOp)) {
+                        inferredControlDecls_.insert({name, defOp});
+                    }
+                }
+                continue;
+            }
+        }
+    }
+
+    static bool isTableApplyResultStruct(P4HIR::StructType structType) {
+        auto fields = structType.getFields();
+        if (fields.size() != 3) {
+            return false;
+        }
+        if (fields[0].name != "hit" || fields[1].name != "miss" ||
+            fields[2].name != "action_run") {
+            return false;
+        }
+        if (!mlir::isa<P4HIR::BoolType>(fields[0].type) ||
+            !mlir::isa<P4HIR::BoolType>(fields[1].type)) {
+            return false;
+        }
+        if (!mlir::isa<P4HIR::EnumType>(fields[2].type)) {
+            return false;
+        }
+        return true;
+    }
+
     /// @brief Exports P4 annotations based on an MLIR DictionaryAttr.
     /// @param annotations The DictionaryAttr containing annotations.
     /// @param ss The output stream.
@@ -376,17 +635,15 @@ class P4HirToP4Exporter {
 
             auto value = namedAttr.getValue();
 
-            if (mlir::isa<mlir::UnitAttr>(value)) {
-                // It's a flag annotation, e.g., @hidden - do nothing more.
-                continue;
+            if (!mlir::isa<mlir::UnitAttr>(value)) {
+                // It's a single value annotation, e.g., @name("foo") or @size(100).
+                ss << "(";
+                // Handle single value.
+                if (failed(exportConstantAttr(value, ss))) {
+                    return mlir::failure();
+                }
+                ss << ")";
             }
-            // It's a single value annotation, e.g., @name("foo") or @size(100).
-            ss << "(";
-            // Handle single value.
-            if (failed(exportConstantAttr(value, ss))) {
-                return mlir::failure();
-            }
-            ss << ")";
             // Space between annotations.
             ss << " ";
         }
@@ -401,15 +658,20 @@ class P4HirToP4Exporter {
         // Check for immediate initialization: varOp followed by assignOp using varOp's result.
         if (auto assignOp = mlir::dyn_cast_if_present<P4HIR::AssignOp>(varOp->getNextNode())) {
             if (assignOp.getRef() == varOp.getResult()) {
+                auto initStr = exportExpressionToString(assignOp.getValue());
+                if (failed(initStr)) {
+                    return mlir::failure();
+                }
+                if (failed(flushPrelude(ss))) {
+                    return mlir::failure();
+                }
                 // Export combined declaration and initialization.
                 // Example: bit<32> myVar = initialValue;.
                 if (failed(exportP4Declaration(varOp, ss))) {
                     return mlir::failure();
                 }
                 ss << " = ";
-                if (failed(exportExpression(assignOp.getValue(), ss))) {
-                    return mlir::failure();
-                }
+                ss << *initStr;
                 ss.semicolon();
                 // Mark the assignment as handled so it's skipped later.
                 hoistedAssignOps.insert(assignOp);
@@ -502,7 +764,7 @@ class P4HirToP4Exporter {
             mlir::LogicalResult status = mlir::failure();
 
             if (mlir::isa<P4HIR::ControlApplyOp, P4HIR::FuncOp, P4HIR::IfOp, P4HIR::CaseOp,
-                          P4HIR::ScopeOp>(parentOp)) {
+                          P4HIR::ScopeOp, P4HIR::ForOp, P4HIR::ForInOp>(parentOp)) {
                 status = exportCommonStatementWithError(op, ss);
             } else if (mlir::isa<P4HIR::ParserStateOp>(parentOp)) {
                 status = exportParserStateStatement(op, ss);
@@ -1034,6 +1296,23 @@ class P4HirToP4Exporter {
             }
             mlir::Type paramType = ctorParamTypes[idx].second;
 
+            if (ctorArgAttrs && idx < ctorArgAttrs.size()) {
+                if (auto dictAttr =
+                        mlir::dyn_cast_if_present<mlir::DictionaryAttr>(ctorArgAttrs[idx])) {
+                    auto annots = mlir::dyn_cast_if_present<mlir::DictionaryAttr>(
+                        dictAttr.get("annotations"));
+                    if (!annots) {
+                        annots = mlir::dyn_cast_if_present<mlir::DictionaryAttr>(
+                            dictAttr.get("p4hir.annotations"));
+                    }
+                    if (annots) {
+                        if (failed(exportAnnotations(annots, ss))) {
+                            return mlir::failure();
+                        }
+                    }
+                }
+            }
+
             // Get the P4 string for the parameter type instance (e.g., "MyParser<H, M>").
             if (failed(exportP4Type(paramType, ss))) {
                 return mlir::failure();
@@ -1093,39 +1372,113 @@ class P4HirToP4Exporter {
 
         // Only emit the main package instantiation itself.
         if (auto packageDef = mlir::dyn_cast<P4HIR::PackageOp>(definition)) {
-            auto resultType = instantiateOp.getOperation()->getResult(0).getType();
-            auto packageType = mlir::dyn_cast<P4HIR::PackageType>(resultType);
-            if (!packageType) {
-                return instantiateOp.emitError()
-                       << "InstantiateOp result is not a PackageType, but definition is PackageOp.";
-            }
-
+            recordInferredBlockDecls(packageDef, instantiateOp);
             // First, ensure the package *signature* is declared.
             if (failed(exportPackageOp(packageDef, ss))) {
                 return mlir::failure();
             }
 
-            // Now, emit the instantiation line.
-            ss << packageType.getName() << "(";
-
-            // Export the constructor arguments (which are likely instances themselves).
-            if (failed(Utilities::interleaveCommaWithError(
-                    instantiateOp.getArgOperands(), ss, [&](mlir::Value arg) {
-                        // Arguments to package constructor are typically instances.
-                        if (auto argInstOp = arg.getDefiningOp<P4HIR::InstantiateOp>()) {
-                            // Export the *name* of the instance being passed.
-                            ss << argInstOp.getName();
-                            // TODO: What about arguments here?.
-                            ss << "()";
-                            return mlir::success();
+            llvm::SmallVector<mlir::Value, 4> args(instantiateOp.getArgOperands().begin(),
+                                                   instantiateOp.getArgOperands().end());
+            size_t emitCount = args.size();
+            if (auto ctorTypeAttr = packageDef.getCtorTypeAttr()) {
+                if (auto ctorType = mlir::dyn_cast<P4HIR::CtorType>(ctorTypeAttr.getValue())) {
+                    auto ctorParams = ctorType.getInputs();
+                    auto argAttrs = packageDef.getArgAttrsAttr();
+                    while (emitCount > 0 && emitCount <= ctorParams.size()) {
+                        size_t idx = emitCount - 1;
+                        bool isOptional = false;
+                        if (argAttrs && idx < argAttrs.size()) {
+                            if (auto dictAttr =
+                                    mlir::dyn_cast_if_present<mlir::DictionaryAttr>(argAttrs[idx])) {
+                                auto annots = mlir::dyn_cast_if_present<mlir::DictionaryAttr>(
+                                    dictAttr.get("annotations"));
+                                if (!annots) {
+                                    annots = mlir::dyn_cast_if_present<mlir::DictionaryAttr>(
+                                        dictAttr.get("p4hir.annotations"));
+                                }
+                                if (annots && annots.get("optional")) {
+                                    isOptional = true;
+                                }
+                            }
                         }
-                        // Handle constants or other direct values if allowed by P4 spec.
-                        return exportExpression(arg, ss);
-                    }))) {
+                        if (!isOptional) {
+                            break;
+                        }
+                        auto *defOp = args[idx].getDefiningOp();
+                        if (!defOp || !mlir::isa<P4HIR::UninitializedOp>(defOp)) {
+                            break;
+                        }
+                        --emitCount;
+                    }
+                }
+            }
+
+            llvm::SmallVector<std::string, 4> argStrings;
+            argStrings.reserve(emitCount);
+            for (size_t i = 0; i < emitCount; ++i) {
+                auto arg = args[i];
+                if (auto argInstOp = arg.getDefiningOp<P4HIR::InstantiateOp>()) {
+                    std::string tmp;
+                    llvm::raw_string_ostream rso(tmp);
+                    rso << argInstOp.getName() << "()";
+                    argStrings.push_back(rso.str());
+                    continue;
+                }
+                auto argStr = exportExpressionToString(arg);
+                if (failed(argStr)) {
+                    return mlir::failure();
+                }
+                argStrings.push_back(*argStr);
+            }
+            if (failed(flushPrelude(ss))) {
                 return mlir::failure();
             }
-            ss << ") ";
-            ss << instantiateOp.getName();
+
+            ss << packageDef.getName();
+            if (auto typeParams = instantiateOp.getTypeParametersAttr()) {
+                if (failed(exportTypeAttributes(typeParams.getValue(), ss))) {
+                    return mlir::failure();
+                }
+            }
+            ss << "(";
+            for (size_t i = 0; i < argStrings.size(); ++i) {
+                if (i > 0) {
+                    ss << ", ";
+                }
+                ss << argStrings[i];
+            }
+            ss << ") " << instantiateOp.getName();
+            ss.semicolon();
+            ss.newline();
+            return mlir::success();
+        }
+        if (instantiateOp.getOperation()->getNumResults() == 0) {
+            llvm::SmallVector<std::string> argStrings;
+            for (auto arg : instantiateOp.getArgOperands()) {
+                auto argStr = exportExpressionToString(arg);
+                if (failed(argStr)) {
+                    return mlir::failure();
+                }
+                argStrings.push_back(*argStr);
+            }
+            if (failed(flushPrelude(ss))) {
+                return mlir::failure();
+            }
+            ss << instantiateOp.getCalleeAttr().getLeafReference().getValue();
+            if (auto typeParams = instantiateOp.getTypeParametersAttr()) {
+                if (failed(exportTypeAttributes(typeParams.getValue(), ss))) {
+                    return mlir::failure();
+                }
+            }
+            ss << "(";
+            for (size_t i = 0; i < argStrings.size(); ++i) {
+                if (i > 0) {
+                    ss << ", ";
+                }
+                ss << argStrings[i];
+            }
+            ss << ") " << instantiateOp.getName();
             ss.semicolon();
             ss.newline();
             return mlir::success();
@@ -1154,6 +1507,13 @@ class P4HirToP4Exporter {
     mlir::LogicalResult exportProgrammableBlock(mlir::Type &type, ExtendedFormattedOStream &ss) {
         return llvm::TypeSwitch<mlir::Type, mlir::LogicalResult>(type)
             .Case<P4HIR::ParserType>([&](P4HIR::ParserType parserType) {
+                if (definedParsers_.count(parserType.getName().str()) != 0U) {
+                    return mlir::success();
+                }
+                if (emittedParserDecls_.count(parserType.getName().str()) != 0U) {
+                    return mlir::success();
+                }
+                emittedParserDecls_.insert(parserType.getName().str());
                 ss << P4HIR::ParserType::getMnemonic() << " ";
                 ss << parserType.getName();
                 if (failed(exportTypeArguments(parserType.getTypeArguments(), ss))) {
@@ -1161,19 +1521,60 @@ class P4HirToP4Exporter {
                 }
 
                 ss << "(";
-                if (failed(Utilities::interleaveCommaWithError(
-                        parserType.getInputs(), ss, [&](mlir::Type inputType) {
-                            // Need parameter names here? P4 allows declarations without names.
-                            // For now, just export type. Full exportParameterList needs names.
-                            return exportP4Type(inputType, ss);
-                        }))) {
-                    return mlir::failure();
+                if (auto it = inferredParserDecls_.find(parserType.getName().str());
+                    it != inferredParserDecls_.end()) {
+                    if (auto func =
+                            mlir::dyn_cast_if_present<mlir::FunctionOpInterface>(it->second)) {
+                        if (failed(exportParameterList(func, ss))) {
+                            return mlir::failure();
+                        }
+                    }
+                } else {
+                    size_t idx = 0;
+                    if (failed(Utilities::interleaveCommaWithError(
+                            parserType.getInputs(), ss, [&](mlir::Type inputType) {
+                                if (auto refType =
+                                        mlir::dyn_cast<P4HIR::ReferenceType>(inputType)) {
+                                    ss << "out ";
+                                    inputType = refType.getObjectType();
+                                } else {
+                                    ss << "in ";
+                                }
+                                if (auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(inputType)) {
+                                    mlir::Type elemType = arrayType.getElementType();
+                                    if (needsArrayElementWrapper(elemType)) {
+                                        ss << getArrayElementWrapperName(elemType);
+                                    } else {
+                                        if (failed(exportP4Type(elemType, ss))) {
+                                            return mlir::failure();
+                                        }
+                                    }
+                                    ss << "[" << arrayType.getSize() << "]";
+                                    ss << " arg" << idx++;
+                                    return mlir::success();
+                                } else {
+                                    if (failed(exportP4Type(inputType, ss))) {
+                                        return mlir::failure();
+                                    }
+                                }
+                                ss << " arg" << idx++;
+                                return mlir::success();
+                            }))) {
+                        return mlir::failure();
+                    }
                 }
                 ss << ")";
                 ss.semicolon();
                 return mlir::success();
             })
             .Case<P4HIR::ControlType>([&](P4HIR::ControlType controlType) {
+                if (definedControls_.count(controlType.getName().str()) != 0U) {
+                    return mlir::success();
+                }
+                if (emittedControlDecls_.count(controlType.getName().str()) != 0U) {
+                    return mlir::success();
+                }
+                emittedControlDecls_.insert(controlType.getName().str());
                 ss << P4HIR::ControlType::getMnemonic() << " ";
                 ss << controlType.getName();
                 if (failed(exportTypeArguments(controlType.getTypeArguments(), ss))) {
@@ -1181,12 +1582,47 @@ class P4HirToP4Exporter {
                 }
 
                 ss << "(";
-                if (failed(Utilities::interleaveCommaWithError(
-                        controlType.getInputs(), ss, [&](mlir::Type inputType) {
-                            // See comment in ParserType case.
-                            return exportP4Type(inputType, ss);
-                        }))) {
-                    return mlir::failure();
+                if (auto it = inferredControlDecls_.find(controlType.getName().str());
+                    it != inferredControlDecls_.end()) {
+                    if (auto func =
+                            mlir::dyn_cast_if_present<mlir::FunctionOpInterface>(it->second)) {
+                        if (failed(exportParameterList(func, ss))) {
+                            return mlir::failure();
+                        }
+                    }
+                } else {
+                    size_t idx = 0;
+                    if (failed(Utilities::interleaveCommaWithError(
+                            controlType.getInputs(), ss, [&](mlir::Type inputType) {
+                                if (auto refType =
+                                        mlir::dyn_cast<P4HIR::ReferenceType>(inputType)) {
+                                    ss << "inout ";
+                                    inputType = refType.getObjectType();
+                                } else {
+                                    ss << "in ";
+                                }
+                                if (auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(inputType)) {
+                                    mlir::Type elemType = arrayType.getElementType();
+                                    if (needsArrayElementWrapper(elemType)) {
+                                        ss << getArrayElementWrapperName(elemType);
+                                    } else {
+                                        if (failed(exportP4Type(elemType, ss))) {
+                                            return mlir::failure();
+                                        }
+                                    }
+                                    ss << "[" << arrayType.getSize() << "]";
+                                    ss << " arg" << idx++;
+                                    return mlir::success();
+                                } else {
+                                    if (failed(exportP4Type(inputType, ss))) {
+                                        return mlir::failure();
+                                    }
+                                }
+                                ss << " arg" << idx++;
+                                return mlir::success();
+                            }))) {
+                        return mlir::failure();
+                    }
                 }
                 ss << ")";
                 ss.semicolon();
@@ -1257,7 +1693,7 @@ class P4HirToP4Exporter {
             })
             // Enums and Errors use their names (or fixed 'error').
             .Case<P4HIR::EnumType>([&](P4HIR::EnumType enumType) {
-                ss << enumType.getName();
+                ss << getEnumTypeName(enumType);
                 return mlir::success();
             })
             .Case<P4HIR::SerEnumType>([&](P4HIR::SerEnumType serEnumType) {
@@ -1317,6 +1753,17 @@ class P4HirToP4Exporter {
                     return mlir::failure();
                 }
                 // The size [N] is part of the variable declaration, not the type name itself.
+                return mlir::success();
+            })
+            .Case<mlir::TupleType>([&](mlir::TupleType tupleType) {
+                ss << "tuple<";
+                auto result = Utilities::interleaveCommaWithError(
+                    tupleType.getTypes(), ss,
+                    [&](mlir::Type elemType) { return exportP4Type(elemType, ss); });
+                if (failed(result)) {
+                    return mlir::failure();
+                }
+                ss << ">";
                 return mlir::success();
             })
             .Case<P4HIR::InfIntType>([&](P4HIR::InfIntType) {
@@ -1383,7 +1830,7 @@ class P4HirToP4Exporter {
 
     mlir::LogicalResult declareEnumType(P4HIR::EnumType enumType, ExtendedFormattedOStream &ss) {
         // TODO: Annotations.
-        ss << P4HIR::EnumType::getMnemonic() << " " << enumType.getName() << " ";
+        ss << P4HIR::EnumType::getMnemonic() << " " << getEnumTypeName(enumType) << " ";
         ss.openBrace();
         auto numFields = enumType.getFields().size();
         auto fields = enumType.getFields();
@@ -1469,9 +1916,21 @@ class P4HirToP4Exporter {
         // TODO: Annotations.
         return llvm::TypeSwitch<mlir::Type, mlir::LogicalResult>(type)
             .Case<P4HIR::StructLikeTypeInterface>(
-                [&](auto structLikeType) { return declareStructLikeType(structLikeType, ss); })
+                [&](auto structLikeType) {
+                    if (auto structType = mlir::dyn_cast<P4HIR::StructType>(structLikeType)) {
+                        if (isTableApplyResultStruct(structType)) {
+                            return mlir::success();
+                        }
+                    }
+                    return declareStructLikeType(structLikeType, ss);
+                })
             .Case<P4HIR::ErrorType>([&](auto errorType) { return declareErrorType(errorType, ss); })
-            .Case<P4HIR::EnumType>([&](auto enumType) { return declareEnumType(enumType, ss); })
+            .Case<P4HIR::EnumType>([&](auto enumType) {
+                if (enumType.getName() == "match_kind") {
+                    return mlir::success();
+                }
+                return declareEnumType(enumType, ss);
+            })
             .Case<P4HIR::SerEnumType>(
                 [&](auto serEnumType) { return declareSerEnumType(serEnumType, ss); })
             .Case<P4HIR::AliasType>([&](auto aliasType) {
@@ -1750,8 +2209,14 @@ class P4HirToP4Exporter {
         if (auto callMethodOp = mlir::dyn_cast<P4HIR::CallMethodOp>(op)) {
             // Extern method call expression: extern_instance.method<type_args>(args).
             // Export extern instance.
-            if (failed(exportExpression(callMethodOp.getArgOperands()[0], ss))) {
-                return mlir::failure();
+            if (auto obj = callMethodOp.getObj()) {
+                if (failed(exportExpression(obj, ss))) {
+                    return mlir::failure();
+                }
+            } else if (auto inst = callMethodOp.getInstantiationAttr()) {
+                ss << inst.getLeafReference().getValue();
+            } else {
+                return callMethodOp.emitError() << "CallMethodOp has no object or instantiation.";
             }
             // Method name.
             ss << "." << callMethodOp.getMethod().getLeafReference().getValue();
@@ -1769,6 +2234,23 @@ class P4HirToP4Exporter {
                 return mlir::failure();
             }
             ss << ")";
+            return mlir::success();
+        }
+        if (auto tupleOp = mlir::dyn_cast<P4HIR::TupleOp>(op)) {
+            ss << "{";
+            auto result = Utilities::interleaveCommaWithError(
+                tupleOp.getInput(), ss, [&](mlir::Value val) { return exportExpression(val, ss); });
+            if (failed(result)) {
+                return mlir::failure();
+            }
+            ss << "}";
+            return mlir::success();
+        }
+        if (auto tupleExtractOp = mlir::dyn_cast<P4HIR::TupleExtractOp>(op)) {
+            if (failed(exportExpression(tupleExtractOp.getInput(), ss))) {
+                return mlir::failure();
+            }
+            ss << "[" << tupleExtractOp.getFieldIndex() << "]";
             return mlir::success();
         }
         if (auto tableApplyOp = mlir::dyn_cast<P4HIR::TableApplyOp>(op)) {
@@ -1849,11 +2331,12 @@ class P4HirToP4Exporter {
             return op.emitError() << "Unable to resolve symbol reference for exportExpression";
         }
         if (auto scopeOp = mlir::dyn_cast<P4HIR::ScopeOp>(op)) {
-            // Scope as expression: export yielded value only.
+            // Scope as expression: emit a temp + prelude, then return the temp.
             if (scopeOp.getScopeRegion().empty()) {
                 return scopeOp.emitError() << "ScopeOp has empty region for expression export.";
             }
-            auto &block = scopeOp.getScopeRegion().front();
+            auto *scopeRegion = &scopeOp.getScopeRegion();
+            auto &block = scopeRegion->front();
             auto yieldOp = mlir::dyn_cast_if_present<P4HIR::YieldOp>(block.getTerminator());
             if (!yieldOp) {
                 return scopeOp.emitError() << "ScopeOp must terminate with p4hir.yield for export";
@@ -1862,7 +2345,29 @@ class P4HirToP4Exporter {
                 return yieldOp.emitError()
                        << "ScopeOp yield must have exactly one operand for expression export";
             }
-            return exportExpression(yieldOp.getOperand(0), ss);
+            auto yieldValue = yieldOp.getOperand(0);
+            std::string tmpName =
+                (llvm::Twine("__scope_tmp_") + llvm::Twine(scopeTmpCounter_++)).str();
+            enqueuePrelude([this, scopeRegion, tmpName, yieldValue](ExtendedFormattedOStream &pss) {
+                if (failed(exportP4Type(yieldValue.getType(), pss))) {
+                    return mlir::failure();
+                }
+                pss << " " << tmpName;
+                pss.semicolon();
+                pss.openBrace();
+                if (failed(exportBlock(scopeRegion->front(), pss))) {
+                    return mlir::failure();
+                }
+                pss << tmpName << " = ";
+                if (failed(exportExpression(yieldValue, pss))) {
+                    return mlir::failure();
+                }
+                pss.semicolon();
+                pss.closeBrace();
+                return mlir::success();
+            });
+            ss << tmpName;
+            return mlir::success();
         }
         if (auto setOp = mlir::dyn_cast<P4HIR::SetOp>(op)) {
             auto inputs = setOp.getInput();
@@ -2035,7 +2540,7 @@ class P4HirToP4Exporter {
         if (auto enumAttr = mlir::dyn_cast<P4HIR::EnumFieldAttr>(constantAttr)) {
             // P4 uses dot notation: EnumTypeName.FieldName.
             if (auto enumType = mlir::dyn_cast<P4HIR::EnumType>(enumAttr.getType())) {
-                ss << enumType.getName() << "." << enumAttr.getField().strref();
+                ss << getEnumTypeName(enumType) << "." << enumAttr.getField().strref();
                 return mlir::success();
             }
             if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(enumAttr.getType())) {
@@ -2339,10 +2844,14 @@ class P4HirToP4Exporter {
             if (extractRef.getFieldName() == P4HIR::HeaderType::validityBit) {
                 // Check the R-Value to determine setValid or setInvalid.
                 if (auto constOp = rvalue.getDefiningOp<P4HIR::ConstOp>()) {
-                    // Export the base header L-Value first.
-                    if (failed(exportLValue(extractRef.getInput(), ss))) {
+                    auto baseStr = exportLValueToString(extractRef.getInput());
+                    if (failed(baseStr)) {
                         return mlir::failure();
                     }
+                    if (failed(flushPrelude(ss))) {
+                        return mlir::failure();
+                    }
+                    ss << *baseStr;
                     if (auto boolAttr = mlir::dyn_cast<P4HIR::BoolAttr>(constOp.getValue())) {
                         // Append the correct method call.
                         ss << (boolAttr.getValue() ? ".setValid()" : ".setInvalid()");
@@ -2365,13 +2874,18 @@ class P4HirToP4Exporter {
             }
         }
 
-        if (failed(exportLValue(lvalue, ss))) {
+        auto lhsStr = exportLValueToString(lvalue);
+        if (failed(lhsStr)) {
             return mlir::failure();
         }
-        ss << " = ";
-        if (failed(exportExpression(rvalue, ss))) {
+        auto rhsStr = exportExpressionToString(rvalue);
+        if (failed(rhsStr)) {
             return mlir::failure();
         }
+        if (failed(flushPrelude(ss))) {
+            return mlir::failure();
+        }
+        ss << *lhsStr << " = " << *rhsStr;
         ss.semicolon();
         return mlir::success();
     }
@@ -2390,18 +2904,19 @@ class P4HirToP4Exporter {
         mlir::Value lvalue = assignOp.getRef();
         mlir::Value rvalue = assignOp.getValue();
 
-        // Export the base L-Value (e.g., myVar).
-        if (failed(exportLValue(lvalue, ss))) {
+        auto lhsStr = exportLValueToString(lvalue);
+        if (failed(lhsStr)) {
             return mlir::failure();
         }
-        // Append the slice specification.
-        ss << "[" << assignOp.getHighBit() << ":" << assignOp.getLowBit() << "]";
-
-        // Assignment part.
-        ss << " = ";
-        if (failed(exportExpression(rvalue, ss))) {
+        auto rhsStr = exportExpressionToString(rvalue);
+        if (failed(rhsStr)) {
             return mlir::failure();
         }
+        if (failed(flushPrelude(ss))) {
+            return mlir::failure();
+        }
+        ss << *lhsStr << "[" << assignOp.getHighBit() << ":" << assignOp.getLowBit() << "]";
+        ss << " = " << *rhsStr;
         ss.semicolon();
         return mlir::success();
     }
@@ -2423,11 +2938,14 @@ class P4HirToP4Exporter {
     /// }
     /// ```
     mlir::LogicalResult exportIf(P4HIR::IfOp &ifOp, ExtendedFormattedOStream &ss) {
-        ss << "if (";
-        if (failed(exportExpression(ifOp.getCondition(), ss))) {
+        auto condStr = exportExpressionToString(ifOp.getCondition());
+        if (failed(condStr)) {
             return mlir::failure();
         }
-        ss << ") ";
+        if (failed(flushPrelude(ss))) {
+            return mlir::failure();
+        }
+        ss << "if (" << *condStr << ") ";
         if (auto annots = ifOp.getThenAnnotationsAttr()) {
             if (failed(exportAnnotations(annots, ss))) {
                 return mlir::failure();
@@ -2506,8 +3024,15 @@ class P4HirToP4Exporter {
             return true;
         }
         if (auto callMethodOp = mlir::dyn_cast<P4HIR::CallMethodOp>(op)) {
-            if (failed(exportExpression(callMethodOp.getArgOperands()[0], ss))) {
-                return mlir::failure();
+            if (auto obj = callMethodOp.getObj()) {
+                if (failed(exportExpression(obj, ss))) {
+                    return mlir::failure();
+                }
+            } else if (auto inst = callMethodOp.getInstantiationAttr()) {
+                ss << inst.getLeafReference().getValue();
+            } else {
+                return callMethodOp.emitError()
+                       << "CallMethodOp has no object or instantiation.";
             }
             ss << "." << callMethodOp.getMethod().getLeafReference().getValue();
             if (auto typeOperands = callMethodOp.getTypeOperandsAttr()) {
@@ -2534,8 +3059,6 @@ class P4HirToP4Exporter {
                 return mlir::failure();
             }
         }
-        ss << "for (";
-        ss << "; ";
 
         // Condition.
         auto &condRegion = forOp.getCondRegion();
@@ -2547,35 +3070,45 @@ class P4HirToP4Exporter {
         if (!condOp) {
             return forOp.emitError() << "ForOp condition region must terminate with p4hir.condition";
         }
-        if (failed(exportExpression(condOp.getCondition(), ss))) {
+        auto condStr = exportExpressionToString(condOp.getCondition());
+        if (failed(condStr)) {
             return mlir::failure();
         }
 
-        ss << "; ";
-
         // Updates.
         auto &updatesRegion = forOp.getUpdatesRegion();
+        llvm::SmallVector<std::string> updates;
         if (!updatesRegion.empty()) {
-            bool first = true;
             for (auto &op : updatesRegion.front()) {
                 if (mlir::isa<P4HIR::YieldOp, P4HIR::VariableOp>(op)) {
                     continue;
                 }
                 if (!mlir::isa<P4HIR::AssignOp, P4HIR::AssignSliceOp, P4HIR::CallOp,
                                P4HIR::CallMethodOp>(op)) {
-                    return op.emitError() << "Unsupported operation '" << op.getName()
-                                          << "' in for-loop update clause";
+                    continue;
                 }
-                if (!first) {
-                    ss << ", ";
-                }
-                if (failed(exportForUpdateOp(op, ss))) {
+                std::string buffer;
+                llvm::raw_string_ostream rso(buffer);
+                ExtendedFormattedOStream tmp(rso, options_.style, options_.indentLevel);
+                if (failed(exportForUpdateOp(op, tmp))) {
                     return mlir::failure();
                 }
-                first = false;
+                tmp.flush();
+                updates.push_back(rso.str());
             }
         }
 
+        if (failed(flushPrelude(ss))) {
+            return mlir::failure();
+        }
+        ss << "for (";
+        ss << "; " << *condStr << "; ";
+        for (size_t i = 0; i < updates.size(); ++i) {
+            if (i > 0) {
+                ss << ", ";
+            }
+            ss << updates[i];
+        }
         ss << ") ";
 
         ss.openBrace();
@@ -2609,18 +3142,34 @@ class P4HirToP4Exporter {
         } else {
             iterName = (llvm::Twine("iter") + llvm::Twine(foreachCounter_++)).str();
         }
+        std::string iterTypeName;
+        std::string iterValueName = iterName;
+        if (auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(forInOp.getCollection().getType())) {
+            mlir::Type elemType = arrayType.getElementType();
+            if (needsArrayElementWrapper(elemType)) {
+                iterTypeName = getArrayElementWrapperName(elemType);
+                iterValueName = (llvm::Twine(iterName) + ".value").str();
+            }
+        }
 
-        ScopedNameOverride nameOverride(*this, iterArg, iterName);
+        ScopedNameOverride nameOverride(*this, iterArg, iterValueName);
 
+        auto collectionStr = exportExpressionToString(forInOp.getCollection());
+        if (failed(collectionStr)) {
+            return mlir::failure();
+        }
+        if (failed(flushPrelude(ss))) {
+            return mlir::failure();
+        }
         ss << "for (";
-        if (failed(exportP4Type(iterArg.getType(), ss))) {
-            return mlir::failure();
+        if (!iterTypeName.empty()) {
+            ss << iterTypeName;
+        } else {
+            if (failed(exportP4Type(iterArg.getType(), ss))) {
+                return mlir::failure();
+            }
         }
-        ss << " " << iterName << " in ";
-        if (failed(exportExpression(forInOp.getCollection(), ss))) {
-            return mlir::failure();
-        }
-        ss << ") ";
+        ss << " " << iterName << " in " << *collectionStr << ") ";
 
         ss.openBrace();
         hoistedAssignOps.clear();
@@ -2632,11 +3181,14 @@ class P4HirToP4Exporter {
     }
 
     mlir::LogicalResult exportSwitchOp(P4HIR::SwitchOp switchOp, ExtendedFormattedOStream &ss) {
-        ss << "switch (";
-        if (failed(exportExpression(switchOp.getCondition(), ss))) {
+        auto condStr = exportExpressionToString(switchOp.getCondition());
+        if (failed(condStr)) {
             return mlir::failure();
         }
-        ss << ") ";
+        if (failed(flushPrelude(ss))) {
+            return mlir::failure();
+        }
+        ss << "switch (" << *condStr << ") ";
         ss.openBrace();
 
         if (switchOp.getBody().empty()) {
@@ -2731,11 +3283,11 @@ class P4HirToP4Exporter {
         // Operations that primarily define values used in expressions are skipped
         // when they appear standalone, assuming their result is used later.
         if (mlir::isa<P4HIR::ReadOp, P4HIR::CastOp, P4HIR::StructExtractOp, P4HIR::StructFieldRefOp,
-                      P4HIR::TupleExtractOp, P4HIR::SliceOp, P4HIR::ReadSliceOp, P4HIR::ConstOp,
-                      P4HIR::UnaryOp, P4HIR::BinOp, P4HIR::CmpOp, P4HIR::ConcatOp, P4HIR::ShlOp,
-                      P4HIR::ShrOp, P4HIR::StructOp, P4HIR::ArrayOp, P4HIR::ArrayGetOp,
-                      P4HIR::UninitializedOp, P4HIR::IfOp, P4HIR::SoftReturnOp,
-                      P4HIR::SymToValueOp>(op)) {
+                      P4HIR::TupleOp, P4HIR::TupleExtractOp, P4HIR::SliceOp, P4HIR::ReadSliceOp,
+                      P4HIR::ConstOp, P4HIR::UnaryOp, P4HIR::BinOp, P4HIR::CmpOp, P4HIR::SetOp,
+                      P4HIR::RangeOp, P4HIR::MaskOp, P4HIR::ConcatOp, P4HIR::ShlOp, P4HIR::ShrOp,
+                      P4HIR::StructOp, P4HIR::ArrayOp, P4HIR::ArrayGetOp, P4HIR::UninitializedOp,
+                      P4HIR::IfOp, P4HIR::SymToValueOp>(op)) {
             // Assume used later by exportExpression, so skip statement emission here.
             return true;
         }
@@ -2761,13 +3313,51 @@ class P4HirToP4Exporter {
             }
             return true;
         }
+        if (auto softReturnOp = mlir::dyn_cast<P4HIR::SoftReturnOp>(op)) {
+            if (softReturnOp.getNumOperands() == 0) {
+                return true;
+            }
+            if (softReturnOp.getNumOperands() != 1) {
+                return softReturnOp.emitError()
+                       << "P4 soft_return supports exactly one operand, found "
+                       << softReturnOp.getNumOperands();
+            }
+            auto exprStr = exportExpressionToString(softReturnOp.getOperand(0));
+            if (failed(exprStr)) {
+                return mlir::failure();
+            }
+            if (failed(flushPrelude(ss))) {
+                return mlir::failure();
+            }
+            ss << "return " << *exprStr;
+            ss.semicolon();
+            return true;
+        }
         if (auto returnOp = mlir::dyn_cast<P4HIR::ReturnOp>(op)) {
+            if (returnOp.getNumOperands() == 0) {
+                if (auto func =
+                        returnOp->getParentOfType<mlir::FunctionOpInterface>()) {
+                    auto resultTypes = func.getResultTypes();
+                    mlir::Type retType =
+                        resultTypes.empty()
+                            ? P4HIR::VoidType::get(func->getContext())
+                            : resultTypes.front();
+                    if (!mlir::isa<P4HIR::VoidType>(retType) &&
+                        returnOp == returnOp->getBlock()->getTerminator()) {
+                        return true;
+                    }
+                }
+            }
             ss << "return";
             if (returnOp.getNumOperands() == 1) {
-                ss << " ";
-                if (failed(exportExpression(returnOp.getOperand(0), ss))) {
+                auto exprStr = exportExpressionToString(returnOp.getOperand(0));
+                if (failed(exprStr)) {
                     return mlir::failure();
                 }
+                if (failed(flushPrelude(ss))) {
+                    return mlir::failure();
+                }
+                ss << " " << *exprStr;
             } else if (returnOp.getNumOperands() > 1) {
                 return returnOp.emitError()
                        << "P4 return supports 0 or 1 operand, found " << returnOp.getNumOperands();
@@ -2801,11 +3391,23 @@ class P4HirToP4Exporter {
         }
         if (auto callOp = mlir::dyn_cast<P4HIR::CallOp>(op)) {
             // Direct function/action call as a statement.
-            ss << callOp.getCalleeAttr().getLeafReference().getValue() << "(";
-            if (failed(Utilities::interleaveCommaWithError(
-                    callOp.getArgOperands(), ss,
-                    [&](mlir::Value arg) { return exportExpression(arg, ss); }))) {
+            llvm::SmallVector<std::string> args;
+            for (auto arg : callOp.getArgOperands()) {
+                auto argStr = exportExpressionToString(arg);
+                if (failed(argStr)) {
+                    return mlir::failure();
+                }
+                args.push_back(*argStr);
+            }
+            if (failed(flushPrelude(ss))) {
                 return mlir::failure();
+            }
+            ss << callOp.getCalleeAttr().getLeafReference().getValue() << "(";
+            for (size_t i = 0; i < args.size(); ++i) {
+                if (i > 0) {
+                    ss << ", ";
+                }
+                ss << args[i];
             }
             ss << ")";
             ss.semicolon();
@@ -2813,20 +3415,42 @@ class P4HirToP4Exporter {
         }
         if (auto callMethodOp = mlir::dyn_cast<P4HIR::CallMethodOp>(op)) {
             // Method call as a statement.
-            if (failed(exportExpression(callMethodOp.getArgOperands()[0], ss))) {
+            std::optional<std::string> objStr;
+            if (auto obj = callMethodOp.getObj()) {
+                auto objTmp = exportExpressionToString(obj);
+                if (failed(objTmp)) {
+                    return mlir::failure();
+                }
+                objStr = *objTmp;
+            } else if (auto inst = callMethodOp.getInstantiationAttr()) {
+                objStr = inst.getLeafReference().getValue().str();
+            } else {
+                return callMethodOp.emitError()
+                       << "CallMethodOp has no object or instantiation.";
+            }
+            llvm::SmallVector<std::string> args;
+            for (auto arg : callMethodOp.getArgOperands()) {
+                auto argStr = exportExpressionToString(arg);
+                if (failed(argStr)) {
+                    return mlir::failure();
+                }
+                args.push_back(*argStr);
+            }
+            if (failed(flushPrelude(ss))) {
                 return mlir::failure();
             }
-            ss << "." << callMethodOp.getMethod().getLeafReference().getValue();
+            ss << *objStr << "." << callMethodOp.getMethod().getLeafReference().getValue();
             if (auto typeOperands = callMethodOp.getTypeOperandsAttr()) {
                 if (failed(exportTypeAttributes(typeOperands.getValue(), ss))) {
                     return mlir::failure();
                 }
             }
             ss << "(";
-            if (failed(Utilities::interleaveCommaWithError(
-                    callMethodOp.getArgOperands(), ss,
-                    [&](mlir::Value arg) { return exportExpression(arg, ss); }))) {
-                return mlir::failure();
+            for (size_t i = 0; i < args.size(); ++i) {
+                if (i > 0) {
+                    ss << ", ";
+                }
+                ss << args[i];
             }
             ss << ")";
             ss.semicolon();
@@ -2850,14 +3474,24 @@ class P4HirToP4Exporter {
         }
         if (auto applyOp = mlir::dyn_cast<P4HIR::ApplyOp>(op)) {
             // parser.apply() or control.apply().
-            ss << applyOp.getCallee()
-                      .getLeafReference()
-                      .strref();  // Directly print the symbol name
-            ss << ".apply(";
-            if (failed(Utilities::interleaveCommaWithError(
-                    applyOp.getArgOperands(), ss,
-                    [&](mlir::Value arg) { return exportExpression(arg, ss); }))) {
+            llvm::SmallVector<std::string> args;
+            for (auto arg : applyOp.getArgOperands()) {
+                auto argStr = exportExpressionToString(arg);
+                if (failed(argStr)) {
+                    return mlir::failure();
+                }
+                args.push_back(*argStr);
+            }
+            if (failed(flushPrelude(ss))) {
                 return mlir::failure();
+            }
+            ss << applyOp.getCallee().getLeafReference().strref();
+            ss << ".apply(";
+            for (size_t i = 0; i < args.size(); ++i) {
+                if (i > 0) {
+                    ss << ", ";
+                }
+                ss << args[i];
             }
             ss << ")";
             ss.semicolon();
@@ -2865,6 +3499,9 @@ class P4HirToP4Exporter {
         }
         if (auto tableApplyOp = mlir::dyn_cast<P4HIR::TableApplyOp>(op)) {
             // table.apply().
+            if (failed(flushPrelude(ss))) {
+                return mlir::failure();
+            }
             ss << tableApplyOp.getTable().getLeafReference().strref() << ".apply()";
             ss.semicolon();
             return true;
@@ -3063,24 +3700,123 @@ class P4HirToP4Exporter {
                     }
                 }
 
-                auto &callBody = actionEntryOp.getBody();
-                bool printedCall = false;
-                // Check if the region contains a specific call generated by visit(expr).
-                for (auto &block : callBody) {
-                    for (auto &op : block) {
-                        if (auto scopeOp = mlir::dyn_cast<P4HIR::ScopeOp>(op)) {
-                            return scopeOp.emitError()
-                                   << "Method calls are not supported yet in table action lists.";
-                            printedCall = true;
-                            break;
+                auto actionName = actionEntryOp.getActionAttr().getLeafReference().getValue();
+
+                llvm::DenseMap<mlir::Value, mlir::Value> actionSubst;
+                P4HIR::CallOp callOp;
+                P4HIR::CallMethodOp callMethodOp;
+
+                std::function<void(mlir::Region &)> scanRegion = [&](mlir::Region &region) {
+                    if (callOp || callMethodOp) {
+                        return;
+                    }
+                    for (auto &block : region) {
+                        for (auto &op : block) {
+                            if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(op)) {
+                                actionSubst[assignOp.getRef()] = assignOp.getValue();
+                                continue;
+                            }
+                            if (auto foundCall = mlir::dyn_cast<P4HIR::CallOp>(op)) {
+                                callOp = foundCall;
+                                return;
+                            }
+                            if (auto foundCallMethod = mlir::dyn_cast<P4HIR::CallMethodOp>(op)) {
+                                callMethodOp = foundCallMethod;
+                                return;
+                            }
+                            if (auto scopeOp = mlir::dyn_cast<P4HIR::ScopeOp>(op)) {
+                                scanRegion(scopeOp.getScopeRegion());
+                                if (callOp || callMethodOp) {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                };
+
+                scanRegion(actionEntryOp.getBody());
+
+                auto resolveActionArg = [&](mlir::Value arg) -> mlir::Value {
+                    if (auto readOp = arg.getDefiningOp<P4HIR::ReadOp>()) {
+                        arg = readOp.getRef();
+                    }
+                    auto it = actionSubst.find(arg);
+                    if (it != actionSubst.end()) {
+                        return it->second;
+                    }
+                    return arg;
+                };
+
+                llvm::SmallVector<mlir::Value> resolvedArgs;
+                bool hasNonActionArgs = false;
+                auto isActionBlockArg = [&](mlir::BlockArgument blockArg) {
+                    return blockArg.getOwner()->getParentOp() == actionEntryOp.getOperation();
+                };
+                if (callOp) {
+                    for (auto arg : callOp.getArgOperands()) {
+                        auto resolved = resolveActionArg(arg);
+                        resolvedArgs.push_back(resolved);
+                        if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(resolved)) {
+                            if (!isActionBlockArg(blockArg)) {
+                                hasNonActionArgs = true;
+                            }
+                        } else {
+                            hasNonActionArgs = true;
+                        }
+                    }
+                } else if (callMethodOp) {
+                    for (auto arg : callMethodOp.getArgOperands()) {
+                        auto resolved = resolveActionArg(arg);
+                        resolvedArgs.push_back(resolved);
+                        if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(resolved)) {
+                            if (!isActionBlockArg(blockArg)) {
+                                hasNonActionArgs = true;
+                            }
+                        } else {
+                            hasNonActionArgs = true;
+                        }
+                    }
+                } else {
+                    hasNonActionArgs = false;
+                }
+
+                llvm::SmallVector<std::string> args;
+                if (hasNonActionArgs) {
+                    for (auto arg : resolvedArgs) {
+                        if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(arg)) {
+                            if (isActionBlockArg(blockArg)) {
+                                continue;
+                            } else {
+                                auto argStr = exportExpressionToString(arg);
+                                if (failed(argStr)) {
+                                    return mlir::failure();
+                                }
+                                args.push_back(*argStr);
+                            }
+                        } else {
+                            auto argStr = exportExpressionToString(arg);
+                            if (failed(argStr)) {
+                                return mlir::failure();
+                            }
+                            args.push_back(*argStr);
                         }
                     }
                 }
 
-                // If no specific call was found/printed from the region:.
-                if (!printedCall) {
-                    // Print the action name referenced by the TableActionOp attribute.
-                    ss << actionEntryOp.getActionAttr().getLeafReference().getValue();
+                if (failed(flushPrelude(ss))) {
+                    return mlir::failure();
+                }
+
+                ss << actionName;
+                if (!args.empty()) {
+                    ss << "(";
+                    for (size_t i = 0; i < args.size(); ++i) {
+                        if (i > 0) {
+                            ss << ", ";
+                        }
+                        ss << args[i];
+                    }
+                    ss << ")";
                 }
 
                 ss.semicolon();
@@ -3275,17 +4011,30 @@ class P4HirToP4Exporter {
                 }
                 // Print the type name (callee name).
                 // This should be the control/parser name.
-                ss << instOp.getCalleeAttr()
-                          .getLeafReference()
-                          .getValue();
-                // Print constructor arguments.
-                ss << "(";
-                if (failed(Utilities::interleaveCommaWithError(
-                        instOp.getArgOperands(), ss,
-                        [&](mlir::Value arg) { return exportExpression(arg, ss); }))) {
+                llvm::SmallVector<std::string> argStrings;
+                for (auto arg : instOp.getArgOperands()) {
+                    auto argStr = exportExpressionToString(arg);
+                    if (failed(argStr)) {
+                        return mlir::failure();
+                    }
+                    argStrings.push_back(*argStr);
+                }
+                if (failed(flushPrelude(ss))) {
                     return mlir::failure();
                 }
-
+                ss << instOp.getCalleeAttr().getLeafReference().getValue();
+                if (auto typeParams = instOp.getTypeParametersAttr()) {
+                    if (failed(exportTypeAttributes(typeParams.getValue(), ss))) {
+                        return mlir::failure();
+                    }
+                }
+                ss << "(";
+                for (size_t i = 0; i < argStrings.size(); ++i) {
+                    if (i > 0) {
+                        ss << ", ";
+                    }
+                    ss << argStrings[i];
+                }
                 ss << ")";
                 ss << " " << instOp.getName();  // Print instance name
                 ss.semicolon();
@@ -3301,11 +4050,23 @@ class P4HirToP4Exporter {
             }
 
             // Export the constructor arguments (e.g., "(1024)").
-            ss << "(";
-            if (failed(Utilities::interleaveCommaWithError(
-                    instOp.getArgOperands(), ss,
-                    [&](mlir::Value arg) { return exportExpression(arg, ss); }))) {
+            llvm::SmallVector<std::string> argStrings;
+            for (auto arg : instOp.getArgOperands()) {
+                auto argStr = exportExpressionToString(arg);
+                if (failed(argStr)) {
+                    return mlir::failure();
+                }
+                argStrings.push_back(*argStr);
+            }
+            if (failed(flushPrelude(ss))) {
                 return mlir::failure();
+            }
+            ss << "(";
+            for (size_t i = 0; i < argStrings.size(); ++i) {
+                if (i > 0) {
+                    ss << ", ";
+                }
+                ss << argStrings[i];
             }
             ss << ")";
 
@@ -3399,15 +4160,64 @@ class P4HirToP4Exporter {
                     return mlir::failure();
                 }
             }
+            if (instOp.getOperation()->getNumResults() == 0) {
+                auto definitionOpt = findInstantiatedOpDefinition(instOp);
+                if (failed(definitionOpt)) {
+                    return instOp.emitError() << "InstantiateOp has no results, and could not "
+                                                 "resolve definition for symbol '"
+                                              << instOp.getCallee() << "'.";
+                }
+                auto args = instOp.getArgOperands();
+                llvm::SmallVector<std::string> argStrings;
+                for (auto arg : args) {
+                    auto argStr = exportExpressionToString(arg);
+                    if (failed(argStr)) {
+                        return mlir::failure();
+                    }
+                    argStrings.push_back(*argStr);
+                }
+                if (failed(flushPrelude(ss))) {
+                    return mlir::failure();
+                }
+                ss << instOp.getCalleeAttr().getLeafReference().getValue();
+                if (auto typeParams = instOp.getTypeParametersAttr()) {
+                    if (failed(exportTypeAttributes(typeParams.getValue(), ss))) {
+                        return mlir::failure();
+                    }
+                }
+                ss << "(";
+                for (size_t i = 0; i < argStrings.size(); ++i) {
+                    if (i > 0) {
+                        ss << ", ";
+                    }
+                    ss << argStrings[i];
+                }
+                ss << ")";
+                ss << " " << instOp.getName();
+                ss.semicolon();
+                return mlir::success();
+            }
             mlir::Type instanceType = instOp.getOperation()->getResult(0).getType();
             if (failed(exportP4Type(instanceType, ss))) {
                 return mlir::failure();
             }
-            ss << "(";
-            if (failed(Utilities::interleaveCommaWithError(
-                    instOp.getArgOperands(), ss,
-                    [&](mlir::Value arg) { return exportExpression(arg, ss); }))) {
+            llvm::SmallVector<std::string> argStrings;
+            for (auto arg : instOp.getArgOperands()) {
+                auto argStr = exportExpressionToString(arg);
+                if (failed(argStr)) {
+                    return mlir::failure();
+                }
+                argStrings.push_back(*argStr);
+            }
+            if (failed(flushPrelude(ss))) {
                 return mlir::failure();
+            }
+            ss << "(";
+            for (size_t i = 0; i < argStrings.size(); ++i) {
+                if (i > 0) {
+                    ss << ", ";
+                }
+                ss << argStrings[i];
             }
             ss << ")";
             ss << " " << instOp.getName();
@@ -3538,10 +4348,23 @@ class P4HirToP4Exporter {
 
     mlir::LogicalResult exportParserTransitionSelectOp(P4HIR::ParserTransitionSelectOp &op,
                                                        ExtendedFormattedOStream &ss) {
-        ss << "transition select(";
-        if (failed(Utilities::interleaveCommaWithError(
-                op.getArgs(), ss, [&](mlir::Value arg) { return exportExpression(arg, ss); }))) {
+        llvm::SmallVector<std::string> args;
+        for (auto arg : op.getArgs()) {
+            auto argStr = exportExpressionToString(arg);
+            if (failed(argStr)) {
+                return mlir::failure();
+            }
+            args.push_back(*argStr);
+        }
+        if (failed(flushPrelude(ss))) {
             return mlir::failure();
+        }
+        ss << "transition select(";
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (i > 0) {
+                ss << ", ";
+            }
+            ss << args[i];
         }
         ss << ") ";
 
@@ -3615,6 +4438,24 @@ class P4HirToP4Exporter {
     /// ```
     mlir::LogicalResult exportArgument(mlir::FunctionOpInterface functionInterface,
                                        ExtendedFormattedOStream &ss, int index) {
+        if (auto argAttrs = functionInterface.getArgAttrsAttr()) {
+            if (index < static_cast<int>(argAttrs.size())) {
+                if (auto dict =
+                        mlir::dyn_cast_if_present<mlir::DictionaryAttr>(argAttrs[index])) {
+                    auto annots =
+                        mlir::dyn_cast_if_present<mlir::DictionaryAttr>(dict.get("annotations"));
+                    if (!annots) {
+                        annots = mlir::dyn_cast_if_present<mlir::DictionaryAttr>(
+                            dict.get("p4hir.annotations"));
+                    }
+                    if (annots) {
+                        if (failed(exportAnnotations(annots, ss))) {
+                            return mlir::failure();
+                        }
+                    }
+                }
+            }
+        }
         // Export direction (in, out, inout).
         auto directionAttr =
             functionInterface.getArgAttr(index, P4HIR::FuncOp::getDirectionAttrName());
@@ -3687,6 +4528,23 @@ class P4HirToP4Exporter {
         auto nameAttr = mlir::dyn_cast_if_present<mlir::StringAttr>(dict.get(paramNameAttrName));
         if (!nameAttr) {
             return funcOp->emitError() << "Parameter attribute is not a StringAttr " << index;
+        }
+        mlir::Type objType = typeAttrs[index];
+        if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(objType)) {
+            objType = refType.getObjectType();
+        }
+        if (auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(objType)) {
+            mlir::Type elemType = arrayType.getElementType();
+            if (needsArrayElementWrapper(elemType)) {
+                ss << getArrayElementWrapperName(elemType);
+            } else {
+                if (failed(exportP4Type(elemType, ss))) {
+                    return mlir::failure();
+                }
+            }
+            ss << "[" << arrayType.getSize() << "]";
+            ss << " " << nameAttr.getValue();
+            return mlir::success();
         }
         // Export type if name attribute was found.
         if (failed(exportP4Type(typeAttrs[index], ss))) {
