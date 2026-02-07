@@ -197,7 +197,7 @@ FailureOr<Operation *> P4::P4MLIR::doTypeConversion(Operation *op, ValueRange op
 
     // Convert the result types.
     llvm::SmallVector<Type, 4> newResults;
-    if (failed(typeConverter->convertTypes(op->getResultTypes(), newResults)))
+    if (failed(typeConverter->convertTypes(op->getResults(), newResults)))
         return rewriter.notifyMatchFailure(op->getLoc(), "op result type conversion failed");
 
     // Build the state for the edited clone.
@@ -218,7 +218,7 @@ FailureOr<Operation *> P4::P4MLIR::doTypeConversion(Operation *op, ValueRange op
         // Move the region and convert the region args.
         rewriter.inlineRegionBefore(region, *newRegion, newRegion->begin());
         TypeConverter::SignatureConversion result(newRegion->getNumArguments());
-        if (failed(typeConverter->convertSignatureArgs(newRegion->getArgumentTypes(), result)))
+        if (failed(typeConverter->convertSignatureArgs(newRegion->getArguments(), result)))
             return rewriter.notifyMatchFailure(op->getLoc(),
                                                "op region signature arg conversion failed");
         if (failed(rewriter.convertRegionTypes(newRegion, *typeConverter, &result)))
@@ -236,7 +236,7 @@ void P4::P4MLIR::configureUnknownOpDynamicallyLegalByTypes(mlir::ConversionTarge
         if (auto func = dyn_cast<FunctionOpInterface>(op))
             return converter.isLegal(func.getFunctionType());
 
-        if (!converter.isLegal(op->getOperandTypes()) || !converter.isLegal(op->getResultTypes()))
+        if (!converter.isLegal(op->getOperands()) || !converter.isLegal(op->getResults()))
             return false;
 
         mlir::AttrTypeWalker walker;

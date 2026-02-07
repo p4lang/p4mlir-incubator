@@ -1421,9 +1421,6 @@ def ControlLocalOp : P4HIR_Op<"control_local",
   let hasVerifier = 0;
 
   let extraClassDeclaration = [{
-    // TODO: Remove after https://github.com/llvm/llvm-project/pull/151036 would be in third-party
-    bool isPrivate() { return true; }
-    bool canDiscardOnUseEmpty() { return true; }
     Visibility getVisibility() { return Visibility::Private;  }
   }];
 
@@ -1553,9 +1550,6 @@ def ExternOp : P4HIR_Op<"extern",
   let extraClassDeclaration = [{
     mlir::Block &createEntryBlock();
 
-    // TODO: Remove after https://github.com/llvm/llvm-project/pull/151036 would be in third-party
-    bool isPrivate() { return true; }
-    bool canDiscardOnUseEmpty() { return true; }
     Visibility getVisibility() { return Visibility::Private;  }
   }];
 }
