@@ -3686,17 +3686,53 @@ void P4HIR::SwitchOp::build(OpBuilder &builder, OperationState &result, mlir::Va
 }
 
 LogicalResult P4HIR::SwitchOp::canonicalize(P4HIR::SwitchOp op, PatternRewriter &rewriter) {
-    for (auto switchCase : op.cases()) {
-        auto &region = switchCase.getCaseRegion();
-        if (region.empty()) continue;
-        if (!region.hasOneBlock()) return failure();
+    auto isEmpty = [](CaseOp caseOp) {
+        if (!caseOp) return true;
+        auto &region = caseOp.getCaseRegion();
+        if (!region.hasOneBlock()) return false;
         auto &block = region.front();
-        bool onlyYield =
-            (block.getOperations().size() == 1 && mlir::isa<P4HIR::YieldOp>(block.front()));
-        if (!onlyYield) return failure();
+        return block.getOperations().size() == 1 && mlir::isa<P4HIR::YieldOp>(block.front());
+    };
+
+    auto defaultCase = op.getDefaultCase();
+    bool isDefaultEmpty = isEmpty(defaultCase);
+    bool allEmpty = true;
+    SmallVector<Attribute> mergedValues;
+    SmallVector<CaseOp> toRemove;
+
+    for (auto caseOp : op.cases()) {
+        if (!isEmpty(caseOp)) {
+            allEmpty = false;
+            continue;
+        }
+        if (caseOp == defaultCase) continue;
+        if (!isDefaultEmpty) llvm::append_range(mergedValues, caseOp.getValue());
+        toRemove.push_back(caseOp);
     }
-    rewriter.eraseOp(op);
-    return success();
+
+    // All cases empty -> erase switch
+    if (allEmpty) {
+        rewriter.eraseOp(op);
+        return success();
+    }
+
+    // Empty default case -> erase empty cases
+    // Non-empty default case -> merge empty cases
+    if (isDefaultEmpty) {
+        if (toRemove.empty()) return failure();
+        for (auto caseToRemove : toRemove) rewriter.eraseOp(caseToRemove);
+        return success();
+    } else {
+        if (toRemove.size() < 2) return failure();
+
+        rewriter.setInsertionPoint(toRemove[0]);
+        rewriter.create<CaseOp>(
+            toRemove[0].getLoc(), rewriter.getArrayAttr(mergedValues), CaseOpKind::Anyof,
+            [](OpBuilder &builder, Location loc) { builder.create<YieldOp>(loc); });
+
+        for (auto caseToRemove : toRemove) rewriter.eraseOp(caseToRemove);
+        return success();
+    }
 }
 
 //===----------------------------------------------------------------------===//
