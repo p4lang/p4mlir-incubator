@@ -1,14 +1,19 @@
 #ifndef P4MLIR_DIALECT_BMv2IR_BMv2IR_OPS_TD
 #define P4MLIR_DIALECT_BMv2IR_BMv2IR_OPS_TD
 
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
-
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Dialect.td"
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Types.td"
 include "p4mlir/Dialect/BMv2IR/BMv2IR_Attrs.td"
 include "p4mlir/Dialect/BMv2IR/BMv2IR_OpInterfaces.td"
+include "p4mlir/Dialect/P4HIR/P4HIR_Types.td"
+include "p4mlir/Dialect/P4HIR/P4HIR_OpInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // Base BMv2IR operation definition.
@@ -16,6 +21,73 @@ include "p4mlir/Dialect/BMv2IR/BMv2IR_OpInterfaces.td"
 
 class BMv2IR_Op<string mnemonic, list<Trait> traits = []> :
         Op<BMv2IR_Dialect, mnemonic, traits>;
+
+def BMv2IR_HeaderInstanceOp : BMv2IR_Op<"header_instance", [
+    Symbol
+  ]> {
+  let summary = "Declares a header instance as a global variable";
+  let description = [{
+    Represents a header instance in a P4 program. Header instances
+    are modeled similarly to global variables, and referenced by Symbol name by other ops.
+    
+    The operation has a symbol name and references a header type. It can be
+    marked as metadata to distinguish metadata instances from regular header
+    instances.
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    TypeAttr:$header_type,
+    DefaultValuedAttr<BoolAttr, "false">:$metadata
+  );
+
+  let assemblyFormat = [{
+    $sym_name `:` $header_type attr-dict
+  }];
+}
+
+def BMv2IR_HeaderUnionInstanceOp : BMv2IR_Op<"header_union_instance", [
+    Symbol
+  ]> {
+  let summary = "Declares a header union instance";
+  let description = [{
+    Represents a header union instance in a P4 program.     
+    Carries an array of SymbolRefAttrs that point to the header instances for the union.
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    TypeAttr:$union_type,
+    SymbolRefArrayAttr:$headers
+  );
+
+  // TODO: add verifier, check that all the header symbols point to header instances and that there's
+  // an header instance of the right type for every field in the union type.
+  let assemblyFormat = [{
+    $sym_name `:` $union_type `headers` $headers attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+      BMv2IR::HeaderInstanceOp getInstanceByName(llvm::StringRef);
+  }];
+}
+
+def BMv2IR_SymToValueOp : BMv2IR_Op<"symbol_ref",
+  [Pure, NoRegionArguments, AllowedParserOp,
+   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
+
+  let results = (outs AnyType:$result);
+  let arguments = (ins SymbolRefAttr:$decl);
+
+  // TODO: Add verifier
+  let hasVerifier = 0;
+
+  let assemblyFormat = [{
+    $decl attr-dict `:` type($result)
+  }];
+}
 
 def BMv2IR_ParserOp : BMv2IR_Op<"parser", [
     Symbol, SymbolTable,
@@ -60,9 +132,9 @@ def BMv2IR_ParserStateOp : BMv2IR_Op<"state",
   }];
   
   let regions = (region 
-      SizedRegion<1>:$parser_ops,
-      SizedRegion<1>:$transitions,
-      SizedRegion<1>:$transition_keys);
+      MaxSizedRegion<1>:$parser_ops,
+      MaxSizedRegion<1>:$transitions,
+      MaxSizedRegion<1>:$transition_keys);
   
   let assemblyFormat = [{
     $sym_name
@@ -105,7 +177,7 @@ def BMv2IR_TransitionOp : BMv2IR_Op<"transition", [HasParent<"ParserStateOp">]> 
 }
 
 
-def BMv2_ExtractOp : BMv2IR_Op<"extract", [HasParent<"ParserStateOp">, AllowedParserOp]> {
+def BMv2IR_ExtractOp : BMv2IR_Op<"extract", [HasParent<"ParserStateOp">, AllowedParserOp]> {
   let summary = "Extract header operation";
   let description = [{
     Extracts the field of a header instance, header stack, or union stack element.
@@ -118,12 +190,334 @@ def BMv2_ExtractOp : BMv2IR_Op<"extract", [HasParent<"ParserStateOp">, AllowedPa
   
   let arguments = (ins
     BMv2IR_ExtractKindAttr:$extract_type,
-    StrAttr:$value,
+    SymbolRefAttr:$header_instance,
     OptionalAttr<StrAttr>:$union_member
   );
   
   let assemblyFormat = [{
-    $extract_type $value (`union_member` $union_member^)? attr-dict
+    $extract_type $header_instance (`union_member` $union_member^)? attr-dict
+  }];
+}
+
+def BMv2IR_ExtractVLOp : BMv2IR_Op<"extract_vl", [HasParent<"ParserStateOp">, AllowedParserOp]> {
+  let summary = "Extract variable length header operation";
+  let description = [{
+    Extracts the field of a variable length header instance, header stack, or union stack element.
+    `extract_type` works in the same way as a normal `extract` op.
+    
+    
+  }];
+  
+  let arguments = (ins
+    BMv2IR_ExtractKindAttr:$extract_type,
+    SymbolRefAttr:$header_instance,
+    BitsType:$length_expr,
+    OptionalAttr<StrAttr>:$union_member
+  );
+  
+  let assemblyFormat = [{
+    $extract_type $header_instance `(` $length_expr `:` type($length_expr) `)` (`union_member` $union_member^)? attr-dict
+  }];
+}
+
+def BMv2IR_AssignHeaderOp : BMv2IR_Op<"assign_header", [AllowedParserOp]> {
+  let summary = "Assign header operation";
+  let description = [{
+    Assigns one header instance to another.
+  }];
+
+  
+  let arguments = (ins
+    SymbolRefAttr:$src,
+    SymbolRefAttr:$dst
+  );
+  
+  let assemblyFormat = [{
+    $src `to` $dst attr-dict
+  }];
+}
+
+def BMv2IR_AssignOp : BMv2IR_Op<"assign"> {
+  let summary = "Assign operation";
+  let description = [{
+    Assigns the first argument to the second argument.
+    Arguments can be arbitrary expressions.
+  }];
+
+  // TODO: refine types
+  let arguments = (ins AnyType:$src,
+                       AnyType:$dst);
+  
+  let assemblyFormat = [{
+    $src `:` type($src) `to` $dst `:` type($dst) attr-dict
+  }];
+}
+
+def BMv2IR_SetOp : BMv2IR_Op<"set", [AllowedParserOp]> {
+  let summary = "Set operation";
+  let description = [{
+    Assign-like operation for parser ops.
+    See [parser ops](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#parser-operations).
+    Assigns the first argument to the second argument.
+    First argument is a field, second argument can be field, hexstr, lookahead or expression.
+  }];
+
+  // TODO: refine types
+  let arguments = (ins AnyType:$src,
+                       AnyType:$dst);
+  
+  let hasVerifier = 1;
+  let assemblyFormat = [{
+    $src `:` type($src) `to` $dst `:` type($dst) attr-dict
+  }];
+}
+
+def BMv2IR_V1SwitchOp : BMv2IR_Op<"v1switch", [Symbol]> {
+  let summary = "V1 Switch instantion";
+  let description = [{
+    Instantiates a V1 Switch package
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    SymbolRefAttr:$parser,
+    SymbolRefAttr:$verify_checksum,
+    SymbolRefAttr:$ingress,
+    SymbolRefAttr:$egress,
+    SymbolRefAttr:$compute_checksum,
+    SymbolRefAttr:$deparser
+  );
+
+  let hasVerifier = 1;
+  let assemblyFormat = [{
+    $sym_name `parser` $parser `,` `verify_checksum` $verify_checksum `,` `ingress` $ingress `,` `egress` $egress `,` `compute_checksum` $compute_checksum `,` `deparser` $deparser attr-dict
+  }];
+}
+    
+def BMv2IR_DataToBoolOp : BMv2IR_Op<"d2b"> {
+  let summary = "Data to Boolean operation";
+  let description = [{
+    Unary operation which can be used to explicitly convert a data value (i.e. a value that can
+    be read from / written to a field, or a value obtained from runtime action data,
+    or a value obtained from a JSON hexstr) to a boolean value.
+  }];
+
+  let arguments = (ins BMv2IR_FieldType:$input);
+  let results = (outs BooleanType:$result);
+  let assemblyFormat = [{
+    $input `:` type($input) attr-dict
+  }];
+}
+
+def BMv2IR_AddHeaderOp : BMv2IR_Op<"add_header"> {
+  let summary = "Add Header operation";
+  let description = [{
+    Unary operatation on a header instance, corresponds to `setValid` calls in P4.
+  }];
+
+  let arguments = (ins SymbolRefAttr:$input);
+  // TODO add verification for symbol ref
+  let assemblyFormat = [{
+    $input attr-dict
+  }];
+}
+
+def BMv2IR_RemoveHeaderOp : BMv2IR_Op<"remove_header"> {
+  let summary = "Remove Header operation";
+  let description = [{
+    Unary operatation on a header instance, corresponds to `setInvalid` calls in P4.
+  }];
+
+  let arguments = (ins SymbolRefAttr:$input);
+  // TODO add verification for symbol ref
+  let assemblyFormat = [{
+    $input attr-dict
+  }];
+}
+
+def BMv2IR_YieldOp : BMv2IR_Op<"yield", [ReturnLike, Terminator, NoMemoryEffect,
+    ParentOneOf<["ConditionalOp, CalculationOp, ChecksumOp, BMv2IR::IfOp"]>]> {
+  let summary = "BMv2 region terminator";
+
+  let arguments = (ins Variadic<AnyType>:$args);
+  let assemblyFormat = [{($args^ `:` type($args))? attr-dict}];
+  let builders = [
+    OpBuilder<(ins), [{ /* nothing to do */ }]>,
+  ];
+}
+
+def BMv2IR_ConditionalOp : BMv2IR_Op<"conditional", [Symbol, SingleBlockImplicitTerminator<"BMv2IR::YieldOp">]> {
+  let summary = "BMv2 conditional op";
+  let description = [{
+    The bm2ir.conditional op models if/else blocks according to the
+    [BMv2 JSON spec](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#pipelines).
+    Conditionals have a SymbolName, and based on the boolean `condition`, jumps to either `thenRef`
+    or `elseRef`. `thenRef` and `elseRef` must refer to either tables, conditionals or action calls. 
+  }];
+  let arguments = (ins SymbolNameAttr:$sym_name,
+                       SymbolRefAttr:$thenRef,
+                       OptionalAttr<SymbolRefAttr>:$elseRef);
+  let regions = (region 
+      MaxSizedRegion<1>:$conditionRegion);
+
+  let assemblyFormat = [{
+    $sym_name `then` $thenRef (`else` $elseRef^)? `expr` $conditionRegion attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def BMv2IR_IfOp : BMv2IR_Op<"if",
+      [ //DeclareOpInterfaceMethods<RegionBranchOpInterface>, InferTypeOpAdaptor, 
+       SingleBlockImplicitTerminator<"BMv2IR::YieldOp">,
+       RecursiveMemoryEffects, RecursivelySpeculatable,
+       AutomaticAllocationScope, NoRegionArguments]> {
+  let summary = "BMv2 if-then-else";
+  let description = [{
+    The `bmv2ir.if` works similarly to the `p4hir.if` operation, with two main differences:
+    - it has a symbolname
+    - the branch condition is the result yielded by the `conditionRegion`, which carries the whole expression
+      that computes the condition. This is done to ease lowering to BMv2 Conditional nodes.
+  }];
+  let arguments = (ins SymbolNameAttr:$sym_name);
+
+  // TODO: support results and implement interfaces
+  //let results = (outs Optional<AnyP4Type>:$result);
+  let regions = (region
+                   MaxSizedRegion<1>:$conditionRegion,
+                   AnyRegion:$thenRegion,
+                   AnyRegion:$elseRegion);
+  let assemblyFormat = [{
+    $sym_name `expr` $conditionRegion `then` $thenRegion `else` $elseRegion attr-dict
+  }];
+
+  // TODO: add verifier, check that condition region yields a boolean
+  let hasVerifier = 0;
+}
+
+def BMv2IR_TableOp : BMv2IR_Op<"table",
+   [Symbol]> {
+  let summary = "BMv2 Table definition";
+  let description = [{
+    Represents a BMv2 Table.
+    `next_tables` is an array of `<action, next_table>` pairs, indicating that `next_table` is the
+    next table if `action` is taken.
+    `keys` can be of one of the `TableMatchKind` attributes (as decribed by the BMv2 spec).
+    `match_type` is set based on the `keys`, following the BMv2 spec.
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name,
+                       SymbolRefArrayAttr:$actions,
+                       AnyAttrOf<[BMv2IR_HitOrMissAttr, BMv2IR_ActionTableArrayAttr]>:$next_tables,
+                       BMv2IR_TableTypeAttr:$tableType,
+                       BMv2IR_TableMatchKindAttr:$match_type,
+                       BMv2IR_TableKeyArrayAttr:$keys,
+                       BoolAttr:$support_timeout,
+                       OptionalAttr<BMv2IR_TableDefaultEntryAttr>:$default_entry,
+                       OptionalAttr<BMv2IR_TableEntriesArrayAttr>:$const_entries,
+                       I32Attr:$size
+  );
+
+  let assemblyFormat = [{
+    $sym_name `\n` `actions` $actions
+    `\n` `next_tables` $next_tables
+    `\n` `type` $tableType
+    `\n` `match_type` $match_type
+    `\n` `keys` $keys
+    `\n` `support_timeout` $support_timeout
+    (`\n` `default_entry` $default_entry^)?
+    (`\n` `const_entries` $const_entries^)?
+    `\n` `size` $size attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def BMv2IR_PipelineOp : BMv2IR_Op<"pipeline", [
+    Symbol, SymbolTable,
+    SingleBlock, NoTerminator
+  ]> {
+  let summary = "BMv2 pipeline definition";
+  let description = [{
+    Represents a BMv2 [Pipeline](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#pipelines).
+    A Pipeline in BMv2 is a top control flow (ingress/egress).
+    Tables and Conditionals for the pipeline are in this operation's body.
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    OptionalAttr<SymbolRefAttr>:$init_table
+  );
+  
+  let regions = (region SizedRegion<1>:$body);
+  
+  let assemblyFormat = [{
+    $sym_name (`init_table` $init_table^)? $body attr-dict
+  }];
+}
+
+def BMv2IR_DeparserOp : BMv2IR_Op<"deparser", [ Symbol ]> {
+  let summary = "BMv2 deparser definition";
+  let description = [{
+    Represents a BMv2 [Deparser](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#deparsers).
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    SymbolRefArrayAttr:$order
+  );
+  
+  let assemblyFormat = [{
+    $sym_name `order` $order attr-dict
+  }];
+}
+
+def BMv2IR_CalculationOp : BMv2IR_Op<"calculation", [
+    Symbol, SingleBlock]> {
+  let summary = "BMv2 calculation definition";
+  let description = [{
+    Represents a BMv2 [Calculation](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#calculations).
+    Inputs for the calculation are the values yielded at the end of the op's region.
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    StrAttr:$algo
+  );
+  
+  let regions = (region SizedRegion<1>:$inputsRegion);
+  
+  let assemblyFormat = [{
+    $sym_name $inputsRegion attr-dict
+  }];
+}
+
+def BMv2IR_ChecksumOp : BMv2IR_Op<"checksum", [
+    Symbol, SingleBlock]> {
+  let summary = "BMv2 checksum definition";
+  let description = [{
+    Represents a BMv2 [Checksum](https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#checksums).
+    The expression for the conditional update/verification lives in `ifCondRegion`.
+    `update` == True iif `verify` == False.
+  }];
+  
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    SymbolRefAttr:$targetHeader,
+    StrAttr:$targetField,
+    StrAttr:$type,
+    SymbolRefAttr:$calculation,
+    BoolAttr:$update
+  );
+  
+  let regions = (region SizedRegion<1>:$ifCondRegion);
+  
+  // TODO: add verifier, check that symbols resolve to valid ops and if condition is terminated by a yield of a bool
+  let assemblyFormat = [{
+    $sym_name 
+    `\n` `target` $targetHeader `[` $targetField `]` 
+    `\n` `type` $type
+    `\n` `calculation` $calculation
+    `\n` `update` $update
+    `\n` `if_cond` $ifCondRegion attr-dict
   }];
 }
 
@@ -132,19 +526,24 @@ def BMv2_ExtractOp : BMv2IR_Op<"extract", [HasParent<"ParserStateOp">, AllowedPa
 // see https://github.com/p4lang/behavioral-model/blob/main/docs/JSON_format.md#the-type-value-object
 //===-------------------------------------------------------------------------------------------===//
 
-def BMv2IR_FieldOp : BMv2IR_Op<"field", [AllowedTransitionKey]> {
+def BMv2IR_FieldOp : BMv2IR_Op<"field", [AllowedTransitionKey, AllowedParserOp]> {
   let summary = "BMv2 header field access";
   let description = [{
     Represents access to a field within a header instance.
+    Since in BMv2 header instances can contain only bits, this op can return only bits.
     Contains a 2-tuple: (header_instance_name, field_member_name)
   }];
   
   let arguments = (ins
-    StrAttr:$headerInstance,
+    SymbolRefAttr:$headerInstance,
     StrAttr:$fieldMember
   );
   
-  let assemblyFormat = "`<` $headerInstance `,` $fieldMember `>` attr-dict";
+  let results = (outs 
+    BMv2IR_FieldType:$res); 
+  
+  let hasVerifier = 1;
+  let assemblyFormat = "$headerInstance `[` $fieldMember `]` `->` type($res) attr-dict";
 }
 
 def BMv2_StackFieldOp : BMv2IR_Op<"stack_field", [AllowedTransitionKey]> {

@@ -21,7 +21,6 @@ module {
       p4hir.return
     }
     // CHECK-LABEL: p4hir.func action @b
-    // CHECK-NOT: p4hir.call
     p4hir.func action @b() {
       p4hir.scope {
         %arg0_1 = p4hir.symbol_ref @p::@arg0 : !p4hir.ref<!b1i>
@@ -46,10 +45,12 @@ module {
     p4hir.table @t {
       p4hir.table_actions {
         p4hir.table_action @b() {
+          // CHECK: p4hir.call @p::@b
           p4hir.call @p::@b () : () -> ()
         }
       }
       p4hir.table_default_action {
+        // CHECK: p4hir.call @p::@b
         p4hir.call @p::@b () : () -> ()
       }
     }

@@ -1,0 +1,40 @@
+#!/bin/bash
+output_file=""
+input_file=""
+
+while getopts "o:" opt; do
+  case $opt in
+    o)
+      output_file="$OPTARG"
+      ;;
+  esac
+done
+
+shift $((OPTIND - 1))
+
+if [ $# -eq 0 ]; then
+  echo "Error: Input file is required" >&2
+  echo "Usage: $0 [-o output_file] input_file" >&2
+  exit 1
+fi
+
+input_file="$1"
+
+# Verify input file exists
+if [ ! -f "$input_file" ]; then
+  echo "Error: Input file '$input_file' not found" >&2
+  exit 1
+fi
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+tmp_folder="${script_dir}/tmp"
+if ! [ -d "$tmp_folder" ]; then
+  mkdir -p "$tmp_folder"
+fi
+base_name=$(basename "$input_file" | sed 's/\.[^.]*$//')
+timestamp=$(date +%Y%m%d_%H%M%S)
+tmp_path="$(mktemp -d -p ${tmp_folder} -t "temp.XXXXXX.${base_name}.${timestamp}")"
+
+~/work/p4/p4mlir-incubator/third_party/p4c/build/extensions/p4mlir/bin/p4mlir-translate --target bmv2 --arch v1model --std p4-16 $input_file > ${tmp_path}/basic1.mlir
+~/work/p4/p4mlir-incubator/third_party/p4c/build/extensions/p4mlir/bin/p4mlir-opt -p='builtin.module(bmv2-pipeline)' ${tmp_path}/basic1.mlir -o ${tmp_path}/basic1-lower.mlir
+~/work/p4/p4mlir-incubator/third_party/p4c/build/extensions/p4mlir/bin/p4mlir-to-json --p4hir-to-bmv2-json ${tmp_path}/basic1-lower.mlir -o $output_file

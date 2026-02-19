@@ -4383,8 +4383,12 @@ struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
     using DialectInlinerInterface::DialectInlinerInterface;
 
     bool isLegalToInline(Operation *call, Operation *callable, bool wouldBeCloned) const final {
+        auto tableAction = call->getParentOfType<P4HIR::TableActionOp>();
+        auto tableDefaultAction = call->getParentOfType<P4HIR::TableDefaultActionOp>();
+        auto tableEntry = call->getParentOfType<P4HIR::TableEntryOp>();
         if (mlir::isa<P4HIR::CallOp>(call) &&
-            mlir::isa<P4HIR::FuncOp, P4HIR::OverloadSetOp>(callable))
+            mlir::isa<P4HIR::FuncOp, P4HIR::OverloadSetOp>(callable) &&
+            !(tableAction || tableDefaultAction || tableEntry))
             return true;
 
         return false;
@@ -4455,5 +4459,6 @@ void P4HIR::P4HIRDialect::initialize() {
 
 #define GET_OP_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.cpp.inc"
+#include "p4mlir/Dialect/P4HIR/P4HIR_OpInterfaces.cpp.inc"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.cpp.inc"  // NOLINT
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.cpp.inc"

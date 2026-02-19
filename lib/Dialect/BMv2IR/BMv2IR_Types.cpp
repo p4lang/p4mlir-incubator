@@ -29,6 +29,28 @@ struct mlir::FieldParser<P4::P4MLIR::BMv2IR::FieldInfo> {
     }
 };
 
+// Custom parser that allows an empty array of fields
+template <>
+struct mlir::FieldParser<llvm::ArrayRef<P4::P4MLIR::BMv2IR::FieldInfo>> {
+    static FailureOr<llvm::SmallVector<P4::P4MLIR::BMv2IR::FieldInfo>> parse(AsmParser &parser) {
+        llvm::SmallVector<P4::P4MLIR::BMv2IR::FieldInfo> result;
+
+        if (parser.parseLSquare()) return failure();
+
+        if (succeeded(parser.parseOptionalRSquare())) return result;
+
+        do {
+            auto field = FieldParser<BMv2IR::FieldInfo>::parse(parser);
+            if (failed(field)) return failure();
+            result.push_back(*field);
+        } while (succeeded(parser.parseOptionalComma()));
+
+        if (parser.parseRSquare()) return failure();
+
+        return result;
+    }
+};
+
 constexpr unsigned bitsInByte = 8;
 static unsigned computeTotalHeaderLenghtInBits(ArrayRef<BMv2IR::FieldInfo> fields) {
     unsigned total = 0;
@@ -81,11 +103,30 @@ llvm::LogicalResult BMv2IR::HeaderType::verify(
     return success();
 }
 
+bool BMv2IR::HeaderType::hasField(StringRef name) {
+    bool hasField =
+        llvm::any_of(getFields(), [&](BMv2IR::FieldInfo info) { return info.name == name; });
+    return hasField || name == validBitFieldName;
+}
+
+FailureOr<BMv2IR::FieldInfo> BMv2IR::HeaderType::getField(StringRef name) {
+    for (auto field : getFields()) {
+        if (field.name == name) return field;
+    }
+    return failure();
+}
+
 unsigned BMv2IR::HeaderType::computeMaxLength(ArrayRef<BMv2IR::FieldInfo> fields) {
     unsigned lenInBits = computeTotalHeaderLenghtInBits(fields);
     return lenInBits / bitsInByte;
 }
 
+llvm::LogicalResult BMv2IR::HeaderUnionType::verify(llvm::function_ref<mlir::InFlightDiagnostic()>,
+                                                    llvm::StringRef,
+                                                    llvm::ArrayRef<P4::P4MLIR::BMv2IR::FieldInfo>) {
+    // TODO: check that every field is of header type
+    return success();
+}
 #define GET_TYPEDEF_CLASSES
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Types.cpp.inc"
 
