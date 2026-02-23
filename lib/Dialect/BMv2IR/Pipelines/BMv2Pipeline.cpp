@@ -14,6 +14,7 @@ void P4::P4MLIR::buildBMv2Pipeline(OpPassManager &pm, const BMv2PipelineOpts &op
     pm.addPass(createEnumEliminationPass());
     pm.addPass(createSerEnumEliminationPass());
     pm.addPass(createRemoveAliasesPass());
+    pm.addPass(createFlattenStructsPass());
 
     // TODO: eliminate switches
 
