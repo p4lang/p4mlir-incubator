@@ -3375,6 +3375,23 @@ void P4HIR::TableApplyOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), result);
 }
 
+LogicalResult P4HIR::TableActionOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+    auto actionAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>(getActionAttrName());
+    if (!actionAttr)
+        return emitOpError("requires an 'action' symbol reference attribute");
+
+    // The action attribute is the control-plane name. After inlining it may
+    // no longer resolve to a FuncOp (the symbol gets renamed), so only
+    // validate when the symbol is actually found.
+    auto *decl = symbolTable.lookupNearestSymbolFrom(*this, actionAttr);
+    if (!decl) return success();  // post-inlining: symbol renamed, skip
+
+    auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl);
+    if (!fn || !fn.getAction())
+        return emitOpError("'") << actionAttr << "' does not reference a valid action";
+
+    return success();
+}
 //===----------------------------------------------------------------------===//
 // TablePropertyOp
 //===----------------------------------------------------------------------===//
