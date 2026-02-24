@@ -7,6 +7,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
@@ -544,6 +545,45 @@ ArrayType HeaderStackType::getDataType() {
 size_t HeaderStackType::getArraySize() { return getDataType().getSize(); }
 StructLikeTypeInterface HeaderStackType::getArrayElementType() {
     return mlir::cast<StructLikeTypeInterface>(getDataType().getElementType());
+}
+
+static llvm::TypeSize structLikeTypeSizeInBits(llvm::ArrayRef<FieldInfo> fields,
+                                               const mlir::DataLayout &dl) {
+    uint64_t total = 0;
+    for (const auto &field : fields)
+        if (!mlir::isa<ValidBitType>(field.type))
+            total += dl.getTypeSizeInBits(field.type).getFixedValue();
+    return llvm::TypeSize::getFixed(total);
+}
+
+llvm::TypeSize StructType::getTypeSizeInBits(const DataLayout &dl, DataLayoutEntryListRef) const {
+    return structLikeTypeSizeInBits(getElements(), dl);
+}
+uint64_t StructType::getABIAlignment(const DataLayout &, DataLayoutEntryListRef) const {
+    return 1;
+}
+
+llvm::TypeSize HeaderType::getTypeSizeInBits(const DataLayout &dl, DataLayoutEntryListRef) const {
+    return structLikeTypeSizeInBits(getElements(), dl);
+}
+uint64_t HeaderType::getABIAlignment(const DataLayout &, DataLayoutEntryListRef) const {
+    return 1;
+}
+
+llvm::TypeSize HeaderUnionType::getTypeSizeInBits(const DataLayout &dl,
+                                                   DataLayoutEntryListRef) const {
+    return structLikeTypeSizeInBits(getElements(), dl);
+}
+uint64_t HeaderUnionType::getABIAlignment(const DataLayout &, DataLayoutEntryListRef) const {
+    return 1;
+}
+
+llvm::TypeSize HeaderStackType::getTypeSizeInBits(const DataLayout &dl,
+                                                   DataLayoutEntryListRef) const {
+    return structLikeTypeSizeInBits(getElements(), dl);
+}
+uint64_t HeaderStackType::getABIAlignment(const DataLayout &, DataLayoutEntryListRef) const {
+    return 1;
 }
 
 void StructType::print(AsmPrinter &p) const {
