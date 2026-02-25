@@ -42,7 +42,7 @@ module {
   }
   // CHECK-NOT: unusedfunc
   p4hir.func @unusedfunc(!b32i {p4hir.dir = #undir, p4hir.param_name = "t"}) -> !b32i
-  // CHECK: usedfunc
+  // CHECK-NOT: usedfunc
   p4hir.func @usedfunc(!b32i {p4hir.dir = #undir, p4hir.param_name = "t"}) -> !b32i
 
   // CHECK: p4hir.extern @X
@@ -137,16 +137,15 @@ module {
   }
   p4hir.control @Inner2(%arg0: !MyCounter_b10i {p4hir.dir = #undir, p4hir.param_name = "counter_set"}, %arg1 : !b32i)() {
     // CHECK: __local_counter_set_0
-    // TODO: Ensure we can transitively remove unused locals (@unused is unused action below)
-    // CHECK: __local_foo
     // CHECK: __local_foo2
-    p4hir.control_local @__local_counter_set_0 = %arg0 : !MyCounter_b10i
-    p4hir.control_local @__local_foo = %arg1 : !b32i
-    p4hir.control_local @__local_foo2 = %arg1 : !b32i
+    // CHECK-NOT: __local_foo
     // CHECK-NOT: __local_unused
+    // CHECK-NOT: p4hir.func action @unused
+    p4hir.control_local @__local_counter_set_0 = %arg0 : !MyCounter_b10i
+    p4hir.control_local @__local_foo2 = %arg1 : !b32i
+    p4hir.control_local @__local_foo = %arg1 : !b32i
     p4hir.control_local @__local_unused = %arg1 : !b32i
 
-   // TODO: Ensure we can remove unused action
     p4hir.func action @unused(%arg2: !b32i {p4hir.dir = #undir}) {
       %ref = p4hir.symbol_ref @Inner2::@__local_foo : !b32i
       %val = p4hir.call @usedfunc(%ref) : (!b32i) -> !b32i
