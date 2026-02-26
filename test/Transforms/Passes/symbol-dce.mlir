@@ -40,13 +40,13 @@ module {
       p4hir.func @method_1<!type_T>(!type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_H
     }
   }
-  // CHECK-NOT: unusedfunc
+  // CHECK: p4hir.func @unusedfunc
   p4hir.func @unusedfunc(!b32i {p4hir.dir = #undir, p4hir.param_name = "t"}) -> !b32i
-  // CHECK-NOT: usedfunc
+  // CHECK: p4hir.func @usedfunc
   p4hir.func @usedfunc(!b32i {p4hir.dir = #undir, p4hir.param_name = "t"}) -> !b32i
 
   // CHECK: p4hir.extern @X
-  // CHECK-NOT: unusedmethod
+  // CHECK: p4hir.func @unusedmethod
   p4hir.extern @X<[!type_T]> {
     p4hir.func @X(!type_T {p4hir.dir = #undir, p4hir.param_name = "t"})
     p4hir.func @method(!type_T {p4hir.dir = #undir, p4hir.param_name = "t"}) -> !type_T
