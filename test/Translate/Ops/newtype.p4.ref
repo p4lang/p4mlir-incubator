@@ -1,0 +1,17 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+type bit<32> Wide;
+type bit<9> Narrow;
+action c(out bool b) {
+    Wide x = (Wide)(32w3);
+    Narrow y = (Narrow)((bit<9>)((bit<32>)(x)));
+
+    y = (Narrow) 9w192;
+    b = (y == (Narrow)(9w10));
+    return;
+}
+

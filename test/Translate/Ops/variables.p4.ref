@@ -1,0 +1,58 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+action int_no_init() {
+    int<42> a;
+
+    return;
+}
+
+action bit_assign_bit_string_in_hex_format() {
+    bit<32> a = 32w255;
+
+    return;
+}
+
+action int_assign_signed_positive_number_in_hex_format() {
+    int<32> a = 32s255;
+
+    return;
+}
+
+action int_assign_signed_negative_number_in_hex_format() {
+    int<32> a = 32s4294967041;
+
+    return;
+}
+
+action bit_assign_bit_string_in_decimal_format() {
+    bit<8> a = 8w170;
+
+    return;
+}
+
+action bit_assign_bit_string_in_binary_formats() {
+    bit<8> a = 8w170;
+    bit<8> b = 8w170;
+    bit<8> c = 8w170;
+
+    return;
+}
+
+action init_with_cast() {
+    bit<8> a;
+    int<8> b = (int<8>)(a);
+    bit<8> c = (bit<8>)(b);
+
+    return;
+}
+
+action check_zero_width_int() {
+    bit<0> tmp = (bit<0>)(0w0);
+
+    return;
+}
+

@@ -1,0 +1,50 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+header Header {
+    bit<32> data;
+}
+struct empty_t {
+}
+struct intrinsic_metadata_t {
+    bit<8> f0;
+    bit<8> f1;
+}
+extern packet_in {
+    void extract<T>(out T hdr);
+    void extract<T>(out T variableSizeHeader, in bit<32> variableFieldSizeInBits);
+    T lookahead<T>();
+    void advance(in bit<32> sizeInBits);
+    bit<32> length();
+}
+
+parser p0(packet_in p, out Header h) {
+    state start {
+        {
+            Header dummy;
+            Header hdr_out_arg;
+            p.extract<Header>(hdr_out_arg);
+            dummy = hdr_out_arg;
+        }
+        transition next;
+    }
+    state next {
+        {
+            Header hdr_out_arg;
+            p.extract<Header>(hdr_out_arg);
+            h = hdr_out_arg;
+        }
+        transition accept;
+    }
+}
+control nothing(inout empty_t hdr, inout empty_t meta, in intrinsic_metadata_t imeta) {
+    apply {
+    }
+}
+control C<H, M>(inout empty_t hdr, inout empty_t meta, in intrinsic_metadata_t imeta);
+package P<H, M>(C<H, M> c);
+P<_, _>(nothing()) main;
+

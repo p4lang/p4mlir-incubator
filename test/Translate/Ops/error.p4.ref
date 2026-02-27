@@ -1,0 +1,25 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+error {
+    Foo,
+    Bar,
+    Baz
+}
+struct S {
+    error e;
+}
+action test(inout S s) {
+    s.e = error.Foo;
+    return;
+}
+
+action reference() {
+    S local_s = {error.Baz};
+
+    return;
+}
+

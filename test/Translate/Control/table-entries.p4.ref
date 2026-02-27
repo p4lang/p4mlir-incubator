@@ -1,0 +1,79 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+header hdr {
+    bit<8> e;
+    bit<16> t;
+    bit<8> l;
+    bit<8> r;
+    bit<8> v;
+}
+struct Header_t {
+    hdr h;
+}
+struct Meta_t {
+    bit<9> egress_spec;
+}
+enum action_run_0 {
+    a,
+    a_with_control_params
+}
+control ingress(inout Header_t h, inout Meta_t m) {
+    action a() {
+        m.egress_spec = (bit<9>)(9w0);
+        return;
+    }
+    action a_with_control_params(bit<9> x) {
+        m.egress_spec = x;
+        return;
+    }
+    table t_exact {
+        key = {
+            h.h.e : exact @name("h.h.e") ;
+        }
+        actions = {
+            a;
+            a_with_control_params;
+        }
+        default_action = a();
+    }
+    table t_lpm {
+        key = {
+            h.h.l : lpm @name("h.h.l") ;
+        }
+        actions = {
+            a;
+            a_with_control_params;
+        }
+        default_action = a();
+    }
+    table t_ternary {
+        key = {
+            h.h.t : ternary @name("h.h.t") ;
+        }
+        actions = {
+            a;
+            a_with_control_params;
+        }
+        default_action = a();
+    }
+    table t_range {
+        key = {
+            h.h.r : range @name("h.h.r") ;
+        }
+        actions = {
+            a;
+            a_with_control_params;
+        }
+        default_action = a();
+    }
+    apply {
+        t_exact.apply();
+        t_lpm.apply();
+        t_ternary.apply();
+        t_range.apply();
+    }
+}

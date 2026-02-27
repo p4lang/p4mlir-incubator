@@ -1,0 +1,72 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+header __array_elem_0 {
+    bit<32> value;
+}
+
+bit<32> loop() {
+    bit<32> sum = (bit<32>)(32w0);
+
+    {
+        bit<32> i = (bit<32>)(32w0);
+        for (; (i < (bit<32>)(10)); i = (i + 32w1)) {
+            sum = (sum + 32w1);
+        }
+    }
+    return sum;
+}
+
+void empty_statements() {
+    {
+        bit<32> i = (bit<32>)(32w0);
+        for (; (i < (bit<32>)(10)); ) {
+        }
+    }
+    for (; false; ) {
+    }
+    return;
+}
+
+action multiple_statements() {
+    {
+        bit<8> i = (bit<8>)(8w0);
+        bit<8> j = (bit<8>)(8w0);
+        for (; ((i <= (bit<8>)(10)) ? (true) : ((j <= (bit<8>)(5)))); i = (i + j), j = (j + 8w1)) {
+        }
+    }
+    return;
+}
+
+action for_no_decls() {
+    bit<32> i;
+
+    i = (bit<32>)(32w0);
+    for (; (i < (bit<32>)(10)); i = (i + 32w1)) {
+    }
+    return;
+}
+
+bit<32> for_in() {
+    bit<32> sum = (bit<32>)(32w0);
+
+    {
+        for (bit<32> iter0 in (bit<32>)(32w0)..(bit<32>)(9)) {
+            sum = (sum + iter0);
+        }
+    }
+    return sum;
+}
+
+bit<32> for_in_array(__array_elem_0[16] array) {
+    bit<32> sum = (bit<32>)(32w0);
+
+    for (__array_elem_0 iter1 in array) {
+        sum = (sum + iter1.value);
+    }
+    return sum;
+}
+

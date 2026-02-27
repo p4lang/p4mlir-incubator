@@ -1,0 +1,22 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+extern T externFunc<T, U>(in U a, in T b);
+
+parser p1() {
+    state start {
+        bit<8> res = externFunc(16w0, 8w0);
+
+        externFunc(16w0, 8w0);
+        transition accept;
+    }
+}
+action foo(inout bit<32> a, in int<7> b) {
+    externFunc(b, a);
+    a = externFunc(b, a);
+    return;
+}
+

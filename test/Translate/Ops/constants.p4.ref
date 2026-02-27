@@ -1,0 +1,75 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+struct S {
+    bit<32> a;
+    bit<32> b;
+}
+struct T {
+    S a;
+    S b;
+}
+action reference() {
+    bit<32> local_bzero = 32w0;
+    bool local_cfalse = false;
+    bool local_ctrue = true;
+    bit<48> local_btooLarge = 48w206488571150080;
+    bit<32> local_bone = 32w1;
+    bit<32> local_bmax = 32w4294967295;
+    bit<32> local_bz = 32w1;
+    bit<8> local_blarge = 8w0;
+    bit<32> local_btwo = 32w2;
+    int<32> local_btwotwo = 32s2;
+    bit<32> local_btwothree = 32w2;
+    bit<6> local_btwofour = 6w2;
+    S local_v = {32w3, 32w1};
+    T local_zz = {{32w0, 32w1}, {32w2, 32w3}};
+    bit<32> local_x = 32w0;
+    bit<32> local_x1 = 32w4294967295;
+    int<32> local_izero = 32s0;
+    bit<4> local_fa = 4w5;
+    bit<7> local_fc = 7w5;
+    int<4> local_fd = 4s15;
+    bit<7> local_ff = (bit<7>)(7w127);
+    int<7> local_fg = 7s127;
+    int<8> local_sa = 8s0;
+    int<8> local_sb = 8s255;
+    int<8> local_sc = 8s254;
+    int<8> local_sd = 8s129;
+    int<8> local_se = 8s128;
+    int<8> local_sf = 8s127;
+    int<8> local_sg = 8s1;
+    int<8> local_sh = 8s0;
+    int<8> local_si = 8s1;
+    int<8> local_sj = 8s2;
+    int<8> local_sk = 8s127;
+    int<8> local_sl = 8s128;
+    int<8> local_sm = 8s129;
+    int<8> local_sn = 8s255;
+    int<8> local_so = 8s0;
+    int<8> local_sa0 = 8s0;
+    int<8> local_sb0 = 8s255;
+    int<8> local_sc0 = 8s254;
+    int<8> local_sd0 = 8s129;
+    int<8> local_se0 = 8s128;
+    int<8> local_sf0 = 8s127;
+    int<8> local_sg0 = 8s1;
+    int<8> local_sh0 = 8s0;
+    int<8> local_si0 = 8s1;
+    int<8> local_sj0 = 8s2;
+    int<8> local_sk0 = 8s127;
+    int<8> local_sl0 = 8s128;
+    int<8> local_sm0 = 8s129;
+    int<8> local_sn0 = 8s255;
+    int<8> local_so0 = 8s0;
+    int<1> local_ssz0 = 1s0;
+    int<1> local_szz1 = 1s1;
+    int<2> local_szz2 = 2s2;
+    int<1> local_szz3 = 1s0;
+
+    return;
+}
+

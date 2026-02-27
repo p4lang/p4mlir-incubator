@@ -1,0 +1,22 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+control c(out bool b) {
+    apply {
+        b = false;
+    }
+}
+parser par(out bool b) {
+    state start {
+        b = false;
+        transition accept;
+    }
+}
+parser pe(out bool b);
+control ce(out bool b);
+package top(pe _p, ce _e, @optional ce _e1);
+top(par(), c()) main;
+

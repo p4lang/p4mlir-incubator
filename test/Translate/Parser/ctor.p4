@@ -1,4 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | diff -u - %s.ref
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | p4test -
 
 // CHECK: #p_ctorval = #p4hir.ctor_param<@p, "ctorval"> : !p4hir.bool
 // CHECK:  p4hir.parser @p(%arg0: !i10i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "sinit"})(ctorval: !p4hir.bool)

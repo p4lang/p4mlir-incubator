@@ -1,0 +1,35 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+enum action_run_0 {
+    a,
+    b
+}
+control ctrl() {
+    action a() {
+        return;
+    }
+    action b() {
+        return;
+    }
+    table t {
+        actions = {
+            a;
+            b;
+        }
+        default_action = a();
+    }
+    apply {
+        t.apply();
+        switch (t.apply().action_run) {
+            b: {
+                exit;
+            }
+            default: {
+            }
+        }
+    }
+}

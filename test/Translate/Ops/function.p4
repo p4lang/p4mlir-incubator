@@ -1,4 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | diff -u - %s.ref
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | p4test -
 
 // CHECK-LABEL: p4hir.func @max(%arg0: !b16i {p4hir.dir = #in, p4hir.param_name = "left"}, %arg1: !b16i {p4hir.dir = #in, p4hir.param_name = "right"}) -> !b16i {
 // CHECK:    %[[CMP:.*]] = p4hir.cmp(gt, %arg0 : !b16i, %arg1 : !b16i)

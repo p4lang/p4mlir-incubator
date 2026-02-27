@@ -1,0 +1,21 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+action test(out bit<16> r) {
+    tuple<bit<32>, bit<32>> tt = {32w0, 32w1};
+    tuple<bit<32>, bit<16>> x = {32w0, 16w12};
+
+    return;
+}
+
+action test2() {
+    tuple<bit<32>, bool> x = {32w10, false};
+    tuple<bit<32>, bool> y;
+
+    y = x;
+    return;
+}
+
