@@ -2031,6 +2031,10 @@ LogicalResult P4HIR::SliceOp::verify() {
 }
 
 OpFoldResult P4HIR::SliceOp::fold(FoldAdaptor adaptor) {
+    // Identity.
+    // slice(x, width-1, 0) -> x when types match
+    if (getInput().getType() == getType()) return getInput();
+
     if (adaptor.getInput()) {
         auto input = P4HIR::getConstantInt(adaptor.getInput()).value();
         auto sliceVal = input.extractBits((getHighBit() - getLowBit() + 1), getLowBit());
@@ -2038,6 +2042,21 @@ OpFoldResult P4HIR::SliceOp::fold(FoldAdaptor adaptor) {
     }
 
     return {};
+}
+
+LogicalResult P4HIR::SliceOp::canonicalize(P4HIR::SliceOp op, PatternRewriter &rewriter) {
+    // Composition.
+    // slice(slice(x, h1, l1), h2, l2) -> slice(x, l1 + h2, l1 + l2)
+    if (auto innerSlice = op.getInput().getDefiningOp<P4HIR::SliceOp>()) {
+        unsigned newLow = innerSlice.getLowBit() + op.getLowBit();
+        unsigned newHigh = innerSlice.getLowBit() + op.getHighBit();
+        auto result = rewriter.createOrFold<P4HIR::SliceOp>(
+            op.getLoc(), op.getType(), innerSlice.getInput(), newHigh, newLow);
+        rewriter.replaceOp(op, result);
+        return success();
+    }
+
+    return failure();
 }
 
 LogicalResult P4HIR::ReadSliceOp::verify() {

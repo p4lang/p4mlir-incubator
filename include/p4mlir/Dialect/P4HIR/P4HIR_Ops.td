@@ -1219,6 +1219,7 @@ def SliceOp : P4HIR_Op<"slice",
   }];
   let hasFolder = 1;
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def ReadSliceOp : P4HIR_Op<"read_slice",
