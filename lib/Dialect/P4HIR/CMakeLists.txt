@@ -13,6 +13,7 @@ add_mlir_dialect_library(P4MLIR_P4HIR
 
   LINK_LIBS PUBLIC
   MLIRIR
+  MLIRDataLayoutInterfaces
   MLIRInferTypeOpInterface
   MLIRMemorySlotInterfaces
   MLIRViewLikeInterface

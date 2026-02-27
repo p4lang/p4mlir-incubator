@@ -4,6 +4,7 @@
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/Interfaces/DataLayoutInterfaces.td"
 include "mlir/Interfaces/MemorySlotInterfaces.td"
 
 include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.td"
@@ -27,7 +28,7 @@ class P4HIR_TypeNoMnemonic<string name, string typeMnemonic, list<Trait> traits 
 // Integer types: signed (int<>), unsigned (bit<>) and arbitrary width (int)
 //===----------------------------------------------------------------------===//
 
-def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits", [HasDefaultValue]> {
+def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits", [HasDefaultValue, DataLayoutTypeInterface]> {
   let summary = "fixed width integer type";
   let description = [{
     The `p4hir.bit` / `p4hir.int` type represents a P4 `bit` or `int` type.
@@ -50,6 +51,13 @@ def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits", [HasDefaultValue]> {
     };
 
     mlir::TypedAttr getDefaultValue();
+
+    ::llvm::TypeSize getTypeSizeInBits(const ::mlir::DataLayout &,
+                                       ::mlir::DataLayoutEntryListRef) const {
+      return ::llvm::TypeSize::getFixed(getWidth());
+    }
+    uint64_t getABIAlignment(const ::mlir::DataLayout &,
+                                 ::mlir::DataLayoutEntryListRef) const { return 1; }
   }];
 }
 
@@ -117,7 +125,7 @@ def VarBitsType : P4HIR_Type<"VarBits", "varbit", [HasDefaultValue]> {
 // let's be more generic, it could be lowered later on
 //===----------------------------------------------------------------------===//
 
-def BooleanType : P4HIR_Type<"Bool", "bool", [HasDefaultValue]> {
+def BooleanType : P4HIR_Type<"Bool", "bool", [HasDefaultValue, DataLayoutTypeInterface]> {
   let summary = "boolean type";
   let description = [{
     `p4hir.bool` represents a P4 `bool` type.
@@ -127,6 +135,13 @@ def BooleanType : P4HIR_Type<"Bool", "bool", [HasDefaultValue]> {
   let extraClassDeclaration = [{
     llvm::StringRef getAlias() const { return "bool"; };
     mlir::TypedAttr getDefaultValue();
+
+    ::llvm::TypeSize getTypeSizeInBits(const ::mlir::DataLayout &,
+                                       ::mlir::DataLayoutEntryListRef) const {
+      return ::llvm::TypeSize::getFixed(1);
+    }
+    uint64_t getABIAlignment(const ::mlir::DataLayout &,
+                                 ::mlir::DataLayoutEntryListRef) const { return 1; }
   }];
 }
 
@@ -363,7 +378,8 @@ class StructLikeType<string name, string typeMnemonic>
   StructLikeTypeInterface,
   DestructurableTypeInterface,
   AnnotatedType,
-  HasDefaultValue
+  HasDefaultValue,
+  DeclareTypeInterfaceMethods<DataLayoutTypeInterface>
 ]> {
   let hasCustomAssemblyFormat = 1;
   let genVerifyDecl = 1;
@@ -531,7 +547,7 @@ def StructType : StructLikeType<"Struct", "struct"> {
 // by the type.
 //===----------------------------------------------------------------------===//
 
-def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit", [HasDefaultValue]> {
+def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit", [HasDefaultValue, DataLayoutTypeInterface]> {
   let summary = "Valid bit type";
   let description = [{
     `p4hir.valid.bit` represents valid bit in headers.
@@ -541,6 +557,13 @@ def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit", [HasDefaultValue]> {
   let extraClassDeclaration = [{
     llvm::StringRef getAlias() const { return "validity_bit"; };
     mlir::TypedAttr getDefaultValue();
+
+    ::llvm::TypeSize getTypeSizeInBits(const ::mlir::DataLayout &,
+                                       ::mlir::DataLayoutEntryListRef) const {
+      return ::llvm::TypeSize::getFixed(1);
+    }
+    uint64_t getABIAlignment(const ::mlir::DataLayout &,
+                             ::mlir::DataLayoutEntryListRef) const { return 1; }
   }];
 }
 
@@ -697,7 +720,7 @@ def ErrorType : P4HIR_Type<"Error", "error", []> {
   }];
 }
 
-def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", [AnnotatedType, HasDefaultValue]> {
+def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", [AnnotatedType, HasDefaultValue, DataLayoutTypeInterface]> {
   let summary = "serializable enum type";
   let description = [{
     Represents an enumeration of values backed by some integer value
@@ -741,6 +764,15 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", [AnnotatedType, HasDefaultVa
     T valueOf(mlir::StringAttr field) { return getFields().getAs<T>(field); }
 
     mlir::TypedAttr getDefaultValue();
+
+    ::llvm::TypeSize getTypeSizeInBits(const ::mlir::DataLayout &dl,
+                                       ::mlir::DataLayoutEntryListRef p) const {
+      return getType().getTypeSizeInBits(dl, p);
+    }
+    uint64_t getABIAlignment(const ::mlir::DataLayout &dl,
+                                 ::mlir::DataLayoutEntryListRef p) const {
+      return getType().getABIAlignment(dl, p);
+    }
   }];
 }
 
