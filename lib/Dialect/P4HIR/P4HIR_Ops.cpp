@@ -637,6 +637,21 @@ LogicalResult P4HIR::ConcatOp::verify() {
     return success();
 }
 
+OpFoldResult P4HIR::ConcatOp::fold(FoldAdaptor adaptor) {
+    if (!adaptor.getLhs() || !adaptor.getRhs()) return {};
+
+    auto lhsVal = P4HIR::getConstantInt(adaptor.getLhs()).value();
+    auto rhsVal = P4HIR::getConstantInt(adaptor.getRhs()).value();
+    auto resultType = cast<BitsType>(getType());
+    unsigned resultWidth = resultType.getWidth();
+    unsigned rhsWidth = cast<BitsType>(getRhs().getType()).getWidth();
+
+    auto result = (lhsVal.zextOrTrunc(resultWidth) << rhsWidth) |
+                  rhsVal.zextOrTrunc(resultWidth);
+
+    return P4HIR::IntAttr::get(getContext(), resultType, result);
+}
+
 //===----------------------------------------------------------------------===//
 // ShlOp & ShrOp
 //===----------------------------------------------------------------------===//
