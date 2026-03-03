@@ -1,0 +1,54 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+action bit_shl_bit(in bit<32> lhs, in bit<8> rhs, out bit<32> res) {
+    res = (lhs << rhs);
+    return;
+}
+
+action int_shl_bit(in int<32> lhs, in bit<8> rhs, out int<32> res) {
+    res = (lhs << rhs);
+    return;
+}
+
+action bit_shl_const(in bit<32> lhs, out bit<32> res) {
+    res = (lhs << 1);
+    return;
+}
+
+action int_shl_const(in int<32> lhs, out int<32> res) {
+    res = (lhs << 1);
+    return;
+}
+
+action const_shl_const() {
+    return;
+}
+
+action bit_shr_bit(in bit<32> lhs, in bit<8> rhs, out bit<32> res) {
+    res = (lhs >> rhs);
+    return;
+}
+
+action int_shr_bit(in int<32> lhs, in bit<8> rhs, out int<32> res) {
+    res = (lhs >> rhs);
+    return;
+}
+
+action bit_shr_const(in bit<32> lhs, out bit<32> res) {
+    res = (lhs >> 1);
+    return;
+}
+
+action int_shr_const(in int<32> lhs, out int<32> res) {
+    res = (lhs >> 1);
+    return;
+}
+
+action const_shr_const() {
+    return;
+}
+

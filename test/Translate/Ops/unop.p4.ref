@@ -1,0 +1,56 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+action plus_bit(in bit<8> a, out bit<8> res) {
+    res = (+a);
+    return;
+}
+
+action plus_int(in int<8> a, out int<8> res) {
+    res = (+a);
+    return;
+}
+
+action plus_const(out int<8> res) {
+    res = (int<8>)(8s1);
+    return;
+}
+
+action minus_bit(in bit<8> a, out bit<8> res) {
+    res = (-a);
+    return;
+}
+
+action minus_int(in int<8> a, out int<8> res) {
+    res = (-a);
+    return;
+}
+
+action minus_const(out int<8> res) {
+    res = (int<8>)(8s255);
+    return;
+}
+
+action cmpl_bit(in bit<8> a, out bit<8> res) {
+    res = (~a);
+    return;
+}
+
+action cmpl_int(in int<8> a, out int<8> res) {
+    res = (~a);
+    return;
+}
+
+action not_bool(in bool a, out bool res) {
+    res = (!a);
+    return;
+}
+
+action not_const(out bool res) {
+    res = false;
+    return;
+}
+
