@@ -12,7 +12,7 @@
 module {
   p4hir.control @p(%arg0: !p4hir.ref<!b1i> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "bt"})() {
     p4hir.control_local @arg0 = %arg0 : !p4hir.ref<!b1i>
-    // CHECK-LABEL: p4hir.func action @a
+    // CHECK-NOT: p4hir.func action @a
     p4hir.func action @a(%arg1: !p4hir.ref<!b1i> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "y0"}) {
       %c-1_b1i = p4hir.const #int-1_b1i
       %val = p4hir.read %arg1 : <!b1i>

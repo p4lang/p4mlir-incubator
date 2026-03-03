@@ -28,8 +28,7 @@ module {
     %val = p4hir.read %retval : <!b32i>
     p4hir.return %val : !b32i
   }
-  // CHECK-LABEL: p4hir.func @fun
-  // CHECK-NOT: p4hir.call
+  // CHECK-NOT: p4hir.func @fun
   p4hir.func @fun(%arg0: !b32i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "a"}, %arg1: !b32i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "b"}) -> !b32i {
     %false = p4hir.const #false
     %hasReturned_0 = p4hir.variable ["hasReturned_0", init] : <!p4hir.bool>

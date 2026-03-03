@@ -1405,7 +1405,7 @@ bool P4HIR::FuncOp::canDiscardOnUseEmpty() {
     // Declarations inside overload sets are a bit special, while they have private
     // visibility we cannot delete them unless the top-level overload is gone
     if ((*this)->getParentOfType<P4HIR::OverloadSetOp>() != nullptr) return false;
-    return isExternal();
+    return !isExternal();
 }
 
 void P4HIR::CallOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
