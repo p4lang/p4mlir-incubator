@@ -6,6 +6,7 @@
 #include "llvm/ADT/APFloat.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "p4mlir//Dialect/P4HIR/P4HIR_Types.h"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include "mlir/IR/BuiltinTypes.h"

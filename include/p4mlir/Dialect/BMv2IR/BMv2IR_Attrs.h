@@ -9,6 +9,7 @@
 
 #include "llvm/ADT/APSInt.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 
 // clang-format off
 #define GET_ATTRDEF_CLASSES
