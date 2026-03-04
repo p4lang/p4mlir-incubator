@@ -39,8 +39,8 @@ module {
     %add_2 = p4hir.binop(add, %val_1, %c2_b8i) : !b8i
     p4hir.assign %add_2, %arg0 : <!b8i>
 
-    // CHECK: p4hir.if %eq {
-    // CHECK: } else {
+    // CHECK: %not = p4hir.unary(not, %eq) : !p4hir.bool
+    // CHECK: p4hir.if %not {
     // CHECK:   %val_1 = p4hir.read %arg0 : <!b8i>
     // CHECK:   %add_2 = p4hir.binop(add, %val_1, %c2_b8i) : !b8i
     // CHECK:   p4hir.assign %add_2, %arg0 : <!b8i>
@@ -84,15 +84,15 @@ module {
       %add_4 = p4hir.binop(add, %val_3, %c2_b8i) : !b8i
       p4hir.assign %add_4, %arg0 : <!b8i>
 
-      // CHECK: p4hir.if %eq {
-      // CHECK: } else {
+      // CHECK: %not = p4hir.unary(not, %eq) : !p4hir.bool
+      // CHECK: p4hir.if %not {
       // CHECK:   %val_1 = p4hir.read %arg0 : <!b8i>
       // CHECK:   %eq_2 = p4hir.cmp(eq, %val_1 : !b8i, %c-56_b8i : !b8i)
-      // CHECK:   p4hir.if %eq_2 {
-      // CHECK:   } else {
-      // CHECK:     %val_3 = p4hir.read %arg0 : <!b8i>
-      // CHECK:     %add_4 = p4hir.binop(add, %val_3, %c2_b8i) : !b8i
-      // CHECK:     p4hir.assign %add_4, %arg0 : <!b8i>
+      // CHECK:   %not_3 = p4hir.unary(not, %eq_2) : !p4hir.bool
+      // CHECK:   p4hir.if %not_3 {
+      // CHECK:     %val_4 = p4hir.read %arg0 : <!b8i>
+      // CHECK:     %add_5 = p4hir.binop(add, %val_4, %c2_b8i) : !b8i
+      // CHECK:     p4hir.assign %add_5, %arg0 : <!b8i>
       // CHECK:   }
       // CHECK: }
       // CHECK: p4hir.return
@@ -477,14 +477,13 @@ module {
     // CHECK-NEXT: %return_value = p4hir.variable ["return_value", init] : <!b8i>
     // CHECK-NEXT: %val = p4hir.read %arg0 : <!b8i>
     // CHECK-NEXT: %lt = p4hir.cmp(lt, %val : !b8i, %c100_b8i : !b8i)
-    // CHECK-NEXT: p4hir.if %lt {
-    // CHECK-NEXT: } else {
+    // CHECK-NEXT: %not = p4hir.unary(not, %lt) : !p4hir.bool
+    // CHECK-NEXT: p4hir.if %not {
     // CHECK-NEXT:   %val_2 = p4hir.read %arg0 : <!b8i>
     // CHECK-NEXT:   %eq = p4hir.cmp(eq, %val_2 : !b8i, %c-56_b8i : !b8i)
     // CHECK-NEXT:   p4hir.if %eq {
     // CHECK-NEXT:     p4hir.assign %false, %return_guard : <!p4hir.bool>
     // CHECK-NEXT:     p4hir.assign %c0_b8i, %return_value : <!b8i>
-    // CHECK-NEXT:   } else {
     // CHECK-NEXT:   }
     // CHECK-NEXT: }
     // CHECK-NEXT: %val_0 = p4hir.read %return_guard : <!p4hir.bool>

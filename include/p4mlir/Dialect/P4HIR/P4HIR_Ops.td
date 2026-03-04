@@ -703,6 +703,7 @@ def IfOp : P4HIR_Op<"if",
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let skipDefaultBuilders = 1;
+  let hasCanonicalizeMethod = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$cond, "bool":$withElseRegion,
                    "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$thenBuilder,

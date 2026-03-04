@@ -56,8 +56,8 @@ module {
     // CHECK: } body {
     // CHECK:   %val = p4hir.read %i : <!b8i>
     // CHECK:   %eq = p4hir.cmp(eq, %val : !b8i, %c10_b8i : !b8i)
-    // CHECK:   p4hir.if %eq {
-    // CHECK:   } else {
+    // CHECK:   %not = p4hir.unary(not, %eq) : !p4hir.bool
+    // CHECK:   p4hir.if %not {
     // CHECK:     %val_0 = p4hir.read %arg0 : <!b8i>
     // CHECK:     %mul = p4hir.binop(mul, %val_0, %c3_b8i) : !b8i
     // CHECK:     p4hir.assign %mul, %arg0 : <!b8i>
@@ -142,7 +142,6 @@ module {
     // CHECK:     %eq_4 = p4hir.cmp(eq, %val_2 : !b8i, %val_3 : !b8i)
     // CHECK:     p4hir.if %eq_4 {
     // CHECK:       p4hir.assign %false, %[[CONTINUE_GUARD]] : <!p4hir.bool>
-    // CHECK:     } else {
     // CHECK:     }
     // CHECK:   }
     // CHECK:   %[[GUARD_VAL:.*]] = p4hir.read %[[CONTINUE_GUARD]] : <!p4hir.bool>
@@ -259,7 +258,6 @@ module {
     // CHECK:          %eq = p4hir.cmp(eq, %arg1 : !b8i, %c10_b8i : !b8i)
     // CHECK:          p4hir.if %eq {
     // CHECK:            p4hir.assign %false, %[[RETURN_GUARD]] : <!p4hir.bool>
-    // CHECK:          } else {
     // CHECK:          }
     // CHECK:        }
     // CHECK:        p4hir.yield
