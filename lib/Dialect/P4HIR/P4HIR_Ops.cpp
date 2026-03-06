@@ -1,5 +1,6 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/STLExtras.h"
@@ -90,6 +91,40 @@ static bool isSignedIntegerType(const mlir::Type type) {
     if (mlir::isa<P4HIR::InfIntType>(type)) return true;
 
     return false;
+}
+
+// Cast canonicalization helpers.
+static mlir::Type stripAliasTypes(mlir::Type type) {
+    while (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(type))
+        type = aliasType.getCanonicalType();
+
+    return type;
+}
+
+static std::optional<unsigned> getFixedWidthIntegerLikeTypeWidth(mlir::Type type) {
+    type = stripAliasTypes(type);
+
+    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(type)) return bitsType.getWidth();
+    if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(type))
+        return serEnumType.getType().getWidth();
+    if (mlir::isa<P4HIR::BoolType>(type)) return 1;
+
+    return std::nullopt;
+}
+
+static bool isRepresentationPreservingCastTransition(mlir::Type srcType, mlir::Type dstType) {
+    auto srcWidth = getFixedWidthIntegerLikeTypeWidth(srcType);
+    auto dstWidth = getFixedWidthIntegerLikeTypeWidth(dstType);
+    return srcWidth && dstWidth && *srcWidth == *dstWidth;
+}
+
+static bool isSafeCastComposition(mlir::Type srcType, mlir::Type midType, mlir::Type dstType) {
+    // Keep the first pass conservative: only reason about fixed-width
+    // integer-like casts and only drop representation-preserving steps.
+    return getFixedWidthIntegerLikeTypeWidth(srcType).has_value() &&
+           getFixedWidthIntegerLikeTypeWidth(midType).has_value() &&
+           getFixedWidthIntegerLikeTypeWidth(dstType).has_value() &&
+           isRepresentationPreservingCastTransition(midType, dstType);
 }
 
 namespace {
@@ -256,9 +291,14 @@ LogicalResult P4HIR::CastOp::canonicalize(P4HIR::CastOp op, PatternRewriter &rew
     //      cast(%b) : B -> C
     // ===> cast(%a) : A -> C
     if (auto inputCast = mlir::dyn_cast_if_present<CastOp>(op.getSrc().getDefiningOp())) {
-        auto bitcast =
-            rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), op.getType(), inputCast.getSrc());
-        rewriter.replaceOp(op, bitcast);
+        auto srcType = inputCast.getSrc().getType();
+        auto midType = inputCast.getType();
+        auto dstType = op.getType();
+        if (!isSafeCastComposition(srcType, midType, dstType)) return failure();
+
+        auto composedCast =
+            rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), dstType, inputCast.getSrc());
+        rewriter.replaceOp(op, composedCast);
         return success();
     }
 

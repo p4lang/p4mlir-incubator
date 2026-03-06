@@ -3,6 +3,7 @@
 !i8i = !p4hir.int<8>
 !i16i = !p4hir.int<16>
 !b8i = !p4hir.bit<8>
+!b16i = !p4hir.bit<16>
 !infint = !p4hir.infint
 #false = #p4hir.bool<false> : !p4hir.bool
 #true = #p4hir.bool<true> : !p4hir.bool
@@ -66,4 +67,27 @@ module {
   %cast6 = p4hir.cast(%c-128_i8i : !i8i) : !i16i
   p4hir.call @blackhole_i16i(%cast6) : (!i16i) -> ()
   // CHECK: p4hir.call @blackhole_i16i (%[[cm128_i16i]]) : (!i16i) -> ()
+
+  // CHECK-LABEL: p4hir.func @cast_chain_compose_guard
+  // CHECK: %[[SAFE:.*]] = p4hir.cast(%arg0 : !b8i) : !i16i
+  // CHECK: p4hir.call @blackhole_i16i (%[[SAFE]]) : (!i16i) -> ()
+  // CHECK: %[[UNSAFE_MID:.*]] = p4hir.cast(%arg0 : !b8i) : !i8i
+  // CHECK: %[[UNSAFE:.*]] = p4hir.cast(%[[UNSAFE_MID]] : !i8i) : !i16i
+  // CHECK: p4hir.call @blackhole_i16i (%[[UNSAFE]]) : (!i16i) -> ()
+  // CHECK: p4hir.call @blackhole_i8i (%arg1) : (!i8i) -> ()
+  p4hir.func @cast_chain_compose_guard(%arg0: !b8i, %arg1: !i8i) {
+    %safe_mid = p4hir.cast(%arg0 : !b8i) : !b16i
+    %safe = p4hir.cast(%safe_mid : !b16i) : !i16i
+    p4hir.call @blackhole_i16i(%safe) : (!i16i) -> ()
+
+    %unsafe_mid = p4hir.cast(%arg0 : !b8i) : !i8i
+    %unsafe = p4hir.cast(%unsafe_mid : !i8i) : !i16i
+    p4hir.call @blackhole_i16i(%unsafe) : (!i16i) -> ()
+
+    %repr_mid = p4hir.cast(%arg1 : !i8i) : !b8i
+    %repr = p4hir.cast(%repr_mid : !b8i) : !i8i
+    p4hir.call @blackhole_i8i(%repr) : (!i8i) -> ()
+
+    p4hir.return
+  }
 }
