@@ -18,25 +18,36 @@ mkdir -p "$LLVM_BUILD_DIR"
 cd "$LLVM_BUILD_DIR"
 
 # Configure CMake flags
-# Note that P4C uses both RTTI and C++ exceptions, so we need to build LLVM/MLIR having them enabled as well
+# Basics
 CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=$LLVM_INSTALL_DIR"
 CMAKE_FLAGS+=" -DLLVM_ENABLE_PROJECTS=mlir"
-CMAKE_FLAGS+=" -DLLVM_BUILD_EXAMPLES=OFF"
-CMAKE_FLAGS+=" -DLLVM_TARGETS_TO_BUILD="Native""
 CMAKE_FLAGS+=" -DCMAKE_BUILD_TYPE=Release"
 CMAKE_FLAGS+=" -DLLVM_ENABLE_ASSERTIONS=ON"
 CMAKE_FLAGS+=" -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER:-clang}"
 CMAKE_FLAGS+=" -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER:-clang++}"
+
+# Note that P4C uses both RTTI and C++ exceptions, so we need to build LLVM/MLIR having them enabled as well
+CMAKE_FLAGS+=" -DLLVM_ENABLE_RTTI=ON"
+CMAKE_FLAGS+=" -DLLVM_ENABLE_EH=ON"
+# Linker/Cache optimizations
 if [[ -n "${LLVM_USE_LINKER}" ]]; then
     CMAKE_FLAGS+=" -DLLVM_USE_LINKER=${LLVM_USE_LINKER}"
 else
     CMAKE_FLAGS+=" -DLLVM_ENABLE_LLD=ON"
+
 fi
 CMAKE_FLAGS+=" -DLLVM_CCACHE_BUILD=ON"
+# Disable all LLVM machine-code backends
+CMAKE_FLAGS+=" -DLLVM_TARGETS_TO_BUILD="
+# Disable MLIR Execution Engine (JIT).
+CMAKE_FLAGS+=" -DMLIR_ENABLE_EXECUTION_ENGINE=OFF"
+# Disable building unrelated LLVM command-line tools (llvm-objdump, etc.)
+CMAKE_FLAGS+=" -DLLVM_BUILD_TOOLS=OFF"
+# FileCheck/lit.
 CMAKE_FLAGS+=" -DLLVM_INSTALL_UTILS=ON"
+# Disable tests, examples, and benchmarks for LLVM.
+CMAKE_FLAGS+=" -DLLVM_BUILD_EXAMPLES=OFF"
 CMAKE_FLAGS+=" -DLLVM_INCLUDE_BENCHMARKS=OFF"
-CMAKE_FLAGS+=" -DLLVM_ENABLE_RTTI=ON"
-CMAKE_FLAGS+=" -DLLVM_ENABLE_EH=ON"
 
 cmake -G Ninja "$LLVM_REPO_DIR"/llvm $CMAKE_FLAGS
 
