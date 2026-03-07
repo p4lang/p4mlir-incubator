@@ -4,7 +4,35 @@
 # - https://mlir.llvm.org/getting_started/
 # - https://github.com/llvm/llvm-project/tree/main/mlir/examples/standalone
 
-set -ex
+# Exit immediately if a command exits with a non-zero status
+set -e
+
+LLVM_TARGETS_TO_BUILD=""
+
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -t|--targets)
+            LLVM_TARGETS_TO_BUILD="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: $0[options]"
+            echo ""
+            echo "Options:"
+            echo "  -t, --targets <targets>  Set LLVM_TARGETS_TO_BUILD (e.g., \"X86;ARM\", default is empty)"
+            echo "  -h, --help               Show this help message and exit"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Print commands and their arguments as they are executed
+set -x
 
 # https://stackoverflow.com/a/246128
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )  # p4mlir/build_tools
@@ -37,8 +65,10 @@ else
 
 fi
 CMAKE_FLAGS+=" -DLLVM_CCACHE_BUILD=ON"
-# Disable all LLVM machine-code backends
-CMAKE_FLAGS+=" -DLLVM_TARGETS_TO_BUILD="
+
+# Disable all LLVM machine-code backends by default, or use user-provided targets
+CMAKE_FLAGS+=" -DLLVM_TARGETS_TO_BUILD=${LLVM_TARGETS_TO_BUILD}"
+
 # Disable MLIR Execution Engine (JIT).
 CMAKE_FLAGS+=" -DMLIR_ENABLE_EXECUTION_ENGINE=OFF"
 # Disable building unrelated LLVM command-line tools (llvm-objdump, etc.)
