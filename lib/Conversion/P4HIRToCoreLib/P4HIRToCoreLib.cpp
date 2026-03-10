@@ -4,6 +4,7 @@
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
@@ -82,6 +83,33 @@ struct CallOpConversionPattern : public OpConversionPattern<P4HIR::CallOp> {
         if (callee.getLeafReference() == "verify") {
             rewriter.replaceOpWithNewOp<P4CoreLib::VerifyOp>(op, mlir::TypeRange(),
                                                              operands.getArgOperands());
+            return success();
+        }
+        // Handle static_assert: compile-time assertion
+        if (callee.getLeafReference().getValue().starts_with("static_assert")) {
+            auto args = operands.getArgOperands();
+        
+            if (args.empty())
+                return op.emitError("static_assert requires a condition");
+        
+            // Ensure the condition is a compile-time constant
+            Attribute constAttr;
+            if (!matchPattern(args[0], m_Constant(&constAttr)))
+                return op.emitError("static_assert condition must be constant");
+        
+            // Ensure the constant is boolean
+            auto boolAttr = llvm::dyn_cast<P4HIR::BoolAttr>(constAttr);
+            if (!boolAttr)
+                return op.emitError("static_assert condition must be boolean");
+        
+            // If condition is false, emit compile-time error
+            if (!boolAttr.getValue())
+                return op.emitError("static assertion failed");
+        
+            // If condition is true, replace the call with a constant true
+            auto trueAttr = P4HIR::BoolAttr::get(rewriter.getContext(), true);
+            rewriter.replaceOpWithNewOp<P4HIR::ConstOp>(op, trueAttr);
+        
             return success();
         }
 
