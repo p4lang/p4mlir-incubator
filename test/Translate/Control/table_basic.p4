@@ -1,4 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | diff -u - %s.ref
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | p4test -
 
 match_kind {
     exact,

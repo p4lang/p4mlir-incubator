@@ -1,4 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | diff -u - %s.ref
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | p4test -
 
 // CHECK-LABEL:   p4hir.control @InnerPipe(%arg0: !b10i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "arg1"}, %arg1: !i16i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "arg2"}, %arg2: !p4hir.ref<!i16i> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "arg3"})()
 control InnerPipe(bit<10> arg1, in int<16> arg2, out int<16> arg3) {
