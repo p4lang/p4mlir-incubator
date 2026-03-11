@@ -189,7 +189,7 @@ def TableActionsOp : P4HIR_Op<"table_actions", [ Annotated,
 
 def TableActionOp : P4HIR_Op<"table_action",
     [AutomaticAllocationScope, NoTerminator, Annotated,
-     // DeclareOpInterfaceMethods<SymbolUserOpInterface>
+     DeclareOpInterfaceMethods<SymbolUserOpInterface>
     ]> {
   let arguments = (ins TypeAttrOf<FuncType>:$cplaneType, FlatSymbolRefAttr:$action,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
