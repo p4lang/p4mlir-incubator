@@ -102,4 +102,24 @@ def PacketExtractVariableOp : P4CoreLib_Op<"extract_header_variable"> {
     }];
 }
 
+def StaticAssertOp : P4CoreLib_Op<"static_assert"> {
+    let summary = "Compile-time assertion";
+    let description = [{
+        Represents a compile-time assertion. The condition must eventually
+        evaluate to a constant boolean. If the condition is true, this op
+        can be folded away. If false, a separate pass will emit an error.
+        
+        Optionally includes a message string for error reporting.
+    }];
+
+    let arguments = (ins BooleanType:$cond,
+                         OptionalAttr<StrAttr>:$message);
+    let results = (outs BooleanType:$result);
+    let assemblyFormat = [{
+      $cond (`message` $message^)? attr-dict `:` type($cond) `->` type($result)
+    }];
+    
+    let hasFolder = 1;
+}
+
 #endif //P4MLIR_DIALECT_P4CORELIB_P4CORELIB_OPS_TD

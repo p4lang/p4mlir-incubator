@@ -4,6 +4,7 @@
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
@@ -82,6 +83,33 @@ struct CallOpConversionPattern : public OpConversionPattern<P4HIR::CallOp> {
         if (callee.getLeafReference() == "verify") {
             rewriter.replaceOpWithNewOp<P4CoreLib::VerifyOp>(op, mlir::TypeRange(),
                                                              operands.getArgOperands());
+            return success();
+        }
+        // Handle static_assert: lower to P4CoreLib::StaticAssertOp
+        if (callee.getLeafReference().getValue().starts_with("static_assert")) {
+            auto args = operands.getArgOperands();
+        
+            if (args.empty())
+                return op.emitError("static_assert requires a condition");
+        
+            Value cond = args[0];
+            StringAttr message = nullptr;
+            if (args.size() == 2) {
+                if (auto constOp = args[1].getDefiningOp<P4HIR::ConstOp>()) {
+                    message = llvm::dyn_cast<StringAttr>(constOp.getValue());
+                }
+                 if (!message) {
+                    op.emitWarning("static_assert message is not a compile-time constant; ignoring");
+                 }
+                
+            }
+              
+            rewriter.replaceOpWithNewOp<P4CoreLib::StaticAssertOp>(
+                op,
+                op.getResult().getType(),
+                cond,
+                message
+            );
             return success();
         }
 
