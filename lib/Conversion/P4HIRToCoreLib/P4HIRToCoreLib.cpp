@@ -85,31 +85,31 @@ struct CallOpConversionPattern : public OpConversionPattern<P4HIR::CallOp> {
                                                              operands.getArgOperands());
             return success();
         }
-        // Handle static_assert: compile-time assertion
+        // Handle static_assert: lower to P4CoreLib::StaticAssertOp
         if (callee.getLeafReference().getValue().starts_with("static_assert")) {
             auto args = operands.getArgOperands();
         
             if (args.empty())
                 return op.emitError("static_assert requires a condition");
         
-            // Ensure the condition is a compile-time constant
-            Attribute constAttr;
-            if (!matchPattern(args[0], m_Constant(&constAttr)))
-                return op.emitError("static_assert condition must be constant");
-        
-            // Ensure the constant is boolean
-            auto boolAttr = llvm::dyn_cast<P4HIR::BoolAttr>(constAttr);
-            if (!boolAttr)
-                return op.emitError("static_assert condition must be boolean");
-        
-            // If condition is false, emit compile-time error
-            if (!boolAttr.getValue())
-                return op.emitError("static assertion failed");
-        
-            // If condition is true, replace the call with a constant true
-            auto trueAttr = P4HIR::BoolAttr::get(rewriter.getContext(), true);
-            rewriter.replaceOpWithNewOp<P4HIR::ConstOp>(op, trueAttr);
-        
+            Value cond = args[0];
+            StringAttr message = nullptr;
+            if (args.size() == 2) {
+                if (auto constOp = args[1].getDefiningOp<P4HIR::ConstOp>()) {
+                    message = llvm::dyn_cast<StringAttr>(constOp.getValue());
+                }
+                 if (!message) {
+                    op.emitWarning("static_assert message is not a compile-time constant; ignoring");
+                 }
+                
+            }
+              
+            rewriter.replaceOpWithNewOp<P4CoreLib::StaticAssertOp>(
+                op,
+                op.getResult().getType(),
+                cond,
+                message
+            );
             return success();
         }
 

@@ -344,4 +344,24 @@ def SymbolDCE : Pass<"p4hir-symbol-dce"> {
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// EvaluateStaticAssert
+//===----------------------------------------------------------------------===//
+
+def EvaluateStaticAssert : Pass<"p4hir-evaluate-static-assert", "mlir::ModuleOp"> {
+  let summary = "Evaluate static_assert operations";
+  let description = [{
+    Evaluates p4corelib.static_assert operations at compile time:
+    - If condition is constant true: removes the assertion (replaces with constant true)
+    - If condition is constant false: emits compile-time error
+    - If condition is not yet constant: leaves for later evaluation
+  }];
+
+  let constructor = "P4MLIR::createEvaluateStaticAssertPass()";
+  let dependentDialects = [
+    "P4MLIR::P4CoreLib::P4CoreLibDialect",
+    "P4MLIR::P4HIR::P4HIRDialect"
+  ];
+}
+
 #endif // P4MLIR_TRANSFORMS_PASSES_TD
