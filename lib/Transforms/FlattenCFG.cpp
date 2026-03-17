@@ -86,9 +86,7 @@ class ScopeOpFlattening : public mlir::OpRewritePattern<P4HIR::ScopeOp> {
         mlir::OpBuilder::InsertionGuard guard(rewriter);
         auto loc = scopeOp.getLoc();
 
-        // Empty scope: just remove it.
-        // TODO: Decide if we'd need to do something with annotated scopes
-        if (scopeOp.isEmpty()) {
+        if (scopeOp.isEmpty() && !scopeOp.getAnnotations()) {
             rewriter.eraseOp(scopeOp);
             return mlir::success();
         }

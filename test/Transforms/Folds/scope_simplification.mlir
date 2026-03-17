@@ -68,8 +68,32 @@ module {
 
   // CHECK-LABEL: @empty_scope_with_annotations_preserved
   p4hir.func @empty_scope_with_annotations_preserved(%arg0: !ref_i32i) {
-    // TODO: Doesn't work(but should)
+    // Empty scopes with annotations should be preserved
+    // CHECK: p4hir.scope annotations {name = "test"} {
+    // CHECK-NEXT: }
+    // CHECK-NEXT: p4hir.return
     p4hir.scope annotations {name = "test"} {
+    }
+    p4hir.return
+  }
+
+  // CHECK-LABEL: @empty_scope_with_atomic_removed
+  p4hir.func @empty_scope_with_atomic_removed(%arg0: !ref_i32i) {
+    // Empty scopes with only @atomic annotation should be removed
+    // CHECK-NOT: p4hir.scope
+    // CHECK: p4hir.return
+    p4hir.scope annotations {atomic} {
+    }
+    p4hir.return
+  }
+
+  // CHECK-LABEL: @empty_scope_with_atomic_and_name_preserved
+  p4hir.func @empty_scope_with_atomic_and_name_preserved(%arg0: !ref_i32i) {
+    // Empty scopes with @atomic plus other annotations should be preserved
+    // CHECK: p4hir.scope annotations {atomic, name = "debug"} {
+    // CHECK-NEXT: }
+    // CHECK-NEXT: p4hir.return
+    p4hir.scope annotations {atomic, name = "debug"} {
     }
     p4hir.return
   }
