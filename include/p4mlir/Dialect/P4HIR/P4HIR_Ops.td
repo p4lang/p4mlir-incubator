@@ -699,12 +699,12 @@ def IfOp : P4HIR_Op<"if",
                        OptionalAttr<DictionaryAttr>:$thenAnnotations,
                        OptionalAttr<DictionaryAttr>:$elseAnnotations);
   let results = (outs Optional<AnyP4Type>:$result);
-  let regions = (region AnyRegion:$thenRegion, AnyRegion:$elseRegion);
+  let regions = (region MaxSizedRegion<1>:$thenRegion, MaxSizedRegion<1>:$elseRegion);
 
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let skipDefaultBuilders = 1;
-  let hasCanonicalizeMethod = 1;
+  let hasCanonicalizeMethod = 0;
   let builders = [
     OpBuilder<(ins "mlir::Value":$cond, "bool":$withElseRegion,
                    "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$thenBuilder,
@@ -720,6 +720,15 @@ def IfOp : P4HIR_Op<"if",
             thenBuilder, mlir::DictionaryAttr(), elseBuilder, mlir::DictionaryAttr());
     }]>,
   ];
+
+  let extraClassDeclaration = [{
+    mlir::Block *thenBlock();
+    P4HIR::YieldOp thenYield();
+    mlir::Block *elseBlock();
+    P4HIR::YieldOp elseYield();
+    static void getCanonicalizationPatterns(mlir::RewritePatternSet &results,
+                                            mlir::MLIRContext *context);
+  }];
 }
 
 def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",

@@ -646,8 +646,7 @@ OpFoldResult P4HIR::ConcatOp::fold(FoldAdaptor adaptor) {
     unsigned resultWidth = resultType.getWidth();
     unsigned rhsWidth = cast<P4HIR::BitsType>(getRhs().getType()).getWidth();
 
-    auto result = (lhsVal.zextOrTrunc(resultWidth) << rhsWidth) |
-                  rhsVal.zextOrTrunc(resultWidth);
+    auto result = (lhsVal.zextOrTrunc(resultWidth) << rhsWidth) | rhsVal.zextOrTrunc(resultWidth);
 
     return P4HIR::IntAttr::get(getContext(), resultType, result);
 }
@@ -1168,70 +1167,87 @@ void P4HIR::IfOp::build(OpBuilder &builder, OperationState &result, Value cond, 
     }
 }
 
-LogicalResult P4HIR::IfOp::canonicalize(P4HIR::IfOp op, PatternRewriter &rewriter) {
-    auto isEmptyRegion = [](mlir::Region &region) {
-        if (region.empty()) return true;
-        if (region.hasOneBlock()) {
-            auto *firstOp = &region.front().front();
-            if (auto yieldOp = mlir::dyn_cast<P4HIR::YieldOp>(firstOp)) {
-                return yieldOp.getOperands().empty();
-            }
-        }
-        return false;
-    };
+Block *P4HIR::IfOp::thenBlock() { return &getThenRegion().back(); }
 
-    bool emptyThen = isEmptyRegion(op.getThenRegion()) && !op.getThenAnnotations();
-    bool emptyElse = isEmptyRegion(op.getElseRegion()) && !op.getElseAnnotations();
+P4HIR::YieldOp P4HIR::IfOp::thenYield() { return cast<P4HIR::YieldOp>(&thenBlock()->back()); }
 
-    if (emptyThen && emptyElse) {
-        // Remove an empty if statement.
-        rewriter.eraseOp(op);
+Block *P4HIR::IfOp::elseBlock() {
+    Region &r = getElseRegion();
+    if (r.empty()) return nullptr;
+    return &r.back();
+}
+
+P4HIR::YieldOp P4HIR::IfOp::elseYield() { return cast<P4HIR::YieldOp>(&elseBlock()->back()); }
+
+namespace {
+struct RemoveEmptyElseBranch : public OpRewritePattern<P4HIR::IfOp> {
+    using OpRewritePattern<P4HIR::IfOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::IfOp ifOp, PatternRewriter &rewriter) const override {
+        // Cannot remove else region when there are operation results.
+        if (ifOp.getNumResults()) return failure();
+        Block *elseBlock = ifOp.elseBlock();
+        if (!elseBlock || !llvm::hasSingleElement(*elseBlock)) return failure();
+        auto newIfOp = rewriter.cloneWithoutRegions(ifOp);
+        rewriter.inlineRegionBefore(ifOp.getThenRegion(), newIfOp.getThenRegion(),
+                                    newIfOp.getThenRegion().begin());
+        rewriter.eraseOp(ifOp);
         return success();
-    } else if (emptyElse) {
-        if (!op.getElseRegion().empty()) {
-            // Remove an empty else branch.
-            rewriter.modifyOpInPlace(op, [&]() {
-                op.getElseRegion().getBlocks().clear();
-            });
+    }
+};
 
-            return success();
-        }
-    } else if (emptyThen) {
-        // if (c) then {} else B -> if (!c) then B
-        rewriter.modifyOpInPlace(op, [&]() {
-            auto invertedCond = rewriter.createOrFold<P4HIR::UnaryOp>(op.getCondition().getLoc(),
-                                                                      P4HIR::UnaryOpKind::LNot, op.getCondition());
-            op.getConditionMutable().assign(invertedCond);
-            op.getThenRegion().takeBody(op.getElseRegion());
-            op.setThenAnnotationsAttr(op.getElseAnnotationsAttr());
-            op.setElseAnnotationsAttr({});
+struct RemoveEmptyThenBranch : public OpRewritePattern<P4HIR::IfOp> {
+    using OpRewritePattern<P4HIR::IfOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::IfOp ifOp, PatternRewriter &rewriter) const override {
+        // Cannot remove then region when there are operation results.
+        if (ifOp.getNumResults()) return failure();
+        Block *thenBlock = ifOp.thenBlock();
+        if (!thenBlock || !llvm::hasSingleElement(*thenBlock)) return failure();
+        auto invertedCond = rewriter.createOrFold<P4HIR::UnaryOp>(
+            ifOp.getCondition().getLoc(), P4HIR::UnaryOpKind::LNot, ifOp.getCondition());
+        auto newIfOp = rewriter.cloneWithoutRegions(ifOp);
+        rewriter.inlineRegionBefore(ifOp.getElseRegion(), newIfOp.getThenRegion(),
+                                    newIfOp.getThenRegion().begin());
+        newIfOp.getConditionMutable().assign(invertedCond);
+
+        rewriter.eraseOp(ifOp);
+        return success();
+    }
+};
+
+struct InvertIfCondition : public OpRewritePattern<P4HIR::IfOp> {
+    using OpRewritePattern<P4HIR::IfOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::IfOp ifOp, PatternRewriter &rewriter) const override {
+        Block *thenBlock = ifOp.thenBlock(), *elseBlock = ifOp.elseBlock();
+        if (!thenBlock || !elseBlock) return failure();
+
+        auto condStmt = ifOp.getCondition().getDefiningOp<P4HIR::UnaryOp>();
+        if (!condStmt || condStmt.getKind() != P4HIR::UnaryOpKind::LNot) return failure();
+
+        // Swap basic blocks
+        auto &thenRegion = ifOp.getThenRegion();
+        auto &elseRegion = ifOp.getElseRegion();
+
+        rewriter.moveBlockBefore(elseBlock, &thenRegion, thenRegion.begin());
+        rewriter.moveBlockBefore(thenBlock, &elseRegion, elseRegion.begin());
+
+        rewriter.modifyOpInPlace(ifOp, [&]() {
+            ifOp.getConditionMutable().assign(condStmt.getInput());
+
+            mlir::DictionaryAttr thenAttrs = ifOp.getThenAnnotationsAttr();
+            ifOp.setThenAnnotationsAttr(ifOp.getElseAnnotationsAttr());
+            ifOp.setElseAnnotationsAttr(thenAttrs);
         });
 
         return success();
-    } else {
-        auto condStmt = op.getCondition().getDefiningOp<P4HIR::UnaryOp>();
-
-        if (condStmt && condStmt.getKind() == P4HIR::UnaryOpKind::LNot) {
-            // if (!c) then A else B -> if (c) then B else A
-            rewriter.modifyOpInPlace(op, [&]() {
-                op.getConditionMutable().assign(condStmt.getInput());
-
-                mlir::Block *thenBlock = &op.getThenRegion().front();
-                op.getThenRegion().getBlocks().splice(op.getThenRegion().getBlocks().begin(),
-                                                      op.getElseRegion().getBlocks());
-                op.getElseRegion().getBlocks().splice(op.getElseRegion().getBlocks().begin(),
-                                                      op.getThenRegion().getBlocks(), thenBlock);
-
-                mlir::DictionaryAttr thenAttrs = op.getThenAnnotationsAttr();
-                op.setThenAnnotationsAttr(op.getElseAnnotationsAttr());
-                op.setElseAnnotationsAttr(thenAttrs);
-            });
-
-            return success();
-        }
     }
+};
+}  // namespace
 
-    return failure();
+void P4HIR::IfOp::getCanonicalizationPatterns(RewritePatternSet &results, MLIRContext *context) {
+    results.add<RemoveEmptyElseBranch, RemoveEmptyThenBranch, InvertIfCondition>(context);
 }
 
 static mlir::LogicalResult verifyReturnLike(mlir::Operation *op, bool mayHaveNoOperands) {
@@ -2131,8 +2147,8 @@ LogicalResult P4HIR::SliceOp::canonicalize(P4HIR::SliceOp op, PatternRewriter &r
     if (auto innerSlice = op.getInput().getDefiningOp<P4HIR::SliceOp>()) {
         unsigned newLow = innerSlice.getLowBit() + op.getLowBit();
         unsigned newHigh = innerSlice.getLowBit() + op.getHighBit();
-        auto result = rewriter.createOrFold<P4HIR::SliceOp>(
-            op.getLoc(), op.getType(), innerSlice.getInput(), newHigh, newLow);
+        auto result = rewriter.createOrFold<P4HIR::SliceOp>(op.getLoc(), op.getType(),
+                                                            innerSlice.getInput(), newHigh, newLow);
         rewriter.replaceOp(op, result);
         return success();
     }
