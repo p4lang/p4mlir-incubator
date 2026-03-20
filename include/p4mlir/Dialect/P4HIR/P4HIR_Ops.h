@@ -4,6 +4,7 @@
 // We explicitly do not use push / pop for diagnostic in
 // order to propagate pragma further on
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wambiguous-reversed-operator"
 
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/BuiltinTypes.h"
