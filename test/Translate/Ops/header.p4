@@ -1,4 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | diff -u - %s.ref
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | p4test -
 
 // CHECK: !E = !p4hir.header<"E", __valid: !validity_bit>
 // CHECK: !H = !p4hir.header<"H", x: !b32i, y: !b32i, __valid: !validity_bit>

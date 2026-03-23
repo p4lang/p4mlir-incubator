@@ -1,4 +1,6 @@
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | diff -u - %s.ref
+// RUN: p4mlir-translate --typeinference-only --no-dump --Wdisable --dump-exported-p4 %s | p4test -
 
 // CHECK-LABEL: p4hir.func action @foo(%arg0: !b16i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "arg1"}, %arg1: !p4hir.ref<!i10i> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "arg2"}, %arg2: !p4hir.ref<!b16i> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "arg3"}, %arg3: !b16i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "arg4"})
 // CHECK:  p4hir.return

@@ -1,0 +1,18 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+enum Suits {
+    Clubs,
+    Diamonds,
+    Hearths,
+    Spades
+}
+action test(inout bit<42> a, Suits b) {
+    Suits d = Suits.Diamonds;
+
+    return;
+}
+

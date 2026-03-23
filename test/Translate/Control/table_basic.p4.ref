@@ -1,0 +1,53 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+enum action_run_0 {
+    a,
+    b
+}
+enum action_run_1 {
+    a,
+    b,
+    aa
+}
+extern ActionProfile {
+    ActionProfile(bit<32> size);
+}
+
+control c(in bit<32> arg) {
+    action a(bit<32> carg) {
+        return;
+    }
+    action aa(in bit<32> arg, int<8> carg) {
+        return;
+    }
+    action b() {
+        return;
+    }
+    table t1 {
+        actions = {
+            a;
+            b;
+        }
+        default_action = b();
+    }
+    table t2 {
+        key = {
+            arg : exact @name("arg.key") ;
+            false : lpm @name("false.key") ;
+        }
+        actions = {
+            a;
+            b;
+            aa(arg);
+        }
+        default_action = b();
+        const size = 42;
+    }
+    apply {
+        t1.apply();
+    }
+}

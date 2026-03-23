@@ -1,0 +1,47 @@
+match_kind {
+    exact,
+    ternary,
+    lpm
+}
+
+bit<16> max(in bit<16> left, in bit<16> right) {
+    return right;
+}
+
+action bar(in bit<16> arg1, in bit<16> arg2, out bit<16> res) {
+    max(arg1, arg2);
+    res = max(arg1, arg2);
+    return;
+}
+
+extern void f(inout bit<1> x, in bit<1> y);
+
+extern bit<1> g(inout bit<1> z);
+
+action test_param() {
+    bit<1> a;
+
+    {
+        bit<1> x_inout_arg;
+        x_inout_arg = a;
+        {
+            bit<1> z_inout_arg;
+            z_inout_arg = a;
+            g(z_inout_arg);
+            a = z_inout_arg;
+        }
+        bit<1> __scope_tmp_0;
+        {
+            bit<1> z_inout_arg;
+
+            z_inout_arg = a;
+            g(z_inout_arg);
+            a = z_inout_arg;
+            __scope_tmp_0 = g(z_inout_arg);
+        }
+        f(x_inout_arg, __scope_tmp_0);
+        a = x_inout_arg;
+    }
+    return;
+}
+
