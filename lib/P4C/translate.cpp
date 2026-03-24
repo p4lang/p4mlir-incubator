@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <climits>
 
-#include "ir/ir-generated.h"
-
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -16,6 +14,7 @@
 #include "lib/big_int.h"
 #include "lib/indent.h"
 #include "lib/log.h"
+#include "lib/source_file.h"
 #pragma GCC diagnostic pop
 
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
@@ -54,14 +53,22 @@ namespace {
 // Converts P4 SourceLocation stored in 'node' into its MLIR counterpart
 mlir::Location getLoc(mlir::OpBuilder &builder, const P4::IR::Node *node) {
     CHECK_NULL(node);
+
     auto sourceInfo = node->getSourceInfo();
     if (!sourceInfo.isValid()) return mlir::UnknownLoc::get(builder.getContext());
 
+    P4::cstring fileName = sourceInfo.getSourceFile();
     const auto &start = sourceInfo.getStart();
-    const auto &pos = sourceInfo.toPosition();
+    const auto &end = sourceInfo.getEnd();
+    const auto &posStart = sourceInfo.toPosition();
+    const auto &posEnd = sourceInfo.toPositionEnd();
 
-    return mlir::FileLineColLoc::get(builder.getStringAttr(pos.fileName.string_view()),
-                                     pos.sourceLine, start.getColumnNumber());
+    // TODO: This is actually not correct as we are mixing original file lines
+    // (before preprocessor) with physical columns (after preprocessor), but p4c
+    // does not give / track original columns at all...
+    return mlir::FileLineColRange::get(builder.getStringAttr(fileName.string_view()),
+                                       posStart.sourceLine, start.getColumnNumber() + 1,
+                                       posEnd.sourceLine, end.getColumnNumber() + 1);
 }
 
 mlir::Location getEndLoc(mlir::OpBuilder &builder, const P4::IR::Node *node) {
