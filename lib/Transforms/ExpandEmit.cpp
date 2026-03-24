@@ -29,7 +29,7 @@ struct ExpandEmitPass : public P4::P4MLIR::impl::ExpandEmitBase<ExpandEmitPass> 
 };
 
 struct ExpandEmitPattern : public mlir::OpRewritePattern<P4CoreLib::PacketEmitOp> {
-    ExpandEmitPattern(MLIRContext *context) : OpRewritePattern(context) {}
+    explicit ExpandEmitPattern(MLIRContext *context) : OpRewritePattern(context) {}
     mlir::LogicalResult matchAndRewrite(P4CoreLib::PacketEmitOp emitOp,
                                         mlir::PatternRewriter &rewriter) const override {
         auto dstPkt = emitOp.getPacketOut();

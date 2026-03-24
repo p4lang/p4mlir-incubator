@@ -50,12 +50,13 @@ limitations under the License.
 #include "lib/error.h"
 #include "lib/gc.h"
 #include "options.h"
-#include "p4mlir/Common/Registration.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass/PassManager.h"
+#include "p4mlir/Common/Registration.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/Pipelines/Passes.h"
@@ -199,6 +200,9 @@ int main(int argc, char *const argv[]) {
 
     mlir::MLIRContext context(registry);
     context.loadAllAvailableDialects();
+
+    llvm::SourceMgr sourceMgr;
+    mlir::SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
 
     auto mod = P4::P4MLIR::toMLIR(context, program, &typeMap);
     if (!mod) return EXIT_FAILURE;
