@@ -290,12 +290,19 @@ static P4HIR::BinOp getDefiningBinop(P4HIR::BinOpKind kind, mlir::Value val) {
 }
 
 LogicalResult P4HIR::UnaryOp::verify() {
+    auto type = getInput().getType();
+
     switch (getKind()) {
         case P4HIR::UnaryOpKind::Neg:
         case P4HIR::UnaryOpKind::UPlus:
         case P4HIR::UnaryOpKind::Cmpl:
+            if (!mlir::isa<P4HIR::BitsType>(type))
+                return emitOpError("arithmetic and bitwise unary operations require bit or int type");
+            return success();
+
         case P4HIR::UnaryOpKind::LNot:
-            // Nothing to verify.
+            if (!mlir::isa<P4HIR::BoolType>(type))
+                return emitOpError("logical not requires boolean type");
             return success();
     }
 
