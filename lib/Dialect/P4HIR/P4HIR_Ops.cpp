@@ -250,16 +250,71 @@ OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
     return {};
 }
 
+/// Returns true if folding a cast chain A -> B -> C into A -> C preserves
+/// the cast semantics
+///
+/// Fold is safe when:
+/// - w_B >= w_C: second cast doesn't widen (truncation and reinterpretation
+///   are sign-independent), OR
+/// - w_A <= w_B AND s_A == s_B: first cast doesn't truncate and preserves
+///   signedness, so the widening in the second cast uses the same extension
+///   type as the direct A -> C cast would.
+static bool isSafeCastComposition(mlir::Type srcType, mlir::Type midType, mlir::Type dstType) {
+    auto srcBits = mlir::dyn_cast<P4HIR::BitsType>(srcType);
+    auto midBits = mlir::dyn_cast<P4HIR::BitsType>(midType);
+    auto dstBits = mlir::dyn_cast<P4HIR::BitsType>(dstType);
+
+    if (srcBits && midBits && dstBits) {
+        unsigned wA = srcBits.getWidth();
+        unsigned wB = midBits.getWidth();
+        unsigned wC = dstBits.getWidth();
+
+        // Safe if the second cast doesn't widen.
+        if (wB >= wC) return true;
+
+        // Second cast widens (wB < wC). Safe only if the first cast doesn't
+        // truncate and preserves signedness, so the composed extension matches
+        // the direct A -> C extension.
+        return wA <= wB && srcBits.isSigned() == midBits.isSigned();
+    }
+
+    // For non-BitsType chains, be conservative and don't fold.
+    return false;
+}
+
 LogicalResult P4HIR::CastOp::canonicalize(P4HIR::CastOp op, PatternRewriter &rewriter) {
     // Composition.
     // %b = cast(%a) : A -> B
     //      cast(%b) : B -> C
     // ===> cast(%a) : A -> C
     if (auto inputCast = mlir::dyn_cast_if_present<CastOp>(op.getSrc().getDefiningOp())) {
-        auto bitcast =
-            rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), op.getType(), inputCast.getSrc());
-        rewriter.replaceOp(op, bitcast);
-        return success();
+        mlir::Type srcType = inputCast.getSrc().getType();
+        mlir::Type midType = inputCast.getType();
+        mlir::Type dstType = op.getType();
+
+        auto isBit1Type = [](mlir::Type type) {
+            auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(type);
+            return bitsType && bitsType.getWidth() == 1 && !bitsType.isSigned();
+        };
+
+        // bool -> bit<1> -> bool roundtrip.
+        if (mlir::isa<P4HIR::BoolType>(srcType) && srcType == dstType && isBit1Type(midType)) {
+            rewriter.replaceOp(op, inputCast.getSrc());
+            return success();
+        }
+
+        // bit<1> -> bool -> bit<1> roundtrip.
+        if (isBit1Type(srcType) && srcType == dstType && mlir::isa<P4HIR::BoolType>(midType)) {
+            rewriter.replaceOp(op, inputCast.getSrc());
+            return success();
+        }
+
+        if (isSafeCastComposition(srcType, midType, dstType)) {
+            auto bitcast =
+                rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), op.getType(), inputCast.getSrc());
+            rewriter.replaceOp(op, bitcast);
+            return success();
+        }
     }
 
     return failure();
@@ -295,12 +350,13 @@ LogicalResult P4HIR::UnaryOp::verify() {
     switch (getKind()) {
         case P4HIR::UnaryOpKind::Neg:
         case P4HIR::UnaryOpKind::UPlus:
-            if (!mlir::isa<P4HIR::BitsType,P4HIR::InfIntType>(type))
+            if (!mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(type))
                 return emitOpError("arithmetic unary operations require integer-like type");
             return success();
         case P4HIR::UnaryOpKind::Cmpl:
             if (!mlir::isa<P4HIR::BitsType>(type))
-                return emitOpError("bitwise complement operations require fixed-width integer type");
+                return emitOpError(
+                    "bitwise complement operations require fixed-width integer type");
             return success();
 
         case P4HIR::UnaryOpKind::LNot:
