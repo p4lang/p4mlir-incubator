@@ -250,12 +250,57 @@ OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
     return {};
 }
 
+/// Returns true if folding a cast chain A -> B -> C into A -> C preserves
+/// the cast semantics
+///
+/// The key unsafe case is when the second cast widens (w_B < w_C), because
+/// the extension type (zero vs sign) depends on the source's signedness.
+/// If the intermediate type B differs from A in a way that changes how
+/// the widening is performed, the fold would alter semantics.
+///
+/// Fold is safe when:
+/// - w_B >= w_C: second cast doesn't widen (truncation and reinterpretation
+///   are sign-independent), OR
+/// - w_A <= w_B AND s_A == s_B: first cast doesn't truncate and preserves
+///   signedness, so the widening in the second cast uses the same extension
+///   type as the direct A -> C cast would.
+static bool isSafeCastComposition(mlir::Type srcType, mlir::Type midType, mlir::Type dstType) {
+    if (srcType == midType || midType == dstType) return true;
+
+    auto srcBits = mlir::dyn_cast<P4HIR::BitsType>(srcType);
+    auto midBits = mlir::dyn_cast<P4HIR::BitsType>(midType);
+    auto dstBits = mlir::dyn_cast<P4HIR::BitsType>(dstType);
+
+    if (srcBits && midBits && dstBits) {
+        unsigned wA = srcBits.getWidth();
+        unsigned wB = midBits.getWidth();
+        unsigned wC = dstBits.getWidth();
+
+        // Safe if the second cast doesn't widen.
+        if (wB >= wC) return true;
+
+        // Second cast widens (wB < wC). Safe only if the first cast doesn't
+        // truncate and preserves signedness, so the composed extension matches
+        // the direct A -> C extension.
+        return wA <= wB && srcBits.isSigned() == midBits.isSigned();
+    }
+
+    // For non-BitsType chains, be conservative and don't fold.
+    return false;
+}
+
 LogicalResult P4HIR::CastOp::canonicalize(P4HIR::CastOp op, PatternRewriter &rewriter) {
     // Composition.
     // %b = cast(%a) : A -> B
     //      cast(%b) : B -> C
     // ===> cast(%a) : A -> C
     if (auto inputCast = mlir::dyn_cast_if_present<CastOp>(op.getSrc().getDefiningOp())) {
+        mlir::Type srcType = inputCast.getSrc().getType();
+        mlir::Type midType = inputCast.getType();
+        mlir::Type dstType = op.getType();
+
+        if (!isSafeCastComposition(srcType, midType, dstType)) return failure();
+
         auto bitcast =
             rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), op.getType(), inputCast.getSrc());
         rewriter.replaceOp(op, bitcast);
