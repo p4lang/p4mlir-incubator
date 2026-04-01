@@ -201,6 +201,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     using SymbolScope = SymbolTable::ScopeTy;
     SymbolTable p4Symbols;
 
+    bool defaultInitialize = false;
+
     mlir::TypedAttr resolveConstant(const P4::IR::CompileTimeValue *ctv);
     mlir::Value resolveReference(const P4::IR::Node *node, bool unchecked = false);
 
@@ -328,8 +330,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
  public:
-    P4HIRConverter(mlir::OpBuilder &builder, P4::TypeMap *typeMap)
-        : builder(builder), typeMap(typeMap) {
+    P4HIRConverter(mlir::OpBuilder &builder, P4::TypeMap *typeMap, bool defaultInitialize = false)
+        : builder(builder), typeMap(typeMap), defaultInitialize(defaultInitialize) {
         CHECK_NULL(typeMap);
     }
 
@@ -2597,7 +2599,20 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                               "control plane values should be directionless");
 
                     placeholder = controlPlaneValues.lookup(param);
-                    BUG_CHECK(placeholder, "control plane value must be populate");
+                    // As an extension, default-initialize all unpopulated control plane values
+                    if (!placeholder) {
+                        if (defaultInitialize) {
+                            auto type = mlir::cast<P4HIR::HasDefaultValue>(getOrCreateType(param));
+                            auto defValue = type.getDefaultValue();
+                            BUG_CHECK(defValue, "cannot resolve default value for %1%", param);
+                            placeholder =
+                                builder.create<P4HIR::ConstOp>(getLoc(builder, param), defValue);
+                        } else {
+                            BUG_CHECK(placeholder,
+                                      "control plane value %1% in %2% must be populated", param,
+                                      mce);
+                        }
+                    }
                 }
 
                 operands.push_back(placeholder);
