@@ -2836,7 +2836,9 @@ LogicalResult P4HIR::SymToValueOp::verifySymbolUses(SymbolTableCollection &symbo
     auto decl = symbolTable.lookupSymbolIn(getParentModule(*this), declAttr);
     if (!decl) return emitOpError("cannot resolve symbol '") << declAttr << "' to declaration";
 
-    if (!mlir::isa<P4HIR::ControlLocalOp, P4HIR::InstantiateOp>(decl))
+    // Allow everything inside table properties and some restricted set otherwise
+    if (!(*this)->getParentOfType<P4HIR::TablePropertyOp>() &&
+        !mlir::isa<P4HIR::ControlLocalOp, P4HIR::InstantiateOp>(decl))
         return emitOpError("invalid symbol reference: ") << decl << ", expected control local";
 
     return mlir::success();

@@ -29,6 +29,13 @@ control Pipe(in MyHeader arg1, in int<16> arg2, inout int<16> arg3)(int<16> ctr_
 
     int<16> test = 52;
 
+    table otherTable {
+      key = {}
+      actions = { bar; bak(); }
+      default_action = bak();
+
+    }
+
     table myTable {
         key = {
             arg1.f1 - 1 : exact @name("arg1.key");
@@ -39,13 +46,18 @@ control Pipe(in MyHeader arg1, in int<16> arg2, inout int<16> arg3)(int<16> ctr_
         }
         // CHECK: p4hir.table_action @bar(%[[arg3:.*]]: !i16i {p4hir.param_name = "x1"}, %[[arg4:.*]]: !i16i {p4hir.param_name = "x2"}, %[[arg5:.*]]: !i16i {p4hir.param_name = "x3"}) {
         // CHECK:   p4hir.call @Pipe::@bar (%[[arg3]], %[[arg4]], %[[arg5]]) : (!i16i, !i16i, !i16i) -> ()
-        // CHECK: }        
+        // CHECK: }
         actions = { foo(arg2, arg3); bar; bak(); }
         const default_action = bak();
         prop1 = 42;
         prop2 = baz(cst);
         prop3 = baz(ctr_arg1 + 3);
         prop5 = baz(test);
+        // While property value is expected to be a proper expression, p4c allows different creazy non-expressions here.
+        prop6 = otherTable;
+        prop7 = bak;
+        prop8 = baz;
+        prop9 = Ext(123);
     }
 
     apply {

@@ -14,6 +14,7 @@
 #include "lib/big_int.h"
 #include "lib/indent.h"
 #include "lib/log.h"
+#include "lib/rtti_utils.h"
 #include "lib/source_file.h"
 #pragma GCC diagnostic pop
 
@@ -444,6 +445,12 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
                 type = getOrCreateType(var);
             else if (const auto *param = decl->to<P4::IR::Parameter>())
                 type = getOrCreateType(param);
+            else if (P4::RTTI::isAny<P4::IR::P4Table, P4::IR::P4Control, P4::IR::P4Parser,
+                                     P4::IR::P4Action, P4::IR::Method>(decl)) {
+                // This is a very special case mostly used in table properties
+                type = P4HIR::UnknownType::get(context());
+            }
+
             BUG_CHECK(type || unchecked, "unexpected symbolic reference to '%1%' (aka %2%)", node,
                       dbp(node));
 
@@ -464,7 +471,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
         mlir::Value val = p4Values->lookup(node);
         // If there is no value, then we'd need to materializer symbol's value. This is mostly
-        // done for control / parser locals, so we constraint node types above
+        // done for control / parser locals, so we constraint node types below
         if (!val) val = getValueForSymbol(node, unchecked);
         BUG_CHECK(val || unchecked, "expected '%1%' (aka %2%) to be converted", node, dbp(node));
 
