@@ -3820,7 +3820,7 @@ mlir::OwningOpRef<mlir::ModuleOp> toMLIR(mlir::MLIRContext &context,
         moduleOp.setSymName(sourceInfo.getSourceFile().string_view());
         moduleOp->setLoc(getLoc(builder, program));
     }
-    P4HIRConverter conv(builder, typeMap);
+    P4HIRConverter conv(builder, typeMap, true);
     program->apply(conv);
 
     if (!program || P4::errorCount() > 0) return nullptr;
