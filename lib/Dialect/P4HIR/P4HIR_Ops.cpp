@@ -299,8 +299,8 @@ LogicalResult P4HIR::UnaryOp::verify() {
                 return emitOpError("arithmetic unary operations require integer-like type");
             return success();
         case P4HIR::UnaryOpKind::Cmpl:
-            if (!mlir::isa<P4HIR::BitsType,P4HIR::InfIntType>(type))
-                return emitOpError("bitwise complement operations require integer-like type");
+            if (!mlir::isa<P4HIR::BitsType>(type))
+                return emitOpError("bitwise complement operations require fixed-width integer type");
             return success();
 
         case P4HIR::UnaryOpKind::LNot:

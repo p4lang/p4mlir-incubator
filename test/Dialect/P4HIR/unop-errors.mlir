@@ -15,6 +15,6 @@ module {
 module {
   %0 = p4hir.const #p4hir.bool<true> : !p4hir.bool
   %1 = p4hir.unary(cmpl, %0) : !p4hir.bool
-  // ERR: 'p4hir.unary' op bitwise complement operations require integer-like type
+  // ERR: 'p4hir.unary' op bitwise complement operations require fixed-width integer type
 }
 
