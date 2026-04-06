@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <climits>
 
+#include "p4mlir/P4C/type_converter.h"
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -97,9 +99,6 @@ mlir::APInt toAPInt(const P4::big_int &value, unsigned bitWidth = UINT_MAX) {
     return apValue;
 }
 
-class P4HIRConverter;
-class P4TypeConverter;
-
 class ConversionTracer {
  public:
     ConversionTracer(const char *Kind, const P4::IR::Node *node) {
@@ -109,1195 +108,118 @@ class ConversionTracer {
     }
     ~ConversionTracer() { LOG4_UNINDENT; }
 };
-
-// A dedicated converter for conversion of the P4 types to their destination
-// representation.
-class P4TypeConverter : public P4::Inspector, P4::ResolutionContext {
- public:
-    explicit P4TypeConverter(P4HIRConverter &converter) : converter(converter) {}
-
-    profile_t init_apply(const P4::IR::Node *node) override {
-        BUG_CHECK(!type, "Type already converted");
-        return Inspector::init_apply(node);
-    }
-
-    void end_apply(const P4::IR::Node *) override { BUG_CHECK(type, "Type not converted"); }
-
-    bool preorder(const P4::IR::Node *node) override {
-        BUG_CHECK(node->is<P4::IR::Type>(), "Invalid node");
-        return false;
-    }
-
-    bool preorder(const P4::IR::Type *type) override {
-        ::P4::error("%1%: P4 type not yet supported.", dbp(type));
-        return false;
-    }
-
-    bool preorder(const P4::IR::Type_Bits *type) override;
-    bool preorder(const P4::IR::Type_InfInt *type) override;
-    bool preorder(const P4::IR::Type_Varbits *type) override;
-    bool preorder(const P4::IR::Type_Boolean *type) override;
-    bool preorder(const P4::IR::Type_String *type) override;
-    bool preorder(const P4::IR::Type_Unknown *type) override;
-    bool preorder(const P4::IR::Type_Dontcare *type) override;
-    bool preorder(const P4::IR::Type_Typedef *type) override;
-    bool preorder(const P4::IR::Type_Name *name) override;
-    bool preorder(const P4::IR::Type_Newtype *nt) override;
-    bool preorder(const P4::IR::Type_Action *act) override;
-    bool preorder(const P4::IR::Type_Void *v) override;
-    bool preorder(const P4::IR::Type_Struct *s) override;
-    bool preorder(const P4::IR::Type_Enum *e) override;
-    bool preorder(const P4::IR::Type_Error *e) override;
-    bool preorder(const P4::IR::Type_SerEnum *se) override;
-    bool preorder(const P4::IR::Type_ActionEnum *e) override;
-    bool preorder(const P4::IR::Type_Header *h) override;
-    bool preorder(const P4::IR::Type_HeaderUnion *hu) override;
-    bool preorder(const P4::IR::Type_Array *h) override;
-    bool preorder(const P4::IR::Type_BaseList *l) override;  // covers both Type_Tuple and Type_List
-    bool preorder(const P4::IR::Type_Parser *p) override;
-    bool preorder(const P4::IR::P4Parser *a) override;
-    bool preorder(const P4::IR::Type_Control *c) override;
-    bool preorder(const P4::IR::P4Control *c) override;
-    bool preorder(const P4::IR::Type_Extern *e) override;
-    bool preorder(const P4::IR::Type_Var *tv) override;
-    bool preorder(const P4::IR::Type_Method *m) override;
-    bool preorder(const P4::IR::Type_Specialized *t) override;
-    bool preorder(const P4::IR::Type_SpecializedCanonical *t) override;
-    bool preorder(const P4::IR::Type_Package *p) override;
-    bool preorder(const P4::IR::Type_Set *s) override;
-
-    mlir::Type getType() const { return type; }
-    bool setType(const P4::IR::Type *type, mlir::Type mlirType);
-    mlir::Type convert(const P4::IR::Type *type);
-
- private:
-    P4HIRConverter &converter;
-    mlir::Type type = nullptr;
-};
-
-class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
-    mlir::OpBuilder &builder;
-
-    P4::TypeMap *typeMap = nullptr;
-    llvm::DenseMap<const P4::IR::Type *, mlir::Type> p4Types;
-    // TODO: Implement unified constant map
-    // using CTVOrExpr = std::variant<const P4::IR::CompileTimeValue *,
-    //                                const P4::IR::Expression *>;
-    // llvm::DenseMap<CTVOrExpr, mlir::TypedAttr> p4Constants;
-    llvm::DenseMap<const P4::IR::Expression *, mlir::TypedAttr> p4Constants;
-
-    llvm::DenseMap<const P4::IR::P4Table *, llvm::SmallVector<mlir::Value>> tableKeyArgsMap;
-
-    using ValueTable = llvm::ScopedHashTable<const P4::IR::Node *, mlir::Value>;
-    // We temporary swap value table inside function / action to ensure everything
-    // is properly isolated
-    ValueTable *p4Values;
-    ValueTable controlPlaneValues;
-    using ValueScope = ValueTable::ScopeTy;
-
-    using P4Symbol = std::variant<const P4::IR::Declaration *, const P4::IR::P4Parser *,
-                                  const P4::IR::P4Control *>;
-    using SymbolTable = llvm::ScopedHashTable<P4Symbol, mlir::SymbolRefAttr>;
-    using SymbolScope = SymbolTable::ScopeTy;
-    SymbolTable p4Symbols;
-
-    bool defaultInitialize = false;
-
-    mlir::TypedAttr resolveConstant(const P4::IR::CompileTimeValue *ctv);
-    mlir::Value resolveReference(const P4::IR::Node *node, bool unchecked = false);
-
-    mlir::Value getBoolConstant(mlir::Location loc, bool value) {
-        return P4HIR::ConstOp::create(builder, loc, P4HIR::BoolAttr::get(context(), value));
-    }
-    mlir::Value getStringConstant(mlir::Location loc, llvm::Twine &bytes) {
-        return P4HIR::ConstOp::create(
-            builder, loc, mlir::StringAttr::get(bytes, P4HIR::StringType::get(context())));
-    }
-    mlir::Value getIntConstant(mlir::Location loc, llvm::APInt value, mlir::Type type) {
-        return P4HIR::ConstOp::create(builder, loc, P4HIR::IntAttr::get(context(), type, value));
-    }
-    mlir::Value getUIntConstant(mlir::Location loc, uint64_t value, unsigned bitWidth) {
-        return P4HIR::ConstOp::create(
-            builder, loc,
-            P4HIR::IntAttr::get(context(), P4HIR::BitsType::get(context(), bitWidth, false),
-                                llvm::APInt(bitWidth, value)));
-    }
-    mlir::Value getSIntConstant(mlir::Location loc, uint64_t value, unsigned bitWidth) {
-        return P4HIR::ConstOp::create(
-            builder, loc,
-            P4HIR::IntAttr::get(context(), P4HIR::BitsType::get(context(), bitWidth, true),
-                                llvm::APInt(bitWidth, value, true)));
-    }
-    mlir::Value getUniversalSetConstant(mlir::Location loc) {
-        return P4HIR::ConstOp::create(builder, loc, P4HIR::UniversalSetAttr::get(context()));
-    }
-
-    mlir::TypedAttr getTypedConstant(mlir::Type type, mlir::Attribute constant) {
-        if (mlir::isa<P4HIR::BoolType>(type)) return mlir::cast<P4HIR::BoolAttr>(constant);
-
-        if (mlir::isa<P4HIR::BitsType, P4HIR::InfIntType>(type))
-            return mlir::cast<P4HIR::IntAttr>(constant);
-
-        if (mlir::isa<P4HIR::ErrorType>(type)) return mlir::cast<P4HIR::ErrorCodeAttr>(constant);
-
-        return mlir::cast<P4HIR::AggAttr>(constant);
-    }
-
-    mlir::Value emitValidityConstant(mlir::Location loc, P4HIR::ValidityBit validityConstValue) {
-        return P4HIR::ConstOp::create(builder, loc,
-                                      P4HIR::ValidityBitAttr::get(context(), validityConstValue));
-    }
-
-    void emitHeaderValidityBitAssignOp(mlir::Location loc, mlir::Value header,
-                                       P4HIR::ValidityBit validityConstValue) {
-        auto validityBitConstant = emitValidityConstant(loc, validityConstValue);
-        auto validityBitRef =
-            P4HIR::StructFieldRefOp::create(builder, loc, header, P4HIR::HeaderType::validityBit);
-        P4HIR::AssignOp::create(builder, loc, validityBitConstant, validityBitRef);
-    }
-
-    P4HIR::CmpOp emitHeaderIsValidCmpOp(mlir::Location loc, mlir::Value header,
-                                        P4HIR::ValidityBit compareWith) {
-        mlir::Value validityBitValue;
-        if (mlir::isa<P4HIR::ReferenceType>(header.getType())) {
-            auto validityBitRef = P4HIR::StructFieldRefOp::create(builder, loc, header,
-                                                                  P4HIR::HeaderType::validityBit);
-            validityBitValue = P4HIR::ReadOp::create(builder, loc, validityBitRef);
-        } else {
-            validityBitValue = P4HIR::StructExtractOp::create(builder, loc, header,
-                                                              P4HIR::HeaderType::validityBit);
-        }
-        auto validityConstant = emitValidityConstant(loc, compareWith);
-        return P4HIR::CmpOp::create(builder, loc, P4HIR::CmpOpKind::Eq, validityBitValue,
-                                    validityConstant);
-    }
-
-    P4HIR::CmpOp emitHeaderUnionIsValidCmpOp(mlir::Location loc, mlir::Value headerUnion,
-                                             P4HIR::ValidityBit compareWith) {
-        // Helper function to build the nested ternary operations recursively
-        std::function<mlir::Value(size_t)> buildNestedTernaryOp =
-            [&](size_t fieldIndex) -> mlir::Value {
-            auto headerUnionType = mlir::cast<P4HIR::HeaderUnionType>(getObjectType(headerUnion));
-            // If all the fields were checked, return false
-            if (fieldIndex >= headerUnionType.getFields().size()) {
-                return getBoolConstant(loc, false);
-            }
-
-            auto fieldInfo = headerUnionType.getFields()[fieldIndex];
-            mlir::Value header;
-            if (mlir::isa<P4HIR::ReferenceType>(headerUnion.getType())) {
-                header = P4HIR::StructFieldRefOp::create(builder, loc, headerUnion, fieldInfo.name);
-            } else {
-                header = P4HIR::StructExtractOp::create(builder, loc, headerUnion, fieldInfo.name);
-            }
-
-            // Check if this member header is valid
-            auto headerIsValid = emitHeaderIsValidCmpOp(loc, header, P4HIR::ValidityBit::Valid);
-
-            // Create a ternary operation:
-            // if this header is valid, return true,
-            // otherwise check the next header in the header union
-            auto ternaryOp = P4HIR::IfOp::create(
-                builder, loc, headerIsValid.getResult(), true,
-                [&](mlir::OpBuilder &b, mlir::Location loc) {
-                    // If this header is valid, return true
-                    P4HIR::YieldOp::create(b, loc, getBoolConstant(loc, true));
-                },
-                [&](mlir::OpBuilder &b, mlir::Location loc) {
-                    // If this header is not valid, check the next header
-                    P4HIR::YieldOp::create(b, loc, buildNestedTernaryOp(fieldIndex + 1));
-                });
-            return ternaryOp.getResult();
-        };
-
-        // Start the recursive building from the first field
-        auto isValid = buildNestedTernaryOp(0);
-
-        // Return a comparison operation for consistency with other validity checks
-        return P4HIR::CmpOp::create(
-            builder, loc, P4HIR::CmpOpKind::Eq, isValid,
-            getBoolConstant(loc, compareWith == P4HIR::ValidityBit::Valid ? true : false));
-    }
-
-    void emitSetInvalidForAllHeaders(mlir::Location loc, mlir::Value headerUnion,
-                                     const P4::cstring headerNameToSkip = nullptr) {
-        auto headerUnionType = mlir::cast<P4HIR::HeaderUnionType>(getObjectType(headerUnion));
-        llvm::for_each(headerUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
-            if (headerNameToSkip != fieldInfo.name.getValue()) {
-                auto header =
-                    P4HIR::StructFieldRefOp::create(builder, loc, headerUnion, fieldInfo.name);
-                emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
-            }
-        });
-    }
-
- public:
-    P4HIRConverter(mlir::OpBuilder &builder, P4::TypeMap *typeMap, bool defaultInitialize = false)
-        : builder(builder), typeMap(typeMap), defaultInitialize(defaultInitialize) {
-        CHECK_NULL(typeMap);
-    }
-
-    mlir::Type findType(const P4::IR::Type *type) const { return p4Types.lookup(type); }
-
-    mlir::Type setType(const P4::IR::Type *type, mlir::Type mlirType) {
-        auto [it, inserted] = p4Types.try_emplace(type, mlirType);
-        BUG_CHECK(inserted, "duplicate conversion for %1%", type);
-
-        return it->second;
-    }
-
-    mlir::Type getOrCreateConstructorType(const P4::IR::Type_Method *type) {
-        // These things are a bit special: we keep names to simplify further
-        // specialization during instantiation
-        if (auto convertedType = findType(type)) return convertedType;
-
-        ConversionTracer trace("Converting ctor type ", type);
-        llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>, 4> argTypes;
-
-        CHECK_NULL(type->parameters);
-
-        mlir::Type resultType = getOrCreateType(type->returnType);
-
-        for (const auto *p : type->parameters->parameters) {
-            mlir::Type type = getOrCreateType(p->type);
-            BUG_CHECK(p->direction == P4::IR::Direction::None, "expected directionless parameter");
-            argTypes.emplace_back(builder.getStringAttr(p->name.string_view()), type);
-        }
-
-        auto mlirType = P4HIR::CtorType::get(argTypes, resultType);
-        return setType(type, mlirType);
-    }
-
-    mlir::Type getOrCreateType(const P4::IR::Type *type) {
-        P4TypeConverter cvt(*this);
-        type->apply(cvt, getChildContext());
-        return cvt.getType();
-    }
-
-    mlir::Type getOrCreateType(const P4::IR::Expression *expr) {
-        return getOrCreateType(typeMap->getType(expr, true));
-    }
-
-    mlir::Type getOrCreateType(const P4::IR::Declaration_Variable *decl) {
-        auto declType = getOrCreateType(decl->type);
-        return P4HIR::ReferenceType::get(builder.getContext(), declType);
-    }
-
-    mlir::Type getOrCreateType(const P4::IR::Parameter *param) {
-        auto declType = getOrCreateType(param->type);
-        return param->hasOut() ? P4HIR::ReferenceType::get(builder.getContext(), declType)
-                               : declType;
-    }
-
-    // Returns underlying type in case of something of serialized enum cate
-    mlir::Type getIntType(const P4::IR::Type *type) {
-        auto baseType = getOrCreateType(type);
-        if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(baseType))
-            baseType = aliasType.getCanonicalType();
-        if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(baseType))
-            baseType = serEnumType.getType();
-        return baseType;
-    }
-
-    P4HIR::BitsType getB32Type() { return P4HIR::BitsType::get(context(), 32, false); }
-
-    mlir::Value materializeConstantExpr(const P4::IR::Expression *expr);
-    mlir::Value materializeConstantDecl(const P4::IR::Declaration_Constant *decl);
-
-    // TODO: Implement proper CompileTimeValue support
-    /*
-    mlir::TypedAttr setConstant(const P4::IR::CompileTimeValue *ctv, mlir::TypedAttr attr) {
-        auto [it, inserted] = p4Constants.try_emplace(ctv, attr);
-        BUG_CHECK(inserted, "duplicate conversion of %1%", ctv);
-        return it->second;
-    }
-    */
-
-    mlir::TypedAttr setConstantExpr(const P4::IR::Expression *expr, mlir::TypedAttr attr) {
-        auto [it, inserted] = p4Constants.try_emplace(expr, attr);
-        BUG_CHECK(inserted, "duplicate conversion of %1%", expr);
-        return it->second;
-    }
-
-    // TODO: Implement proper CompileTimeValue support
-    /*
-    mlir::TypedAttr getOrCreateConstant(const P4::IR::CompileTimeValue *ctv) {
-        BUG_CHECK(!ctv->is<P4::IR::Expression>(), "use getOrCreateConstantExpr() instead");
-        auto cst = p4Constants.lookup(ctv);
-        if (cst) return cst;
-
-        cst = resolveConstant(ctv);
-
-        BUG_CHECK(cst, "expected %1% to be converted as constant", ctv);
-        return cst;
-    }
-    */
-
-    mlir::TypedAttr getOrCreateConstantExpr(const P4::IR::Expression *expr);
-
-    mlir::Value getValueForSymbol(const P4::IR::Node *node, bool unchecked = false) {
-        // Constants are materialized elsewhere
-        if (node->is<P4::IR::Declaration_Constant>()) return {};
-
-        if (const auto *decl = node->to<P4::IR::Declaration>()) {
-            auto sym = p4Symbols.lookup(decl);
-            BUG_CHECK(sym, "expected symbol '%1%' (aka %2%) to be converted", node, dbp(node));
-            mlir::Type type;
-            if (const auto *inst = decl->to<P4::IR::Declaration_Instance>())
-                type = getOrCreateType(inst->type);
-            else if (const auto *var = decl->to<P4::IR::Declaration_Variable>())
-                type = getOrCreateType(var);
-            else if (const auto *param = decl->to<P4::IR::Parameter>())
-                type = getOrCreateType(param);
-            else if (P4::RTTI::isAny<P4::IR::P4Table, P4::IR::P4Control, P4::IR::P4Parser,
-                                     P4::IR::P4Action, P4::IR::Method>(decl)) {
-                // This is a very special case mostly used in table properties
-                type = P4HIR::UnknownType::get(context());
-            }
-
-            BUG_CHECK(type || unchecked, "unexpected symbolic reference to '%1%' (aka %2%)", node,
-                      dbp(node));
-
-            if (type) return P4HIR::SymToValueOp::create(builder, getLoc(builder, node), type, sym);
-        }
-
-        return {};
-    }
-
-    mlir::Value getValue(const P4::IR::Node *node, mlir::Type type = {}, bool unchecked = false) {
-        // If this is a PathExpression, resolve it
-        if (const auto *pe = node->to<P4::IR::PathExpression>()) {
-            const auto *target = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
-            // Constants are special. We materialize them at each use. Therefore
-            // their values are associates with PathExpression itself
-            if (!target->is<P4::IR::Declaration_Constant>()) node = target;
-        }
-
-        mlir::Value val = p4Values->lookup(node);
-        // If there is no value, then we'd need to materializer symbol's value. This is mostly
-        // done for control / parser locals, so we constraint node types below
-        if (!val) val = getValueForSymbol(node, unchecked);
-        BUG_CHECK(val || unchecked, "expected '%1%' (aka %2%) to be converted", node, dbp(node));
-
-        if (val && mlir::isa<P4HIR::ReferenceType>(val.getType()))
-            // Getting value out of variable involves a load.
-            val = P4HIR::ReadOp::create(builder, getLoc(builder, node), val);
-
-        if (type && val && val.getType() != type)
-            val = P4HIR::CastOp::create(builder, getLoc(builder, node), type, val);
-
-        return val;
-    }
-
-    mlir::Value getValue(mlir::Value val, mlir::Type type = {}) {
-        if (mlir::isa<P4HIR::ReferenceType>(val.getType()))
-            // Getting value out of variable involves a load.
-            val = P4HIR::ReadOp::create(builder, val.getLoc(), val);
-
-        if (type && val.getType() != type)
-            val = P4HIR::CastOp::create(builder, val.getLoc(), type, val);
-
-        return val;
-    }
-
-    mlir::Value setValue(const P4::IR::Node *node, mlir::Value value) {
-        if (!value) return value;
-
-        if (LOGGING(4)) {
-            std::string s;
-            llvm::raw_string_ostream os(s);
-            value.print(os, mlir::OpPrintingFlags().assumeVerified());
-            LOG4("Converted " << dbp(node) << " -> \"" << s << "\"");
-        }
-
-        BUG_CHECK(!p4Values->count(node), "duplicate conversion of %1%", node);
-
-        p4Values->insert(node, value);
-        return value;
-    }
-
-    mlir::Value convert(const P4::IR::Node *node) {
-        visit(node);
-        return getValue(node);
-    }
-
-    mlir::SymbolRefAttr setSymbol(P4Symbol symb, mlir::SymbolRefAttr value) {
-        if (!value) return value;
-
-        if (LOGGING(4)) {
-            std::string s;
-            llvm::raw_string_ostream os(s);
-            value.print(os);
-            LOG4("Bind symbol " << s);
-        }
-
-        BUG_CHECK(!p4Symbols.count(symb), "duplicate conversion of %1%");
-
-        p4Symbols.insert(symb, value);
-        return value;
-    }
-
-    /// Returns fully qualified symbols, if we're nested inside parser or control
-    mlir::SymbolRefAttr getQualifiedSymbolRef(mlir::Operation *op) {
-        auto symName = op->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName());
-        assert(symName && "value does not have a valid symbol name");
-        return getQualifiedSymbolRef(symName);
-    }
-
-    mlir::SymbolRefAttr getQualifiedSymbolRef(llvm::StringRef value) {
-        return getQualifiedSymbolRef(builder.getStringAttr(value));
-    }
-
-    mlir::SymbolRefAttr getQualifiedSymbolRef(mlir::StringAttr attr) {
-        auto leafSymbol = mlir::SymbolRefAttr::get(attr);
-
-        const auto *ctrl = getCurrentNode<P4::IR::P4Control>();
-        if (!ctrl) ctrl = findContext<P4::IR::P4Control>();
-        if (ctrl) {
-            auto controlSymbol = builder.getStringAttr(ctrl->name.string_view());
-            return mlir::SymbolRefAttr::get(controlSymbol, {leafSymbol});
-        }
-
-        const auto *parser = getCurrentNode<P4::IR::P4Parser>();
-        if (!parser) parser = findContext<P4::IR::P4Parser>();
-        if (parser) {
-            auto parserSymbol = builder.getStringAttr(parser->name.string_view());
-            return mlir::SymbolRefAttr::get(parserSymbol, {leafSymbol});
-        }
-
-        return leafSymbol;
-    }
-
-    mlir::Attribute convertAnnotationExpr(const P4::IR::Expression *ann);
-    mlir::Attribute convert(const P4::IR::Annotation *anns);
-    mlir::DictionaryAttr convert(const P4::IR::Vector<P4::IR::Annotation> &ann);
-    llvm::SmallVector<mlir::DictionaryAttr, 4> convertParamAttributes(
-        const P4::IR::ParameterList *params);
-
-    mlir::MLIRContext *context() const { return builder.getContext(); }
-
-    bool preorder(const P4::IR::Node *node) override {
-        ::P4::error("P4 construct not yet supported: %1% (aka %2%)", node, dbp(node));
-        return false;
-    }
-
-    bool preorder(const P4::IR::Type *type) override {
-        ConversionTracer trace("Converting ", type);
-        P4TypeConverter cvt(*this);
-        type->apply(cvt, getChildContext());
-        return false;
-    }
-
-    bool preorder(const P4::IR::P4Program *p) override {
-        ValueTable values;
-        p4Values = &values;
-
-        ValueScope scope(*p4Values);
-        SymbolScope symbols(p4Symbols);
-
-        // Explicitly visit child nodes to create top-level value scope
-        visit(p->objects);
-
-        return false;
-    }
-    bool preorder(const P4::IR::P4Action *a) override;
-    bool preorder(const P4::IR::Function *f) override;
-
-    bool preorder(const P4::IR::P4Parser *a) override;
-    bool preorder(const P4::IR::ParserState *s) override;
-    bool preorder(const P4::IR::SelectExpression *s) override;
-
-    bool preorder(const P4::IR::Type_Extern *e) override;
-
-    bool preorder(const P4::IR::P4Control *c) override;
-    bool preorder(const P4::IR::P4Table *t) override;
-    bool preorder(const P4::IR::Property *p) override;
-    bool preorder(const P4::IR::ActionListElement *act) override;
-    bool preorder(const P4::IR::Entry *ent) override;
-
-    bool preorder(const P4::IR::Type_Package *e) override;
-
-    bool preorder(const P4::IR::Method *m) override;
-    bool preorder(const P4::IR::BlockStatement *block) override {
-        ValueScope scope(*p4Values);
-
-        // If this is a top-level block where scope is implied (e.g. function,
-        // action, certain statements) do not create explicit scope.
-        if (getParent<P4::IR::BlockStatement>()) {
-            auto annotations = convert(block->annotations);
-            mlir::OpBuilder::InsertionGuard guard(builder);
-            auto scope = P4HIR::ScopeOp::create(
-                builder, getLoc(builder, block), annotations,
-                [&](mlir::OpBuilder &, mlir::Location) {  // nothing is being yielded
-                    visit(block->components);
-                });
-            builder.setInsertionPointToEnd(&scope.getScopeRegion().back());
-            P4HIR::YieldOp::create(builder, getEndLoc(builder, block));
-        } else
-            visit(block->components);
-        return false;
-    }
-    bool preorder(const P4::IR::SwitchStatement *sw) override;
-
-    bool preorder(const P4::IR::Constant *c) override {
-        materializeConstantExpr(c);
-        // FIXME: Serialized enum lowering might create references to the same
-        // Constant (serenum member) from multiple scope. Allow multiple
-        // materializations of the same constant until type inference will be
-        // fixed.
-        visitAgain();
-        return false;
-    }
-    bool preorder(const P4::IR::BoolLiteral *b) override {
-        materializeConstantExpr(b);
-        visitAgain();
-        return false;
-    }
-    bool preorder(const P4::IR::StringLiteral *s) override {
-        materializeConstantExpr(s);
-        visitAgain();
-        return false;
-    }
-    bool preorder(const P4::IR::Cast *c) override {
-        // Casts of constants could be used multiple times again and again. We need to visit
-        // again in order to get them scoped properly
-        if (c->expr->is<P4::IR::Literal>()) visitAgain();
-        return true;
-    }
-    void postorder(const P4::IR::Cast *c) override;
-
-    bool preorder(const P4::IR::PathExpression *e) override {
-        // Should be resolved eslewhere, except for the constants
-        if (const auto *cst = resolvePath(e->path, false)->to<P4::IR::Declaration_Constant>()) {
-            setValue(e, materializeConstantDecl(cst));
-            // visitAgain();
-        }
-
-        return false;
-    }
-    bool preorder(const P4::IR::InvalidHeader *h) override {
-        materializeConstantExpr(h);
-        visitAgain();
-        return false;
-    }
-    bool preorder(const P4::IR::InvalidHeaderUnion *hu) override {
-        materializeConstantExpr(hu);
-        visitAgain();
-        return false;
-    }
-    bool preorder(const P4::IR::Declaration_MatchKind *mk) override {
-        // Should be resolved eslewhere
-        return false;
-    }
-    bool preorder(const P4::IR::EmptyStatement *e) override {
-        // Well, it's empty
-        return false;
-    }
-
-#define HANDLE_IN_POSTORDER(NodeTy)                                 \
-    bool preorder(const P4::IR::NodeTy *) override { return true; } \
-    void postorder(const P4::IR::NodeTy *) override;
-
-    // Unary ops
-    HANDLE_IN_POSTORDER(Neg)
-    HANDLE_IN_POSTORDER(LNot)
-    HANDLE_IN_POSTORDER(UPlus)
-    HANDLE_IN_POSTORDER(Cmpl)
-
-    // Binary ops
-    HANDLE_IN_POSTORDER(Mul)
-    HANDLE_IN_POSTORDER(Div)
-    HANDLE_IN_POSTORDER(Mod)
-    HANDLE_IN_POSTORDER(Add)
-    HANDLE_IN_POSTORDER(Sub)
-    HANDLE_IN_POSTORDER(AddSat)
-    HANDLE_IN_POSTORDER(SubSat)
-    HANDLE_IN_POSTORDER(BOr)
-    HANDLE_IN_POSTORDER(BAnd)
-    HANDLE_IN_POSTORDER(BXor)
-
-    // Concat
-    HANDLE_IN_POSTORDER(Concat)
-
-    // Shift
-    HANDLE_IN_POSTORDER(Shl)
-    HANDLE_IN_POSTORDER(Shr)
-
-    // Comparisons
-    // == and != are a bit special and requires some postorder handling
-    HANDLE_IN_POSTORDER(Leq)
-    HANDLE_IN_POSTORDER(Lss)
-    HANDLE_IN_POSTORDER(Grt)
-    HANDLE_IN_POSTORDER(Geq)
-
-    HANDLE_IN_POSTORDER(ReturnStatement)
-    HANDLE_IN_POSTORDER(ContinueStatement)
-    HANDLE_IN_POSTORDER(BreakStatement)
-    HANDLE_IN_POSTORDER(ExitStatement)
-    HANDLE_IN_POSTORDER(ArrayIndex)
-    HANDLE_IN_POSTORDER(Range)
-    HANDLE_IN_POSTORDER(Mask)
-
-#undef HANDLE_IN_POSTORDER
-
-#define HANDLE_IN_PREORDER(Node, Kind)                                \
-    bool preorder(const P4::IR::Node *opAssign) override {            \
-        return expandOpAssignBinOp(opAssign, P4HIR::BinOpKind::Kind); \
-    }
-
-    HANDLE_IN_PREORDER(MulAssign, Mul)
-    HANDLE_IN_PREORDER(DivAssign, Div)
-    HANDLE_IN_PREORDER(ModAssign, Mod)
-    HANDLE_IN_PREORDER(AddAssign, Add)
-    HANDLE_IN_PREORDER(SubAssign, Sub)
-    HANDLE_IN_PREORDER(AddSatAssign, AddSat)
-    HANDLE_IN_PREORDER(SubSatAssign, SubSat)
-    HANDLE_IN_PREORDER(BAndAssign, And)
-    HANDLE_IN_PREORDER(BOrAssign, Or)
-    HANDLE_IN_PREORDER(BXorAssign, Xor)
-
-#undef HANDLE_IN_PREORDER
-
-#define HANDLE_IN_PREORDER(Node, ShiftOp)                     \
-    bool preorder(const P4::IR::Node *opAssign) override {    \
-        return expandOpAssignShift<P4HIR::ShiftOp>(opAssign); \
-    }
-
-    HANDLE_IN_PREORDER(ShlAssign, ShlOp)
-    HANDLE_IN_PREORDER(ShrAssign, ShrOp)
-
-#undef HANDLE_IN_PREORDER
-
-    void postorder(const P4::IR::Member *m) override;
-
-    bool preorder(const P4::IR::Declaration_Constant *decl) override;
-    bool preorder(const P4::IR::Declaration_Instance *decl) override;
-    bool preorder(const P4::IR::Declaration_Variable *decl) override;
-    bool preorder(const P4::IR::AssignmentStatement *assign) override;
-    bool preorder(const P4::IR::Mux *mux) override;
-    bool preorder(const P4::IR::Slice *slice) override;
-    bool preorder(const P4::IR::LOr *lor) override;
-    bool preorder(const P4::IR::LAnd *land) override;
-    bool preorder(const P4::IR::IfStatement *ifs) override;
-    bool preorder(const P4::IR::ForStatement *fstmt) override;
-    bool preorder(const P4::IR::ForInStatement *forin) override;
-    bool preorder(const P4::IR::MethodCallStatement *) override {
-        // We handle MethodCallExpression instead
-        return true;
-    }
-
-    bool preorder(const P4::IR::MethodCallExpression *mce) override;
-    bool preorder(const P4::IR::ConstructorCallExpression *cce) override;
-    bool preorder(const P4::IR::StructExpression *str) override;
-    bool preorder(const P4::IR::ListExpression *lst) override;
-    bool preorder(const P4::IR::Member *m) override;
-    bool preorder(const P4::IR::Equ *) override;
-    bool preorder(const P4::IR::Neq *) override;
-    void postorder(const P4::IR::Equ *) override;
-    void postorder(const P4::IR::Neq *) override;
-
-    mlir::Value emitUnOp(const P4::IR::Operation_Unary *unop, P4HIR::UnaryOpKind kind);
-    mlir::Value emitBinOp(const P4::IR::Operation_Binary *binop, P4HIR::BinOpKind kind);
-    mlir::Value emitConcatOp(const P4::IR::Concat *concatop);
-    mlir::Value emitCmp(const P4::IR::Operation_Relation *relop, P4HIR::CmpOpKind kind);
-
- private:
-    mlir::Value emitInvalidHeaderCmpOp(const P4::IR::Operation_Relation *p4RelationOp);
-    mlir::Value emitInvalidHeaderUnionCmpOp(const P4::IR::Operation_Relation *p4RelationOp);
-    mlir::Value emitHeaderBuiltInMethod(mlir::Location loc, const P4::BuiltInMethod *builtInMethod);
-    mlir::Value emitHeaderUnionBuiltInMethod(mlir::Location loc,
-                                             const P4::BuiltInMethod *builtInMethod);
-    mlir::Value emitHeaderStackBuiltInMethod(mlir::Location loc,
-                                             const P4::BuiltInMethod *builtInMethod);
-    mlir::Type getObjectType(mlir::Value &value) {
-        if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(value.getType()))
-            return refType.getObjectType();
-        return value.getType();
-    }
-    bool expandOpAssignBinOp(const P4::IR::OpAssignmentStatement *opAssign, P4HIR::BinOpKind kind);
-
-    template <typename ShiftOp>
-    bool expandOpAssignShift(const P4::IR::OpAssignmentStatement *opAssign);
-};
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    auto mlirType = P4HIR::BitsType::get(converter.context(), type->width_bits(), type->isSigned);
-    return setType(type, mlirType);
+}  // namespace
+
+mlir::Type P4HIRConverter::getOrCreateType(const P4::IR::Type *type) {
+    P4TypeConverter cvt(*this);
+    type->apply(cvt, getChildContext());
+    return cvt.getType();
 }
 
-bool P4TypeConverter::preorder(const P4::IR::Type_InfInt *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    auto mlirType = P4HIR::InfIntType::get(converter.context());
-    return setType(type, mlirType);
+mlir::Type P4HIRConverter::getOrCreateType(const P4::IR::Expression *expr) {
+    return getOrCreateType(typeMap->getType(expr, true));
 }
 
-bool P4TypeConverter::preorder(const P4::IR::Type_Varbits *type) {
-    if ((this->type = converter.findType(type))) return false;
+mlir::Type P4HIRConverter::getOrCreateConstructorType(const P4::IR::Type_Method *type) {
+    // These things are a bit special: we keep names to simplify further
+    // specialization during instantiation
+    if (auto convertedType = findType(type)) return convertedType;
 
-    ConversionTracer trace("TypeConverting ", type);
-    auto mlirType = P4HIR::VarBitsType::get(converter.context(), type->size);
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Boolean *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    auto mlirType = P4HIR::BoolType::get(converter.context());
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_String *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    auto mlirType = P4HIR::StringType::get(converter.context());
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Unknown *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    auto mlirType = P4HIR::UnknownType::get(converter.context());
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Dontcare *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    auto mlirType = P4HIR::DontcareType::get(converter.context());
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Var *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-
-    auto mlirType = P4HIR::TypeVarType::get(converter.context(), type->getVarName().string_view());
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Typedef *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-
-    mlir::Type mlirType = convert(type->type);
-
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Name *name) {
-    if ((this->type = converter.findType(name))) return false;
-
-    ConversionTracer trace("Resolving type by name ", name);
-    const auto *type = resolveType(name);
-    CHECK_NULL(type);
-    LOG4("Resolved to: " << dbp(type));
-
-    mlir::Type mlirType = convert(type);
-
-    return setType(name, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Set *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-
-    auto mlirType = P4HIR::SetType::get(convert(type->elementType));
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Newtype *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    mlir::Type aliasee = convert(type->type);
-
-    auto annotations = converter.convert(type->annotations);
-    auto mlirType =
-        P4HIR::AliasType::get(converter.context(), type->name.string_view(), aliasee, annotations);
-
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Action *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<mlir::Type, 4> argTypes;
-
-    BUG_CHECK(type->returnType == nullptr, "actions should not have return type set");
-    CHECK_NULL(type->parameters);
-
-    for (const auto *p : type->parameters->parameters) {
-        mlir::Type type = convert(p->type);
-        argTypes.push_back(p->hasOut() ? P4HIR::ReferenceType::get(type) : type);
-    }
-
-    auto mlirType = P4HIR::FuncType::get(converter.context(), argTypes);
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Method *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<mlir::Type, 4> argTypes;
+    ConversionTracer trace("Converting ctor type ", type);
+    llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>, 4> argTypes;
 
     CHECK_NULL(type->parameters);
 
-    mlir::Type resultType =
-        type->returnType ? convert(type->returnType) : P4HIR::VoidType::get(converter.context());
+    mlir::Type resultType = getOrCreateType(type->returnType);
 
     for (const auto *p : type->parameters->parameters) {
-        mlir::Type type = convert(p->type);
-        argTypes.push_back(p->hasOut() ? P4HIR::ReferenceType::get(type) : type);
+        mlir::Type type = getOrCreateType(p->type);
+        BUG_CHECK(p->direction == P4::IR::Direction::None, "expected directionless parameter");
+        argTypes.emplace_back(builder.getStringAttr(p->name.string_view()), type);
     }
 
-    llvm::SmallVector<mlir::Type, 1> typeParameters;
-    for (const auto *typeParam : type->getTypeParameters()->parameters)
-        typeParameters.push_back(convert(typeParam));
-
-    auto mlirType = P4HIR::FuncType::get(argTypes, resultType, typeParameters);
+    auto mlirType = P4HIR::CtorType::get(argTypes, resultType);
     return setType(type, mlirType);
 }
 
-bool P4TypeConverter::preorder(const P4::IR::P4Parser *type) {
-    if ((this->type = converter.findType(type))) return false;
+mlir::Value P4HIRConverter::getValueForSymbol(const P4::IR::Node *node, bool unchecked) {
+    // Constants are materialized elsewhere
+    if (node->is<P4::IR::Declaration_Constant>()) return {};
 
-    ConversionTracer trace("TypeConverting ", type);
-
-    return setType(type, convert(type->type));
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Parser *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-
-    llvm::SmallVector<mlir::Type, 4> argTypes;
-    for (const auto *p : type->getApplyParameters()->parameters) {
-        mlir::Type type = convert(p->type);
-        argTypes.push_back(p->hasOut() ? P4HIR::ReferenceType::get(type) : type);
-    }
-
-    auto annotations = converter.convert(type->annotations);
-    auto mlirType = P4HIR::ParserType::get(converter.context(), type->name.string_view(), argTypes,
-                                           annotations);
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::P4Control *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-
-    return setType(type, convert(type->type));
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Control *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-
-    llvm::SmallVector<mlir::Type, 4> argTypes;
-    for (const auto *p : type->getApplyParameters()->parameters) {
-        mlir::Type type = convert(p->type);
-        argTypes.push_back(p->hasOut() ? P4HIR::ReferenceType::get(type) : type);
-    }
-
-    auto annotations = converter.convert(type->annotations);
-    auto mlirType = P4HIR::ControlType::get(converter.context(), type->name.string_view(), argTypes,
-                                            annotations);
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Package *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-
-    llvm::SmallVector<mlir::Type, 1> typeParameters;
-    for (const auto *typeParam : type->typeParameters->parameters)
-        typeParameters.push_back(convert(typeParam));
-
-    auto annotations = converter.convert(type->annotations);
-    auto mlirType = P4HIR::PackageType::get(converter.context(), type->name.string_view(),
-                                            typeParameters, annotations);
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Extern *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-
-    BUG_CHECK(type->typeParameters->empty(), "expected no type parameters for ext");
-
-    auto annotations = converter.convert(type->annotations);
-    auto mlirType =
-        P4HIR::ExternType::get(converter.context(), type->name.string_view(), annotations);
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Specialized *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-
-    llvm::SmallVector<mlir::Type, 1> typeArguments;
-    for (const auto *typeArg : *type->arguments) typeArguments.push_back(convert(typeArg));
-
-    mlir::Type mlirType;
-    const auto *baseType = resolveType(type->baseType);
-    if (const auto *extType = baseType->to<P4::IR::Type_Extern>()) {
-        auto annotations = converter.convert(extType->annotations);
-        mlirType = P4HIR::ExternType::get(converter.context(), extType->name.string_view(),
-                                          typeArguments, annotations);
-    } else if (const auto *pkgType = baseType->to<P4::IR::Type_Package>()) {
-        auto annotations = converter.convert(pkgType->annotations);
-        mlirType = P4HIR::PackageType::get(converter.context(), pkgType->name.string_view(),
-                                           typeArguments, annotations);
-    } else if (baseType->is<P4::IR::Type_Parser>() || baseType->is<P4::IR::Type_Control>()) {
-        // Parser and control type might be generic in package block and ctor arguments
-        mlir::Type baseMlirType = convert(baseType);
-        auto annotations =
-            converter.convert(baseType->checkedTo<P4::IR::Type_ArchBlock>()->annotations);
-        if (auto parserType = llvm::dyn_cast<P4HIR::ParserType>(baseMlirType)) {
-            mlirType = P4HIR::ParserType::get(converter.context(), parserType.getName(),
-                                              parserType.getInputs(), typeArguments, annotations);
-        } else {
-            auto controlType = llvm::dyn_cast<P4HIR::ControlType>(baseMlirType);
-            mlirType = P4HIR::ControlType::get(converter.context(), controlType.getName(),
-                                               controlType.getInputs(), typeArguments, annotations);
+    if (const auto *decl = node->to<P4::IR::Declaration>()) {
+        auto sym = p4Symbols.lookup(decl);
+        BUG_CHECK(sym, "expected symbol '%1%' (aka %2%) to be converted", node, dbp(node));
+        mlir::Type type;
+        if (const auto *inst = decl->to<P4::IR::Declaration_Instance>())
+            type = getOrCreateType(inst->type);
+        else if (const auto *var = decl->to<P4::IR::Declaration_Variable>())
+            type = getOrCreateType(var);
+        else if (const auto *param = decl->to<P4::IR::Parameter>())
+            type = getOrCreateType(param);
+        else if (P4::RTTI::isAny<P4::IR::P4Table, P4::IR::P4Control, P4::IR::P4Parser,
+                                 P4::IR::P4Action, P4::IR::Method>(decl)) {
+            // This is a very special case mostly used in table properties
+            type = P4HIR::UnknownType::get(context());
         }
-    } else
-        BUG("Expected extern or package specialization: %1%", baseType);
 
-    return setType(type, mlirType);
-}
+        BUG_CHECK(type || unchecked, "unexpected symbolic reference to '%1%' (aka %2%)", node,
+                  dbp(node));
 
-// TODO: This should never exist outside type inference stage...
-bool P4TypeConverter::preorder(const P4::IR::Type_SpecializedCanonical *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-
-    llvm::SmallVector<mlir::Type, 1> typeArguments;
-    for (const auto *typeArg : *type->arguments) typeArguments.push_back(convert(typeArg));
-
-    mlir::Type mlirType;
-    const auto *baseType = resolveType(type->baseType);
-    if (const auto *extType = baseType->to<P4::IR::Type_Extern>()) {
-        auto annotations = converter.convert(extType->annotations);
-        mlirType = P4HIR::ExternType::get(converter.context(), extType->name.string_view(),
-                                          typeArguments, annotations);
-    } else if (const auto *pkgType = baseType->to<P4::IR::Type_Package>()) {
-        auto annotations = converter.convert(pkgType->annotations);
-        mlirType = P4HIR::PackageType::get(converter.context(), pkgType->name.string_view(),
-                                           typeArguments, annotations);
-    } else if (baseType->is<P4::IR::Type_Parser>() || baseType->is<P4::IR::Type_Control>()) {
-        // Parser and control type might be generic in package block and ctor arguments
-        mlir::Type baseMlirType = convert(baseType);
-        auto annotations =
-            converter.convert(baseType->checkedTo<P4::IR::Type_ArchBlock>()->annotations);
-        if (auto parserType = llvm::dyn_cast<P4HIR::ParserType>(baseMlirType)) {
-            mlirType = P4HIR::ParserType::get(converter.context(), parserType.getName(),
-                                              parserType.getInputs(), typeArguments, annotations);
-        } else {
-            auto controlType = llvm::dyn_cast<P4HIR::ControlType>(baseMlirType);
-            mlirType = P4HIR::ControlType::get(converter.context(), controlType.getName(),
-                                               controlType.getInputs(), typeArguments, annotations);
-        }
-    } else
-        BUG("Expected extern or package specialization: %1%", baseType);
-
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Void *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    auto mlirType = P4HIR::VoidType::get(converter.context());
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Struct *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<P4HIR::FieldInfo, 4> fields;
-    for (const auto *field : type->fields) {
-        auto fieldAnnotations = converter.convert(field->annotations);
-        fields.emplace_back(mlir::StringAttr::get(converter.context(), field->name.string_view()),
-                            convert(field->type), fieldAnnotations);
+        if (type) return P4HIR::SymToValueOp::create(builder, getLoc(builder, node), type, sym);
     }
 
-    auto annotations = converter.convert(type->annotations);
-    auto mlirType =
-        P4HIR::StructType::get(converter.context(), type->name.string_view(), fields, annotations);
-    return setType(type, mlirType);
+    return {};
 }
 
-bool P4TypeConverter::preorder(const P4::IR::Type_Header *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<P4HIR::FieldInfo, 4> fields;
-    for (const auto *field : type->fields) {
-        auto fieldAnnotations = converter.convert(field->annotations);
-        fields.emplace_back(mlir::StringAttr::get(converter.context(), field->name.string_view()),
-                            convert(field->type), fieldAnnotations);
+mlir::Value P4HIRConverter::getValue(const P4::IR::Node *node, mlir::Type type, bool unchecked) {
+    // If this is a PathExpression, resolve it
+    if (const auto *pe = node->to<P4::IR::PathExpression>()) {
+        const auto *target = resolvePath(pe->path, false)->checkedTo<P4::IR::Declaration>();
+        // Constants are special. We materialize them at each use. Therefore
+        // their values are associates with PathExpression itself
+        if (!target->is<P4::IR::Declaration_Constant>()) node = target;
     }
 
-    auto annotations = converter.convert(type->annotations);
-    auto mlirType =
-        P4HIR::HeaderType::get(converter.context(), type->name.string_view(), fields, annotations);
+    mlir::Value val = p4Values->lookup(node);
+    // If there is no value, then we'd need to materializer symbol's value. This is mostly
+    // done for control / parser locals, so we constraint node types below
+    if (!val) val = getValueForSymbol(node, unchecked);
+    BUG_CHECK(val || unchecked, "expected '%1%' (aka %2%) to be converted", node, dbp(node));
 
-    return setType(type, mlirType);
+    if (val && mlir::isa<P4HIR::ReferenceType>(val.getType()))
+        // Getting value out of variable involves a load.
+        val = P4HIR::ReadOp::create(builder, getLoc(builder, node), val);
+
+    if (type && val && val.getType() != type)
+        val = P4HIR::CastOp::create(builder, getLoc(builder, node), type, val);
+
+    return val;
 }
 
-bool P4TypeConverter::preorder(const P4::IR::Type_HeaderUnion *type) {
-    if ((this->type = converter.findType(type))) return false;
+mlir::Value P4HIRConverter::getValue(mlir::Value val, mlir::Type type) {
+    if (mlir::isa<P4HIR::ReferenceType>(val.getType()))
+        // Getting value out of variable involves a load.
+        val = P4HIR::ReadOp::create(builder, val.getLoc(), val);
 
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<P4HIR::FieldInfo, 4> fields;
-    for (const auto *field : type->fields) {
-        auto fieldAnnotations = converter.convert(field->annotations);
+    if (type && val.getType() != type) val = P4HIR::CastOp::create(builder, val.getLoc(), type, val);
 
-        fields.emplace_back(mlir::StringAttr::get(converter.context(), field->name.string_view()),
-                            convert(field->type), fieldAnnotations);
+    return val;
+}
+
+mlir::Value P4HIRConverter::setValue(const P4::IR::Node *node, mlir::Value value) {
+    if (!value) return value;
+
+    if (LOGGING(4)) {
+        std::string s;
+        llvm::raw_string_ostream os(s);
+        value.print(os, mlir::OpPrintingFlags().assumeVerified());
+        LOG4("Converted " << dbp(node) << " -> \"" << s << "\"");
     }
 
-    auto annotations = converter.convert(type->annotations);
-    auto mlirType = P4HIR::HeaderUnionType::get(converter.context(), type->name.string_view(),
-                                                fields, annotations);
+    BUG_CHECK(!p4Values->count(node), "duplicate conversion of %1%", node);
 
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Array *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<P4HIR::FieldInfo, 4> fields;
-
-    auto sz = mlir::cast<P4HIR::IntAttr>(converter.getOrCreateConstantExpr(type->size)).getUInt();
-    auto elementType = convert(type->elementType);
-    mlir::Type mlirType;
-    // Header stack are arrays over headers or header unions.
-    if (mlir::isa<P4HIR::HeaderType, P4HIR::HeaderUnionType>(elementType))
-        mlirType = P4HIR::HeaderStackType::get(
-            converter.context(), sz, mlir::cast<P4HIR::StructLikeTypeInterface>(elementType));
-    else
-        mlirType = P4HIR::ArrayType::get(converter.context(), sz, elementType);
-
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Enum *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<mlir::Attribute, 4> cases;
-    for (const auto *field : type->members) {
-        cases.push_back(mlir::StringAttr::get(converter.context(), field->name.string_view()));
-    }
-
-    auto annotations = converter.convert(type->annotations);
-    auto mlirType =
-        P4HIR::EnumType::get(converter.context(), type->name.string_view(), cases, annotations);
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_ActionEnum *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<mlir::Attribute, 4> cases;
-    for (const auto *action : type->actionList->actionList) {
-        cases.push_back(
-            mlir::StringAttr::get(converter.context(), action->getName().string_view()));
-    }
-    auto mlirType = P4HIR::EnumType::get(converter.context(), cases);
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_Error *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<mlir::Attribute, 4> cases;
-    for (const auto *field : type->members) {
-        cases.push_back(mlir::StringAttr::get(converter.context(), field->name.string_view()));
-    }
-    auto mlirType = P4HIR::ErrorType::get(converter.context(),
-                                          mlir::ArrayAttr::get(converter.context(), cases));
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_SerEnum *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<mlir::NamedAttribute, 4> cases;
-
-    auto enumType = mlir::cast<P4HIR::BitsType>(convert(type->type));
-    for (const auto *field : type->members) {
-        auto value = mlir::cast<P4HIR::IntAttr>(converter.getOrCreateConstantExpr(field->value));
-        cases.emplace_back(mlir::StringAttr::get(converter.context(), field->name.string_view()),
-                           value);
-    }
-
-    auto annotations = converter.convert(type->annotations);
-    auto mlirType = P4HIR::SerEnumType::get(type->name.string_view(), enumType, cases, annotations);
-
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::preorder(const P4::IR::Type_BaseList *type) {
-    if ((this->type = converter.findType(type))) return false;
-
-    ConversionTracer trace("TypeConverting ", type);
-    llvm::SmallVector<mlir::Type, 4> fields;
-    for (const auto *field : type->components) {
-        // Hack for handling dontcare type: if it is in aggregate, then it
-        // should be really be !p4hir.set<!p4hir.dontcare> as this would
-        // represent default expression (unfortunaltely p4c type inference is
-        // broken here)
-        auto fieldTy = convert(field);
-        if (mlir::isa<P4HIR::DontcareType>(fieldTy)) fieldTy = P4HIR::SetType::get(fieldTy);
-        fields.push_back(fieldTy);
-    }
-
-    auto mlirType = mlir::TupleType::get(converter.context(), fields);
-    return setType(type, mlirType);
-}
-
-bool P4TypeConverter::setType(const P4::IR::Type *type, mlir::Type mlirType) {
-    BUG_CHECK(mlirType, "empty type conversion for %1% (aka %2%)", type, dbp(type));
-    this->type = mlirType;
-    LOG4("type set for: " << dbp(type));
-    converter.setType(type, mlirType);
-    return false;
-}
-
-mlir::Type P4TypeConverter::convert(const P4::IR::Type *type) {
-    if ((this->type = converter.findType(type))) return getType();
-
-    visit(type);
-    return getType();
+    p4Values->insert(node, value);
+    return value;
 }
 
 // We might reuse getOrCreateConstantExpression here, but given that annotations
@@ -1749,6 +671,89 @@ mlir::Value P4HIRConverter::materializeConstantDecl(const P4::IR::Declaration_Co
     return P4HIR::ConstOp::create(builder, loc, init, decl->name.string_view(), annotations);
 }
 
+mlir::SymbolRefAttr P4HIRConverter::setSymbol(P4Symbol symb, mlir::SymbolRefAttr value) {
+    if (!value) return value;
+
+    if (LOGGING(4)) {
+        std::string s;
+        llvm::raw_string_ostream os(s);
+        value.print(os);
+        LOG4("Bind symbol " << s);
+    }
+
+    BUG_CHECK(!p4Symbols.count(symb), "duplicate conversion of %1%");
+
+    p4Symbols.insert(symb, value);
+    return value;
+}
+
+/// Returns fully qualified symbols, if we're nested inside parser or control
+mlir::SymbolRefAttr P4HIRConverter::getQualifiedSymbolRef(mlir::Operation *op) {
+    auto symName = op->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName());
+    assert(symName && "value does not have a valid symbol name");
+    return getQualifiedSymbolRef(symName);
+}
+
+mlir::SymbolRefAttr P4HIRConverter::getQualifiedSymbolRef(mlir::StringAttr attr) {
+    auto leafSymbol = mlir::SymbolRefAttr::get(attr);
+
+    const auto *ctrl = getCurrentNode<P4::IR::P4Control>();
+    if (!ctrl) ctrl = findContext<P4::IR::P4Control>();
+    if (ctrl) {
+        auto controlSymbol = builder.getStringAttr(ctrl->name.string_view());
+        return mlir::SymbolRefAttr::get(controlSymbol, {leafSymbol});
+    }
+
+    const auto *parser = getCurrentNode<P4::IR::P4Parser>();
+    if (!parser) parser = findContext<P4::IR::P4Parser>();
+    if (parser) {
+        auto parserSymbol = builder.getStringAttr(parser->name.string_view());
+        return mlir::SymbolRefAttr::get(parserSymbol, {leafSymbol});
+    }
+
+    return leafSymbol;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::Type *type) {
+    ConversionTracer trace("Converting ", type);
+    P4TypeConverter cvt(*this);
+    type->apply(cvt, getChildContext());
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::P4Program *p) {
+    ValueTable values;
+    p4Values = &values;
+
+    ValueScope scope(*p4Values);
+    SymbolScope symbols(p4Symbols);
+
+    // Explicitly visit child nodes to create top-level value scope
+    visit(p->objects);
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::BlockStatement *block) {
+    ValueScope scope(*p4Values);
+
+    // If this is a top-level block where scope is implied (e.g. function,
+    // action, certain statements) do not create explicit scope.
+    if (getParent<P4::IR::BlockStatement>()) {
+        auto annotations = convert(block->annotations);
+        mlir::OpBuilder::InsertionGuard guard(builder);
+        auto scope = P4HIR::ScopeOp::create(builder, 
+            getLoc(builder, block), annotations,
+            [&](mlir::OpBuilder &, mlir::Location) {  // nothing is being yielded
+                visit(block->components);
+            });
+        builder.setInsertionPointToEnd(&scope.getScopeRegion().back());
+        P4HIR::YieldOp::create(builder, getEndLoc(builder, block));
+    } else
+        visit(block->components);
+    return false;
+}
+
 bool P4HIRConverter::preorder(const P4::IR::Declaration_Constant *decl) {
     ConversionTracer trace("Skipping constant decl ", decl);
 
@@ -1917,6 +922,95 @@ CONVERT_CMP(Grt, Gt)
 CONVERT_CMP(Geq, Ge)
 
 #undef CONVERT_CMP
+
+mlir::Value P4HIRConverter::emitValidityConstant(mlir::Location loc,
+                                                 P4HIR::ValidityBit validityConstValue) {
+    return P4HIR::ConstOp::create(builder, 
+        loc, P4HIR::ValidityBitAttr::get(context(), validityConstValue));
+}
+
+void P4HIRConverter::emitHeaderValidityBitAssignOp(mlir::Location loc, mlir::Value header,
+                                                   P4HIR::ValidityBit validityConstValue) {
+    auto validityBitConstant = emitValidityConstant(loc, validityConstValue);
+    auto validityBitRef =
+        P4HIR::StructFieldRefOp::create(builder, loc, header, P4HIR::HeaderType::validityBit);
+    P4HIR::AssignOp::create(builder, loc, validityBitConstant, validityBitRef);
+}
+
+P4HIR::CmpOp P4HIRConverter::emitHeaderIsValidCmpOp(mlir::Location loc, mlir::Value header,
+                                                    P4HIR::ValidityBit compareWith) {
+    mlir::Value validityBitValue;
+    if (mlir::isa<P4HIR::ReferenceType>(header.getType())) {
+        auto validityBitRef =
+            P4HIR::StructFieldRefOp::create(builder, loc, header, P4HIR::HeaderType::validityBit);
+        validityBitValue = P4HIR::ReadOp::create(builder, loc, validityBitRef);
+    } else {
+        validityBitValue =
+            P4HIR::StructExtractOp::create(builder, loc, header, P4HIR::HeaderType::validityBit);
+    }
+    auto validityConstant = emitValidityConstant(loc, compareWith);
+    return P4HIR::CmpOp::create(builder, loc, P4HIR::CmpOpKind::Eq, validityBitValue,
+                                        validityConstant);
+}
+
+P4HIR::CmpOp P4HIRConverter::emitHeaderUnionIsValidCmpOp(mlir::Location loc,
+                                                         mlir::Value headerUnion,
+                                                         P4HIR::ValidityBit compareWith) {
+    // Helper function to build the nested ternary operations recursively
+    std::function<mlir::Value(size_t)> buildNestedTernaryOp =
+        [&](size_t fieldIndex) -> mlir::Value {
+        auto headerUnionType = mlir::cast<P4HIR::HeaderUnionType>(getObjectType(headerUnion));
+        // If all the fields were checked, return false
+        if (fieldIndex >= headerUnionType.getFields().size()) {
+            return getBoolConstant(loc, false);
+        }
+
+        auto fieldInfo = headerUnionType.getFields()[fieldIndex];
+        mlir::Value header;
+        if (mlir::isa<P4HIR::ReferenceType>(headerUnion.getType())) {
+            header = P4HIR::StructFieldRefOp::create(builder, loc, headerUnion, fieldInfo.name);
+        } else {
+            header = P4HIR::StructExtractOp::create(builder, loc, headerUnion, fieldInfo.name);
+        }
+
+        // Check if this member header is valid
+        auto headerIsValid = emitHeaderIsValidCmpOp(loc, header, P4HIR::ValidityBit::Valid);
+
+        // Create a ternary operation:
+        // if this header is valid, return true,
+        // otherwise check the next header in the header union
+        auto ternaryOp = P4HIR::IfOp::create(builder, 
+            loc, headerIsValid.getResult(), true,
+            [&](mlir::OpBuilder &b, mlir::Location loc) {
+                // If this header is valid, return true
+                P4HIR::YieldOp::create(b, loc, getBoolConstant(loc, true));
+            },
+            [&](mlir::OpBuilder &b, mlir::Location loc) {
+                // If this header is not valid, check the next header
+                P4HIR::YieldOp::create(b, loc, buildNestedTernaryOp(fieldIndex + 1));
+            });
+        return ternaryOp.getResult();
+    };
+
+    // Start the recursive building from the first field
+    auto isValid = buildNestedTernaryOp(0);
+
+    // Return a comparison operation for consistency with other validity checks
+    return P4HIR::CmpOp::create(builder, 
+        loc, P4HIR::CmpOpKind::Eq, isValid,
+        getBoolConstant(loc, compareWith == P4HIR::ValidityBit::Valid ? true : false));
+}
+
+void P4HIRConverter::emitSetInvalidForAllHeaders(mlir::Location loc, mlir::Value headerUnion,
+                                                 const P4::cstring headerNameToSkip) {
+    auto headerUnionType = mlir::cast<P4HIR::HeaderUnionType>(getObjectType(headerUnion));
+    llvm::for_each(headerUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
+        if (headerNameToSkip != fieldInfo.name.getValue()) {
+            auto header = P4HIR::StructFieldRefOp::create(builder, loc, headerUnion, fieldInfo.name);
+            emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
+        }
+    });
+}
 
 mlir::Value P4HIRConverter::emitInvalidHeaderCmpOp(const P4::IR::Operation_Relation *relOp) {
     auto loc = getLoc(builder, relOp);
@@ -2607,7 +1701,7 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
                             auto defValue = type.getDefaultValue();
                             BUG_CHECK(defValue, "cannot resolve default value for %1%", param);
                             placeholder =
-                                builder.create<P4HIR::ConstOp>(getLoc(builder, param), defValue);
+                                P4HIR::ConstOp::create(builder, getLoc(builder, param), defValue);
                         } else {
                             BUG_CHECK(placeholder,
                                       "control plane value %1% in %2% must be populated", param,
@@ -3814,12 +2908,9 @@ bool P4HIRConverter::preorder(const P4::IR::ForInStatement *forin) {
     return false;
 }
 
-}  // namespace
-
-namespace P4::P4MLIR {
-
-mlir::OwningOpRef<mlir::ModuleOp> toMLIR(mlir::MLIRContext &context,
-                                         const P4::IR::P4Program *program, P4::TypeMap *typeMap) {
+mlir::OwningOpRef<mlir::ModuleOp> P4::P4MLIR::toMLIR(mlir::MLIRContext &context,
+                                                     const P4::IR::P4Program *program,
+                                                     P4::TypeMap *typeMap) {
     mlir::OpBuilder builder(&context);
 
     auto moduleOp = mlir::ModuleOp::create(builder.getUnknownLoc());
@@ -3843,5 +2934,3 @@ mlir::OwningOpRef<mlir::ModuleOp> toMLIR(mlir::MLIRContext &context,
 
     return moduleOp;
 }
-
-}  // namespace P4::P4MLIR

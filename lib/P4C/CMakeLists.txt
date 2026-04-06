@@ -5,6 +5,7 @@ set(LIBS
 )
 
 set(P4MLIR_TRANSLATE_LIB_SRCS
+  type_converter.cpp
   translate.cpp)
 
 add_mlir_library(P4MLIR_P4C_TRANSLATE ${P4MLIR_TRANSLATE_LIB_SRCS} EXCLUDE_FROM_LIBMLIR DISABLE_INSTALL)
