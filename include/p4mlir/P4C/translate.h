@@ -195,6 +195,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         const P4::IR::ParameterList *params);
 
     mlir::MLIRContext *context() const { return builder.getContext(); }
+    mlir::OpBuilder &getBuilder() { return builder; }
 
     bool preorder(const P4::IR::Node *node) override {
         ::P4::error("P4 construct not yet supported: %1% (aka %2%)", node, dbp(node));
@@ -417,6 +418,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
 mlir::OwningOpRef<mlir::ModuleOp> toMLIR(mlir::MLIRContext &context,
                                          const P4::IR::P4Program *program, P4::TypeMap *typeMap);
+mlir::OwningOpRef<mlir::ModuleOp> toMLIR(P4HIRConverter &conv, const P4::IR::P4Program *program);
+
 }  // namespace P4::P4MLIR
 
 #endif  // INCLUDE_P4MLIR_P4C_TRANSLATE_H_

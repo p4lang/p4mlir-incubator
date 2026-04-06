@@ -2913,7 +2913,7 @@ mlir::OwningOpRef<mlir::ModuleOp> P4::P4MLIR::toMLIR(mlir::MLIRContext &context,
                                                      P4::TypeMap *typeMap) {
     mlir::OpBuilder builder(&context);
 
-    auto moduleOp = mlir::ModuleOp::create(builder.getUnknownLoc());
+    auto moduleOp = mlir::ModuleOp::create(getLoc(builder, program));
     builder.setInsertionPointToEnd(moduleOp.getBody());
 
     if (auto sourceInfo = program->getSourceInfo(); sourceInfo.isValid()) {
@@ -2921,6 +2921,31 @@ mlir::OwningOpRef<mlir::ModuleOp> P4::P4MLIR::toMLIR(mlir::MLIRContext &context,
         moduleOp->setLoc(getLoc(builder, program));
     }
     P4HIRConverter conv(builder, typeMap, true);
+    program->apply(conv);
+
+    if (!program || P4::errorCount() > 0) return nullptr;
+
+    if (failed(mlir::verify(moduleOp))) {
+        // Dump for debugging purposes
+        moduleOp->print(llvm::outs());
+        moduleOp.emitError("module verification error");
+        return nullptr;
+    }
+
+    return moduleOp;
+}
+
+mlir::OwningOpRef<mlir::ModuleOp> P4::P4MLIR::toMLIR(P4HIRConverter &conv,
+                                                     const P4::IR::P4Program *program) {
+    mlir::OpBuilder &builder = conv.getBuilder();
+
+    auto moduleOp = mlir::ModuleOp::create(getLoc(builder, program));
+    builder.setInsertionPointToEnd(moduleOp.getBody());
+
+    if (auto sourceInfo = program->getSourceInfo(); sourceInfo.isValid()) {
+        moduleOp.setSymName(sourceInfo.getSourceFile().string_view());
+        moduleOp->setLoc(getLoc(builder, program));
+    }
     program->apply(conv);
 
     if (!program || P4::errorCount() > 0) return nullptr;
