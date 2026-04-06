@@ -719,9 +719,7 @@ mlir::SymbolRefAttr P4HIRConverter::getQualifiedSymbolRef(mlir::StringAttr attr)
 }
 
 bool P4HIRConverter::preorder(const P4::IR::Type *type) {
-    ConversionTracer trace("Converting ", type);
-    P4TypeConverter cvt(*this);
-    type->apply(cvt, getChildContext());
+    getOrCreateType(type);
     return false;
 }
 
