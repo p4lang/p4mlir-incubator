@@ -2021,6 +2021,8 @@ def BrOp : P4HIR_Op<"br",
     ```
   }];
 
+  let hasCanonicalizeMethod = 0;
+
   let builders = [
     OpBuilder<(ins "mlir::Block *":$dest,
               CArg<"mlir::ValueRange", "{}">:$destOperands), [{
@@ -2033,6 +2035,11 @@ def BrOp : P4HIR_Op<"br",
   let successors = (successor AnySuccessor:$dest);
   let assemblyFormat = [{
     $dest (`(` $destOperands^ `:` type($destOperands) `)`)? attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    static void getCanonicalizationPatterns(mlir::RewritePatternSet &results,
+                                            mlir::MLIRContext *context);
   }];
 }
 
