@@ -704,7 +704,7 @@ def IfOp : P4HIR_Op<"if",
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let skipDefaultBuilders = 1;
-  let hasCanonicalizeMethod = 0;
+  let hasCanonicalizer = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$cond, "bool":$withElseRegion,
                    "llvm::function_ref<void(mlir::OpBuilder &, mlir::Location)>":$thenBuilder,
@@ -726,8 +726,6 @@ def IfOp : P4HIR_Op<"if",
     P4HIR::YieldOp thenYield();
     mlir::Block *elseBlock();
     P4HIR::YieldOp elseYield();
-    static void getCanonicalizationPatterns(mlir::RewritePatternSet &results,
-                                            mlir::MLIRContext *context);
   }];
 }
 
@@ -2021,7 +2019,7 @@ def BrOp : P4HIR_Op<"br",
     ```
   }];
 
-  let hasCanonicalizeMethod = 0;
+  let hasCanonicalizer = 1;
 
   let builders = [
     OpBuilder<(ins "mlir::Block *":$dest,
@@ -2035,11 +2033,6 @@ def BrOp : P4HIR_Op<"br",
   let successors = (successor AnySuccessor:$dest);
   let assemblyFormat = [{
     $dest (`(` $destOperands^ `:` type($destOperands) `)`)? attr-dict
-  }];
-
-  let extraClassDeclaration = [{
-    static void getCanonicalizationPatterns(mlir::RewritePatternSet &results,
-                                            mlir::MLIRContext *context);
   }];
 }
 
@@ -2084,6 +2077,60 @@ def CondBrOp : P4HIR_Op<"cond_br",
     $destFalse (`(` $destOperandsFalse^ `:` type($destOperandsFalse) `)`)?
     attr-dict
   }];
+
+  let extraClassDeclaration = [{
+    // These are the indices into the dests list.
+    enum { trueIndex = 0, falseIndex = 1 };
+
+    // Accessors for operands to the 'true' destination.
+    mlir::Value getTrueOperand(unsigned idx) {
+      assert(idx < getNumTrueOperands());
+      return getOperand(getTrueDestOperandIndex() + idx);
+    }
+
+    void setTrueOperand(unsigned idx, mlir::Value value) {
+      assert(idx < getNumTrueOperands());
+      setOperand(getTrueDestOperandIndex() + idx, value);
+    }
+
+    unsigned getNumTrueOperands()  { return getTrueOperands().size(); }
+
+    /// Erase the operand at 'index' from the true operand list.
+    void eraseTrueOperand(unsigned index)  {
+      getDestOperandsTrueMutable().erase(index);
+    }
+
+    // Accessors for operands to the 'false' destination.
+    mlir::Value getFalseOperand(unsigned idx) {
+      assert(idx < getNumFalseOperands());
+      return getOperand(getFalseDestOperandIndex() + idx);
+    }
+    void setFalseOperand(unsigned idx, mlir::Value value) {
+      assert(idx < getNumFalseOperands());
+      setOperand(getFalseDestOperandIndex() + idx, value);
+    }
+
+    operand_range getTrueOperands() { return getDestOperandsTrue(); }
+    operand_range getFalseOperands() { return getDestOperandsFalse(); }
+
+    unsigned getNumFalseOperands() { return getFalseOperands().size(); }
+
+    /// Erase the operand at 'index' from the false operand list.
+    void eraseFalseOperand(unsigned index) {
+      getDestOperandsFalseMutable().erase(index);
+    }
+
+  private:
+    /// Get the index of the first true destination operand.
+    unsigned getTrueDestOperandIndex() { return 1; }
+
+    /// Get the index of the first false destination operand.
+    unsigned getFalseDestOperandIndex() {
+      return getTrueDestOperandIndex() + getNumTrueOperands();
+    }
+  }];
+
+  let hasCanonicalizer = 1;
 }
 
 def InlineAsmOp : P4HIR_Op<"asm", [RecursiveMemoryEffects]> {

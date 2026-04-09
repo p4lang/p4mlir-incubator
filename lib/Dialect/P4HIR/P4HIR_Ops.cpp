@@ -4313,6 +4313,223 @@ Block *P4HIR::CondBrOp::getSuccessorForOperands(ArrayRef<Attribute> operands) {
     return nullptr;
 }
 
+namespace {
+/// p4hir.cond_br true, ^bb1, ^bb2
+///  -> br ^bb1
+/// p4hir.cond_br false, ^bb1, ^bb2
+///  -> br ^bb2
+///
+struct SimplifyConstCondBranchPred : public OpRewritePattern<P4HIR::CondBrOp> {
+    using OpRewritePattern<P4HIR::CondBrOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CondBrOp condbr,
+                                  PatternRewriter &rewriter) const override {
+        P4HIR::BoolAttr val;
+        if (!matchPattern(condbr.getCond(), m_Constant(&val))) return failure();
+
+        if (val.getValue()) {
+            // True branch taken.
+            rewriter.replaceOpWithNewOp<P4HIR::BrOp>(condbr, condbr.getDestTrue(),
+                                                     condbr.getTrueOperands());
+        } else {
+            // False branch taken.
+            rewriter.replaceOpWithNewOp<P4HIR::BrOp>(condbr, condbr.getDestFalse(),
+                                                     condbr.getFalseOperands());
+        }
+        return success();
+    }
+};
+
+/// p4hir.cond_br %cond, ^bb1(A, ..., N), ^bb1(A, ..., N)
+///  -> br ^bb1(A, ..., N)
+///
+struct SimplifyCondBranchIdenticalSuccessors : public OpRewritePattern<P4HIR::CondBrOp> {
+    using OpRewritePattern<P4HIR::CondBrOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CondBrOp condbr,
+                                  PatternRewriter &rewriter) const override {
+        // Check that the true and false destinations are the same and have the same
+        // operands.
+        Block *trueDest = condbr.getDestTrue();
+        if (trueDest != condbr.getDestFalse()) return failure();
+
+        // If all of the operands match, no selects need to be generated.
+        OperandRange trueOperands = condbr.getTrueOperands();
+        OperandRange falseOperands = condbr.getFalseOperands();
+        if (trueOperands == falseOperands) {
+            rewriter.replaceOpWithNewOp<P4HIR::BrOp>(condbr, trueDest, trueOperands);
+            return success();
+        }
+
+        // Otherwise, if the current block is the only predecessor insert selects
+        // for any mismatched branch operands.
+        if (trueDest->getUniquePredecessor() != condbr->getBlock()) return failure();
+
+        // Generate a select for any operands that differ between the two.
+        SmallVector<Value, 8> mergedOperands;
+        mergedOperands.reserve(trueOperands.size());
+        for (auto it : llvm::zip(trueOperands, falseOperands)) {
+            if (std::get<0>(it) != std::get<1>(it)) return failure();
+
+            mergedOperands.push_back(std::get<0>(it));
+        }
+
+        rewriter.replaceOpWithNewOp<P4HIR::BrOp>(condbr, trueDest, mergedOperands);
+        return success();
+    }
+};
+
+///   p4hir.cond_br %cond, ^bb1, ^bb2
+/// ^bb1
+///   br ^bbN(...)
+/// ^bb2
+///   br ^bbK(...)
+///
+///  -> p4hir.cond_br %cond, ^bbN(...), ^bbK(...)
+///
+struct SimplifyPassThroughCondBranch : public OpRewritePattern<P4HIR::CondBrOp> {
+    using OpRewritePattern<P4HIR::CondBrOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CondBrOp condbr,
+                                  PatternRewriter &rewriter) const override {
+        Block *trueDest = condbr.getDestTrue(), *falseDest = condbr.getDestFalse();
+        ValueRange trueDestOperands = condbr.getTrueOperands();
+        ValueRange falseDestOperands = condbr.getFalseOperands();
+        SmallVector<Value, 4> trueDestOperandStorage, falseDestOperandStorage;
+
+        // Try to collapse one of the current successors.
+        LogicalResult collapsedTrue =
+            collapseBranch(trueDest, trueDestOperands, trueDestOperandStorage);
+        LogicalResult collapsedFalse =
+            collapseBranch(falseDest, falseDestOperands, falseDestOperandStorage);
+        if (failed(collapsedTrue) && failed(collapsedFalse)) return failure();
+
+        // Create a new branch with the collapsed successors.
+        rewriter.replaceOpWithNewOp<P4HIR::CondBrOp>(condbr, condbr.getCond(), trueDest, falseDest,
+                                                     trueDestOperands, falseDestOperands);
+        return success();
+    }
+};
+
+///   ...
+///   p4hir.cond_br %cond, ^bb1(...), ^bb2(...)
+/// ...
+/// ^bb1: // has single predecessor
+///   ...
+///   p4hir.cond_br %cond, ^bb3(...), ^bb4(...)
+///
+/// ->
+///
+///   ...
+///   p4hir.cond_br %cond, ^bb1(...), ^bb2(...)
+/// ...
+/// ^bb1: // has single predecessor
+///   ...
+///   br ^bb3(...)
+///
+struct SimplifyCondBranchFromCondBranchOnSameCondition : public OpRewritePattern<P4HIR::CondBrOp> {
+    using OpRewritePattern<P4HIR::CondBrOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CondBrOp condbr,
+                                  PatternRewriter &rewriter) const override {
+        // Check that we have a single distinct predecessor.
+        Block *currentBlock = condbr->getBlock();
+        Block *predecessor = currentBlock->getSinglePredecessor();
+        if (!predecessor) return failure();
+
+        // Check that the predecessor terminates with a conditional branch to this
+        // block and that it branches on the same condition.
+        auto predBranch = dyn_cast<P4HIR::CondBrOp>(predecessor->getTerminator());
+        if (!predBranch || condbr.getCond() != predBranch.getCond()) return failure();
+
+        // Fold this branch to an unconditional branch.
+        if (currentBlock == predBranch.getDestTrue())
+            rewriter.replaceOpWithNewOp<P4HIR::BrOp>(condbr, condbr.getDestTrue(),
+                                                     condbr.getDestOperandsTrue());
+        else
+            rewriter.replaceOpWithNewOp<P4HIR::BrOp>(condbr, condbr.getDestFalse(),
+                                                     condbr.getDestOperandsFalse());
+        return success();
+    }
+};
+
+///   p4hir.cond_br %arg0, ^trueB, ^falseB
+///
+/// ^trueB:
+///   "test.consumer1"(%arg0) : (i1) -> ()
+///    ...
+///
+/// ^falseB:
+///   "test.consumer2"(%arg0) : (i1) -> ()
+///   ...
+///
+/// ->
+///
+///   p4hir.cond_br %arg0, ^trueB, ^falseB
+/// ^trueB:
+///   "test.consumer1"(%true) : (i1) -> ()
+///   ...
+///
+/// ^falseB:
+///   "test.consumer2"(%false) : (i1) -> ()
+///   ...
+struct CondBranchTruthPropagation : public OpRewritePattern<P4HIR::CondBrOp> {
+    using OpRewritePattern<P4HIR::CondBrOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CondBrOp condbr,
+                                  PatternRewriter &rewriter) const override {
+        // Check that we have a single distinct predecessor.
+        bool replaced = false;
+
+        // These variables serve to prevent creating duplicate constants
+        // and hold constant true or false values.
+        Value constantTrue = nullptr;
+        Value constantFalse = nullptr;
+
+        // TODO These checks can be expanded to encompas any use with only
+        // either the true of false edge as a predecessor. For now, we fall
+        // back to checking the single predecessor is given by the true/fasle
+        // destination, thereby ensuring that only that edge can reach the
+        // op.
+        if (condbr.getDestTrue()->getSinglePredecessor()) {
+            for (OpOperand &use : llvm::make_early_inc_range(condbr.getCond().getUses())) {
+                if (use.getOwner()->getBlock() == condbr.getDestTrue()) {
+                    replaced = true;
+
+                    if (!constantTrue)
+                        constantTrue = P4HIR::ConstOp::create(
+                            rewriter, condbr.getLoc(), P4HIR::BoolAttr::get(getContext(), true));
+
+                    rewriter.modifyOpInPlace(use.getOwner(), [&] { use.set(constantTrue); });
+                }
+            }
+        }
+        if (condbr.getDestFalse()->getSinglePredecessor()) {
+            for (OpOperand &use : llvm::make_early_inc_range(condbr.getCond().getUses())) {
+                if (use.getOwner()->getBlock() == condbr.getDestFalse()) {
+                    replaced = true;
+
+                    if (!constantFalse)
+                        constantFalse = P4HIR::ConstOp::create(
+                            rewriter, condbr.getLoc(), P4HIR::BoolAttr::get(getContext(), false));
+
+                    rewriter.modifyOpInPlace(use.getOwner(), [&] { use.set(constantFalse); });
+                }
+            }
+        }
+        return success(replaced);
+    }
+};
+}  // namespace
+
+void P4HIR::CondBrOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                  MLIRContext *context) {
+    results.add<SimplifyConstCondBranchPred, SimplifyPassThroughCondBranch,
+                SimplifyCondBranchIdenticalSuccessors,
+                SimplifyCondBranchFromCondBranchOnSameCondition, CondBranchTruthPropagation>(
+        context);
+}
+
 //===----------------------------------------------------------------------===//
 // InlineAsmOp Definitions
 //===----------------------------------------------------------------------===//
