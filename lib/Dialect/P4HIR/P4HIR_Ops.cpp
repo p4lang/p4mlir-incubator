@@ -4193,6 +4193,110 @@ mlir::SuccessorOperands P4HIR::BrOp::getSuccessorOperands(unsigned index) {
 
 Block *P4HIR::BrOp::getSuccessorForOperands(ArrayRef<Attribute>) { return getDest(); }
 
+namespace {
+/// Simplify a branch to a block that has a single predecessor. This effectively
+/// merges the two blocks.
+struct SimplifyBrToBlockWithSinglePred : public OpRewritePattern<P4HIR::BrOp> {
+    using OpRewritePattern<P4HIR::BrOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::BrOp brOp, PatternRewriter &rewriter) const override {
+        // Check that the successor block has a single predecessor.
+        Block *succ = brOp.getDest();
+        Block *opParent = brOp->getBlock();
+        if (succ == opParent || !llvm::hasSingleElement(succ->getPredecessors())) return failure();
+
+        // Merge the successor into the current block and erase the branch.
+        SmallVector<Value> brOperands(brOp.getOperands());
+        rewriter.eraseOp(brOp);
+        rewriter.mergeBlocks(succ, opParent, brOperands);
+        return success();
+    }
+};
+
+/// Given a successor, try to collapse it to a new destination if it only
+/// contains a passthrough unconditional branch. If the successor is
+/// collapsable, `successor` and `successorOperands` are updated to reference
+/// the new destination and values. `argStorage` is used as storage if operands
+/// to the collapsed successor need to be remapped. It must outlive uses of
+/// successorOperands.
+LogicalResult collapseBranch(Block *&successor, ValueRange &successorOperands,
+                             SmallVectorImpl<Value> &argStorage) {
+    // Check that the successor only contains a unconditional branch.
+    if (std::next(successor->begin()) != successor->end()) return failure();
+    // Check that the terminator is an unconditional branch.
+    auto successorBranch = dyn_cast<P4HIR::BrOp>(successor->getTerminator());
+    if (!successorBranch) return failure();
+    // Check that the arguments are only used within the terminator.
+    for (BlockArgument arg : successor->getArguments()) {
+        for (Operation *user : arg.getUsers())
+            if (user != successorBranch) return failure();
+    }
+    // Don't try to collapse branches to infinite loops.
+    Block *successorDest = successorBranch.getDest();
+    if (successorDest == successor) return failure();
+    // Don't try to collapse branches which participate in a cycle.
+    auto nextBranch = dyn_cast<P4HIR::BrOp>(successorDest->getTerminator());
+    llvm::DenseSet<Block *> visited{successor, successorDest};
+    while (nextBranch) {
+        Block *nextBranchDest = nextBranch.getDest();
+        if (visited.contains(nextBranchDest)) return failure();
+        visited.insert(nextBranchDest);
+        nextBranch = dyn_cast<P4HIR::BrOp>(nextBranchDest->getTerminator());
+    }
+
+    // Update the operands to the successor. If the branch parent has no
+    // arguments, we can use the branch operands directly.
+    OperandRange operands = successorBranch.getOperands();
+    if (successor->args_empty()) {
+        successor = successorDest;
+        successorOperands = operands;
+        return success();
+    }
+
+    // Otherwise, we need to remap any argument operands.
+    for (Value operand : operands) {
+        BlockArgument argOperand = dyn_cast<BlockArgument>(operand);
+        if (argOperand && argOperand.getOwner() == successor)
+            argStorage.push_back(successorOperands[argOperand.getArgNumber()]);
+        else
+            argStorage.push_back(operand);
+    }
+    successor = successorDest;
+    successorOperands = argStorage;
+    return success();
+}
+
+///   br ^bb1
+/// ^bb1
+///   br ^bbN(...)
+///
+///  -> br ^bbN(...)
+///
+struct SimplifyPassThroughBr : public OpRewritePattern<P4HIR::BrOp> {
+    using OpRewritePattern<P4HIR::BrOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::BrOp brOp, PatternRewriter &rewriter) const override {
+        Block *dest = brOp.getDest();
+        ValueRange destOperands = brOp.getOperands();
+        SmallVector<Value, 4> destOperandStorage;
+
+        // Try to collapse the successor if it points somewhere other than this
+        // block.
+        if (dest == brOp->getBlock() ||
+            failed(collapseBranch(dest, destOperands, destOperandStorage)))
+            return failure();
+
+        // Create a new branch with the collapsed successor.
+        rewriter.replaceOpWithNewOp<P4HIR::BrOp>(brOp, dest, destOperands);
+        return success();
+    }
+};
+}  // namespace
+
+void P4HIR::BrOp::getCanonicalizationPatterns(RewritePatternSet &patterns, MLIRContext *context) {
+    patterns.add<SimplifyBrToBlockWithSinglePred, SimplifyPassThroughBr>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // CondBrOp
 //===----------------------------------------------------------------------===//
