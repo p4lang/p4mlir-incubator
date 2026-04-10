@@ -136,10 +136,10 @@ mlir::Type P4HIRConverter::getOrCreateConstructorType(const P4::IR::Type_Method 
 
     mlir::Type resultType = getOrCreateType(type->returnType);
 
-    for (const auto *p : type->parameters->parameters) {
-        mlir::Type type = getOrCreateType(p->type);
-        BUG_CHECK(p->direction == P4::IR::Direction::None, "expected directionless parameter");
-        argTypes.emplace_back(builder.getStringAttr(p->name.string_view()), type);
+    for (const auto *param : type->parameters->parameters) {
+        BUG_CHECK(param->direction == P4::IR::Direction::None, "expected directionless parameter");
+        mlir::Type type = getOrCreateType(param);
+        argTypes.emplace_back(builder.getStringAttr(param->name.string_view()), type);
     }
 
     auto mlirType = P4HIR::CtorType::get(argTypes, resultType);
@@ -190,7 +190,8 @@ mlir::Value P4HIRConverter::getValue(const P4::IR::Node *node, mlir::Type type, 
     if (!val) val = getValueForSymbol(node, unchecked);
     BUG_CHECK(val || unchecked, "expected '%1%' (aka %2%) to be converted", node, dbp(node));
 
-    if (val && mlir::isa<P4HIR::ReferenceType>(val.getType()))
+    if (val && mlir::isa<P4HIR::ReferenceType>(val.getType()) &&
+        (!type || !mlir::isa<P4HIR::ReferenceType>(type)))
         // Getting value out of variable involves a load.
         val = P4HIR::ReadOp::create(builder, getLoc(builder, node), val);
 
@@ -1618,14 +1619,37 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             // Type_DontCare type, so we just create new uninitialized variable
             // of parameter type
             if (arg->expression->is<P4::IR::DefaultExpression>()) {
-                auto type = getOrCreateType(param->type);
-                auto var = P4HIR::VariableOp::create(builder, getLoc(builder, arg->expression),
-                                                     P4HIR::ReferenceType::get(type), "dummy");
+                auto type = getOrCreateType(param);
+                auto var = P4HIR::VariableOp::create(builder, getLoc(builder, arg->expression), type,
+                                                     "dummy");
                 setValue(arg->expression, var);
             }
 
             switch (auto dir = param->direction) {
-                case P4::IR::Direction::None:
+                case P4::IR::Direction::None: {
+                    // Add support for reference action params
+                    auto paramType = getOrCreateType(param);
+                    auto argType = getOrCreateType(arg->expression->type);
+
+                    if (mlir::isa<P4HIR::ReferenceType>(paramType) &&
+                        !mlir::isa<P4HIR::ReferenceType>(argType)) {
+                        auto copyIn = b.create<P4HIR::VariableOp>(
+                            loc, P4HIR::ReferenceType::get(argType),
+                            llvm::Twine(param->name.string_view()) + "_ref_arg");
+                        visit(arg->expression);
+                        argVal = getValue(arg->expression);
+
+                        copyIn.setInit(true);
+                        b.create<P4HIR::AssignOp>(loc, argVal, copyIn);
+                        argVal = copyIn;
+                    } else {
+                        // Nothing to do special, just pass things direct
+                        visit(arg->expression);
+                        argVal = getValue(arg->expression, paramType);
+                    }
+                    break;
+                }
+
                 case P4::IR::Direction::In: {
                     auto paramType = getOrCreateType(param);
 
@@ -2147,7 +2171,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     // create placeholders for them
     for (const auto *param : parser->getConstructorParameters()->parameters) {
         llvm::StringRef paramName = param->name.string_view();
-        auto paramType = getOrCreateType(param->type);
+        auto paramType = getOrCreateType(param);
         auto placeholder =
             P4HIR::CtorParamAttr::get(paramType, parserSymbol, builder.getStringAttr(paramName));
         auto val = P4HIR::ConstOp::create(builder, getLoc(builder, param), placeholder, paramName);
@@ -2332,7 +2356,7 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
             // Create a placeholder for @optional arguments
             if (!argVal && param->isOptional())
                 argVal = P4HIR::UninitializedOp::create(builder, getLoc(builder, decl),
-                                                        getOrCreateType(param->type));
+                                                        getOrCreateType(param));
             BUG_CHECK(argVal, "unconverted argument for parameter %1%", param);
             operands.push_back(argVal);
         }
@@ -2514,7 +2538,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
     // create placeholders for them
     for (const auto *param : control->getConstructorParameters()->parameters) {
         llvm::StringRef paramName = param->name.string_view();
-        auto paramType = getOrCreateType(param->type);
+        auto paramType = getOrCreateType(param);
         auto placeholder =
             P4HIR::CtorParamAttr::get(paramType, controlSymbol, builder.getStringAttr(paramName));
         auto val = P4HIR::ConstOp::create(builder, getLoc(builder, param), placeholder, paramName);
@@ -2614,7 +2638,7 @@ bool P4HIRConverter::preorder(const P4::IR::ActionListElement *act) {
     const auto &params = actType->parameters->parameters;
     for (size_t idx = argCount; idx < params.size(); ++idx) {
         const auto *param = params[idx];
-        controlPlaneTypes.push_back(getOrCreateType(param->type));
+        controlPlaneTypes.push_back(getOrCreateType(param));
         auto pAnnotations = convert(param->annotations);
 
         llvm::SmallVector<mlir::NamedAttribute> paramAttrs = {
