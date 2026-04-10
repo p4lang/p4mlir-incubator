@@ -56,15 +56,15 @@ void promoteValToVar(mlir::RewriterBase &rewriter, mlir::Value val, const BlockS
     if (escapingBlocks.empty()) return;
 
     // Create new variable to hold `val`.
-    auto newVar = rewriter.create<P4HIR::VariableOp>(
-        val.getLoc(), P4HIR::ReferenceType::get(val.getType()), varName, true);
+    auto newVar = P4HIR::VariableOp::create(
+        rewriter, val.getLoc(), P4HIR::ReferenceType::get(val.getType()), varName, true);
 
     mlir::OpBuilder::InsertionGuard guard(rewriter);
 
     // Insert a new read in all escaping blocks and replace uses of `val` in that block.
     for (mlir::Block *block : escapingBlocks) {
         rewriter.setInsertionPointToStart(block);
-        auto newVal = rewriter.create<P4HIR::ReadOp>(val.getLoc(), newVar);
+        auto newVal = P4HIR::ReadOp::create(rewriter, val.getLoc(), newVar);
         rewriter.replaceUsesWithIf(val, newVal, [block](mlir::OpOperand &use) {
             return use.getOwner()->getBlock() == block;
         });
@@ -72,7 +72,7 @@ void promoteValToVar(mlir::RewriterBase &rewriter, mlir::Value val, const BlockS
 
     // Assign the new variable after `val`'s definition.
     rewriter.setInsertionPointAfterValue(val);
-    rewriter.create<P4HIR::AssignOp>(val.getLoc(), val, newVar);
+    P4HIR::AssignOp::create(rewriter, val.getLoc(), val, newVar);
 }
 
 // Replace uses of `op` with a copy in all escaping blocks.
@@ -125,7 +125,7 @@ P4HIR::ParserStateOp IRUtils::createSubState(mlir::RewriterBase &rewriter,
 
     auto name = getUniqueName((state.getSymName() + "_" + suffix).str());
     auto newState =
-        rewriter.create<P4HIR::ParserStateOp>(state.getLoc(), name, mlir::DictionaryAttr());
+        P4HIR::ParserStateOp::create(rewriter, state.getLoc(), name, mlir::DictionaryAttr());
     rewriter.createBlock(&newState.getBody(), newState.getBody().begin());
 
     return newState;
@@ -169,7 +169,7 @@ P4HIR::ParserStateOp IRUtils::SplitStateRewriter::createSubState(const llvm::Twi
 
     if (transitionTo) {
         rewriter.setInsertionPointToEnd(newStateBB);
-        rewriter.create<P4HIR::ParserTransitionOp>(newState.getLoc(), transitionTo.getSymbolRef());
+        P4HIR::ParserTransitionOp::create(rewriter, newState.getLoc(), transitionTo.getSymbolRef());
     }
 
     stateCreationPoint = newState;
@@ -198,14 +198,14 @@ void IRUtils::SplitStateRewriter::finalize() {
     // Split code around `op` and move it to "pre" / "post" states.
     auto [beforeBB, opBB, afterBB] = splitBlockAt(rewriter, state.getBlock(), op);
 
-    auto preStateBB = preState.getBlock();
+    auto *preStateBB = preState.getBlock();
     rewriter.inlineBlockBefore(beforeBB, preStateBB, preStateBB->begin());
-    auto postStateBB = postState.getBlock();
+    auto *postStateBB = postState.getBlock();
     rewriter.inlineBlockBefore(afterBB, postStateBB, postStateBB->begin());
 
     // Replace `op` with a transition to the "pre" state.
     rewriter.setInsertionPoint(op);
-    rewriter.create<P4HIR::ParserTransitionOp>(op->getLoc(), preState.getSymbolRef());
+    P4HIR::ParserTransitionOp::create(rewriter, op->getLoc(), preState.getSymbolRef());
     rewriter.eraseOp(op);
 
     // Due to the splitting states, we may have values with uses in other states.
