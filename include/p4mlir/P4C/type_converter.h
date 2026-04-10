@@ -73,7 +73,13 @@ class P4TypeConverter : public P4::Inspector, P4::ResolutionContext {
     bool setType(const P4::IR::Type *type, mlir::Type mlirType);
     mlir::Type convert(const P4::IR::Type *type);
 
- private:
+ protected:
+    class ConversionTracer {
+     public:
+        ConversionTracer(const char *Kind, const P4::IR::Node *node);
+        ~ConversionTracer();
+    };
+
     P4HIRConverter &converter;
     mlir::Type type = nullptr;
 };
