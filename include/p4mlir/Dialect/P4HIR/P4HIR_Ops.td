@@ -1072,7 +1072,7 @@ def StructOp : P4HIR_Op<"struct",
   let summary = "Create a struct from constituent parts.";
   // FIXME: Better constraint type
   let arguments = (ins Variadic<AnyP4Type>:$input);
-  let results = (outs StructLikeType:$result);
+  let results = (outs StructLikeTypeInterface:$result);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
@@ -1091,7 +1091,7 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
     ```
   }];
 
-  let arguments = (ins StructLikeType:$input, I32Attr:$fieldIndex);
+  let arguments = (ins StructLikeTypeInterface:$input, I32Attr:$fieldIndex);
   // FIXME: Better constraint type
   let results = (outs AnyP4Type:$result);
   let hasCustomAssemblyFormat = 1;

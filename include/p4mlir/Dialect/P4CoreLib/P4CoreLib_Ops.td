@@ -50,7 +50,7 @@ def PacketEmitOp : P4CoreLib_Op<"emit"> {
     }];
 
     let arguments = (ins Arg<PacketOutType, "packet buffer", [PacketOutWrite]>:$packet_out,
-                         StructLikeType:$hdr);
+                         StructLikeTypeInterface:$hdr);
     let assemblyFormat = [{
       $hdr `:` type($hdr) `to` $packet_out `:` type($packet_out) attr-dict
     }];

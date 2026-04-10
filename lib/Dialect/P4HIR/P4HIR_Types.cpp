@@ -31,8 +31,6 @@ static mlir::ParseResult parseCtorType(
     mlir::AsmParser &p, llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>> &params,
     mlir::Type &resultType);
 
-static mlir::ParseResult parseFieldInfo(mlir::AsmParser &p, FailureOr<FieldInfo> &fi);
-
 static mlir::ParseResult parseArray(mlir::AsmParser &p, size_t &size, mlir::Type &elementType);
 
 static void printFuncType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params,
@@ -40,7 +38,6 @@ static void printFuncType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params
 static void printCtorType(mlir::AsmPrinter &p,
                           mlir::ArrayRef<std::pair<mlir::StringAttr, mlir::Type>> params,
                           mlir::Type resultType);
-static void printFieldInfo(mlir::AsmPrinter &p, const FieldInfo &fi);
 static void printArray(mlir::AsmPrinter &p, size_t size, mlir::Type elementType);
 static void printArray(mlir::AsmPrinter &p, ArrayType arrayType);
 
@@ -239,10 +236,11 @@ bool FuncType::isVoid() const {
     return !rt;
 }
 
-static ParseResult parseFieldInfo(AsmParser &p, FailureOr<FieldInfo> &field) {
+namespace P4::P4MLIR::P4HIR {
+mlir::ParseResult parseFieldInfo(mlir::AsmParser &p, mlir::FailureOr<FieldInfo> &field) {
     // Parse fields
     std::string fieldName;
-    Type fieldType;
+    mlir::Type fieldType;
     mlir::NamedAttrList fieldAnnotations;
 
     if (p.parseKeywordOrString(&fieldName) || p.parseColon() || p.parseType(fieldType) ||
@@ -255,17 +253,15 @@ static ParseResult parseFieldInfo(AsmParser &p, FailureOr<FieldInfo> &field) {
     return success();
 }
 
-/// Parse a list of unique field names and types within <> plus name. E.g.:
-/// <name, foo: i7, bar: i8>
-static ParseResult parseFields(AsmParser &p, std::string &name,
-                               SmallVectorImpl<FieldInfo> &parameters,
-                               mlir::DictionaryAttr &annotations) {
+mlir::ParseResult parseFields(mlir::AsmParser &p, std::string &name,
+                              llvm::SmallVectorImpl<FieldInfo> &parameters,
+                              mlir::DictionaryAttr &annotations) {
     llvm::StringSet<> nameSet;
     mlir::NamedAttrList annList;
     bool hasDuplicateName = false;
     bool parsedName = false;
-    auto parseResult =
-        p.parseCommaSeparatedList(mlir::AsmParser::Delimiter::LessGreater, [&]() -> ParseResult {
+    auto parseResult = p.parseCommaSeparatedList(
+        mlir::AsmParser::Delimiter::LessGreater, [&]() -> mlir::ParseResult {
             // First, try to parse name
             if (!parsedName) {
                 if (p.parseKeywordOrString(&name) || p.parseOptionalAttrDict(annList))
@@ -276,7 +272,7 @@ static ParseResult parseFields(AsmParser &p, std::string &name,
             }
 
             // Parse fields
-            FailureOr<FieldInfo> field;
+            mlir::FailureOr<FieldInfo> field;
             auto fieldLoc = p.getCurrentLocation();
             if (parseFieldInfo(p, field)) return failure();
 
@@ -295,7 +291,7 @@ static ParseResult parseFields(AsmParser &p, std::string &name,
     return parseResult;
 }
 
-static void printFieldInfo(AsmPrinter &p, const FieldInfo &field) {
+void printFieldInfo(mlir::AsmPrinter &p, const FieldInfo &field) {
     p.printKeywordOrString(field.name.getValue());
     p << ": " << field.type;
     if (field.annotations && !field.annotations.empty()) {
@@ -304,9 +300,8 @@ static void printFieldInfo(AsmPrinter &p, const FieldInfo &field) {
     }
 }
 
-/// Print out a list of named fields surrounded by <>.
-static void printFields(AsmPrinter &p, StringRef name, ArrayRef<FieldInfo> fields,
-                        mlir::DictionaryAttr annotations) {
+void printFields(mlir::AsmPrinter &p, llvm::StringRef name, llvm::ArrayRef<FieldInfo> fields,
+                 mlir::DictionaryAttr annotations) {
     p << '<';
     p.printString(name);
     if (annotations && !annotations.empty()) {
@@ -317,6 +312,7 @@ static void printFields(AsmPrinter &p, StringRef name, ArrayRef<FieldInfo> field
     llvm::interleaveComma(fields, p, [&](const FieldInfo &field) { printFieldInfo(p, field); });
     p << ">";
 }
+}  // namespace P4::P4MLIR::P4HIR
 
 Type StructType::parse(AsmParser &p) {
     llvm::SmallVector<FieldInfo, 4> parameters;
