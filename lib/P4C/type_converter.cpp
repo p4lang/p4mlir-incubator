@@ -8,17 +8,13 @@
 
 using namespace P4::P4MLIR;
 
-namespace {
-class ConversionTracer {
- public:
-    ConversionTracer(const char *Kind, const P4::IR::Node *node) {
-        // TODO: Add TimeTrace here
-        LOG4(P4::IndentCtl::indent << Kind << dbp(node) << (LOGGING(5) ? ":" : ""));
-        LOG5(node);
-    }
-    ~ConversionTracer() { LOG4_UNINDENT; }
-};
-}  // namespace
+P4TypeConverter::ConversionTracer::ConversionTracer(const char *Kind, const P4::IR::Node *node) {
+    // TODO: Add TimeTrace here
+    LOG4(P4::IndentCtl::indent << Kind << dbp(node) << (LOGGING(5) ? ":" : ""));
+    LOG5(node);
+}
+
+P4TypeConverter::ConversionTracer::~ConversionTracer() { LOG4_UNINDENT; }
 
 bool P4TypeConverter::preorder(const P4::IR::Type_Bits *type) {
     if ((this->type = converter.findType(type))) return false;
