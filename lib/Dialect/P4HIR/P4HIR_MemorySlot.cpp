@@ -19,11 +19,11 @@ llvm::SmallVector<MemorySlot> P4HIR::VariableOp::getPromotableSlots() {
 
 Value P4HIR::VariableOp::getDefaultValue(const MemorySlot &slot, OpBuilder &builder) {
     if (auto defaultValueType = mlir::dyn_cast<HasDefaultValue>(slot.elemType))
-        return builder.create<P4HIR::ConstOp>(getLoc(), defaultValueType.getDefaultValue());
+        return P4HIR::ConstOp::create(builder, getLoc(), defaultValueType.getDefaultValue());
 
     // TODO: This should really not happen
     llvm_unreachable("cannot materialize default value");
-    return builder.create<P4HIR::UninitializedOp>(getLoc(), slot.elemType);
+    return P4HIR::UninitializedOp::create(builder, getLoc(), slot.elemType);
 }
 
 void P4HIR::VariableOp::handleBlockArgument(const MemorySlot &slot, BlockArgument argument,
@@ -65,8 +65,8 @@ DenseMap<Attribute, MemorySlot> P4HIR::VariableOp::destructure(
         ReferenceType elemRef = P4HIR::ReferenceType::get(elemType);
         auto optName = getName();
         // TODO: Switch to FieldInfo, so we can deduce proper field name
-        auto subVariable = builder.create<P4HIR::VariableOp>(
-            getLoc(), elemRef,
+        auto subVariable = P4HIR::VariableOp::create(
+            builder, getLoc(), elemRef,
             optName ? *optName + ".field" + Twine(cast<IntegerAttr>(usedIndex).getInt()) : "",
             getInit(), getAnnotationsAttr());
         newAllocators.push_back(subVariable);
@@ -141,14 +141,14 @@ DeletionKind P4HIR::ReadOp::rewire(const DestructurableMemorySlot &slot,
     getSortedPtrs(subslots, elements);
 
     SmallVector<mlir::Value> vals;
-    for (auto [_, val] : elements) vals.push_back(builder.create<P4HIR::ReadOp>(getLoc(), val));
+    for (auto [_, val] : elements) vals.push_back(P4HIR::ReadOp::create(builder, getLoc(), val));
 
     Value repl = mlir::TypeSwitch<Type, Value>(getType())
                      .Case<StructLikeTypeInterface>([&](auto) {
-                         return builder.create<P4HIR::StructOp>(getLoc(), slot.elemType, vals);
+                         return P4HIR::StructOp::create(builder, getLoc(), slot.elemType, vals);
                      })
                      .Case<P4HIR::ArrayType>([&](auto) {
-                         return builder.create<P4HIR::ArrayOp>(getLoc(), slot.elemType, vals);
+                         return P4HIR::ArrayOp::create(builder, getLoc(), slot.elemType, vals);
                      });
 
     replaceAllUsesWith(repl);
@@ -211,17 +211,17 @@ DeletionKind P4HIR::AssignOp::rewire(const DestructurableMemorySlot &slot,
         .Case<StructLikeTypeInterface>([&](auto structType) {
             for (auto [idx, elt] : elements) {
                 auto &fieldInfo = structType.getFields()[idx];
-                auto val = builder.create<P4HIR::StructExtractOp>(getLoc(), getValue(), fieldInfo);
-                builder.create<P4HIR::AssignOp>(getLoc(), val, elt);
+                auto val = P4HIR::StructExtractOp::create(builder, getLoc(), getValue(), fieldInfo);
+                P4HIR::AssignOp::create(builder, getLoc(), val, elt);
             }
         })
         .Case<ArrayType>([&](auto arrayType) {
             for (auto [idx, elt] : elements) {
-                auto idxConst = builder.create<P4HIR::ConstOp>(
-                    getLoc(),
+                auto idxConst = P4HIR::ConstOp::create(
+                    builder, getLoc(),
                     P4HIR::IntAttr::get(P4HIR::BitsType::get(getContext(), 32, false), idx));
-                auto val = builder.create<P4HIR::ArrayGetOp>(getLoc(), getValue(), idxConst);
-                builder.create<P4HIR::AssignOp>(getLoc(), val, elt);
+                auto val = P4HIR::ArrayGetOp::create(builder, getLoc(), getValue(), idxConst);
+                P4HIR::AssignOp::create(builder, getLoc(), val, elt);
             }
         });
 

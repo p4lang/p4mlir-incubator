@@ -380,8 +380,8 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
                                 argNameStr = argName.str();
                             auto nameAttr = getUniqueName(rewriter.getStringAttr(
                                 llvm::Twine("__local_") + caller.getSymName() + "_" + argNameStr));
-                            auto local =
-                                rewriter.create<P4HIR::ControlLocalOp>(rep.getLoc(), nameAttr, rep);
+                            auto local = P4HIR::ControlLocalOp::create(rewriter, rep.getLoc(),
+                                                                       nameAttr, rep);
                             passthroughBySymbol[i] = local.getSymNameAttr();
                         }
                     }
@@ -495,11 +495,11 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
                         } else if (info.promoted) {
                             // Control local was promoted from value to reference.
                             // We need to introduce a read operation.
-                            auto newSymbolRefOp = rewriter.create<P4HIR::SymToValueOp>(
-                                symbolRefOp.getLoc(), info.localStorage.getType(),
+                            auto newSymbolRefOp = P4HIR::SymToValueOp::create(
+                                rewriter, symbolRefOp.getLoc(), info.localStorage.getType(),
                                 symbolRefOp.getDecl());
-                            auto readOp = rewriter.create<P4HIR::ReadOp>(
-                                symbolRefOp.getLoc(), newSymbolRefOp.getResult());
+                            auto readOp = P4HIR::ReadOp::create(rewriter, symbolRefOp.getLoc(),
+                                                                newSymbolRefOp.getResult());
                             rewriter.replaceOp(symbolRefOp, readOp);
                         }
                     });
@@ -545,10 +545,11 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
                     auto newVarName =
                         (instOp.getSymName() + "." + controlLocalOp.getSymName() + "_var").str();
                     info.hasNewLocalStorage = true;
-                    info.localStorage = rewriter.create<P4HIR::VariableOp>(controlLocalOp.getLoc(),
-                                                                           newVarType, newVarName);
-                    auto newControlLocal = rewriter.create<P4HIR::ControlLocalOp>(
-                        controlLocalOp.getLoc(), controlLocalOp.getSymName(), info.localStorage);
+                    info.localStorage = P4HIR::VariableOp::create(rewriter, controlLocalOp.getLoc(),
+                                                                  newVarType, newVarName);
+                    auto newControlLocal = P4HIR::ControlLocalOp::create(
+                        rewriter, controlLocalOp.getLoc(), controlLocalOp.getSymName(),
+                        info.localStorage);
                     adjustClonedOp(newControlLocal, renameCb);
                 }
             } else if (auto controlApplyOp = mlir::dyn_cast<P4HIR::ControlApplyOp>(op)) {
@@ -588,16 +589,16 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
                 if (mlir::isa<P4HIR::ReferenceType>(info.newVal.getType())) {
                     // If the argument is a reference type then we need to copy the new value to the
                     // underlying storage.
-                    auto val = rewriter.create<P4HIR::ReadOp>(applyOp.getLoc(), info.newVal);
-                    rewriter.create<P4HIR::AssignOp>(applyOp.getLoc(), val, info.localStorage);
+                    auto val = P4HIR::ReadOp::create(rewriter, applyOp.getLoc(), info.newVal);
+                    P4HIR::AssignOp::create(rewriter, applyOp.getLoc(), val, info.localStorage);
                     // And use the underlying storage in the inlined control apply block.
                     callMapper.map(info.origVal, info.localStorage.getResult());
                 } else {
                     // Otherwise it is a read-only argument. Assign it to the underlying storage so
                     // it can be accessed by actions. The updated value is already mapped for the
                     // control apply block.
-                    rewriter.create<P4HIR::AssignOp>(applyOp.getLoc(), info.newVal,
-                                                     info.localStorage);
+                    P4HIR::AssignOp::create(rewriter, applyOp.getLoc(), info.newVal,
+                                            info.localStorage);
                 }
             }
 
@@ -614,9 +615,9 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
 
                 if (mlir::isa<P4HIR::ReferenceType>(info.newVal.getType())) {
                     auto updatedLocalVal =
-                        rewriter.create<P4HIR::ReadOp>(applyOp.getLoc(), info.localStorage);
-                    rewriter.create<P4HIR::AssignOp>(applyOp.getLoc(), updatedLocalVal,
-                                                     info.newVal);
+                        P4HIR::ReadOp::create(rewriter, applyOp.getLoc(), info.localStorage);
+                    P4HIR::AssignOp::create(rewriter, applyOp.getLoc(), updatedLocalVal,
+                                            info.newVal);
                 }
             }
 

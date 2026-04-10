@@ -82,7 +82,7 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
 
         SmallVector<Operation *> eraseList;
 
-        auto newState = rewriter.create<BMv2IR::ParserStateOp>(loc, op.getSymNameAttr());
+        auto newState = BMv2IR::ParserStateOp::create(rewriter, loc, op.getSymNameAttr());
         auto &transitionBlock = newState.getTransitions().emplaceBlock();
         auto &keysBlock = newState.getTransitionKeys().emplaceBlock();
         auto terminator = op.getNextTransition();
@@ -92,8 +92,8 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
                 .Case([&](P4HIR::ParserTransitionOp transitionOp) -> LogicalResult {
                     ConversionPatternRewriter::InsertionGuard guard(rewriter);
                     rewriter.setInsertionPointToEnd(&transitionBlock);
-                    rewriter.create<BMv2IR::TransitionOp>(
-                        transitionOp.getLoc(),
+                    BMv2IR::TransitionOp::create(
+                        rewriter, transitionOp.getLoc(),
                         BMv2IR::TransitionKindAttr::get(context, BMv2IR::TransitionKind::Default),
                         transitionOp.getStateAttr(), nullptr, nullptr);
                     eraseList.push_back(transitionOp.getOperation());
@@ -116,8 +116,8 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
                 .Case([&](P4HIR::ParserAcceptOp acceptOp) {
                     ConversionPatternRewriter::InsertionGuard guard(rewriter);
                     rewriter.setInsertionPointToEnd(&transitionBlock);
-                    rewriter.create<BMv2IR::TransitionOp>(
-                        acceptOp.getLoc(),
+                    BMv2IR::TransitionOp::create(
+                        rewriter, acceptOp.getLoc(),
                         BMv2IR::TransitionKindAttr::get(context, BMv2IR::TransitionKind::Default),
                         nullptr, nullptr, nullptr);
                     eraseList.push_back(acceptOp.getOperation());
@@ -129,8 +129,8 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
                     //  for explicit transitions to reject
                     ConversionPatternRewriter::InsertionGuard guard(rewriter);
                     rewriter.setInsertionPointToEnd(&transitionBlock);
-                    rewriter.create<BMv2IR::TransitionOp>(
-                        rejectOp.getLoc(),
+                    BMv2IR::TransitionOp::create(
+                        rewriter, rejectOp.getLoc(),
                         BMv2IR::TransitionKindAttr::get(context, BMv2IR::TransitionKind::Default),
                         nullptr, nullptr, nullptr);
                     eraseList.push_back(rejectOp.getOperation());
@@ -162,7 +162,7 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
             ConversionPatternRewriter::InsertionGuard guard(rewriter);
             rewriter.setInsertionPointToEnd(block);
             eraseList.push_back(lookAheadOp);
-            rewriter.create<BMv2IR::LookaheadOp>(loc, offset, width);
+            BMv2IR::LookaheadOp::create(rewriter, loc, offset, width);
             return success();
         }
         return op->emitError("Unhandled transition key");
@@ -191,11 +191,11 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
                         ConversionPatternRewriter::InsertionGuard guard(rewriter);
                         rewriter.setInsertionPointToEnd(block);
 
-                        rewriter.create<BMv2IR::TransitionOp>(
-                            loc,
-                            BMv2IR::TransitionKindAttr::get(context,
-                                                            BMv2IR::TransitionKind::Hexstr),
-                            caseOp.getStateAttr(), maybeConstVal.value(), nullptr);
+                        BMv2IR::TransitionOp::create(rewriter, loc,
+                                                     BMv2IR::TransitionKindAttr::get(
+                                                         context, BMv2IR::TransitionKind::Hexstr),
+                                                     caseOp.getStateAttr(), maybeConstVal.value(),
+                                                     nullptr);
                     }
                     return success();
                 })
@@ -203,11 +203,10 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
                     if (P4HIR::isUniversalSetValue(constOp.getRes())) {
                         ConversionPatternRewriter::InsertionGuard guard(rewriter);
                         rewriter.setInsertionPointToEnd(block);
-                        rewriter.create<BMv2IR::TransitionOp>(
-                            loc,
-                            BMv2IR::TransitionKindAttr::get(context,
-                                                            BMv2IR::TransitionKind::Default),
-                            caseOp.getStateAttr(), nullptr, nullptr);
+                        BMv2IR::TransitionOp::create(rewriter, loc,
+                                                     BMv2IR::TransitionKindAttr::get(
+                                                         context, BMv2IR::TransitionKind::Default),
+                                                     caseOp.getStateAttr(), nullptr, nullptr);
                         return success();
                     }
                     return failure();
@@ -219,8 +218,8 @@ struct ParserStateOpConversionPattern : public OpConversionPattern<P4HIR::Parser
                         return maskOp.emitError("Unhandled mask op");
                     ConversionPatternRewriter::InsertionGuard guard(rewriter);
                     rewriter.setInsertionPointToEnd(block);
-                    rewriter.create<BMv2IR::TransitionOp>(
-                        maskOp.getLoc(),
+                    BMv2IR::TransitionOp::create(
+                        rewriter, maskOp.getLoc(),
                         BMv2IR::TransitionKindAttr::get(context, BMv2IR::TransitionKind::Hexstr),
                         caseOp.getStateAttr(), maybeLhsConst.value(), maybeRhsConst.value());
                     return success();
@@ -242,7 +241,7 @@ struct ParserOpConversionPattern : public OpConversionPattern<P4HIR::ParserOp> {
         auto firstTransition = op.getStartTransition();
         auto initState = op.getStartState();
         auto newParser =
-            rewriter.create<BMv2IR::ParserOp>(loc, op.getSymNameAttr(), initState.getSymbolRef());
+            BMv2IR::ParserOp::create(rewriter, loc, op.getSymNameAttr(), initState.getSymbolRef());
         rewriter.eraseOp(firstTransition);
         auto &region = newParser.getRegion();
         region.takeBody(op.getRegion());

@@ -47,27 +47,27 @@ struct ExpandEmitPattern : public mlir::OpRewritePattern<P4CoreLib::PacketEmitOp
                     auto elements = tp.getFields();
                     for (const auto &elt : elements) {
                         auto extrData =
-                            rewriter.create<P4HIR::StructExtractOp>(loc, emitArg, elt.name);
+                            P4HIR::StructExtractOp::create(rewriter, loc, emitArg, elt.name);
                         if (!mlir::isa<P4HIR::StructLikeTypeInterface>(extrData.getType()))
                             return emitOp.emitOpError() << "Invalid type contained in emit call";
-                        rewriter.create<P4CoreLib::PacketEmitOp>(loc, dstPkt, extrData);
+                        P4CoreLib::PacketEmitOp::create(rewriter, loc, dstPkt, extrData);
                     }
                     rewriter.eraseOp(emitOp);
                     return mlir::success();
                 })
             .Case<P4HIR::HeaderStackType>([&](mlir::Type) -> mlir::LogicalResult {
-                auto hsData = rewriter.create<P4HIR::StructExtractOp>(
-                    loc, emitArg, P4HIR::HeaderStackType::dataFieldName);
+                auto hsData = P4HIR::StructExtractOp::create(rewriter, loc, emitArg,
+                                                             P4HIR::HeaderStackType::dataFieldName);
                 auto arrayType = mlir::cast<P4HIR::ArrayType>(hsData.getType());
                 static constexpr unsigned hsIdBitWidth = 32;
                 auto intType = P4HIR::BitsType::get(getContext(), hsIdBitWidth, false);
                 for (unsigned i = 0; i < arrayType.getSize(); i++) {
                     auto idxOp =
-                        rewriter.create<P4HIR::ConstOp>(loc, P4HIR::IntAttr::get(intType, i));
-                    auto arrItem = rewriter.create<P4HIR::ArrayGetOp>(loc, hsData, idxOp);
+                        P4HIR::ConstOp::create(rewriter, loc, P4HIR::IntAttr::get(intType, i));
+                    auto arrItem = P4HIR::ArrayGetOp::create(rewriter, loc, hsData, idxOp);
                     if (!mlir::isa<P4HIR::StructLikeTypeInterface>(arrItem.getType()))
                         return emitOp.emitOpError() << "Invalid type contained in emit call";
-                    rewriter.create<P4CoreLib::PacketEmitOp>(loc, dstPkt, arrItem);
+                    P4CoreLib::PacketEmitOp::create(rewriter, loc, dstPkt, arrItem);
                 }
                 rewriter.eraseOp(emitOp);
                 return mlir::success();

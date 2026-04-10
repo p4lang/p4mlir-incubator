@@ -27,24 +27,25 @@ struct RemoveSoftCFPass : public P4::P4MLIR::impl::RemoveSoftCFBase<RemoveSoftCF
 struct GuardVariable {
     // Create and initialize to true the guard variable.
     void init(mlir::OpBuilder &b, mlir::Location loc, llvm::StringRef name) {
-        guardVar = b.create<P4HIR::VariableOp>(
-            loc, P4HIR::ReferenceType::get(P4HIR::BoolType::get(b.getContext())), name, true);
+        guardVar = P4HIR::VariableOp::create(
+            b, loc, P4HIR::ReferenceType::get(P4HIR::BoolType::get(b.getContext())), name, true);
         assign(b, loc, true);
     }
 
     // Assign `value` to the guard variable.
     void assign(mlir::OpBuilder &b, mlir::Location loc, bool value) {
         assert(guardVar && "Guard not initialized");
-        auto constTrue = b.create<P4HIR::ConstOp>(loc, P4HIR::BoolAttr::get(b.getContext(), value));
-        b.create<P4HIR::AssignOp>(loc, constTrue, guardVar);
+        auto constTrue =
+            P4HIR::ConstOp::create(b, loc, P4HIR::BoolAttr::get(b.getContext(), value));
+        P4HIR::AssignOp::create(b, loc, constTrue, guardVar);
     }
 
     // Create and return a new block that is executed only when this guard is true.
     mlir::Block *createGuardedBlock(mlir::OpBuilder &b, mlir::Location loc) {
         assert(guardVar && "Guard not initialized");
-        auto cond = b.create<P4HIR::ReadOp>(loc, guardVar);
-        auto ifOp = b.create<P4HIR::IfOp>(
-            loc, cond, false,
+        auto cond = P4HIR::ReadOp::create(b, loc, guardVar);
+        auto ifOp = P4HIR::IfOp::create(
+            b, loc, cond, false,
             [&](mlir::OpBuilder &b, mlir::Location) { P4HIR::buildTerminatedBody(b, loc); });
         return &ifOp.getThenRegion().front();
     }
@@ -76,7 +77,7 @@ struct GuardVariable {
 // an outer level). Operations are either moved to a more nested block or to a guard block that is
 // introduced at the same level.
 struct RemoveSoftCF {
-    RemoveSoftCF(mlir::RewriterBase &rewriter) : rewriter(rewriter) {}
+    explicit RemoveSoftCF(mlir::RewriterBase &rewriter) : rewriter(rewriter) {}
 
     void transform(mlir::Location loc, mlir::Region *region, mlir::Type returnType) {
         assert(region->hasOneBlock() && "Expected region with one block");
@@ -94,8 +95,8 @@ struct RemoveSoftCF {
 
         // Create a variable to store the final return if needed.
         if (returnType && !mlir::isa<P4HIR::VoidType>(returnType))
-            returnVar = rewriter.create<P4HIR::VariableOp>(
-                loc, P4HIR::ReferenceType::get(returnType), "return_value", true);
+            returnVar = P4HIR::VariableOp::create(
+                rewriter, loc, P4HIR::ReferenceType::get(returnType), "return_value", true);
 
         // Replace soft control flow in the function's body.
         visitBlock(block);
@@ -104,7 +105,7 @@ struct RemoveSoftCF {
             // Update the real return statement.
             auto returnOp = mlir::cast<P4HIR::ReturnOp>(block->getTerminator());
             rewriter.setInsertionPoint(returnOp);
-            auto returnValue = rewriter.create<P4HIR::ReadOp>(returnOp.getLoc(), returnVar);
+            auto returnValue = P4HIR::ReadOp::create(rewriter, returnOp.getLoc(), returnVar);
             rewriter.modifyOpInPlace(returnOp, [&]() {
                 returnOp.getInputMutable().assign(mlir::ValueRange(returnValue));
             });
@@ -139,7 +140,7 @@ struct RemoveSoftCF {
         CFInfo() : cfTypes(CF_None), execType(ET_Next), execPoint(nullptr) {}
 
         // Constructor for soft control flow operations.
-        CFInfo(ControlFlowType cfType, mlir::Operation *execPoint = nullptr)
+        explicit CFInfo(ControlFlowType cfType, mlir::Operation *execPoint = nullptr)
             : cfTypes(cfType), execType(ET_None), execPoint(execPoint) {}
 
         // Bit mask of soft control flow types in this operation or block.
@@ -319,8 +320,8 @@ struct RemoveSoftCF {
             }
 
             if (returnVar)
-                rewriter.create<P4HIR::AssignOp>(softReturnOp.getLoc(), softReturnOp.getOperand(0),
-                                                 returnVar);
+                P4HIR::AssignOp::create(rewriter, softReturnOp.getLoc(), softReturnOp.getOperand(0),
+                                        returnVar);
 
             rewriter.eraseOp(op);
             return CFInfo(CF_Return);
@@ -352,7 +353,7 @@ struct RemoveSoftCF {
             if (elseRegion->empty()) {
                 mlir::Block *block = rewriter.createBlock(elseRegion, elseRegion->begin());
                 rewriter.setInsertionPointToStart(block);
-                rewriter.create<P4HIR::YieldOp>(ifOp.getLoc());
+                P4HIR::YieldOp::create(rewriter, ifOp.getLoc());
             }
 
             SmallVector<mlir::Block *, 2> blocks = {getSingleBlock(ifOp.getThenRegion()),
@@ -365,10 +366,10 @@ struct RemoveSoftCF {
             if (!switchOp.getDefaultCase()) {
                 rewriter.setInsertionPoint(switchOp.getBody().back().getTerminator());
                 auto loc = switchOp.getLoc();
-                rewriter.create<P4HIR::CaseOp>(
-                    loc, mlir::ArrayAttr::get(rewriter.getContext(), {}),
+                P4HIR::CaseOp::create(
+                    rewriter, loc, mlir::ArrayAttr::get(rewriter.getContext(), {}),
                     P4HIR::CaseOpKind::Default,
-                    [&](mlir::OpBuilder &b, mlir::Location) { b.create<P4HIR::YieldOp>(loc); });
+                    [&](mlir::OpBuilder &b, mlir::Location) { P4HIR::YieldOp::create(b, loc); });
             }
 
             auto blocks = llvm::map_to_vector(switchOp.cases(), [](P4HIR::CaseOp caseOp) {
@@ -387,16 +388,16 @@ struct RemoveSoftCF {
                 auto loopCond = mlir::cast<P4HIR::ConditionOp>(condBlock->getTerminator());
 
                 rewriter.setInsertionPoint(loopCond);
-                auto guardVal = rewriter.create<P4HIR::ReadOp>(loc, guard.getVar());
-                auto newCond = rewriter.create<P4HIR::IfOp>(
-                    loc, guardVal, true,
+                auto guardVal = P4HIR::ReadOp::create(rewriter, loc, guard.getVar());
+                auto newCond = P4HIR::IfOp::create(
+                    rewriter, loc, guardVal, true,
                     [&](mlir::OpBuilder &b, mlir::Location) {
-                        b.create<P4HIR::YieldOp>(loc, mlir::ValueRange(loopCond.getCondition()));
+                        P4HIR::YieldOp::create(b, loc, mlir::ValueRange(loopCond.getCondition()));
                     },
                     [&](mlir::OpBuilder &b, mlir::Location) {
-                        auto constFalse = b.create<P4HIR::ConstOp>(
-                            loc, P4HIR::BoolAttr::get(rewriter.getContext(), false));
-                        b.create<P4HIR::YieldOp>(loc, mlir::ValueRange(constFalse));
+                        auto constFalse = P4HIR::ConstOp::create(
+                            b, loc, P4HIR::BoolAttr::get(rewriter.getContext(), false));
+                        P4HIR::YieldOp::create(b, loc, mlir::ValueRange(constFalse));
                     });
 
                 auto opsToMove = llvm::make_range(condBlock->begin(), guardVal->getIterator());

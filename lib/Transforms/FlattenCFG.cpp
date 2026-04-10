@@ -39,7 +39,7 @@ struct IfOpFlattening : public OpRewritePattern<P4HIR::IfOp> {
             continueBlock =
                 rewriter.createBlock(remainingOpsBlock, ifOp.getResultTypes(),
                                      llvm::SmallVector<mlir::Location>(ifOp.getNumResults(), loc));
-            rewriter.create<P4HIR::BrOp>(loc, remainingOpsBlock);
+            P4HIR::BrOp::create(rewriter, loc, remainingOpsBlock);
         }
 
         // Move blocks from the "then" region to the region containing if, place it before the
@@ -49,7 +49,7 @@ struct IfOpFlattening : public OpRewritePattern<P4HIR::IfOp> {
         mlir::Operation *thenTerminator = thenRegion.back().getTerminator();
         mlir::ValueRange thenTerminatorOperands = thenTerminator->getOperands();
         rewriter.setInsertionPointToEnd(&thenRegion.back());
-        rewriter.create<P4HIR::BrOp>(loc, continueBlock, thenTerminatorOperands);
+        P4HIR::BrOp::create(rewriter, loc, continueBlock, thenTerminatorOperands);
         rewriter.eraseOp(thenTerminator);
         rewriter.inlineRegionBefore(thenRegion, continueBlock);
 
@@ -63,13 +63,13 @@ struct IfOpFlattening : public OpRewritePattern<P4HIR::IfOp> {
             mlir::Operation *elseTerminator = elseRegion.back().getTerminator();
             mlir::ValueRange elseTerminatorOperands = elseTerminator->getOperands();
             rewriter.setInsertionPointToEnd(&elseRegion.back());
-            rewriter.create<P4HIR::BrOp>(loc, continueBlock, elseTerminatorOperands);
+            P4HIR::BrOp::create(rewriter, loc, continueBlock, elseTerminatorOperands);
             rewriter.eraseOp(elseTerminator);
             rewriter.inlineRegionBefore(elseRegion, continueBlock);
         }
 
         rewriter.setInsertionPointToEnd(condBlock);
-        rewriter.create<P4HIR::CondBrOp>(loc, ifOp.getCondition(), thenBlock, elseBlock);
+        P4HIR::CondBrOp::create(rewriter, loc, ifOp.getCondition(), thenBlock, elseBlock);
 
         // Ok, we're done!
         rewriter.replaceOp(ifOp, continueBlock->getArguments());
@@ -105,7 +105,7 @@ class ScopeOpFlattening : public mlir::OpRewritePattern<P4HIR::ScopeOp> {
 
         // Save stack and then branch into the body of the region.
         rewriter.setInsertionPointToEnd(currentBlock);
-        rewriter.create<P4HIR::BrOp>(loc, mlir::ValueRange(), beforeBody);
+        P4HIR::BrOp::create(rewriter, loc, mlir::ValueRange(), beforeBody);
 
         // Replace the scope return with a branch that jumps out of the body.
         rewriter.setInsertionPointToEnd(afterBody);

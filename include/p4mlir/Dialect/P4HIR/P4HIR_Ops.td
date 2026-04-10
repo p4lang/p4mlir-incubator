@@ -892,7 +892,7 @@ def FuncOp : P4HIR_Op<"func", [
                               P4HIR::FuncType type,
                               llvm::ArrayRef<mlir::DictionaryAttr> argAttrs = {},
                               mlir::DictionaryAttr annotations = {}) {
-      auto op = builder.create<FuncOp>(loc, name, type, false, argAttrs, annotations);
+      auto op = FuncOp::create(builder, loc, name, type, false, argAttrs, annotations);
       op.createEntryBlock();
       op.setAction(true);
       return op;

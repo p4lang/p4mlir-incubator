@@ -10,7 +10,7 @@ include "p4mlir/Dialect/P4HIR/P4HIR_Types.td"
 def AddIntAttrs : NativeCodeCall<"addIntegerAttrs($_builder, $0, $1, $2)">;
 def SubIntAttrs : NativeCodeCall<"subIntegerAttrs($_builder, $0, $1, $2)">;
 
-def CreateConstOp : NativeCodeCall<"$_builder.create<P4HIR::ConstOp>($_loc, $0)">;
+def CreateConstOp : NativeCodeCall<"P4HIR::ConstOp::create($_builder, $_loc, $0)">;
 
 class HasValueConstraint<int value> : Constraint<
   CPred<"isIntegerValue($0, " # value # ")">,

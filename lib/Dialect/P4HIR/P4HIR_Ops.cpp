@@ -965,7 +965,7 @@ static LogicalResult ensureRegionTerm(OpAsmParser &parser, Region &region, SMLoc
 
     // Terminator was omitted correctly: recreate it.
     builder.setInsertionPointToEnd(&block);
-    builder.create<P4HIR::YieldOp>(eLoc);
+    P4HIR::YieldOp::create(builder, eLoc);
     return success();
 }
 
@@ -1092,7 +1092,7 @@ void P4HIR::buildTerminatedBody(OpBuilder &builder, Location loc) {
     if (block->mightHaveTerminator()) return;
 
     // add p4hir.yield to the end of the block
-    builder.create<P4HIR::YieldOp>(loc);
+    P4HIR::YieldOp::create(builder, loc);
 }
 
 void P4HIR::IfOp::getSuccessorRegions(mlir::RegionBranchPoint point,
@@ -1931,10 +1931,10 @@ LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
             if (it != fieldVals.end()) {
                 fieldVal = it->second;
             } else {
-                auto fieldRef = rewriter.create<P4HIR::StructFieldRefOp>(
-                    op.getLoc(), P4HIR::ReferenceType::get(structExtract.getType()),
+                auto fieldRef = P4HIR::StructFieldRefOp::create(
+                    rewriter, op.getLoc(), P4HIR::ReferenceType::get(structExtract.getType()),
                     readOp.getRef(), structExtract.getFieldIndexAttr());
-                fieldVal = rewriter.create<P4HIR::ReadOp>(op.getLoc(), fieldRef);
+                fieldVal = P4HIR::ReadOp::create(rewriter, op.getLoc(), fieldRef);
                 fieldVals.insert({indexAttr, fieldVal});
             }
 
@@ -3842,9 +3842,9 @@ LogicalResult P4HIR::SwitchOp::canonicalize(P4HIR::SwitchOp op, PatternRewriter 
         if (toRemove.size() < 2) return failure();
 
         rewriter.setInsertionPoint(toRemove[0]);
-        rewriter.create<CaseOp>(
-            toRemove[0].getLoc(), rewriter.getArrayAttr(mergedValues), CaseOpKind::Anyof,
-            [](OpBuilder &builder, Location loc) { builder.create<YieldOp>(loc); });
+        CaseOp::create(rewriter, toRemove[0].getLoc(), rewriter.getArrayAttr(mergedValues),
+                       CaseOpKind::Anyof,
+                       [](OpBuilder &builder, Location loc) { YieldOp::create(builder, loc); });
 
         for (auto caseToRemove : toRemove) rewriter.eraseOp(caseToRemove);
         return success();
@@ -4160,9 +4160,9 @@ LogicalResult P4HIR::ArrayGetOp::canonicalize(P4HIR::ArrayGetOp op, PatternRewri
         if ((indexOp->getBlock() == readOp->getBlock() && indexOp->isBeforeInBlock(readOp)) ||
             (indexOp->getBlock() != readOp->getBlock() && readOp->getBlock() == op->getBlock())) {
             rewriter.setInsertionPoint(readOp);
-            auto eltRef = rewriter.create<P4HIR::ArrayElementRefOp>(
-                op.getLoc(), P4HIR::ReferenceType::get(op.getType()), readOp.getRef(),
-                op.getIndex());
+            auto eltRef = P4HIR::ArrayElementRefOp::create(rewriter, op.getLoc(),
+                                                           P4HIR::ReferenceType::get(op.getType()),
+                                                           readOp.getRef(), op.getIndex());
             rewriter.replaceOpWithNewOp<P4HIR::ReadOp>(op, eltRef);
             rewriter.eraseOp(readOp);
             return success();
@@ -4855,7 +4855,7 @@ Operation *P4HIR::P4HIRDialect::materializeConstant(OpBuilder &builder, Attribut
                                                     Location loc) {
     auto typedAttr = mlir::cast<mlir::TypedAttr>(value);
     assert(typedAttr.getType() == type && "type mismatch");
-    return builder.create<P4HIR::ConstOp>(loc, typedAttr);
+    return P4HIR::ConstOp::create(builder, loc, typedAttr);
 }
 
 struct EnumRepresentationModel
