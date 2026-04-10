@@ -957,24 +957,23 @@ def ArrayType : P4HIR_Type<"Array", "array", [
 //===----------------------------------------------------------------------===//
 
 def AnyP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType, StringType,
-                           StructType, HeaderType, HeaderUnionType, HeaderStackType, Builtin_Tuple,
+                           StructLikeTypeInterface, Builtin_Tuple,
                            EnumType, SerEnumType,
                            ValidBitType,
                            DontcareType, ErrorType, UnknownType, AliasType,
                            SetType, ArrayType]> {}
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
 def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType,
-                                  StructType, HeaderType, Builtin_Tuple,
+                                  StructLikeTypeInterface, Builtin_Tuple,
                                   EnumType, SerEnumType, AliasType,
                                   ExternType]> {}
 def LoadableP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType,
-                                StructType, HeaderType, HeaderUnionType, HeaderStackType, Builtin_Tuple,
+                                StructLikeTypeInterface, Builtin_Tuple,
                                 EnumType, SerEnumType, ErrorType,
                                 ValidBitType, AliasType, ArrayType]> {}
 def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def AnyCollectionType : AnyTypeOf<[HeaderStackType, SetType, ArrayType]> {}
 def SwitchCondType : AnyTypeOf<[AnyIntP4Type, AnyEnumType, ErrorType]>;
-def StructLikeType : AnyTypeOf<[StructType, HeaderType, HeaderUnionType, HeaderStackType]>;
 def P4ObjectType : AnyTypeOf<[ParserType, ControlType, ExternType, PackageType]>;
 
 /// A ref type with the specified constraints on the nested type.
@@ -987,7 +986,7 @@ class SpecificRefType<Type type> : ConfinedType<ReferenceType,
 }
 
 def StructRefType : SpecificRefType<StructType>;
-def StructLikeRefType : SpecificRefType<StructLikeType>;
+def StructLikeRefType : SpecificRefType<StructLikeTypeInterface>;
 def BitsRefType : SpecificRefType<BitsType>;
 def HeaderRefType : SpecificRefType<HeaderType>;
 def ArrayRefType : SpecificRefType<ArrayType>;
