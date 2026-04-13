@@ -60,27 +60,29 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     mlir::Value resolveReference(const P4::IR::Node *node, bool unchecked = false);
 
     mlir::Value getBoolConstant(mlir::Location loc, bool value) {
-        return builder.create<P4HIR::ConstOp>(loc, P4HIR::BoolAttr::get(context(), value));
+        return P4HIR::ConstOp::create(builder, loc, P4HIR::BoolAttr::get(context(), value));
     }
     mlir::Value getStringConstant(mlir::Location loc, llvm::Twine &bytes) {
-        return builder.create<P4HIR::ConstOp>(
-            loc, mlir::StringAttr::get(bytes, P4HIR::StringType::get(context())));
+        return P4HIR::ConstOp::create(
+            builder, loc, mlir::StringAttr::get(bytes, P4HIR::StringType::get(context())));
     }
     mlir::Value getIntConstant(mlir::Location loc, llvm::APInt value, mlir::Type type) {
-        return builder.create<P4HIR::ConstOp>(loc, P4HIR::IntAttr::get(context(), type, value));
+        return P4HIR::ConstOp::create(builder, loc, P4HIR::IntAttr::get(context(), type, value));
     }
     mlir::Value getUIntConstant(mlir::Location loc, uint64_t value, unsigned bitWidth) {
-        return builder.create<P4HIR::ConstOp>(
-            loc, P4HIR::IntAttr::get(context(), P4HIR::BitsType::get(context(), bitWidth, false),
-                                     llvm::APInt(bitWidth, value)));
+        return P4HIR::ConstOp::create(
+            builder, loc,
+            P4HIR::IntAttr::get(context(), P4HIR::BitsType::get(context(), bitWidth, false),
+                                llvm::APInt(bitWidth, value)));
     }
     mlir::Value getSIntConstant(mlir::Location loc, uint64_t value, unsigned bitWidth) {
-        return builder.create<P4HIR::ConstOp>(
-            loc, P4HIR::IntAttr::get(context(), P4HIR::BitsType::get(context(), bitWidth, true),
-                                     llvm::APInt(bitWidth, value, true)));
+        return P4HIR::ConstOp::create(
+            builder, loc,
+            P4HIR::IntAttr::get(context(), P4HIR::BitsType::get(context(), bitWidth, true),
+                                llvm::APInt(bitWidth, value, true)));
     }
     mlir::Value getUniversalSetConstant(mlir::Location loc) {
-        return builder.create<P4HIR::ConstOp>(loc, P4HIR::UniversalSetAttr::get(context()));
+        return P4HIR::ConstOp::create(builder, loc, P4HIR::UniversalSetAttr::get(context()));
     }
 
     mlir::TypedAttr getTypedConstant(mlir::Type type, mlir::Attribute constant) {
