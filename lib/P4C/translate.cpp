@@ -206,7 +206,8 @@ mlir::Value P4HIRConverter::getValue(mlir::Value val, mlir::Type type) {
         // Getting value out of variable involves a load.
         val = P4HIR::ReadOp::create(builder, val.getLoc(), val);
 
-    if (type && val.getType() != type) val = P4HIR::CastOp::create(builder, val.getLoc(), type, val);
+    if (type && val.getType() != type)
+        val = P4HIR::CastOp::create(builder, val.getLoc(), type, val);
 
     return val;
 }
@@ -745,8 +746,8 @@ bool P4HIRConverter::preorder(const P4::IR::BlockStatement *block) {
     if (getParent<P4::IR::BlockStatement>()) {
         auto annotations = convert(block->annotations);
         mlir::OpBuilder::InsertionGuard guard(builder);
-        auto scope = P4HIR::ScopeOp::create(builder, 
-            getLoc(builder, block), annotations,
+        auto scope = P4HIR::ScopeOp::create(
+            builder, getLoc(builder, block), annotations,
             [&](mlir::OpBuilder &, mlir::Location) {  // nothing is being yielded
                 visit(block->components);
             });
@@ -928,8 +929,8 @@ CONVERT_CMP(Geq, Ge)
 
 mlir::Value P4HIRConverter::emitValidityConstant(mlir::Location loc,
                                                  P4HIR::ValidityBit validityConstValue) {
-    return P4HIR::ConstOp::create(builder, 
-        loc, P4HIR::ValidityBitAttr::get(context(), validityConstValue));
+    return P4HIR::ConstOp::create(builder, loc,
+                                  P4HIR::ValidityBitAttr::get(context(), validityConstValue));
 }
 
 void P4HIRConverter::emitHeaderValidityBitAssignOp(mlir::Location loc, mlir::Value header,
@@ -953,7 +954,7 @@ P4HIR::CmpOp P4HIRConverter::emitHeaderIsValidCmpOp(mlir::Location loc, mlir::Va
     }
     auto validityConstant = emitValidityConstant(loc, compareWith);
     return P4HIR::CmpOp::create(builder, loc, P4HIR::CmpOpKind::Eq, validityBitValue,
-                                        validityConstant);
+                                validityConstant);
 }
 
 P4HIR::CmpOp P4HIRConverter::emitHeaderUnionIsValidCmpOp(mlir::Location loc,
@@ -982,8 +983,8 @@ P4HIR::CmpOp P4HIRConverter::emitHeaderUnionIsValidCmpOp(mlir::Location loc,
         // Create a ternary operation:
         // if this header is valid, return true,
         // otherwise check the next header in the header union
-        auto ternaryOp = P4HIR::IfOp::create(builder, 
-            loc, headerIsValid.getResult(), true,
+        auto ternaryOp = P4HIR::IfOp::create(
+            builder, loc, headerIsValid.getResult(), true,
             [&](mlir::OpBuilder &b, mlir::Location loc) {
                 // If this header is valid, return true
                 P4HIR::YieldOp::create(b, loc, getBoolConstant(loc, true));
@@ -999,8 +1000,8 @@ P4HIR::CmpOp P4HIRConverter::emitHeaderUnionIsValidCmpOp(mlir::Location loc,
     auto isValid = buildNestedTernaryOp(0);
 
     // Return a comparison operation for consistency with other validity checks
-    return P4HIR::CmpOp::create(builder, 
-        loc, P4HIR::CmpOpKind::Eq, isValid,
+    return P4HIR::CmpOp::create(
+        builder, loc, P4HIR::CmpOpKind::Eq, isValid,
         getBoolConstant(loc, compareWith == P4HIR::ValidityBit::Valid ? true : false));
 }
 
@@ -1009,7 +1010,8 @@ void P4HIRConverter::emitSetInvalidForAllHeaders(mlir::Location loc, mlir::Value
     auto headerUnionType = mlir::cast<P4HIR::HeaderUnionType>(getObjectType(headerUnion));
     llvm::for_each(headerUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
         if (headerNameToSkip != fieldInfo.name.getValue()) {
-            auto header = P4HIR::StructFieldRefOp::create(builder, loc, headerUnion, fieldInfo.name);
+            auto header =
+                P4HIR::StructFieldRefOp::create(builder, loc, headerUnion, fieldInfo.name);
             emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
         }
     });
@@ -1620,8 +1622,8 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             // of parameter type
             if (arg->expression->is<P4::IR::DefaultExpression>()) {
                 auto type = getOrCreateType(param);
-                auto var = P4HIR::VariableOp::create(builder, getLoc(builder, arg->expression), type,
-                                                     "dummy");
+                auto var = P4HIR::VariableOp::create(builder, getLoc(builder, arg->expression),
+                                                     type, "dummy");
                 setValue(arg->expression, var);
             }
 
@@ -1633,14 +1635,14 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
 
                     if (mlir::isa<P4HIR::ReferenceType>(paramType) &&
                         !mlir::isa<P4HIR::ReferenceType>(argType)) {
-                        auto copyIn = b.create<P4HIR::VariableOp>(
-                            loc, P4HIR::ReferenceType::get(argType),
+                        auto copyIn = P4HIR::VariableOp::create(
+                            b, loc, P4HIR::ReferenceType::get(argType),
                             llvm::Twine(param->name.string_view()) + "_ref_arg");
                         visit(arg->expression);
                         argVal = getValue(arg->expression);
 
                         copyIn.setInit(true);
-                        b.create<P4HIR::AssignOp>(loc, argVal, copyIn);
+                        P4HIR::AssignOp::create(b, loc, argVal, copyIn);
                         argVal = copyIn;
                     } else {
                         // Nothing to do special, just pass things direct
