@@ -4701,13 +4701,13 @@ ParseResult P4HIR::InlineAsmOp::parse(OpAsmParser &parser, OperationState &resul
         return mlir::success();
     };
 
-    auto parseOperands = [&](llvm::StringRef name) {
-        if (parser.parseKeyword(name).failed()) return error("expected " + name + " operands here");
-        if (parser.parseEqual().failed()) return expected("=");
-        if (parser.parseLSquare().failed()) return expected("[");
+    auto parseOperands = [&](llvm::StringRef name) -> mlir::ParseResult {
+        if (parser.parseKeyword(name)) return error("expected " + name + " operands here");
+        if (parser.parseEqual()) return expected("=");
+        if (parser.parseLSquare()) return expected("[");
 
         int size = 0;
-        if (parser.parseOptionalRSquare().succeeded()) {
+        if (succeeded(parser.parseOptionalRSquare())) {
             operandsGroupSizes.push_back(size);
             if (parser.parseComma()) return expected(",");
             return mlir::success();
@@ -4734,13 +4734,12 @@ ParseResult P4HIR::InlineAsmOp::parse(OpAsmParser &parser, OperationState &resul
             }))
             return mlir::failure();
 
-        if (parser.parseRSquare().failed() || parser.parseComma().failed()) return expected("]");
+        if (parser.parseRSquare() || parser.parseComma()) return expected("]");
         operandsGroupSizes.push_back(size);
         return mlir::success();
     };
 
-    if (parseOperands("out").failed() || parseOperands("in").failed() ||
-        parseOperands("in_out").failed())
+    if (parseOperands("out") || parseOperands("in") || parseOperands("in_out"))
         return error("failed to parse operands");
 
     if (parser.parseLBrace()) return expected("{");
@@ -4749,12 +4748,11 @@ ParseResult P4HIR::InlineAsmOp::parse(OpAsmParser &parser, OperationState &resul
     if (parser.parseRBrace()) return expected("}");
     if (parser.parseRParen()) return expected(")");
 
-    if (parser.parseOptionalKeyword("side_effects").succeeded())
+    if (succeeded(parser.parseOptionalKeyword("side_effects")))
         result.attributes.set("side_effects", UnitAttr::get(ctxt));
 
-    if (parser.parseOptionalArrow().failed()) return mlir::failure();
-
-    if (parser.parseType(resType).failed()) return mlir::failure();
+    if (succeeded(parser.parseOptionalArrow()))
+        if (parser.parseType(resType)) return mlir::failure();
 
     if (parser.parseOptionalAttrDict(result.attributes)) return mlir::failure();
 
