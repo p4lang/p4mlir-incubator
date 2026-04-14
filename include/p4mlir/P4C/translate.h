@@ -33,6 +33,7 @@ class TypeMap;
 namespace P4::P4MLIR {
 
 class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
+ protected:
     mlir::OpBuilder &builder;
 
     P4::TypeMap *typeMap = nullptr;
@@ -130,6 +131,9 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         auto declType = getOrCreateType(param->type);
         return param->hasOut() ? P4HIR::ReferenceType::get(declType) : declType;
     }
+
+    // Converts P4 SourceLocation stored in 'node' into its MLIR counterpart
+    mlir::Location getLoc(const P4::IR::Node *node);
 
     // Returns underlying type in case of something of serialized enum cate
     mlir::Type getIntType(const P4::IR::Type *type) {

@@ -1987,15 +1987,16 @@ LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
     if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>()) {
         llvm::SmallVector<P4HIR::StructExtractOp, 4> users;
         for (mlir::Operation *user : readOp->getUsers()) {
-            if (auto structExtract = mlir::dyn_cast<P4HIR::StructExtractOp>(user))
-                users.push_back(structExtract);
-            else
-                return failure();
+            auto structExtract = mlir::dyn_cast<P4HIR::StructExtractOp>(user);
+            if (!structExtract) return failure();
+
+            users.push_back(structExtract);
         }
 
         // Use a map so we don't create duplicate reads of the same field.
         llvm::DenseMap<mlir::Attribute, mlir::Value> fieldVals;
         rewriter.setInsertionPoint(readOp);
+        auto loc = op.getLoc();
         for (auto structExtract : users) {
             auto indexAttr = structExtract.getFieldIndexAttr();
             mlir::Value fieldVal;
