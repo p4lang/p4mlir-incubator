@@ -4436,26 +4436,67 @@ class P4HirToP4Exporter {
     /// ```p4
     /// in bit<32> data
     /// ```
+    // mlir::LogicalResult exportArgument(mlir::FunctionOpInterface functionInterface,
+    //                                    ExtendedFormattedOStream &ss, int index) {
+    //     if (auto argAttrs = functionInterface.getArgAttrsAttr()) {
+    //         if (index < static_cast<int>(argAttrs.size())) {
+    //             if (auto dict =
+    //                     mlir::dyn_cast_if_present<mlir::DictionaryAttr>(argAttrs[index])) {
+    //                 auto annots =
+    //                     mlir::dyn_cast_if_present<mlir::DictionaryAttr>(dict.get("annotations"));
+    //                 if (!annots) {
+    //                     annots = mlir::dyn_cast_if_present<mlir::DictionaryAttr>(
+    //                         dict.get("p4hir.annotations"));
+    //                 }
+    //                 if (annots) {
+    //                     if (failed(exportAnnotations(annots, ss))) {
+    //                         return mlir::failure();
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+
+
+
+
     mlir::LogicalResult exportArgument(mlir::FunctionOpInterface functionInterface,
-                                       ExtendedFormattedOStream &ss, int index) {
-        if (auto argAttrs = functionInterface.getArgAttrsAttr()) {
-            if (index < static_cast<int>(argAttrs.size())) {
-                if (auto dict =
-                        mlir::dyn_cast_if_present<mlir::DictionaryAttr>(argAttrs[index])) {
-                    auto annots =
-                        mlir::dyn_cast_if_present<mlir::DictionaryAttr>(dict.get("annotations"));
-                    if (!annots) {
-                        annots = mlir::dyn_cast_if_present<mlir::DictionaryAttr>(
-                            dict.get("p4hir.annotations"));
-                    }
-                    if (annots) {
-                        if (failed(exportAnnotations(annots, ss))) {
-                            return mlir::failure();
-                        }
+                                   ExtendedFormattedOStream &ss, int index) {
+    // 🔹 Handle annotations
+    if (auto argAttrs = functionInterface.getArgAttrsAttr()) {
+        if (index < static_cast<int>(argAttrs.size())) {
+            if (auto dict =
+                    mlir::dyn_cast_if_present<mlir::DictionaryAttr>(argAttrs[index])) {
+                auto annots =
+                    mlir::dyn_cast_if_present<mlir::DictionaryAttr>(dict.get("annotations"));
+                if (!annots) {
+                    annots = mlir::dyn_cast_if_present<mlir::DictionaryAttr>(
+                        dict.get("p4hir.annotations"));
+                }
+                if (annots) {
+                    if (failed(exportAnnotations(annots, ss))) {
+                        return mlir::failure();
                     }
                 }
             }
         }
+    }
+
+    ss << "in ";
+
+    auto type = functionInterface.getArgumentTypes()[index];
+    if (failed(exportP4Type(type, ss))) {
+        return mlir::failure();
+    }
+
+    ss << " arg" << index;
+
+    return mlir::success();
+}
+
+
+
+
         // Export direction (in, out, inout).
         auto directionAttr =
             functionInterface.getArgAttr(index, P4HIR::FuncOp::getDirectionAttrName());
