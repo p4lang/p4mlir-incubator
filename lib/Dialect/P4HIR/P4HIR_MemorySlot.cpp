@@ -18,8 +18,21 @@ llvm::SmallVector<MemorySlot> P4HIR::VariableOp::getPromotableSlots() {
 }
 
 Value P4HIR::VariableOp::getDefaultValue(const MemorySlot &slot, OpBuilder &builder) {
-    if (auto defaultValueType = mlir::dyn_cast<HasDefaultValue>(slot.elemType))
-        return P4HIR::ConstOp::create(builder, getLoc(), defaultValueType.getDefaultValue());
+    if (auto defaultValueType = mlir::dyn_cast<HasDefaultValue>(slot.elemType)) {
+        auto defaultValue = defaultValueType.getDefaultValue();
+        if (defaultValue) {
+            return P4HIR::ConstOp::create(builder, getLoc(), defaultValue);
+        } else if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(defaultValueType)) {
+            // The spec says that the default value for serialized enums is zero even if
+            // there is no zero field. This is non-representable w/o casting to
+            // underlying type.
+            auto underlyingDefaultValue =
+                cast<HasDefaultValue>(serEnumType.getType()).getDefaultValue();
+            return P4HIR::CastOp::create(
+                builder, getLoc(), slot.elemType,
+                P4HIR::ConstOp::create(builder, getLoc(), underlyingDefaultValue));
+        }
+    }
 
     // TODO: This should really not happen
     llvm_unreachable("cannot materialize default value");
