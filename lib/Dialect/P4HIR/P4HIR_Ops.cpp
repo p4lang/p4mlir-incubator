@@ -292,19 +292,22 @@ LogicalResult P4HIR::CastOp::canonicalize(P4HIR::CastOp op, PatternRewriter &rew
         mlir::Type midType = inputCast.getType();
         mlir::Type dstType = op.getType();
 
-        auto isBit1Type = [](mlir::Type type) {
-            auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(type);
-            return bitsType && bitsType.getWidth() == 1 && !bitsType.isSigned();
+        auto validRoundtripPred = [](mlir::Type typeA, mlir::Type typeB) {
+            // Hanldes `bool -> bit<1> -> bool` and `bit<1> -> bool -> bit<1>`
+            auto aBitsType = mlir::dyn_cast<P4HIR::BitsType>(typeA);
+            bool aIsBit1 = (aBitsType && aBitsType.getWidth() == 1 && !aBitsType.isSigned());
+            if (aIsBit1 && mlir::isa<P4HIR::BoolType>(typeB)) return true;
+
+            // Hanldes `type -> ser_enum<type> -> type` and `ser_enum<type> -> type ->
+            // ser_enum<type>`
+            auto bSerEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(typeB);
+            if (bSerEnumType && bSerEnumType.getType() == typeA) return true;
+
+            return false;
         };
 
-        // bool -> bit<1> -> bool roundtrip.
-        if (mlir::isa<P4HIR::BoolType>(srcType) && srcType == dstType && isBit1Type(midType)) {
-            rewriter.replaceOp(op, inputCast.getSrc());
-            return success();
-        }
-
-        // bit<1> -> bool -> bit<1> roundtrip.
-        if (isBit1Type(srcType) && srcType == dstType && mlir::isa<P4HIR::BoolType>(midType)) {
+        if (srcType == dstType &&
+            (validRoundtripPred(srcType, midType) || validRoundtripPred(midType, srcType))) {
             rewriter.replaceOp(op, inputCast.getSrc());
             return success();
         }

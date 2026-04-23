@@ -78,9 +78,11 @@ module {
   p4hir.func @blackhole_b8i(!b8i)
   p4hir.func @blackhole_b16i(!b16i)
   p4hir.func @blackhole_b32i(!b32i)
+  p4hir.func @blackhole_b42i(!bit42)
+  p4hir.func @blackhole_SuitsSerializable(!SuitsSerializable)
 
   // Use non-constant arguments so chains are not constant-folded away.
-  p4hir.func @cast_chain_tests(%arg_b8 : !b8i, %arg_b16 : !b16i, %arg_i8 : !i8i, %arg_b32 : !b32i, %arg_b1 : !b1i, %arg_bool : !bool) {
+  p4hir.func @cast_chain_tests(%arg_b8 : !b8i, %arg_b16 : !b16i, %arg_i8 : !i8i, %arg_b32 : !b32i, %arg_b1 : !b1i, %arg_bool : !bool, %arg_serenum : !SuitsSerializable, %arg_b42 : !bit42) {
     // Safe: widen then reinterpret (w_B >= w_C).
     // bit<8> -> bit<16> -> int<16> folds to bit<8> -> int<16>.
     // CHECK-LABEL: @cast_chain_tests
@@ -153,6 +155,18 @@ module {
     %bit1_2 = p4hir.cast(%arg_bool : !bool) : !b1i
     %bool_2 = p4hir.cast(%bit1_2 : !b1i) : !bool
     p4hir.call @blackhole_bool(%bool_2) : (!bool) -> ()
+    
+    // ser_enum -> bits -> ser_enum folds to source.
+    // CHECK: p4hir.call @blackhole_SuitsSerializable (%arg6) : (!Suits) -> ()
+    %bit42_1 = p4hir.cast(%arg_serenum : !SuitsSerializable) : !bit42
+    %suits_1 = p4hir.cast(%bit42_1 : !bit42) : !SuitsSerializable
+    p4hir.call @blackhole_SuitsSerializable(%suits_1) : (!SuitsSerializable) -> ()
+
+    // bits -> ser_enum -> bits folds to source.
+    // CHECK: p4hir.call @blackhole_b42i (%arg7) : (!b42i) -> ()
+    %suits_2 = p4hir.cast(%arg_b42 : !bit42) : !SuitsSerializable
+    %bit42_2 = p4hir.cast(%suits_2 : !SuitsSerializable) : !bit42
+    p4hir.call @blackhole_b42i(%bit42_2) : (!bit42) -> ()
 
     p4hir.return
   }
