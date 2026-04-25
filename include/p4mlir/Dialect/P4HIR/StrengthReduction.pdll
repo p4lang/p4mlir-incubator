@@ -1,0 +1,82 @@
+// Strength reduction patterns for P4HIR dialect
+
+#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.td"
+
+Constraint IsMulByConstTwo(binop: Op, rhsValue: Value) [{
+  auto bin = ::mlir::dyn_cast<::P4::P4MLIR::P4HIR::BinOp>(binop);
+  if (!bin || bin.getKind() != ::P4::P4MLIR::P4HIR::BinOpKind::Mul)
+    return ::mlir::failure();
+
+  auto constOp = rhsValue.getDefiningOp<::P4::P4MLIR::P4HIR::ConstOp>();
+  auto intAttr = ::mlir::dyn_cast<::P4::P4MLIR::P4HIR::IntAttr>(constOp.getValue());
+  return ::mlir::success(intAttr && intAttr.getValue() == 2);
+}];
+
+Constraint IsDivByConstTwo(binop: Op, rhsValue: Value) [{
+  auto bin = ::mlir::dyn_cast<::P4::P4MLIR::P4HIR::BinOp>(binop);
+  if (!bin || bin.getKind() != ::P4::P4MLIR::P4HIR::BinOpKind::Div)
+    return ::mlir::failure();
+
+  auto constOp = rhsValue.getDefiningOp<::P4::P4MLIR::P4HIR::ConstOp>();
+  auto intAttr = ::mlir::dyn_cast<::P4::P4MLIR::P4HIR::IntAttr>(constOp.getValue());
+  return ::mlir::success(intAttr && intAttr.getValue() == 2);
+}];
+
+Constraint IsModByConstTwo(binop: Op, rhsValue: Value) [{
+  auto bin = ::mlir::dyn_cast<::P4::P4MLIR::P4HIR::BinOp>(binop);
+  if (!bin || bin.getKind() != ::P4::P4MLIR::P4HIR::BinOpKind::Mod)
+    return ::mlir::failure();
+
+  auto constOp = rhsValue.getDefiningOp<::P4::P4MLIR::P4HIR::ConstOp>();
+  auto intAttr = ::mlir::dyn_cast<::P4::P4MLIR::P4HIR::IntAttr>(constOp.getValue());
+  return ::mlir::success(intAttr && intAttr.getValue() == 2);
+}];
+
+Rewrite MakeConstOne(rhsValue: Value) -> Attr [{
+  auto constOp = rhsValue.getDefiningOp<::P4::P4MLIR::P4HIR::ConstOp>();
+  auto type = constOp.getValue().getType();
+  return ::P4::P4MLIR::P4HIR::IntAttr::get(type, 1);
+}];
+
+Rewrite MakeAndKind() -> Attr [{
+  return ::P4::P4MLIR::P4HIR::BinOpKindAttr::get(
+    rewriter.getContext(),
+    ::P4::P4MLIR::P4HIR::BinOpKind::And);
+}];
+
+// mul(x, 2) -> shl(x, 1)
+Pattern MulToShl {
+  let root = op<p4hir.binop>(lhs: Value, rhs: Value);
+  IsMulByConstTwo(root, rhs);
+
+  rewrite root with {
+    let oneAttr = MakeConstOne(rhs);
+    let c1 = op<p4hir.const> {value = oneAttr};
+    replace root with op<p4hir.shl>(lhs, c1);
+  };
+}
+
+// div(x, 2) -> shr(x, 1)
+Pattern DivToShr {
+  let root = op<p4hir.binop>(lhs: Value, rhs: Value);
+  IsDivByConstTwo(root, rhs);
+
+  rewrite root with {
+    let oneAttr = MakeConstOne(rhs);
+    let c1 = op<p4hir.const> {value = oneAttr};
+    replace root with op<p4hir.shr>(lhs, c1);
+  };
+}
+
+// mod(x, 2) -> and(x, 1)
+Pattern ModToAnd {
+  let root = op<p4hir.binop>(lhs: Value, rhs: Value);
+  IsModByConstTwo(root, rhs);
+
+  rewrite root with {
+    let oneAttr = MakeConstOne(rhs);
+    let c1 = op<p4hir.const> {value = oneAttr};
+    let andKind = MakeAndKind();
+    replace root with op<p4hir.binop>(lhs, c1) {kind = andKind};
+  };
+}
