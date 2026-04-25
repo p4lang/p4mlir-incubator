@@ -994,6 +994,26 @@ LogicalResult P4HIR::ScopeOp::verify() {
     return success();
 }
 
+void P4HIR::ScopeOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>> &effects) {
+    if (auto annotations = getAnnotations()) {
+        bool isEmpty =
+            getScopeRegion().hasOneBlock() && llvm::hasSingleElement(getScopeRegion().front());
+
+        if (llvm::any_of(annotations->getValue(),
+                         [&](auto attr) { return attr.getName() != "atomic" || !isEmpty; })) {
+            effects.emplace_back(MemoryEffects::Write::get(), SideEffects::DefaultResource::get());
+            return;
+        }
+    }
+
+    for (Region &region : getOperation()->getRegions())
+        for (Block &block : region)
+            for (Operation &op : block)
+                if (auto opEffects = mlir::getEffectsRecursively(&op))
+                    effects.append(opEffects->begin(), opEffects->end());
+}
+
 LogicalResult P4HIR::ScopeOp::canonicalize(P4HIR::ScopeOp op, PatternRewriter &rewriter) {
     // Canonicalize scope: one without variables could be inlined
     if (op.getOps<VariableOp>().empty() && op.getScopeRegion().hasOneBlock() &&
@@ -1249,6 +1269,69 @@ Block *P4HIR::IfOp::elseBlock() {
 P4HIR::YieldOp P4HIR::IfOp::elseYield() { return cast<P4HIR::YieldOp>(&elseBlock()->back()); }
 
 namespace {
+
+static std::optional<bool> getConstantBool(mlir::Value value) {
+    auto cst = value.getDefiningOp<P4HIR::ConstOp>();
+    if (!cst) return std::nullopt;
+
+    auto boolAttr = mlir::dyn_cast<P4HIR::BoolAttr>(cst.getValue());
+    if (!boolAttr) return std::nullopt;
+
+    return boolAttr.getValue();
+}
+
+static bool isBranchHint(llvm::StringRef name) { return name == "likely" || name == "unlikely"; }
+
+static mlir::DictionaryAttr filterBranchHints(mlir::DictionaryAttr annotations,
+                                              mlir::MLIRContext *ctx) {
+    if (!annotations) return nullptr;
+
+    auto attrs = annotations.getValue();
+
+    if (llvm::none_of(attrs, [](auto attr) { return isBranchHint(attr.getName().getValue()); })) {
+        return annotations;
+    }
+
+    llvm::SmallVector<mlir::NamedAttribute> filtered;
+    llvm::copy_if(attrs, std::back_inserter(filtered),
+                  [](auto attr) { return !isBranchHint(attr.getName().getValue()); });
+    return filtered.empty() ? nullptr : mlir::DictionaryAttr::get(ctx, filtered);
+}
+
+static void inlineBlockAndReplaceOp(mlir::Block *block, mlir::Operation *op,
+                                    mlir::PatternRewriter &rewriter) {
+    mlir::Operation *terminator = block->getTerminator();
+    mlir::ValueRange results = terminator->getOperands();
+    rewriter.inlineBlockBefore(block, op, /*blockArgs=*/{});
+    op->getNumResults() == 0 ? rewriter.eraseOp(op) : rewriter.replaceOp(op, results);
+    rewriter.eraseOp(terminator);
+}
+
+static mlir::LogicalResult foldConstantIfBranch(P4HIR::IfOp ifOp, mlir::Region &branchRegion,
+                                                mlir::Block *branchBlock,
+                                                mlir::DictionaryAttr branchAnnotations,
+                                                mlir::PatternRewriter &rewriter) {
+    if (!branchBlock) {
+        rewriter.eraseOp(ifOp);
+        return mlir::success();
+    }
+
+    auto filteredAnnotations = filterBranchHints(branchAnnotations, rewriter.getContext());
+    if (!filteredAnnotations) {
+        inlineBlockAndReplaceOp(branchBlock, ifOp, rewriter);
+        return mlir::success();
+    }
+
+    auto scopeOp = rewriter.create<P4HIR::ScopeOp>(ifOp.getLoc(), filteredAnnotations,
+                                                   [](mlir::OpBuilder &, mlir::Location) {});
+    scopeOp.getScopeRegion().front().erase();
+    rewriter.inlineRegionBefore(branchRegion, scopeOp.getScopeRegion(),
+                                scopeOp.getScopeRegion().begin());
+    ifOp.getNumResults() == 0 ? rewriter.eraseOp(ifOp)
+                              : rewriter.replaceOp(ifOp, scopeOp.getResults());
+    return mlir::success();
+}
+
 struct RemoveEmptyElseBranch : public OpRewritePattern<P4HIR::IfOp> {
     using OpRewritePattern<P4HIR::IfOp>::OpRewritePattern;
 
@@ -1313,10 +1396,26 @@ struct InvertIfCondition : public OpRewritePattern<P4HIR::IfOp> {
         return success();
     }
 };
+
+struct FoldConstantIf : public OpRewritePattern<P4HIR::IfOp> {
+    using OpRewritePattern<P4HIR::IfOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::IfOp ifOp, PatternRewriter &rewriter) const override {
+        auto constValue = getConstantBool(ifOp.getCondition());
+        if (!constValue) return failure();
+
+        return *constValue ? foldConstantIfBranch(ifOp, ifOp.getThenRegion(), ifOp.thenBlock(),
+                                                  ifOp.getThenAnnotationsAttr(), rewriter)
+                           : foldConstantIfBranch(ifOp, ifOp.getElseRegion(), ifOp.elseBlock(),
+                                                  ifOp.getElseAnnotationsAttr(), rewriter);
+    }
+};
+
 }  // namespace
 
 void P4HIR::IfOp::getCanonicalizationPatterns(RewritePatternSet &results, MLIRContext *context) {
-    results.add<RemoveEmptyElseBranch, RemoveEmptyThenBranch, InvertIfCondition>(context);
+    results.add<RemoveEmptyElseBranch, RemoveEmptyThenBranch, InvertIfCondition, FoldConstantIf>(
+        context);
 }
 
 static mlir::LogicalResult verifyReturnLike(mlir::Operation *op, bool mayHaveNoOperands) {
