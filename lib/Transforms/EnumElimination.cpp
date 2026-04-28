@@ -38,8 +38,8 @@ void EnumEliminationPass::runOnOperation() {
                 field, P4HIR::IntAttr::get(underlyingType, repr.getEncoding(field)));
         });
 
-        return P4HIR::SerEnumType::get(enumType.getName(), underlyingType, serFields,
-                                       enumType.getAnnotations());
+        return P4HIR::SerEnumType::get(enumType.getName().empty() ? "anon" : enumType.getName(),
+                                       underlyingType, serFields, enumType.getAnnotations());
     });
 
     RewritePatternSet patterns(&context);
