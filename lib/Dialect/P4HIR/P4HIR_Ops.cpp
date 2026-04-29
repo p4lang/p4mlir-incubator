@@ -2001,9 +2001,10 @@ LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
                 fieldVal = it->second;
             } else {
                 auto fieldRef = P4HIR::StructFieldRefOp::create(
-                    rewriter, op.getLoc(), P4HIR::ReferenceType::get(structExtract.getType()),
-                    readOp.getRef(), structExtract.getFieldIndexAttr());
-                fieldVal = P4HIR::ReadOp::create(rewriter, op.getLoc(), fieldRef);
+                    rewriter, structExtract.getLoc(),
+                    P4HIR::ReferenceType::get(structExtract.getType()), readOp.getRef(),
+                    structExtract.getFieldIndexAttr());
+                fieldVal = P4HIR::ReadOp::create(rewriter, structExtract.getLoc(), fieldRef);
                 fieldVals.insert({indexAttr, fieldVal});
             }
 
