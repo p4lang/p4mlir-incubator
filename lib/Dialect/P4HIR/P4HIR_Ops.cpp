@@ -4892,6 +4892,10 @@ struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
     using DialectInlinerInterface::DialectInlinerInterface;
 
     bool isLegalToInline(Operation *call, Operation *callable, bool wouldBeCloned) const final {
+        // Calls inside table properties are merely markers
+        if (call->getParentOfType<P4HIR::TableOp>() && !call->getParentOfType<P4HIR::TableKeyOp>())
+            return false;
+
         if (mlir::isa<P4HIR::CallOp>(call) &&
             mlir::isa<P4HIR::FuncOp, P4HIR::OverloadSetOp>(callable))
             return true;
