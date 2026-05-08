@@ -401,14 +401,23 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
         auto base = resolveReference(a->left, unchecked);
         if (a->left->type->is<P4::IR::Type_Array>()) {
             visit(a->right);
-            auto arrayRef = base;
-            auto arrayType = mlir::cast<P4HIR::ReferenceType>(arrayRef.getType()).getObjectType();
-            if (mlir::isa<P4HIR::HeaderStackType>(arrayType))
-                arrayRef = P4HIR::StructFieldRefOp::create(builder, loc, base,
+            mlir::Value eltRef;
+            if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(base.getType())) {
+                if (mlir::isa<P4HIR::HeaderStackType>(refType.getObjectType()))
+                    base = P4HIR::StructFieldRefOp::create(builder, loc, base,
                                                            P4HIR::HeaderStackType::dataFieldName)
                                .getResult();
-            auto eltRef = P4HIR::ArrayElementRefOp::create(builder, loc, arrayRef,
-                                                           getValue(a->right, getB32Type()));
+                eltRef = P4HIR::ArrayElementRefOp::create(builder, loc, base,
+                                                          getValue(a->right, getB32Type()));
+            } else {
+                if (mlir::isa<P4HIR::HeaderStackType>(base.getType()))
+                    base = P4HIR::StructExtractOp::create(builder, loc, base,
+                                                          P4HIR::HeaderStackType::dataFieldName)
+                               .getResult();
+                eltRef =
+                    P4HIR::ArrayGetOp::create(builder, loc, base, getValue(a->right, getB32Type()));
+            }
+
             return setValue(a, eltRef);
         } else
             BUG("unsupported array index reference %1% (aka %2%)", node, dbp(node));
