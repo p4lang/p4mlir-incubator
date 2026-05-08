@@ -2785,8 +2785,20 @@ bool P4HIRConverter::preorder(const P4::IR::Property *prop) {
             annotations, [&](mlir::OpBuilder &b, mlir::Type &resultType, mlir::Location) {
                 ValueScope scope(*p4Values);
 
-                const auto *expr = prop->value->checkedTo<P4::IR::ExpressionValue>()->expression;
-                auto val = convert(expr);
+                mlir::Value val;
+                if (const auto *exprVal = prop->value->to<P4::IR::ExpressionValue>()) {
+                    val = convert(exprVal->expression);
+                } else {
+                    const auto *exprLVal = prop->value->checkedTo<P4::IR::ExpressionListValue>();
+                    llvm::SmallVector<mlir::Value> vals;
+                    llvm::SmallVector<mlir::Type> types;
+                    for (const auto *expr : exprLVal->expressions) {
+                        vals.push_back(convert(expr));
+                        types.push_back(vals.back().getType());
+                    }
+                    val =
+                        P4HIR::TupleOp::create(b, getEndLoc(b, prop), b.getTupleType(types), vals);
+                }
                 resultType = val.getType();
                 P4HIR::YieldOp::create(b, getEndLoc(b, prop), val);
             });
