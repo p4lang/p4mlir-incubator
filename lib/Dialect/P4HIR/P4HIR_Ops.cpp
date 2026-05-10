@@ -2272,7 +2272,9 @@ LogicalResult P4HIR::AssignSliceOp::verify() {
 
 // Parser states use fully-qualified names so we lookup from the top-level moduleOp
 static P4HIR::ParserStateOp lookupParserState(Operation *op, mlir::SymbolRefAttr stateName) {
-    auto res = getParentModule(op).lookupSymbol<P4HIR::ParserStateOp>(stateName);
+    auto parser = op->getParentOfType<P4HIR::ParserOp>();
+    assert(parser && "expected nested parser op");
+    auto res = parser.lookupSymbol<P4HIR::ParserStateOp>(stateName);
     assert(res && "expected valid parser state lookup");
     return res;
 }
@@ -2309,15 +2311,11 @@ P4HIR::ParserTransitionOp P4HIR::ParserOp::getStartTransition() {
 }
 
 P4HIR::ParserStateOp P4HIR::ParserOp::getStartState() {
-    auto transition = getStartTransition();
-    return lookupParserState(getOperation(), transition.getStateAttr());
+    return getStartTransition().getNextState();
 }
 
-mlir::SymbolRefAttr P4HIR::ParserStateOp::getSymbolRef() {
-    auto parser = getOperation()->getParentOfType<P4HIR::ParserOp>();
-    auto leafSymbol = mlir::FlatSymbolRefAttr::get(getContext(), getSymName());
-    auto symbol = mlir::SymbolRefAttr::get(getContext(), parser.getSymName(), {leafSymbol});
-    return symbol;
+mlir::FlatSymbolRefAttr P4HIR::ParserStateOp::getSymbolRef() {
+    return mlir::SymbolRefAttr::get(getContext(), getSymName());
 }
 
 P4HIR::ParserStateOp::StateRange P4HIR::ParserStateOp::getNextStates() {
@@ -2489,10 +2487,11 @@ P4HIR::ParamDirection P4HIR::ParserOp::getArgumentDirection(unsigned i) {
 
 static mlir::LogicalResult verifyStateTarget(mlir::Operation *op, mlir::SymbolRefAttr stateName,
                                              mlir::SymbolTableCollection &symbolTable) {
-    // We are using fully-qualified names to reference to parser states, this
-    // allows not to rename states during inlining, so we need to lookup wrt top-level ModuleOp
-    if (!symbolTable.lookupSymbolIn<P4HIR::ParserStateOp>(getParentModule(op), stateName))
-        return op->emitOpError() << "'" << stateName << "' does not reference a valid state";
+    auto parserOp = op->getParentOfType<P4HIR::ParserOp>();
+    if (!parserOp) return op->emitOpError() << "is not nested inside parser";
+    if (!symbolTable.lookupSymbolIn<P4HIR::ParserStateOp>(parserOp, stateName))
+        return op->emitOpError() << "'" << stateName << "' does not reference a valid state in "
+                                 << parserOp.getName();
 
     return mlir::success();
 }

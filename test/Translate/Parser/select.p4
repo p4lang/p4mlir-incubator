@@ -32,33 +32,33 @@ parser p1(in bit<10> foo, out bool matches) {
 // CHECK:          %[[c1_b10i:.*]] = p4hir.const #int1_b10i
 // CHECK:          %[[set:.*]] = p4hir.set (%[[c1_b10i]]) : !p4hir.set<!b10i>
 // CHECK:          p4hir.yield %[[set]] : !p4hir.set<!b10i>
-// CHECK:        } to @p1::@drop
+// CHECK:        } to @drop
 // CHECK:        p4hir.select_case {
 // CHECK:          %[[c10_b10i:.*]] = p4hir.const #int10_b10i
 // CHECK:          %[[c20_b10i:.*]] = p4hir.const #int20_b10i
 // CHECK:          %[[range:.*]] = p4hir.range(%[[c10_b10i]], %[[c20_b10i]]) : !p4hir.set<!b10i>
 // CHECK:          p4hir.yield %[[range]] : !p4hir.set<!b10i>
-// CHECK:        } to @p1::@next
+// CHECK:        } to @next
 // CHECK:        p4hir.select_case {
 // CHECK:          %[[c0_b10i:.*]] = p4hir.const #int0_b10i
 // CHECK:          %[[c0_b10i_0:.*]] = p4hir.const #int0_b10i
 // CHECK:          %[[mask:.*]] = p4hir.mask(%[[c0_b10i:.*]], %[[c0_b10i_0:.*]]) : !p4hir.set<!b10i>
 // CHECK:          p4hir.yield %[[mask:.*]] : !p4hir.set<!b10i>
-// CHECK:        } to @p1::@next
+// CHECK:        } to @next
 // CHECK:        p4hir.select_case {
 // CHECK:          %[[everything:.*]] = p4hir.const #everything
 // CHECK:          p4hir.yield %[[everything]] : !p4hir.set<!p4hir.dontcare>
-// CHECK:        } to @p1::@reject
+// CHECK:        } to @reject
 // CHECK:      }
 // CHECK-LABEL: p4hir.state @drop {
-// CHECK:      p4hir.transition to @p1::@reject
+// CHECK:      p4hir.transition to @reject
 // CHECK-LABEL: p4hir.state @next {
-// CHECK:      p4hir.transition to @p1::@accept
+// CHECK:      p4hir.transition to @accept
 // CHECK-LABEL:    p4hir.state @accept {
 // CHECK:      p4hir.parser_accept
 // CHECK-LABEL    p4hir.state @reject {
 // CHECK:      p4hir.parser_reject
-// CHECK:    p4hir.transition to @p1::@start
+// CHECK:    p4hir.transition to @start
 
 parser p2(in bit<10> foo, out bool matches) {
     state start {
@@ -90,7 +90,7 @@ parser p2(in bit<10> foo, out bool matches) {
 // CHECK:          %[[false:.*]] = p4hir.const #false
 // CHECK:          %[[set_0:.*]] = p4hir.set (%[[false]]) : !p4hir.set<!p4hir.bool>
 // CHECK:          p4hir.yield %[[set]], %[[set_0]] : !p4hir.set<!b10i>, !p4hir.set<!p4hir.bool>
-// CHECK:        } to @p2::@drop
+// CHECK:        } to @drop
 // CHECK:        p4hir.select_case {
 // CHECK:          %[[c10_b10i:.*]] = p4hir.const #int10_b10i
 // CHECK:          %[[c20_b10i:.*]] = p4hir.const #int20_b10i
@@ -98,32 +98,32 @@ parser p2(in bit<10> foo, out bool matches) {
 // CHECK:          %[[true_0:.*]] = p4hir.const #true
 // CHECK:          %[[set:.*]] = p4hir.set (%true_0) : !p4hir.set<!p4hir.bool>
 // CHECK:          p4hir.yield %[[range]], %[[set]] : !p4hir.set<!b10i>, !p4hir.set<!p4hir.bool>
-// CHECK:        } to @p2::@next
+// CHECK:        } to @next
 // CHECK:        p4hir.select_case {
 // CHECK:          %[[c0_b10i:.*]] = p4hir.const #int0_b10i
 // CHECK:          %[[c0_b10i_0:.*]] = p4hir.const #int0_b10i
 // CHECK:          %[[mask:.*]] = p4hir.mask(%[[c0_b10i]], %[[c0_b10i_0]]) : !p4hir.set<!b10i>
 // CHECK:          %[[everything:.*]] = p4hir.const #everything
 // CHECK:          p4hir.yield %[[mask]], %[[everything]] : !p4hir.set<!b10i>, !p4hir.set<!p4hir.dontcare>
-// CHECK:        } to @p2::@next
+// CHECK:        } to @next
 // CHECK:        p4hir.select_case {
 // CHECK:          %[[everything:.*]] = p4hir.const #everything
 // CHECK:          %[[everything_0:.*]] = p4hir.const #everything
 // CHECK:          p4hir.yield %[[everything]], %[[everything_0]] : !p4hir.set<!p4hir.dontcare>, !p4hir.set<!p4hir.dontcare>
-// CHECK:        } to @p2::@reject
+// CHECK:        } to @reject
 // CHECK:        p4hir.select_case {
 // CHECK:          %[[everything:.*]] = p4hir.const #everything
 // CHECK:          p4hir.yield %[[everything]] : !p4hir.set<!p4hir.dontcare>
-// CHECK:        } to @p2::@reject
+// CHECK:        } to @reject
 // CHECK-LABEL:    p4hir.state @drop {
-// CHECK:      p4hir.transition to @p2::@reject
+// CHECK:      p4hir.transition to @reject
 // CHECK-LABEL:    p4hir.state @next {
-// CHECK:      p4hir.transition to @p2::@accept
+// CHECK:      p4hir.transition to @accept
 // CHECK-LABEL:    p4hir.state @accept {
 // CHECK:      p4hir.parser_accept
 // CHECK-LABEL:    p4hir.state @reject {
 // CHECK:      p4hir.parser_reject
-// CHECK:    p4hir.transition to @p2::@start
+// CHECK:    p4hir.transition to @start
 
 // Do not check the output, just ensure this compiles :)
 parser weird(in int<32> arg1, inout int<32> arg2) {

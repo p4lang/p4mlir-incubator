@@ -2200,7 +2200,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
         // Create default transition (to start state)
         P4HIR::ParserTransitionOp::create(
             builder, getEndLoc(builder, parser),
-            getQualifiedSymbolRef(P4::IR::ParserState::start.string_view()));
+            mlir::SymbolRefAttr::get(context(), P4::IR::ParserState::start.string_view()));
     }
 
     setSymbol(parser, parserSymbol);
@@ -2242,8 +2242,8 @@ bool P4HIRConverter::preorder(const P4::IR::ParserState *state) {
         const auto *nextState = resolvePath(pe->path, false)->checkedTo<P4::IR::ParserState>();
         // next state might not exist yet, so we do not use p4symbols here and
         // build symbol reference by hand
-        P4HIR::ParserTransitionOp::create(builder, loc,
-                                          getQualifiedSymbolRef(nextState->name.string_view()));
+        P4HIR::ParserTransitionOp::create(
+            builder, loc, mlir::SymbolRefAttr::get(context(), nextState->name.string_view()));
     } else {
         LOG4("Resolving select transition: " << state->selectExpression);
         visit(state->selectExpression);
@@ -2304,7 +2304,7 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
                 hasDefaultCase |= llvm::all_of(elements, P4HIR::isUniversalSetValue);
                 P4HIR::YieldOp::create(b, endLoc, elements);
             },
-            getQualifiedSymbolRef(nextState->name.string_view()));
+            mlir::SymbolRefAttr::get(context(), nextState->name.string_view()));
     }
 
     // If there is no default case, then synthesize one explicitly
@@ -2316,7 +2316,7 @@ bool P4HIRConverter::preorder(const P4::IR::SelectExpression *select) {
             [&](mlir::OpBuilder &b, mlir::Location) {
                 P4HIR::YieldOp::create(b, endLoc, getUniversalSetConstant(endLoc));
             },
-            getQualifiedSymbolRef(P4::IR::ParserState::reject.string_view()));
+            mlir::SymbolRefAttr::get(context(), P4::IR::ParserState::reject.string_view()));
     }
 
     return false;
