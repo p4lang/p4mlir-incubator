@@ -93,7 +93,7 @@ module {
       %1 = p4hir.call_method @ext2::@method<[!b12i]>(%c1_b12i) of @p::@ey : (!b12i) -> !b16i
       %c0_b8i_4 = p4hir.const #int0_b8i
       p4hir.call_method @ext2::@method<[!b8i]>(%1, %c0_b8i_4) of @p::@ey : (!b16i, !b8i) -> ()
-      p4hir.transition to @p::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -105,13 +105,13 @@ module {
     p4hir.state @unused {
       p4hir.parser_reject
     }    
-    p4hir.transition to @p::@start
+    p4hir.transition to @start
   }
   p4hir.parser @Inner(%arg0: !MyCounter_b10i {p4hir.dir = #undir, p4hir.param_name = "counter_set"})() {
     p4hir.state @start {
       %c42_b10i = p4hir.const #int42_b10i
       p4hir.call_method @MyCounter::@count (%c42_b10i) of %arg0 : !MyCounter_b10i : (!b10i) -> ()
-      p4hir.transition to @Inner::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -119,7 +119,7 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @Inner::@start
+    p4hir.transition to @start
   }
   p4hir.parser @Test()() {
     %c1024 = p4hir.const #int1024_infint
@@ -129,7 +129,7 @@ module {
     p4hir.state @start {
       %counter_set = p4hir.symbol_ref @Test::@counter_set : !MyCounter_b10i
       p4hir.apply @Test::@inner(%counter_set) : (!MyCounter_b10i) -> ()
-      p4hir.transition to @Test::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -137,7 +137,7 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @Test::@start
+    p4hir.transition to @start
   }
   p4hir.control @Inner2(%arg0: !MyCounter_b10i {p4hir.dir = #undir, p4hir.param_name = "counter_set"}, %arg1 : !b32i)() {
     // CHECK: __local_counter_set_0
