@@ -64,12 +64,12 @@ module {
   p4hir.parser @p(%arg0: !Suits {p4hir.dir = #in, p4hir.param_name = "test"})() {
     p4hir.state @start {
       %spades = p4hir.const #Suits_Spades
-      p4hir.transition to @p::@next
+      p4hir.transition to @next
     }
     p4hir.state @next {
       p4hir.parser_accept
     }
-    p4hir.transition to @p::@start
+    p4hir.transition to @start
   }
 
   // CHECK: p4hir.control @InnerPipe(%arg0: !Suits)()

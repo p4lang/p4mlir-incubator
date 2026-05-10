@@ -26,7 +26,7 @@ module {
           %false = p4hir.const #false
           %set_0 = p4hir.set (%false) : !p4hir.set<!p4hir.bool>
           p4hir.yield %set, %set_0 : !p4hir.set<!b10i>, !p4hir.set<!p4hir.bool>
-        } to @p2::@drop
+        } to @drop
         p4hir.select_case {
           %c10_b10i = p4hir.const #int10_b10i
           %c20_b10i = p4hir.const #int20_b10i
@@ -34,32 +34,32 @@ module {
           %true_0 = p4hir.const #true
           %set = p4hir.set (%true_0) : !p4hir.set<!p4hir.bool>
           p4hir.yield %range, %set : !p4hir.set<!b10i>, !p4hir.set<!p4hir.bool>
-        } to @p2::@next
+        } to @next
         p4hir.select_case {
           %c0_b10i = p4hir.const #int0_b10i
           %c0_b10i_0 = p4hir.const #int0_b10i
           %mask = p4hir.mask(%c0_b10i, %c0_b10i_0) : !p4hir.set<!b10i>
           %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %mask, %everything : !p4hir.set<!b10i>, !p4hir.set<!p4hir.dontcare>
-        } to @p2::@next
+        } to @next
         p4hir.select_case {
           %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           %everything_0 = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything, %everything_0 : !p4hir.set<!p4hir.dontcare>, !p4hir.set<!p4hir.dontcare>
-        } to @p2::@reject
+        } to @reject
         p4hir.select_case {
           %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
-        } to @p2::@reject
+        } to @reject
       }
     }
     p4hir.state @drop {
-      p4hir.transition to @p2::@reject
+      p4hir.transition to @reject
     }
     p4hir.state @next {
       %true = p4hir.const #true
       p4hir.assign %true, %arg1 : <!p4hir.bool>
-      p4hir.transition to @p2::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -67,7 +67,7 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @p2::@start
+    p4hir.transition to @start
   }
 
   p4hir.parser @p3(%arg0: !i10i)(ctorval: !p4hir.bool) {
@@ -84,16 +84,16 @@ module {
       %c1_i10i = p4hir.const #int1_i10i
       %cast = p4hir.cast(%c1_i10i : !i10i) : !i10i
       p4hir.assign %cast, %s : <!i10i>
-      p4hir.transition to @p3::@next
+      p4hir.transition to @next
     }
     p4hir.state @next {
       %c2_i10i = p4hir.const #int2_i10i
       %cast = p4hir.cast(%c2_i10i : !i10i) : !i10i
       p4hir.assign %cast, %s : <!i10i>
-      p4hir.transition to @p3::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @drop {
-      p4hir.transition to @p3::@reject
+      p4hir.transition to @reject
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -101,7 +101,7 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @p3::@start
+    p4hir.transition to @start
   }
 
 }

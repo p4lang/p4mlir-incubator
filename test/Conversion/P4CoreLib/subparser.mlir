@@ -48,7 +48,7 @@ module {
       %h2 = p4hir.struct_extract %val["h2"] : !headers
       %next_hdr_type = p4hir.struct_extract %h2["next_hdr_type"] : !h2_t
       p4hir.assign %next_hdr_type, %arg2 : <!b8i>
-      p4hir.transition to @subParserImpl::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -56,7 +56,7 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @subParserImpl::@start
+    p4hir.transition to @start
   }
   // CHECK-LABEL: parserI
   // CHECK-SAME: !p4corelib.packet_in
@@ -79,16 +79,16 @@ module {
           %c2_b8i = p4hir.const #int2_b8i
           %set = p4hir.set (%c2_b8i) : !p4hir.set<!b8i>
           p4hir.yield %set : !p4hir.set<!b8i>
-        } to @parserI::@parse_first_h2
+        } to @parse_first_h2
         p4hir.select_case {
           %c3_b8i = p4hir.const #int3_b8i
           %set = p4hir.set (%c3_b8i) : !p4hir.set<!b8i>
           p4hir.yield %set : !p4hir.set<!b8i>
-        } to @parserI::@parse_h3
+        } to @parse_h3
         p4hir.select_case {
           %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
-        } to @parserI::@accept
+        } to @accept
       }
     }
     p4hir.state @parse_first_h2 {
@@ -109,11 +109,11 @@ module {
           %c3_b8i = p4hir.const #int3_b8i
           %set = p4hir.set (%c3_b8i) : !p4hir.set<!b8i>
           p4hir.yield %set : !p4hir.set<!b8i>
-        } to @parserI::@parse_h3
+        } to @parse_h3
         p4hir.select_case {
           %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
-        } to @parserI::@accept
+        } to @accept
       }
     }
     p4hir.state @parse_h3 {
@@ -124,7 +124,7 @@ module {
         %val = p4hir.read %hdr_out_arg : <!h3_t>
         p4hir.assign %val, %h3_field_ref : <!h3_t>
       }
-      p4hir.transition to @parserI::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -132,6 +132,6 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @parserI::@start
+    p4hir.transition to @start
   }
 }

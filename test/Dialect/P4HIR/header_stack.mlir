@@ -57,7 +57,7 @@ module {
       %sub_15 = p4hir.binop(sub, %nextIndex_13, %c1_b32i_14) : !b32i
       %e = p4hir.variable ["e", init] : <!b32i>
       p4hir.assign %sub_15, %e : <!b32i>
-      p4hir.transition to @p::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -65,7 +65,7 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @p::@start
+    p4hir.transition to @start
   }
   p4hir.control @c()() {
     p4hir.control_apply {
