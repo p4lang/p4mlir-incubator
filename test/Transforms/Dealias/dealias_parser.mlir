@@ -182,13 +182,13 @@ module {
 // CHECK:             %[[VAL_4:.*]] = p4hir.variable ["matched", init] : <!p4hir.bool>
 // CHECK:             p4hir.assign %{{.*}}, %[[VAL_4]] : <!p4hir.bool>
 // CHECK:             p4hir.scope {
-// CHECK:               p4hir.apply @p::@sp1(%[[VAL_3]]) : (!p4hir.ref<!i10i>) -> ()
+// CHECK:               p4hir.apply @sp1(%[[VAL_3]]) : (!p4hir.ref<!i10i>) -> ()
 // CHECK:             }
 // CHECK:             p4hir.scope {
-// CHECK:               p4hir.apply @p::@sp2(%[[VAL_4]]) : (!p4hir.ref<!p4hir.bool>) -> ()
+// CHECK:               p4hir.apply @sp2(%[[VAL_4]]) : (!p4hir.ref<!p4hir.bool>) -> ()
 // CHECK:             }
 // CHECK:             p4hir.scope {
-// CHECK:               p4hir.apply @p::@sp3(%[[VAL_3]], %[[VAL_4]]) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
+// CHECK:               p4hir.apply @sp3(%[[VAL_3]], %[[VAL_4]]) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
 // CHECK:             }
   p4hir.parser @p(%arg0: !empty {p4hir.dir = #in, p4hir.param_name = "e"}, %arg1: !i10i {p4hir.dir = #in, p4hir.param_name = "sinit"})() {
     %s = p4hir.variable ["s", init] : <!i10i>
@@ -213,13 +213,13 @@ module {
         %s_inout_arg = p4hir.variable ["s_inout_arg", init] : <!i10i>
         %val = p4hir.read %s : <!i10i>
         p4hir.assign %val, %s_inout_arg : <!i10i>
-        p4hir.apply @p::@sp1(%s_inout_arg) : (!p4hir.ref<!i10i>) -> ()
+        p4hir.apply @sp1(%s_inout_arg) : (!p4hir.ref<!i10i>) -> ()
         %val_0 = p4hir.read %s_inout_arg : <!i10i>
         p4hir.assign %val_0, %s : <!i10i>
       }
       p4hir.scope {
         %matched_out_arg = p4hir.variable ["matched_out_arg"] : <!p4hir.bool>
-        p4hir.apply @p::@sp2(%matched_out_arg) : (!p4hir.ref<!p4hir.bool>) -> ()
+        p4hir.apply @sp2(%matched_out_arg) : (!p4hir.ref<!p4hir.bool>) -> ()
         %val = p4hir.read %matched_out_arg : <!p4hir.bool>
         p4hir.assign %val, %matched : <!p4hir.bool>
       }
@@ -228,7 +228,7 @@ module {
         %val = p4hir.read %s : <!i10i>
         p4hir.assign %val, %s_inout_arg : <!i10i>
         %matched_out_arg = p4hir.variable ["matched_out_arg"] : <!p4hir.bool>
-        p4hir.apply @p::@sp3(%s_inout_arg, %matched_out_arg) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
+        p4hir.apply @sp3(%s_inout_arg, %matched_out_arg) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
         %val_0 = p4hir.read %s_inout_arg : <!i10i>
         p4hir.assign %val_0, %s : <!i10i>
         %val_1 = p4hir.read %matched_out_arg : <!p4hir.bool>

@@ -107,7 +107,7 @@ module {
     p4hir.instantiate @Inner () as @inner
     p4hir.state @start {
       %counter_set = p4hir.symbol_ref @Test::@counter_set : !MyCounter_b10i
-      p4hir.apply @Test::@inner(%counter_set) : (!MyCounter_b10i) -> ()
+      p4hir.apply @inner(%counter_set) : (!MyCounter_b10i) -> ()
       p4hir.transition to @accept
     }
     p4hir.state @accept {
@@ -132,7 +132,7 @@ module {
     p4hir.instantiate @Inner () as @inner
     p4hir.control_apply {
       %counter_set = p4hir.symbol_ref @Test2::@counter_set : !MyCounter_b10i
-      p4hir.apply @Test2::@inner(%counter_set) : (!MyCounter_b10i) -> ()
+      p4hir.apply @inner(%counter_set) : (!MyCounter_b10i) -> ()
     }
   }
 }
