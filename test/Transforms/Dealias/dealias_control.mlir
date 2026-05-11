@@ -43,7 +43,7 @@ module {
 // CHECK:             p4hir.call @Pipe::@bar () : () -> ()
 // CHECK:             %[[VAL_7:.*]] = p4hir.variable ["x1"] : <!i16i>
 // CHECK:             p4hir.scope {
-// CHECK:               p4hir.apply @Pipe::@inner1(%{{.*}}, %{{.*}}, %[[VAL_7]]) : (!b10i, !i16i, !p4hir.ref<!i16i>) -> ()
+// CHECK:               p4hir.apply @inner1(%{{.*}}, %{{.*}}, %[[VAL_7]]) : (!b10i, !i16i, !p4hir.ref<!i16i>) -> ()
 // CHECK:             }
 // CHECK:           }
 // CHECK:         }
@@ -75,7 +75,7 @@ module {
       p4hir.scope {
         %c1_b10i = p4hir.const #int1_b10i
         %arg3_out_arg = p4hir.variable ["arg3_out_arg"] : <!i16i>
-        p4hir.apply @Pipe::@inner1(%c1_b10i, %ctr_arg1, %arg3_out_arg) : (!b10i, !i16i, !p4hir.ref<!i16i>) -> ()
+        p4hir.apply @inner1(%c1_b10i, %ctr_arg1, %arg3_out_arg) : (!b10i, !i16i, !p4hir.ref<!i16i>) -> ()
         %val = p4hir.read %arg3_out_arg : <!i16i>
         p4hir.assign %val, %x1 : <!i16i>
       }
