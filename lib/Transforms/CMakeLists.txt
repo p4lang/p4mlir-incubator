@@ -20,6 +20,7 @@ add_mlir_dialect_library(P4MLIRTransforms
   P4MLIRTransformsPassIncGen
 
   LINK_LIBS PUBLIC
+  P4MLIRConversion
   MLIRIR
   MLIRSupport
   MLIRTransforms
