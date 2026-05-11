@@ -698,6 +698,16 @@ mlir::SymbolRefAttr P4HIRConverter::setSymbol(P4Symbol symb, mlir::SymbolRefAttr
     return value;
 }
 
+mlir::SymbolRefAttr P4HIRConverter::setSymbol(P4Symbol symb, mlir::Operation *op) {
+    auto ref = mlir::SymbolRefAttr::get(op);
+    return setSymbol(symb, ref);
+}
+
+mlir::SymbolRefAttr P4HIRConverter::setSymbol(P4Symbol symb, mlir::StringAttr name) {
+    auto ref = mlir::SymbolRefAttr::get(name);
+    return setSymbol(symb, ref);
+}
+
 /// Returns fully qualified symbols, if we're nested inside parser or control
 mlir::SymbolRefAttr P4HIRConverter::getQualifiedSymbolRef(mlir::Operation *op) {
     auto symName = op->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName());
@@ -1496,8 +1506,6 @@ bool P4HIRConverter::preorder(const P4::IR::P4Action *act) {
         }
     }
 
-    // Make actions nested inside controls fully qualified, so we can resolve
-    // properly even in the presence of name shadow
     setSymbol(act, getQualifiedSymbolRef(action));
     p4Values = savedValues;
 
@@ -2384,7 +2392,7 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
 
         auto instance = P4HIR::InstantiateOp::create(builder, getLoc(decl), parserSym, operands,
                                                      nameAttr, annotations);
-        setSymbol(decl, getQualifiedSymbolRef(instance));
+        setSymbol(decl, instance);
     } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
         LOG4("resolved as extern instantiation");
         auto externName = builder.getStringAttr(ext->name.string_view());
@@ -2401,7 +2409,7 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
 
         auto instance = P4HIR::InstantiateOp::create(builder, getLoc(decl), controlSym, operands,
                                                      nameAttr, annotations);
-        setSymbol(decl, getQualifiedSymbolRef(instance));
+        setSymbol(decl, instance);
     } else if (const auto *pkg = type->to<P4::IR::Type_Package>()) {
         LOG4("resolved as package instantiation");
         auto packageName = mlir::SymbolRefAttr::get(builder.getContext(), pkg->name.string_view());

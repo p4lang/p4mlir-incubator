@@ -118,7 +118,7 @@ parser Test() {
 
     state start {
         // CHECK: %[[counter_set:.*]] = p4hir.symbol_ref @Test::@counter_set : !MyCounter_b10i
-        // CHECK: p4hir.apply @Test::@inner(%[[counter_set]]) : (!MyCounter_b10i) -> ()
+        // CHECK: p4hir.apply @inner(%[[counter_set]]) : (!MyCounter_b10i) -> ()
         inner.apply(counter_set);
         transition accept;
     }

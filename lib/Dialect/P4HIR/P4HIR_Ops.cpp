@@ -2936,8 +2936,7 @@ LogicalResult P4HIR::ApplyOp::verifySymbolUses(SymbolTableCollection &symbolTabl
     if (!calleeAttr) return emitOpError("requires a 'callee' symbol reference attribute");
 
     // Check that callee type corresponds to argument operands
-    auto inst =
-        symbolTable.lookupSymbolIn<P4HIR::InstantiateOp>(getParentModule(*this), calleeAttr);
+    auto inst = symbolTable.lookupNearestSymbolFrom<P4HIR::InstantiateOp>(*this, calleeAttr);
     if (!inst)
         return emitOpError() << "'" << calleeAttr << "' does not reference a valid instantiation";
 
@@ -2981,10 +2980,9 @@ void P4HIR::ApplyOp::getEffects(
     auto calleeAttr = getCallee();
     assert(calleeAttr && "expected callee to be present");
     auto inst = dyn_cast_or_null<P4HIR::InstantiateOp>(
-        SymbolTable::lookupSymbolIn(getParentModule(*this), calleeAttr));
+        SymbolTable::lookupNearestSymbolFrom(*this, calleeAttr));
     assert(inst && "failed to resolve instantiation");
 
-    // Get the callee. Note that it already resolves the overload sets.
     auto callee = SymbolTable::lookupSymbolIn(getParentModule(*this), inst.getCalleeAttr());
     assert(callee && "failed to resolve callee");
 
@@ -3021,7 +3019,7 @@ void P4HIR::ApplyOp::getEffects(
 }
 
 P4HIR::InstantiateOp P4HIR::ApplyOp::getInstantiateOp() {
-    return getParentModule(*this).lookupSymbol<P4HIR::InstantiateOp>(getCallee());
+    return SymbolTable::lookupNearestSymbolFrom<P4HIR::InstantiateOp>(*this, getCallee());
 }
 
 //===----------------------------------------------------------------------===//

@@ -186,6 +186,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     }
 
     mlir::SymbolRefAttr setSymbol(P4Symbol symb, mlir::SymbolRefAttr value);
+    mlir::SymbolRefAttr setSymbol(P4Symbol symb, mlir::Operation *op);
+    mlir::SymbolRefAttr setSymbol(P4Symbol symb, mlir::StringAttr name);
 
     /// Returns fully qualified symbols, if we're nested inside parser or control
     mlir::SymbolRefAttr getQualifiedSymbolRef(mlir::Operation *op);
