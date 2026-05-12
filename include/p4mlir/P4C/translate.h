@@ -1,8 +1,6 @@
-/*
- * SPDX-FileCopyrightText: 2025 The P4 Language Consortium
- *
- * SPDX-License-Identifier: Apache-2.0
- */
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef INCLUDE_P4MLIR_P4C_TRANSLATE_H_
 #define INCLUDE_P4MLIR_P4C_TRANSLATE_H_
