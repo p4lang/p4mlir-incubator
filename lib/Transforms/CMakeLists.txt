@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+#
+# SPDX-License-Identifier: Apache-2.0
+
 add_mlir_dialect_library(P4MLIRTransforms
   EnumElimination.cpp
   FlattenCFG.cpp

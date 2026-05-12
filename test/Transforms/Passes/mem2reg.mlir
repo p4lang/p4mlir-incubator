@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-opt --pass-pipeline='builtin.module(any(mem2reg))' < %s | FileCheck %s
 !i32i = !p4hir.int<32>
 !b9i = !p4hir.bit<9>

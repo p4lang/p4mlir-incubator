@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Attrs.h"
 
 #include "llvm/ADT/TypeSwitch.h"

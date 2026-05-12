@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD
 #define P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD
 

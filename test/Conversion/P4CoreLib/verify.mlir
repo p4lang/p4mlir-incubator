@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-opt %s --lower-to-p4corelib | FileCheck %s
 
 !error = !p4hir.error<NoError, SomeError>

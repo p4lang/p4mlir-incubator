@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 //===----------------------------------------------------------------------===//
 //
 // This file contains definitions for P4HIR to BMv2IR conversions

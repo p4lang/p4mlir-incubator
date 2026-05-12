@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+#
+# SPDX-License-Identifier: Apache-2.0
+
 set(LLVM_TARGET_DEFINITIONS P4CoreLib.td)
 mlir_tablegen(P4CoreLib_Dialect.h.inc -gen-dialect-decls -dialect=p4corelib)
 mlir_tablegen(P4CoreLib_Dialect.cpp.inc -gen-dialect-defs -dialect=p4corelib)

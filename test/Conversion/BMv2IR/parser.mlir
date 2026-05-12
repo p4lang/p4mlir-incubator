@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-opt -p='builtin.module(p4hir-to-bmv2ir)' %s | FileCheck %s
 !b16i = !p4hir.bit<16>
 !b32i = !p4hir.bit<32>

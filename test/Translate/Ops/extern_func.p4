@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
 // CHECK:  ![[type_T:.*]] = !p4hir.type_var<"T">

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef BMv2IR_OP_INTERFACES_TD
 #define BMv2IR_OP_INTERFACES_TD
 

@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
 // CHECK: p4hir.func @log(!string {p4hir.dir = #undir, p4hir.param_name = "s"})
