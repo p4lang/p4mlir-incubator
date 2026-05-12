@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: not p4mlir-opt %s 2>&1 | FileCheck %s --check-prefix=ERR
 
 module {

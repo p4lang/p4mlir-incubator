@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-opt %s | FileCheck %s
 
 !type_H1_ = !p4hir.type_var<"H1">

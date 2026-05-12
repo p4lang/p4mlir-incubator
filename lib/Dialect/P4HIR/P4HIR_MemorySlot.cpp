@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Interfaces/MemorySlotInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"

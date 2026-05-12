@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
 // CHECK-DAG: !PortId_32_t = !p4hir.alias<"PortId_32_t" annotations {p4runtime_translation = ["p4.org/psa/v1/PortId_32_t", ",", "32"]}, !b9i>

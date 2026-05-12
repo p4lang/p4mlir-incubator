@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+#
+# SPDX-License-Identifier: Apache-2.0
+
 set(LLVM_TARGET_DEFINITIONS BMv2IR.td)
 mlir_tablegen(BMv2IR_Dialect.h.inc -gen-dialect-decls -dialect=bmv2ir)
 mlir_tablegen(BMv2IR_Dialect.cpp.inc -gen-dialect-defs -dialect=bmv2ir)

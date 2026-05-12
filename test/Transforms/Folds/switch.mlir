@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-opt --canonicalize %s | FileCheck %s
 !b32i = !p4hir.bit<32>
 #int1_b32i = #p4hir.int<1> : !b32i

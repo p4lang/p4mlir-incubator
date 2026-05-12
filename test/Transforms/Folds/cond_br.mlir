@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-opt -allow-unregistered-dialect --canonicalize %s | FileCheck %s
 
 /// Test the folding of CondBranchOp with a constant condition.

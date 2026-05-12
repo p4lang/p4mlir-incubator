@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2024 The P4 Language Consortium
+#
+# SPDX-License-Identifier: Apache-2.0
+
 set(LLVM_TARGET_DEFINITIONS P4HIR.td)
 mlir_tablegen(P4HIR_Dialect.h.inc -gen-dialect-decls -dialect=p4hir)
 mlir_tablegen(P4HIR_Dialect.cpp.inc -gen-dialect-defs -dialect=p4hir)

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "p4mlir/Targets/BMv2/Target.h"
 
 #include "mlir/IR/BuiltinOps.h"

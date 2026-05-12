@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
 // CHECK: #p_ctorval = #p4hir.ctor_param<@p, "ctorval"> : !p4hir.bool

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-opt --p4hir-simplify-parsers --p4hir-inline-parsers --p4hir-simplify-parsers --canonicalize %s | FileCheck %s
 
 // Ported from p4c/testdata/p4_16_samples/parser-inline/

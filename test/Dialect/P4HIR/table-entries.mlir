@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-opt --verify-roundtrip %s | FileCheck %s
 
 !anon = !p4hir.enum<a, a_with_control_params>
