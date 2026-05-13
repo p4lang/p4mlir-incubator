@@ -17,20 +17,20 @@ module {
     p4hir.table @t {
       p4hir.table_actions {
         p4hir.table_action @a() {
-          p4hir.call @ctrl::@a () : () -> ()
+          p4hir.call @a () : () -> ()
         }
         p4hir.table_action @b() {
-          p4hir.call @ctrl::@b () : () -> ()
+          p4hir.call @b () : () -> ()
         }
       }
       p4hir.table_default_action {
-        p4hir.call @ctrl::@a () : () -> ()
+        p4hir.call @a () : () -> ()
       }
     }
     p4hir.control_apply {
       // CHECK: p4hir.table_apply
       // CHECK-NOT: p4hir.switch
-      %t_apply_result = p4hir.table_apply @ctrl::@t with key() : () -> !t
+      %t_apply_result = p4hir.table_apply @t with key() : () -> !t
       %action_run = p4hir.struct_extract %t_apply_result["action_run"] : !t
       p4hir.switch (%action_run : !anon) {
         p4hir.case(equal, [#anon_b]) {

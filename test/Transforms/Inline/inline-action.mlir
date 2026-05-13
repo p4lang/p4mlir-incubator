@@ -28,20 +28,20 @@ module {
     // CHECK-NOT: p4hir.call
     p4hir.func action @b() {
       p4hir.scope {
-        %arg0_1 = p4hir.symbol_ref @p::@arg0 : !p4hir.ref<!b1i>
+        %arg0_1 = p4hir.symbol_ref @arg0 : !p4hir.ref<!b1i>
         %y0_inout_arg = p4hir.variable ["y0_inout_arg", init] : <!b1i>
         %val = p4hir.read %arg0_1 : <!b1i>
         p4hir.assign %val, %y0_inout_arg : <!b1i>
-        p4hir.call @p::@a (%y0_inout_arg) : (!p4hir.ref<!b1i>) -> ()
+        p4hir.call @a (%y0_inout_arg) : (!p4hir.ref<!b1i>) -> ()
         %val_0 = p4hir.read %y0_inout_arg : <!b1i>
         p4hir.assign %val_0, %arg0_1 : <!b1i>
       }
       p4hir.scope {
-        %arg0_1 = p4hir.symbol_ref @p::@arg0 : !p4hir.ref<!b1i>
+        %arg0_1 = p4hir.symbol_ref @arg0 : !p4hir.ref<!b1i>
         %y0_inout_arg = p4hir.variable ["y0_inout_arg", init] : <!b1i>
         %val = p4hir.read %arg0_1 : <!b1i>
         p4hir.assign %val, %y0_inout_arg : <!b1i>
-        p4hir.call @p::@a (%y0_inout_arg) : (!p4hir.ref<!b1i>) -> ()
+        p4hir.call @a (%y0_inout_arg) : (!p4hir.ref<!b1i>) -> ()
         %val_0 = p4hir.read %y0_inout_arg : <!b1i>
         p4hir.assign %val_0, %arg0_1 : <!b1i>
       }
@@ -51,15 +51,15 @@ module {
       // CHECK-LABEL: p4hir.table_actions
       p4hir.table_actions {
         p4hir.table_action @b() {
-          p4hir.call @p::@b () : () -> ()
+          p4hir.call @b () : () -> ()
         }
       }
       p4hir.table_default_action {
-        p4hir.call @p::@b () : () -> ()
+        p4hir.call @b () : () -> ()
       }
     }
     p4hir.control_apply {
-      %t_apply_result = p4hir.table_apply @p::@t with key() : () -> !t
+      %t_apply_result = p4hir.table_apply @t with key() : () -> !t
     }
   }
   p4hir.package @m<[!type_T]>("pipe" : !simple_type_T {p4hir.dir = #undir, p4hir.param_name = "pipe"})
