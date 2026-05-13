@@ -24,7 +24,7 @@
 #int42_b10i = #p4hir.int<42> : !b10i
 #int42_infint = #p4hir.int<42> : !infint
 // CHECK: module
-module {
+module @p4_main {
   p4hir.extern @Crc16<[!type_T]> {
     p4hir.func @hash<!type_U>(!type_U {p4hir.dir = #in, p4hir.param_name = "input_data"})
     p4hir.func @id<!type_U>(!type_U {p4hir.dir = #in, p4hir.param_name = "x"}) -> !type_U
@@ -79,16 +79,16 @@ module {
     p4hir.instantiate @ext2::@ext2<[!b16i, !void]> (%c0_b16i_0 : !b16i) as @ey
     p4hir.state @start {
       %c0_i32i_1 = p4hir.const #int0_i32i
-      %0 = p4hir.call_method @X::@method (%c0_i32i_1) of @p::@x : (!i32i) -> !i32i
+      %0 = p4hir.call_method @X::@method (%c0_i32i_1) of @x : (!i32i) -> !i32i
       %c0_b8i = p4hir.const #int0_b8i
-      p4hir.call_method @Y::@method<[!b8i]>(%c0_b8i) of @p::@y : (!b8i) -> ()
+      p4hir.call_method @Y::@method<[!b8i]>(%c0_b8i) of @y : (!b8i) -> ()
       %c0_b16i_2 = p4hir.const #int0_b16i
       %c0_b8i_3 = p4hir.const #int0_b8i
-      p4hir.call_method @ext::@method<[!b8i]>(%c0_b16i_2, %c0_b8i_3) of @p::@ex : (!b16i, !b8i) -> ()
+      p4hir.call_method @ext::@method<[!b8i]>(%c0_b16i_2, %c0_b8i_3) of @ex : (!b16i, !b8i) -> ()
       %c1_b12i = p4hir.const #int1_b12i
-      %1 = p4hir.call_method @ext2::@method<[!b12i]>(%c1_b12i) of @p::@ey : (!b12i) -> !b16i
+      %1 = p4hir.call_method @ext2::@method<[!b12i]>(%c1_b12i) of @ey : (!b12i) -> !b16i
       %c0_b8i_4 = p4hir.const #int0_b8i
-      p4hir.call_method @ext2::@method<[!b8i]>(%1, %c0_b8i_4) of @p::@ey : (!b16i, !b8i) -> ()
+      p4hir.call_method @ext2::@method<[!b8i]>(%1, %c0_b8i_4) of @ey : (!b16i, !b8i) -> ()
       p4hir.transition to @accept
     }
     p4hir.state @accept {
@@ -121,9 +121,9 @@ module {
     %c1024 = p4hir.const #int1024_infint
     %cast = p4hir.cast(%c1024 : !infint) : !b32i
     p4hir.instantiate @MyCounter::@MyCounter<[!b10i]> (%cast : !b32i) as @counter_set
-    p4hir.instantiate @Inner () as @inner
+    p4hir.instantiate @p4_main::@Inner () as @inner
     p4hir.state @start {
-      %counter_set = p4hir.symbol_ref @Test::@counter_set : !MyCounter_b10i
+      %counter_set = p4hir.symbol_ref @counter_set : !MyCounter_b10i
       p4hir.apply @inner(%counter_set) : (!MyCounter_b10i) -> ()
       p4hir.transition to @accept
     }
@@ -147,9 +147,9 @@ module {
     p4hir.control_local @__local_unused = %arg1 : !b32i
 
     p4hir.func action @unused(%arg2: !b32i {p4hir.dir = #undir}) {
-      %ref = p4hir.symbol_ref @Inner2::@__local_foo : !b32i
-      %val = p4hir.call @usedfunc(%ref) : (!b32i) -> !b32i
-      %counter_set = p4hir.symbol_ref @Inner2::@__local_counter_set_0 : !MyCounter_b10i
+      %ref = p4hir.symbol_ref @__local_foo : !b32i
+      %val = p4hir.call @p4_main::@usedfunc(%ref) : (!b32i) -> !b32i
+      %counter_set = p4hir.symbol_ref@__local_counter_set_0 : !MyCounter_b10i
       %cast = p4hir.cast(%val : !b32i) : !b10i
       p4hir.call_method @MyCounter::@count (%cast) of %counter_set : !MyCounter_b10i : (!b10i) -> ()
 
@@ -158,8 +158,8 @@ module {
 
     // CHECK: p4hir.func action @used
     p4hir.func action @used(%arg3: !b32i {p4hir.dir = #undir}) {
-      %ref = p4hir.symbol_ref @Inner2::@__local_foo2 : !b32i
-      %counter_set = p4hir.symbol_ref @Inner2::@__local_counter_set_0 : !MyCounter_b10i
+      %ref = p4hir.symbol_ref @__local_foo2 : !b32i
+      %counter_set = p4hir.symbol_ref @__local_counter_set_0 : !MyCounter_b10i
       %cast = p4hir.cast(%ref : !b32i) : !b10i
       p4hir.call_method @MyCounter::@count (%cast) of %counter_set : !MyCounter_b10i : (!b10i) -> ()
 
@@ -169,7 +169,7 @@ module {
     p4hir.table @t1 {
       p4hir.table_actions {
         p4hir.table_action @used(%arg4: !b32i) {
-          p4hir.call @Inner2::@used (%arg4) : (!b32i) -> ()
+          p4hir.call @used (%arg4) : (!b32i) -> ()
         }
       }  
     }
@@ -183,12 +183,12 @@ module {
     %c42 = p4hir.const #int42_infint
     %cast = p4hir.cast(%c42 : !infint) : !b32i
     p4hir.instantiate @MyCounter::@MyCounter<[!b10i]> (%cast : !b32i) as @counter_set
-    p4hir.instantiate @Inner () as @inner
+    p4hir.instantiate @p4_main::@Inner () as @inner
     // In general cannot remove unused instantiations as these might have side effects
     // CHECK: p4hir.instantiate @UnusedY
     p4hir.instantiate @UnusedY () as @y
     p4hir.control_apply {
-      %counter_set = p4hir.symbol_ref @Test2::@counter_set : !MyCounter_b10i
+      %counter_set = p4hir.symbol_ref @counter_set : !MyCounter_b10i
       p4hir.apply @inner(%counter_set) : (!MyCounter_b10i) -> ()
     }
   }

@@ -78,7 +78,7 @@ action reference() {
 }
 
 action test2(inout PortId_t port) {
-  port._v = port._v + 1; 
+  port._v = port._v + 1;
 }
 
 // CHECK-LABEL: p4hir.func action @test2
@@ -89,7 +89,7 @@ action test2(inout PortId_t port) {
 // CHECK: p4hir.return
 
 // CHECK-LABEL: p4hir.func action @test
-// Just few important bits here        
+// Just few important bits here
 action test(inout metadata_t meta) {
    bit<9> vv;
 
@@ -100,7 +100,7 @@ action test(inout metadata_t meta) {
    // CHECK: %[[STRUCT:.*]] = p4hir.struct (%[[VV_VAL]]) : !PortId_t
    // CHECK: %[[P_VAR:.*]] = p4hir.variable ["p1", init] : <!PortId_t>
    // CHECK: p4hir.assign %[[STRUCT]], %[[P_VAR]] : <!PortId_t>
-            
+
    PortId_t p;
    bit<9> v;
    v = p._v;
@@ -110,10 +110,10 @@ action test(inout metadata_t meta) {
    meta.foo._v = 1;
 
    // CHECK: p4hir.scope {
-   // CHECK: p4hir.call @test2            
+   // CHECK: p4hir.call @test2
    test2(meta.foo);
    // CHECK: }
-                
+
    // CHECK: %[[METADATA_VAL:.*]] = p4hir.read %arg0 : <!metadata_t>
    // CHECK: %[[FOO:.*]] = p4hir.struct_extract %[[METADATA_VAL]]["foo"] : !metadata_t
    // CHECK: %[[PSA_CPU_PORT:.*]] = p4hir.const ["PSA_CPU_PORT"] #p4hir.aggregate<[#int192_b9i]> : !PortId_t

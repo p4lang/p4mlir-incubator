@@ -7,7 +7,7 @@ control InnerPipe(bit<10> arg1, in int<16> arg2, out int<16> arg3) {
 
 // CHECK-LABEL:   p4hir.control @Pipe
 control Pipe(bit<10> arg1, in int<16> arg2, out int<16> arg3, inout int<16> arg4) {
-// CHECK:     p4hir.instantiate @InnerPipe () as @inner
+// CHECK:     p4hir.instantiate @p4_main::@InnerPipe () as @inner
     InnerPipe() inner;
 
     action bar() {

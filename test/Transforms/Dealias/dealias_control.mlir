@@ -12,7 +12,7 @@
 #Pipe_ctr_arg1 = #p4hir.ctor_param<@Pipe, "ctr_arg1"> : !i16i
 #int1_b10i = #p4hir.int<1> : !b10i
 #Pipe_hdr_arg = #p4hir.ctor_param<@Pipe, "hdr_arg"> : !MyHeader
-module {
+module @p4_main {
 
   p4hir.control @InnerPipe(%arg0: !b10i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "arg1"}, %arg1: !i16i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "arg2"}, %arg2: !p4hir.ref<!i16i> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "arg3"})(flag: !p4hir.bool) {
     %flag = p4hir.const ["flag"] #InnerPipe_flag
@@ -33,10 +33,10 @@ module {
 // CHECK:           p4hir.control_local @__local_Pipe_arg2_0 = %[[ARG1]] : !i16i
 // CHECK:           p4hir.control_local @__local_Pipe_arg3_0 = %[[ARG2]] : !p4hir.ref<!i16i>
 // CHECK:           p4hir.control_local @__local_Pipe_arg4_0 = %[[ARG3]] : !p4hir.ref<!i16i>
-// CHECK:           p4hir.instantiate @InnerPipe (%{{.*}} : !p4hir.bool) as @inner1
-// CHECK:           p4hir.instantiate @InnerPipe (%{{.*}} : !p4hir.bool) as @inner2
+// CHECK:           p4hir.instantiate @p4_main::@InnerPipe (%{{.*}} : !p4hir.bool) as @inner1
+// CHECK:           p4hir.instantiate @p4_main::@InnerPipe (%{{.*}} : !p4hir.bool) as @inner2
 // CHECK:           p4hir.control_apply {
-// CHECK:             p4hir.call @Pipe::@bar () : () -> ()
+// CHECK:             p4hir.call @bar () : () -> ()
 // CHECK:             %[[VAL_7:.*]] = p4hir.variable ["x1"] : <!i16i>
 // CHECK:             p4hir.scope {
 // CHECK:               p4hir.apply @inner1(%{{.*}}, %{{.*}}, %[[VAL_7]]) : (!b10i, !i16i, !p4hir.ref<!i16i>) -> ()
@@ -51,9 +51,9 @@ module {
     p4hir.control_local @__local_Pipe_arg3_0 = %arg2 : !p4hir.ref<!i16i>
     p4hir.control_local @__local_Pipe_arg4_0 = %arg3 : !p4hir.ref<!i16i>
     %true = p4hir.const #true
-    p4hir.instantiate @InnerPipe (%true : !p4hir.bool) as @inner1
+    p4hir.instantiate @p4_main::@InnerPipe (%true : !p4hir.bool) as @inner1
     %false = p4hir.const #false
-    p4hir.instantiate @InnerPipe (%false : !p4hir.bool) as @inner2
+    p4hir.instantiate @p4_main::@InnerPipe (%false : !p4hir.bool) as @inner2
     p4hir.func action @bar() {
       %false_0 = p4hir.const #false
       %hasReturned = p4hir.variable ["hasReturned", init] : <!p4hir.bool>
@@ -66,7 +66,7 @@ module {
       p4hir.return
     }
     p4hir.control_apply {
-      p4hir.call @Pipe::@bar () : () -> ()
+      p4hir.call @bar () : () -> ()
       %x1 = p4hir.variable ["x1"] : <!i16i>
       p4hir.scope {
         %c1_b10i = p4hir.const #int1_b10i

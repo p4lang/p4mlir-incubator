@@ -102,7 +102,7 @@ module {
 // Derived using: p4mlir-translate --typeinference-only third_party/p4c/testdata/p4_16_samples/newtype.p4
 
 // CHECK: module
-module {
+module @p4_main {
   p4hir.extern @packet_in {
     p4hir.overload_set @extract {
       p4hir.func @extract_0<!type_T>(!p4hir.ref<!type_T> {p4hir.dir = #out, p4hir.param_name = "hdr"})
@@ -132,7 +132,7 @@ module {
     p4hir.table @t {
       p4hir.table_actions {
         p4hir.table_action @NoAction() {
-          p4hir.call @NoAction () : () -> ()
+          p4hir.call @p4_main::@NoAction () : () -> ()
         }
       }
       p4hir.table_key(%arg1: !p4hir.ref<!N32>) {
@@ -140,7 +140,7 @@ module {
         p4hir.match_key #exact %val : !N32 annotations {name = "k"}
       }
       p4hir.table_default_action {
-        p4hir.call @NoAction () : () -> ()
+        p4hir.call @p4_main::@NoAction () : () -> ()
       }
     }
     p4hir.control_apply {
@@ -188,7 +188,7 @@ module {
       %n_field_ref = p4hir.struct_field_ref %s["n"] : <!S>
       %val_14 = p4hir.read %n : <!N32>
       p4hir.assign %val_14, %n_field_ref : <!N32>
-      %t_apply_result = p4hir.table_apply @c::@t with key(%k) : (!p4hir.ref<!N32>) -> !t
+      %t_apply_result = p4hir.table_apply @t with key(%k) : (!p4hir.ref<!N32>) -> !t
       %val_15 = p4hir.read %s : <!S>
       %b_16 = p4hir.struct_extract %val_15["b"] : !S
       %val_17 = p4hir.read %s : <!S>

@@ -7,8 +7,8 @@
 #undir = #p4hir<dir undir>
 !c = !p4hir.control<"c", (!p4hir.ref<!b32i>)>
 !ctr = !p4hir.control<"ctr", (!p4hir.ref<!b32i>)>
-module {
-  // CHECK-LABEL: p4hir.func @min
+module @p4_module {
+  // CHECK-NOT: p4hir.func @min
   p4hir.func @min(%arg0: !b32i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "a"}, %arg1: !b32i {p4hir.dir = #p4hir<dir in>, p4hir.param_name = "b"}) -> !b32i {
     %false = p4hir.const #false
     %hasReturned = p4hir.variable ["hasReturned", init] : <!p4hir.bool>
@@ -37,7 +37,7 @@ module {
     p4hir.scope {
       %true = p4hir.const #true
       p4hir.assign %true, %hasReturned_0 : <!p4hir.bool>
-      %call = p4hir.call @min (%arg0, %arg1) : (!b32i, !b32i) -> !b32i
+      %call = p4hir.call @p4_module::@min (%arg0, %arg1) : (!b32i, !b32i) -> !b32i
       %add = p4hir.binop(add, %arg0, %call) : !b32i
       p4hir.assign %add, %retval_0 : <!b32i>
     }
@@ -50,7 +50,7 @@ module {
     p4hir.control_apply {
       %val = p4hir.read %arg0 : <!b32i>
       %val_0 = p4hir.read %arg0 : <!b32i>
-      %call = p4hir.call @fun (%val, %val_0) : (!b32i, !b32i) -> !b32i
+      %call = p4hir.call @p4_module::@fun (%val, %val_0) : (!b32i, !b32i) -> !b32i
       p4hir.assign %call, %arg0 : <!b32i>
     }
   }

@@ -69,31 +69,31 @@ typedef MyCounter<my_counter_index_t> my_counter_t;
 
 // CHECK-LABEL: p4hir.parser @p
 parser p() {
-    // CHECK:    p4hir.instantiate @X::@X<[!i32i]> (%{{.*}} : !i32i) as @x
+    // CHECK:    p4hir.instantiate @p4_main::@X::@X<[!i32i]> (%{{.*}} : !i32i) as @x
     X<int<32>>(32s0) x;
 
-    // CHECK:    p4hir.instantiate @Y::@Y () as @y
+    // CHECK:    p4hir.instantiate @p4_main::@Y::@Y () as @y
     Y()          y;
 
 
-    // CHECK: p4hir.instantiate @ext::@ext<[!b16i]> (%{{.*}} : !b16i) as @ex
+    // CHECK: p4hir.instantiate @p4_main::@ext::@ext<[!b16i]> (%{{.*}} : !b16i) as @ex
     ext<bit<16>>(16w0) ex;
 
-    // CHECK: p4hir.instantiate @ext2::@ext2<[!b16i, !void]> (%{{.*}}) as @ey
+    // CHECK: p4hir.instantiate @p4_main::@ext2::@ext2<[!b16i, !void]> (%{{.*}}) as @ey
     ext2<bit<16>, void>(16w0) ey;
 
     state start {
-      // CHECK: p4hir.call_method @X::@method (%{{.*}}) of @p::@x : (!i32i) -> !i32i
+      // CHECK: p4hir.call_method @X::@method (%{{.*}}) of @x : (!i32i) -> !i32i
       x.method(0);
 
-      // CHECK: p4hir.call_method @Y::@method<[!b8i]> (%{{.*}}) of @p::@y : (!b8i) -> ()
+      // CHECK: p4hir.call_method @Y::@method<[!b8i]> (%{{.*}}) of @y : (!b8i) -> ()
       y.method(8w0);
 
-      // CHECK: p4hir.call_method @ext::@method<[!b8i]> (%{{.*}}, %{{.*}}) of @p::@ex : (!b16i, !b8i) -> ()
+      // CHECK: p4hir.call_method @ext::@method<[!b8i]> (%{{.*}}, %{{.*}}) of @ex : (!b16i, !b8i) -> ()
       ex.method(0, 8w0);
 
-      // CHECK: p4hir.call_method @ext2::@method<[!b12i]> (%{{.*}}) of @p::@ey : (!b12i) -> !b16i
-      // CHECK: p4hir.call_method @ext2::@method<[!b8i]> (%{{.*}}, %{{.*}}) of @p::@ey : (!b16i, !b8i) -> ()
+      // CHECK: p4hir.call_method @ext2::@method<[!b12i]> (%{{.*}}) of @ey : (!b12i) -> !b16i
+      // CHECK: p4hir.call_method @ext2::@method<[!b8i]> (%{{.*}}, %{{.*}}) of @ey : (!b16i, !b8i) -> ()
       ey.method(ey.method(12w1), 8w0);
 
       transition accept;
@@ -111,13 +111,13 @@ parser Inner(my_counter_t counter_set) {
 
 // CHECK-LABEL: p4hir.parser @Test()()
 parser Test() {
-    // CHECK:  p4hir.instantiate @MyCounter::@MyCounter<[!b10i]> (%{{.*}} : !b32i) as @counter_set
+    // CHECK:  p4hir.instantiate @p4_main::@MyCounter::@MyCounter<[!b10i]> (%{{.*}} : !b32i) as @counter_set
     my_counter_t(1024) counter_set;
-    // CHECK: p4hir.instantiate @Inner () as @inner
+    // CHECK: p4hir.instantiate @p4_main::@Inner () as @inner
     Inner() inner;
 
     state start {
-        // CHECK: %[[counter_set:.*]] = p4hir.symbol_ref @Test::@counter_set : !MyCounter_b10i
+        // CHECK: %[[counter_set:.*]] = p4hir.symbol_ref @counter_set : !MyCounter_b10i
         // CHECK: p4hir.apply @inner(%[[counter_set]]) : (!MyCounter_b10i) -> ()
         inner.apply(counter_set);
         transition accept;
@@ -131,7 +131,7 @@ control Inner2(my_counter_t counter_set) {
 }
 control Test2() {
     my_counter_t(42) counter_set;
-    // CHECK: p4hir.instantiate @Inner () as @inner
+    // CHECK: p4hir.instantiate  @p4_main::@Inner () as @inner
     Inner() inner;
 
     apply {

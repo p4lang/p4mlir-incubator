@@ -52,12 +52,12 @@
 #set_product_of_set_range_of_int1_b8i_int8_b8i = #p4hir.set<product : [#set_range_of_int1_b8i_int8_b8i]> : !p4hir.set<tuple<!b8i>>
 #set_product_of_set_range_of_int6_b8i_int12_b8i = #p4hir.set<product : [#set_range_of_int6_b8i_int12_b8i]> : !p4hir.set<tuple<!b8i>>
 // CHECK: module
-module {
+module @p4_main {
   p4hir.control @ingress(%arg0: !p4hir.ref<!Header_t> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "h"}, %arg1: !p4hir.ref<!Meta_t> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "m"})() {
     p4hir.control_local @__local_ingress_h_0 = %arg0 : !p4hir.ref<!Header_t>
     p4hir.control_local @__local_ingress_m_0 = %arg1 : !p4hir.ref<!Meta_t>
     p4hir.func action @a() {
-      %__local_ingress_m_0 = p4hir.symbol_ref @ingress::@__local_ingress_m_0 : !p4hir.ref<!Meta_t>
+      %__local_ingress_m_0 = p4hir.symbol_ref @__local_ingress_m_0 : !p4hir.ref<!Meta_t>
       %egress_spec_field_ref = p4hir.struct_field_ref %__local_ingress_m_0["egress_spec"] : <!Meta_t>
       %c0_b9i = p4hir.const #int0_b9i
       %cast = p4hir.cast(%c0_b9i : !b9i) : !b9i
@@ -65,7 +65,7 @@ module {
       p4hir.return
     }
     p4hir.func action @a_with_control_params(%arg2: !b9i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "x"}) {
-      %__local_ingress_m_0 = p4hir.symbol_ref @ingress::@__local_ingress_m_0 : !p4hir.ref<!Meta_t>
+      %__local_ingress_m_0 = p4hir.symbol_ref @__local_ingress_m_0 : !p4hir.ref<!Meta_t>
       %egress_spec_field_ref = p4hir.struct_field_ref %__local_ingress_m_0["egress_spec"] : <!Meta_t>
       p4hir.assign %arg2, %egress_spec_field_ref : <!b9i>
       p4hir.return
@@ -79,25 +79,25 @@ module {
       }
       p4hir.table_actions {
         p4hir.table_action @a() {
-          p4hir.call @ingress::@a () : () -> ()
+          p4hir.call @a () : () -> ()
         }
         p4hir.table_action @a_with_control_params(%arg2: !b9i {p4hir.param_name = "x"}) {
-          p4hir.call @ingress::@a_with_control_params (%arg2) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%arg2) : (!b9i) -> ()
         }
       }
       p4hir.table_default_action const {
-        p4hir.call @ingress::@a () : () -> ()
+        p4hir.call @a () : () -> ()
       }
       p4hir.table_entries const {
         p4hir.table_entry #p4hir.aggregate<[#int1_b8i]> : tuple<!b8i> {
           %c1_b9i = p4hir.const #int1_b9i
           %cast = p4hir.cast(%c1_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
         p4hir.table_entry #p4hir.aggregate<[#int2_b8i]> : tuple<!b8i> {
           %c2_b9i = p4hir.const #int2_b9i
           %cast = p4hir.cast(%c2_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
       }
     }
@@ -110,30 +110,30 @@ module {
       }
       p4hir.table_actions {
         p4hir.table_action @a() {
-          p4hir.call @ingress::@a () : () -> ()
+          p4hir.call @a () : () -> ()
         }
         p4hir.table_action @a_with_control_params(%arg2: !b9i {p4hir.param_name = "x"}) {
-          p4hir.call @ingress::@a_with_control_params (%arg2) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%arg2) : (!b9i) -> ()
         }
       }
       p4hir.table_default_action {
-        p4hir.call @ingress::@a () : () -> ()
+        p4hir.call @a () : () -> ()
       }
       p4hir.table_entries const {
         p4hir.table_entry #set_product_of_set_mask_of_int17_b8i_int-16_b8i {
           %c11_b9i = p4hir.const #int11_b9i
           %cast = p4hir.cast(%c11_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
         p4hir.table_entry #p4hir.aggregate<[#int18_b8i]> : tuple<!b8i> {
           %c12_b9i = p4hir.const #int12_b9i
           %cast = p4hir.cast(%c12_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
         p4hir.table_entry #p4hir.aggregate<[#everything]> : tuple<!p4hir.set<!p4hir.dontcare>> {
           %c13_b9i = p4hir.const #int13_b9i
           %cast = p4hir.cast(%c13_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
       }
     }
@@ -146,30 +146,30 @@ module {
       }
       p4hir.table_actions {
         p4hir.table_action @a() {
-          p4hir.call @ingress::@a () : () -> ()
+          p4hir.call @a () : () -> ()
         }
         p4hir.table_action @a_with_control_params(%arg2: !b9i {p4hir.param_name = "x"}) {
-          p4hir.call @ingress::@a_with_control_params (%arg2) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%arg2) : (!b9i) -> ()
         }
       }
       p4hir.table_default_action {
-        p4hir.call @ingress::@a () : () -> ()
+        p4hir.call @a () : () -> ()
       }
       p4hir.table_entries const {
         p4hir.table_entry #set_product_of_set_mask_of_int4369_b16i_int15_b16i annotations {priority = ["3"]} {
           %c1_b9i = p4hir.const #int1_b9i
           %cast = p4hir.cast(%c1_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
         p4hir.table_entry #p4hir.aggregate<[#int4481_b16i]> : tuple<!b16i> {
           %c2_b9i = p4hir.const #int2_b9i
           %cast = p4hir.cast(%c2_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
         p4hir.table_entry #set_product_of_set_mask_of_int4481_b16i_int-4081_b16i annotations {priority = ["1"]} {
           %c3_b9i = p4hir.const #int3_b9i
           %cast = p4hir.cast(%c3_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
       }
     }
@@ -182,43 +182,43 @@ module {
       }
       p4hir.table_actions {
         p4hir.table_action @a() {
-          p4hir.call @ingress::@a () : () -> ()
+          p4hir.call @a () : () -> ()
         }
         p4hir.table_action @a_with_control_params(%arg2: !b9i {p4hir.param_name = "x"}) {
-          p4hir.call @ingress::@a_with_control_params (%arg2) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%arg2) : (!b9i) -> ()
         }
       }
       p4hir.table_default_action {
-        p4hir.call @ingress::@a () : () -> ()
+        p4hir.call @a () : () -> ()
       }
       p4hir.table_entries const {
         p4hir.table_entry #set_product_of_set_range_of_int1_b8i_int8_b8i {
           %c21_b9i = p4hir.const #int21_b9i
           %cast = p4hir.cast(%c21_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
         p4hir.table_entry #set_product_of_set_range_of_int6_b8i_int12_b8i {
           %c22_b9i = p4hir.const #int22_b9i
           %cast = p4hir.cast(%c22_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
         p4hir.table_entry #p4hir.aggregate<[#int15_b8i]> : tuple<!b8i> {
           %c24_b9i = p4hir.const #int24_b9i
           %cast = p4hir.cast(%c24_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
         p4hir.table_entry #p4hir.aggregate<[#everything]> : tuple<!p4hir.set<!p4hir.dontcare>> {
           %c23_b9i = p4hir.const #int23_b9i
           %cast = p4hir.cast(%c23_b9i : !b9i) : !b9i
-          p4hir.call @ingress::@a_with_control_params (%cast) : (!b9i) -> ()
+          p4hir.call @a_with_control_params (%cast) : (!b9i) -> ()
         }
       }
     }
     p4hir.control_apply {
-      %t_exact_apply_result = p4hir.table_apply @ingress::@t_exact with key(%arg0) : (!p4hir.ref<!Header_t>) -> !t_exact
-      %t_lpm_apply_result = p4hir.table_apply @ingress::@t_lpm with key(%arg0) : (!p4hir.ref<!Header_t>) -> !t_lpm
-      %t_ternary_apply_result = p4hir.table_apply @ingress::@t_ternary with key(%arg0) : (!p4hir.ref<!Header_t>) -> !t_ternary
-      %t_range_apply_result = p4hir.table_apply @ingress::@t_range with key(%arg0) : (!p4hir.ref<!Header_t>) -> !t_range
+      %t_exact_apply_result = p4hir.table_apply @t_exact with key(%arg0) : (!p4hir.ref<!Header_t>) -> !t_exact
+      %t_lpm_apply_result = p4hir.table_apply @t_lpm with key(%arg0) : (!p4hir.ref<!Header_t>) -> !t_lpm
+      %t_ternary_apply_result = p4hir.table_apply @t_ternary with key(%arg0) : (!p4hir.ref<!Header_t>) -> !t_ternary
+      %t_range_apply_result = p4hir.table_apply @t_range with key(%arg0) : (!p4hir.ref<!Header_t>) -> !t_range
     }
   }
 }

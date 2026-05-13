@@ -16,7 +16,7 @@
 #int32_b32i = #p4hir.int<32> : !b32i
 #int42_infint = #p4hir.int<42> : !infint
 // CHECK: module
-module {
+module @p4_main {
   p4hir.extern @ActionProfile {
     p4hir.func @ActionProfile(!b32i {p4hir.dir = #undir})
   }
@@ -33,14 +33,14 @@ module {
     p4hir.table @t1 {
       p4hir.table_actions {
         p4hir.table_action @a(%arg1: !b32i) {
-          p4hir.call @c::@a (%arg1) : (!b32i) -> ()
+          p4hir.call @a (%arg1) : (!b32i) -> ()
         }
         p4hir.table_action @b() {
-          p4hir.call @c::@b () : () -> ()
+          p4hir.call @b () : () -> ()
         }
       }
       p4hir.table_default_action {
-        p4hir.call @c::@b () : () -> ()
+        p4hir.call @b () : () -> ()
       }
     }
     p4hir.table @t2 {
@@ -51,17 +51,17 @@ module {
       }
       p4hir.table_actions {
         p4hir.table_action @a(%arg1: !b32i) {
-          p4hir.call @c::@a (%arg1) : (!b32i) -> ()
+          p4hir.call @a (%arg1) : (!b32i) -> ()
         }
         p4hir.table_action @b() {
-          p4hir.call @c::@b () : () -> ()
+          p4hir.call @b () : () -> ()
         }
         p4hir.table_action @aa(%arg1: !i8i) {
-          p4hir.call @c::@aa (%arg0, %arg1) : (!b32i, !i8i) -> ()
+          p4hir.call @aa (%arg0, %arg1) : (!b32i, !i8i) -> ()
         }
       }
       p4hir.table_default_action {
-        p4hir.call @c::@b () : () -> ()
+        p4hir.call @b () : () -> ()
       }
       %size = p4hir.table_size #int42_infint
       %largest_priority_wins = p4hir.table_property "largest_priority_wins" {
@@ -83,10 +83,10 @@ module {
       } : !ActionProfile
     }
     p4hir.control_apply {
-      %t1_apply_result = p4hir.table_apply @c::@t1 with key() : () -> !t1_
+      %t1_apply_result = p4hir.table_apply @t1 with key() : () -> !t1_
       %hit = p4hir.struct_extract %t1_apply_result["hit"] : !t1_
       p4hir.if %hit {
-        %t2_apply_result = p4hir.table_apply @c::@t2 with key(%arg0) : (!b32i) -> !t2_
+        %t2_apply_result = p4hir.table_apply @t2 with key(%arg0) : (!b32i) -> !t2_
       }
     }
   }

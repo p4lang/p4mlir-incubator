@@ -15,7 +15,7 @@
 #int2_b8i = #p4hir.int<2> : !b8i
 #int3_b8i = #p4hir.int<3> : !b8i
 !headers = !p4hir.struct<"headers", h1: !h1_t, h2: !h2_t, h3: !h3_t>
-module {
+module @p4_main {
   p4hir.extern @packet_in annotations {corelib} {
     p4hir.overload_set @extract {
       p4hir.func @extract_0<!type_T>(!p4hir.ref<!type_T> {p4hir.dir = #out, p4hir.param_name = "hdr"})
@@ -61,7 +61,7 @@ module {
   // CHECK-LABEL: parserI
   // CHECK-SAME: !p4corelib.packet_in
   p4hir.parser @parserI(%arg0: !packet_in {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !p4hir.ref<!headers> {p4hir.dir = #out, p4hir.param_name = "hdr"})() {
-    p4hir.instantiate @subParserImpl() as @subp
+    p4hir.instantiate @p4_main::@subParserImpl() as @subp
     %my_next_hdr_type = p4hir.variable ["my_next_hdr_type"] : <!b8i>
     p4hir.state @start {
       p4hir.scope {

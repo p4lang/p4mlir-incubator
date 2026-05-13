@@ -29,7 +29,7 @@ action bazz(in int<16> arg1) {
     // CHECK: p4hir.call @foo (%arg0, %{{.*}}) : (!i16i, !b10i) -> ()
     foo(arg1, 7);
     bit<10> x1 = 5;
-    // CHECK: p4hir.call @foo (%arg0, %{{.*}}) : (!i16i, !b10i) -> ()    
+    // CHECK: p4hir.call @foo (%arg0, %{{.*}}) : (!i16i, !b10i) -> ()
     foo(arg1, x1);
     // CHECK: p4hir.call @foo (%{{.*}}, %{{.*}}) : (!i16i, !b10i) -> ()
     foo(4, 2);
