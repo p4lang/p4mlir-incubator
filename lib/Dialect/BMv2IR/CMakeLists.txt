@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+#
+# SPDX-License-Identifier: Apache-2.0
+
 add_mlir_dialect_library(P4MLIR_BMv2IR
   BMv2IR_Ops.cpp
   BMv2IR_Types.cpp

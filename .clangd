@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # If this project is instantiated as standalone use compilation database in the third-party directory.
 If:
   PathMatch: third_party/p4c/build/.*

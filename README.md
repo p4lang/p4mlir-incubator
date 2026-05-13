@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2024 The P4 Language Consortium
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # P4MLIR
 
 **WARNING**: This is an experimental project in incubation, not ready for any serious use yet.

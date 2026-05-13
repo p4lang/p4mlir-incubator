@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-opt --pass-pipeline='builtin.module(p4hir.control(p4hir-remove-soft-cf))' %s | FileCheck %s
 
 !b16i = !p4hir.bit<16>

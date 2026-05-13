@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef P4HIR_OPS_INTERFACES
 #define P4HIR_OPS_INTERFACES
 

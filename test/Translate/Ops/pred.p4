@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RUN: p4mlir-translate --typeinference-only %s | FileCheck %s
 
 // Adopted from testdata/p4_16_samples/pred.p4

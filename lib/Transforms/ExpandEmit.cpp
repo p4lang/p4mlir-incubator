@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // We explicitly do not use push / pop for diagnostic in
 // order to propagate pragma further on
 #pragma GCC diagnostic ignored "-Wunused-parameter"

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+#
+# SPDX-License-Identifier: Apache-2.0
+
 set(LIBS
   P4MLIR_P4C_TRANSLATE
   P4Pipelines

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 
 using namespace mlir;

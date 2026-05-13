@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef P4MLIR_IMPL_IR_UTILS_H
 #define P4MLIR_IMPL_IR_UTILS_H
 

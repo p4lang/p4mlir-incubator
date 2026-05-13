@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2024 The P4 Language Consortium
+#
+# SPDX-License-Identifier: Apache-2.0
+
 add_mlir_dialect_library(P4MLIR_P4HIR
   P4HIR_Ops.cpp
   P4HIR_Types.cpp

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "p4mlir/Conversion/P4HIRToCoreLib/P4HIRToCoreLib.h"
 
 #include <optional>
