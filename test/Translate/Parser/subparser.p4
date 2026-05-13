@@ -32,10 +32,10 @@ parser p(in empty e, in int<10> sinit) {
     subparser() sp;
     subparser2(false) sp2;
     subparser3() sp3;
-// CHECK: p4hir.instantiate @subparser () as @sp
+// CHECK: p4hir.instantiate @p4_main::@subparser () as @sp
 // CHECK: %[[false:.*]] = p4hir.const #false
-// CHECK: p4hir.instantiate @subparser2 (%[[false]] : !p4hir.bool) as @sp2
-// CHECK: p4hir.instantiate @subparser3 () as @sp3
+// CHECK: p4hir.instantiate @p4_main::@subparser2 (%[[false]] : !p4hir.bool) as @sp2
+// CHECK: p4hir.instantiate @p4_main::@subparser3 () as @sp3
 
     state start {
         s = 1;

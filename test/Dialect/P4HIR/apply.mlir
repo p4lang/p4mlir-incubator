@@ -11,19 +11,19 @@
 #int2_infint = #p4hir.int<2> : !infint
 !InnerPipe = !p4hir.control<"InnerPipe", (!b10i, !i16i, !p4hir.ref<!i16i>)>
 // CHECK: module
-module {
+module @p4_main {
   p4hir.control @InnerPipe(%arg0: !b10i, %arg1: !i16i, %arg2: !p4hir.ref<!i16i>)() {
     p4hir.control_apply {
     }
   }
   p4hir.control @Pipe(%arg0: !b10i, %arg1: !i16i, %arg2: !p4hir.ref<!i16i>, %arg3: !p4hir.ref<!i16i>)() {
-    p4hir.instantiate @InnerPipe() as @inner
+    p4hir.instantiate @p4_main::@InnerPipe() as @inner
     p4hir.func action @bar() {
       %x1 = p4hir.variable ["x1"] : <!i16i>
       p4hir.return
     }
     p4hir.control_apply {
-      p4hir.call @Pipe::@bar () : () -> ()
+      p4hir.call @bar () : () -> ()
       %x1 = p4hir.variable ["x1"] : <!i16i>
       p4hir.scope {
         %c1_b10i = p4hir.const #int1_b10i

@@ -61,10 +61,10 @@ control ingress(inout Header_t h, inout Meta_t m) {
         // CHECK-LABEL: p4hir.table_entries const
         const entries = {
             // CHECK: p4hir.table_entry #p4hir.aggregate<[#[[int1_b8i]]]>
-            // CHECK:  p4hir.call @ingress::@a_with_control_params
+            // CHECK:  p4hir.call @a_with_control_params
             0x01 : a_with_control_params(1);
             // CHECK: p4hir.table_entry #p4hir.aggregate<[#[[int2_b8i]]]
-            // CHECK: p4hir.call @ingress::@a_with_control_params
+            // CHECK: p4hir.call @a_with_control_params
             0x02 : a_with_control_params(2);
         }
     }

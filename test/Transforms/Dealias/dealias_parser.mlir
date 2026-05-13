@@ -35,7 +35,7 @@
 !Parsed_packet = !p4hir.struct<"Parsed_packet", ethernet: !Ethernet_h, ipv4: !ipv4_t>
 // CHECK: #[[$DIR_IN:.+]] = #p4hir<dir in>
 // CHECK: #[[$DIR_OUT:.+]] = #p4hir<dir out>
-module {
+module @p4_main {
   p4hir.extern @packet_in {
     p4hir.overload_set @extract {
       p4hir.func @extract_0<!type_T>(!p4hir.ref<!type_T> {p4hir.dir = #out, p4hir.param_name = "hdr"})
@@ -170,9 +170,9 @@ module {
 // CHECK-SAME:                    %[[ARG1:.*]]: !i10i {p4hir.dir = #[[$DIR_IN]], p4hir.param_name = "sinit"})() {
 // CHECK:           %[[VAL_3:.*]] = p4hir.variable ["s", init] : <!i10i>
 // CHECK:           p4hir.assign %[[ARG1]], %[[VAL_3]] : <!i10i>
-// CHECK:           p4hir.instantiate @subparser1 () as @sp1
-// CHECK:           p4hir.instantiate @subparser2 () as @sp2
-// CHECK:           p4hir.instantiate @subparser3 () as @sp3
+// CHECK:           p4hir.instantiate @p4_main::@subparser1 () as @sp1
+// CHECK:           p4hir.instantiate @p4_main::@subparser2 () as @sp2
+// CHECK:           p4hir.instantiate @p4_main::@subparser3 () as @sp3
 // CHECK:           p4hir.state @start {
 // CHECK:             p4hir.assign %{{.*}}, %[[VAL_3]] : <!i10i>
 // CHECK:             p4hir.transition to @next
@@ -193,9 +193,9 @@ module {
   p4hir.parser @p(%arg0: !empty {p4hir.dir = #in, p4hir.param_name = "e"}, %arg1: !i10i {p4hir.dir = #in, p4hir.param_name = "sinit"})() {
     %s = p4hir.variable ["s", init] : <!i10i>
     p4hir.assign %arg1, %s : <!i10i>
-    p4hir.instantiate @subparser1 () as @sp1
-    p4hir.instantiate @subparser2 () as @sp2
-    p4hir.instantiate @subparser3 () as @sp3
+    p4hir.instantiate @p4_main::@subparser1 () as @sp1
+    p4hir.instantiate @p4_main::@subparser2 () as @sp2
+    p4hir.instantiate @p4_main::@subparser3 () as @sp3
     p4hir.state @start {
       %c1_i10i = p4hir.const #int1_i10i
       %cast = p4hir.cast(%c1_i10i : !i10i) : !i10i

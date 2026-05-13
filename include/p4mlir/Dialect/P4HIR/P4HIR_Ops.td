@@ -1364,7 +1364,7 @@ def ConstructOp : P4HIR_Op<"construct",
 
   // TODO: Refine result types, refine parameter type (must be constants!)
   let results = (outs P4ObjectType:$result);
-  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
+  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
                        OptionalAttr<ArrayAttr>:$type_parameters,
                        OptionalAttr<ArrayAttr>:$arg_attrs);
 
@@ -1372,12 +1372,12 @@ def ConstructOp : P4HIR_Op<"construct",
   let hasVerifier = 0;
 
   let builders = [
-      OpBuilder<(ins "mlir::Type":$result, "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands), [{
+      OpBuilder<(ins "mlir::Type":$result, "mlir::SymbolRefAttr":$callee, "mlir::ValueRange":$arg_operands), [{
         build($_builder, $_state,
               result, callee, arg_operands, nullptr, nullptr);
       }]>,
 
-      OpBuilder<(ins "mlir::Type":$result, "mlir::StringRef":$callee, "mlir::ValueRange":$arg_operands, "mlir::TypeRange":$type_parameters), [{
+      OpBuilder<(ins "mlir::Type":$result, "mlir::SymbolRefAttr":$callee, "mlir::ValueRange":$arg_operands, "mlir::TypeRange":$type_parameters), [{
         build($_builder, $_state,
               result, callee, arg_operands, type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters), nullptr);
       }]>,

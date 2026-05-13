@@ -14,7 +14,7 @@ extern T externFunc<T, U>(in U a, in T b);
 
 parser p1() {
     state start {
-      // CHECK: p4hir.call @externFunc<[!b8i, !b16i]> (%{{.*}}, %{{.*}}) : (!b16i, !b8i) -> !b8i
+      // CHECK: p4hir.call @p4_main::@externFunc<[!b8i, !b16i]> (%{{.*}}, %{{.*}}) : (!b16i, !b8i) -> !b8i
       bit<8> res = externFunc(16w0, 8w0);
       transition accept;
     }
