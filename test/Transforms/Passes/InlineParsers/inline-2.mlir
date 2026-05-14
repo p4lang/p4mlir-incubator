@@ -11,18 +11,18 @@
 #set_const_of_int2_b8i = #p4hir.set<const : [#int2_b8i]> : !p4hir.set<!b8i>
 
 // CHECK-LABEL: module
-module {
+module @p4_main {
   p4hir.parser @callee(%arg0: !b8i, %arg1: !p4hir.ref<!b8i>)() {
     %set = p4hir.const #set_const_of_int2_b8i
     p4hir.state @start {
       p4hir.transition_select %arg0 : !b8i {
         p4hir.select_case {
           p4hir.yield %set : !p4hir.set<!b8i>
-        } to @callee::@reject
+        } to @reject
         p4hir.select_case {
           %everything = p4hir.const #everything
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
-        } to @callee::@accept
+        } to @accept
       }
     }
     p4hir.state @accept {
@@ -31,33 +31,33 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @callee::@start
+    p4hir.transition to @start
   }
 
   // CHECK-LABEL: p4hir.parser @caller
   p4hir.parser @caller(%arg0: !b8i, %arg1: !p4hir.ref<!b8i>)() {
-    p4hir.instantiate @callee () as @subparser
+    p4hir.instantiate @p4_main::@callee () as @subparser
     // CHECK-LABEL: p4hir.state @start
     // CHECK:      %[[ADD:.*]] = p4hir.binop(add, %arg0, %c1_b8i) : !b8i
     // CHECK:      p4hir.transition_select %[[ADD]] : !b8i {
     // CHECK-NEXT:   p4hir.select_case {
     // CHECK-NEXT:     p4hir.yield %set : !p4hir.set<!b8i>
-    // CHECK-NEXT:   } to @caller::@subparser.reject
+    // CHECK-NEXT:   } to @subparser.reject
     // CHECK-NEXT:   p4hir.select_case {
     // CHECK-NEXT:     p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
-    // CHECK-NEXT:   } to @caller::@subparser.accept
+    // CHECK-NEXT:   } to @subparser.accept
     // CHECK-NEXT: }
     p4hir.state @start {
       p4hir.scope {
         %c1_b8i = p4hir.const #int1_b8i
         %add = p4hir.binop(add, %arg0, %c1_b8i) : !b8i
         %ipv4_out_arg = p4hir.variable ["ipv4_out_arg"] : <!b8i>
-        p4hir.apply @caller::@subparser(%add, %ipv4_out_arg) : (!b8i, !p4hir.ref<!b8i>) -> ()
+        p4hir.apply @subparser(%add, %ipv4_out_arg) : (!b8i, !p4hir.ref<!b8i>) -> ()
         %val = p4hir.read %ipv4_out_arg : <!b8i>
         %add_0 = p4hir.binop(add, %val, %c1_b8i) : !b8i
         p4hir.assign %add_0, %arg1 : <!b8i>
       }
-      p4hir.transition to @caller::@accept
+      p4hir.transition to @accept
     }
 
     p4hir.state @accept {
@@ -66,6 +66,6 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @caller::@start
+    p4hir.transition to @start
   }
 }
