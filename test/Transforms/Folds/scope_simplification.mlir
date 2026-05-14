@@ -68,7 +68,9 @@ module {
 
   // CHECK-LABEL: @empty_scope_with_annotations_preserved
   p4hir.func @empty_scope_with_annotations_preserved(%arg0: !ref_i32i) {
-    // TODO: Doesn't work(but should)
+    // CHECK: p4hir.scope annotations {name = "test"} {
+    // CHECK-NEXT: }
+    // CHECK-NEXT: p4hir.return
     p4hir.scope annotations {name = "test"} {
     }
     p4hir.return
@@ -87,6 +89,29 @@ module {
         %c1 = p4hir.const #int1_i32i
         p4hir.assign %c1, %arg0 : <!i32i>
       }
+    }
+    p4hir.return
+  }
+
+  // CHECK-LABEL: @empty_scope_with_atomic_removed
+  p4hir.func @empty_scope_with_atomic_removed(%arg0: !ref_i32i) {
+    // CHECK-NOT: p4hir.scope
+    // CHECK: p4hir.return
+    p4hir.scope annotations {atomic} {
+    }
+    p4hir.return
+  }
+
+  // CHECK-LABEL: @nonempty_scope_with_atomic_preserved
+  p4hir.func @nonempty_scope_with_atomic_preserved(%arg0: !ref_i32i) {
+    // CHECK: %[[C:.*]] = p4hir.const #int1_i32i
+    // CHECK-NEXT: p4hir.scope annotations {atomic} {
+    // CHECK-NEXT: p4hir.assign %[[C]], %arg0
+    // CHECK-NEXT: }
+    // CHECK-NEXT: p4hir.return
+    %c1 = p4hir.const #int1_i32i
+    p4hir.scope annotations {atomic} {
+      p4hir.assign %c1, %arg0 : <!i32i>
     }
     p4hir.return
   }

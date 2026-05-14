@@ -80,4 +80,63 @@ module {
     p4hir.return %result : !i32i
   }
 
+  // CHECK-LABEL: constant_fold_with_annotation
+  p4hir.func @constant_fold_with_annotation(%arg0: !p4hir.ref<!i32i>) {
+    // Constant true with annotation should create scope with annotation preserved
+    // CHECK:      %c1_i32i = p4hir.const #int1_i32i
+    // CHECK-NEXT: p4hir.scope annotations {name = "fast_path"} {
+    // CHECK-NEXT:   p4hir.assign %c1_i32i, %arg0 : <!i32i>
+    // CHECK-NEXT: }
+    // CHECK-NEXT: p4hir.return
+
+    %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+    %c1_i32i = p4hir.const #int1_i32i
+
+    p4hir.if %true annotations {name = "fast_path"} {
+      p4hir.assign %c1_i32i, %arg0 : <!i32i>
+    }
+
+    p4hir.return
+  }
+
+  // CHECK-LABEL: constant_fold_filters_branch_hints
+  p4hir.func @constant_fold_filters_branch_hints(%arg0: !p4hir.ref<!i32i>) {
+    // Constant true with likely annotation should create scope without likely (branch hint doesn't apply to scope)
+    // CHECK:      %c1_i32i = p4hir.const #int1_i32i
+    // CHECK-NEXT: p4hir.scope annotations {name = "debug"} {
+    // CHECK-NEXT:   p4hir.assign %c1_i32i, %arg0 : <!i32i>
+    // CHECK-NEXT: }
+    // CHECK-NEXT: p4hir.return
+
+    %true = p4hir.const #p4hir.bool<true> : !p4hir.bool
+    %c1_i32i = p4hir.const #int1_i32i
+
+    p4hir.if %true annotations {likely, name = "debug"} {
+      p4hir.assign %c1_i32i, %arg0 : <!i32i>
+    }
+
+    p4hir.return
+  }
+
+  // CHECK-LABEL: constant_fold_only_branch_hints
+  p4hir.func @constant_fold_only_branch_hints(%arg0: !p4hir.ref<!i32i>) {
+    // Constant false with only unlikely annotation - should inline directly (no annotations to preserve)
+    // CHECK:      %c3_i32i = p4hir.const #int3_i32i
+    // CHECK-NEXT: p4hir.assign %c3_i32i, %arg0 : <!i32i>
+    // CHECK-NEXT: p4hir.return
+    // CHECK-NOT:  p4hir.scope
+
+    %false = p4hir.const #p4hir.bool<false> : !p4hir.bool
+    %c2_i32i = p4hir.const #int3_i32i
+
+    p4hir.if %false {
+      %dummy = p4hir.const #int1_i32i
+      p4hir.assign %dummy, %arg0 : <!i32i>
+    } else annotations {unlikely} {
+      p4hir.assign %c2_i32i, %arg0 : <!i32i>
+    }
+
+    p4hir.return
+  }
+
 }
