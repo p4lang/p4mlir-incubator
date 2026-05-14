@@ -11,6 +11,7 @@
 #include "mlir/Transforms/Inliner.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Symbols.h"
 #include "p4mlir/Transforms/IRUtils.h"
 #include "p4mlir/Transforms/Passes.h"
 
@@ -92,7 +93,7 @@ struct InstantiateOpInlineHelper {
         : rewriter(rewriter), instOp(instOp), domInfo(domInfo) {}
 
     mlir::LogicalResult init() {
-        callee = instOp.getCallee<OpTy>();
+        callee = P4HIR::lookupSymbol<OpTy>(instOp, instOp.getCallee());
         if (!callee) return mlir::failure();
 
         assert(callee.getCallableRegion()->hasOneBlock() &&
@@ -101,9 +102,11 @@ struct InstantiateOpInlineHelper {
         caller = instOp->getParentOfType<OpTy>();
 
         // Collect all ApplyOps for this InstantiateOp.
-        caller.walk([&](P4HIR::ApplyOp applyOp) {
-            if (applyOp.getInstantiateOp() == instOp) calls.push_back(applyOp);
-        });
+        std::optional<mlir::SymbolTable::UseRange> uses =
+            mlir::SymbolTable::getSymbolUses(instOp.getSymNameAttr(), instOp->getParentOp());
+        for (auto symbolUse : *uses)
+            if (auto applyOp = mlir::dyn_cast<P4HIR::ApplyOp>(symbolUse.getUser()))
+                calls.push_back(applyOp);
 
         remapLocationHelper.setCallerLoc(caller.getLoc());
 
@@ -165,33 +168,20 @@ struct InstantiateOpInlineHelper {
             return rewriter.getStringAttr(renameCb(op, attrName, attr.getValue()));
         };
 
+        // Rename local declared symbols.
         llvm::SmallVector<llvm::StringRef> attrsToUpdate = {"name", "sym_name"};
         for (auto attrName : attrsToUpdate) {
             if (auto attr = op->getAttrOfType<mlir::StringAttr>(attrName))
                 op->setAttr(attrName, updateName(attrName, attr));
         }
 
-        // Rewrite SymbolRefAttrs that have as `callee` as root.
-        auto mod = caller->template getParentOfType<mlir::ModuleOp>();
+        // Rewrite referenced symbols.
         for (auto namedAttr : op->getAttrs()) {
-            auto symbolAttr = mlir::dyn_cast<mlir::SymbolRefAttr>(namedAttr.getValue());
+            auto symbolAttr = mlir::dyn_cast<mlir::FlatSymbolRefAttr>(namedAttr.getValue());
             if (!symbolAttr) continue;
 
-            auto root = symbolAttr.getRootReference();
-            if (mod.template lookupSymbol<OpTy>(root) != callee) continue;
-
-            llvm::SmallVector<mlir::FlatSymbolRefAttr> newNestedRefs;
-            bool first = true;
-            for (auto flatRefAttr : symbolAttr.getNestedReferences()) {
-                if (first)
-                    newNestedRefs.push_back(mlir::FlatSymbolRefAttr::get(
-                        updateName(namedAttr.getName(), flatRefAttr.getAttr())));
-                else
-                    newNestedRefs.push_back(flatRefAttr);
-                first = false;
-            }
-
-            auto newSymbol = mlir::SymbolRefAttr::get(caller.getSymNameAttr(), newNestedRefs);
+            auto newSymbol =
+                mlir::FlatSymbolRefAttr::get(updateName(namedAttr.getName(), symbolAttr.getAttr()));
             op->setAttr(namedAttr.getName(), newSymbol);
         }
     }
@@ -215,7 +205,7 @@ struct ParserOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ParserOp> 
                             llvm::StringRef value) -> std::string {
             llvm::SmallString<32> res = instOp.getSymName();
             if (calls.size() > 1)
-                if (name == "state" || (name == "sym_name" && mlir::isa<P4HIR::ParserStateOp>(op)))
+                if (name == "state" || mlir::isa<P4HIR::ParserStateOp>(op))
                     res += "#" + std::to_string(applyIndex);
             res += ".";
             res += value;
@@ -317,6 +307,7 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
     mlir::LogicalResult doInlining() {
         auto renameCb = [&](mlir::Operation *op, llvm::StringRef name,
                             llvm::StringRef value) -> std::string {
+            if (mlir::isa<P4HIR::TableActionOp>(op)) return value.str();
             return (instOp.getSymName() + "." + value).str();
         };
 
@@ -476,11 +467,8 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
 
                         if (info.passthroughSym) {
                             // Replace symbol_ref with passthrough symbol.
-                            auto *ctx = rewriter.getContext();
-                            auto leafSymbol =
-                                mlir::FlatSymbolRefAttr::get(ctx, info.passthroughSym);
-                            auto newSymbolRef =
-                                mlir::SymbolRefAttr::get(ctx, caller.getSymName(), {leafSymbol});
+                            auto newSymbolRef = mlir::FlatSymbolRefAttr::get(rewriter.getContext(),
+                                                                             info.passthroughSym);
                             rewriter.replaceOpWithNewOp<P4HIR::SymToValueOp>(
                                 symbolRefOp, symbolRefOp.getType(), newSymbolRef);
                         } else if (info.newVal) {

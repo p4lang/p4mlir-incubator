@@ -14,7 +14,7 @@
 #undir = #p4hir<dir undir>
 !b = !p4hir.struct<"b", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !anon>
 #int3_b10i = #p4hir.int<3> : !b10i
-module {
+module @p4_main {
   p4hir.extern @packet_in {
     p4hir.overload_set @extract {
       p4hir.func @extract_0<!type_T>(!p4hir.ref<!type_T> {p4hir.dir = #out, p4hir.param_name = "hdr"})
@@ -42,9 +42,9 @@ module {
   p4hir.control @callee(%arg0: !Random {p4hir.dir = #undir, p4hir.param_name = "rand"})() {
     %c3_b10i = p4hir.const #int3_b10i
     p4hir.control_local @__local_callee_rand_0 = %arg0 : !Random
-    p4hir.instantiate @Random (%c3_b10i : !b10i) as @rand2
+    p4hir.instantiate @p4_main::@Random (%c3_b10i : !b10i) as @rand2
     p4hir.func action @a() {
-      %__local_callee_rand_0 = p4hir.symbol_ref @callee::@__local_callee_rand_0 : !Random
+      %__local_callee_rand_0 = p4hir.symbol_ref @__local_callee_rand_0 : !Random
       %0 = p4hir.call_method @Random::@read () of %__local_callee_rand_0 : !Random : () -> !b10i
       p4hir.return
     }
@@ -55,18 +55,18 @@ module {
       }
       p4hir.table_actions {
         p4hir.table_action @a() {
-          p4hir.call @callee::@a () : () -> ()
+          p4hir.call @a () : () -> ()
         }
         p4hir.table_action @NoAction() annotations {defaultonly} {
-          p4hir.call @NoAction () : () -> ()
+          p4hir.call @p4_main::@NoAction () : () -> ()
         }
       }
       p4hir.table_default_action {
-        p4hir.call @NoAction () : () -> ()
+        p4hir.call @p4_main::@NoAction () : () -> ()
       }
     }
     p4hir.control_apply {
-      %b_apply_result = p4hir.table_apply @callee::@b with key(%arg0) : (!Random) -> !b
+      %b_apply_result = p4hir.table_apply @b with key(%arg0) : (!Random) -> !b
       %0 = p4hir.call_method @Random::@read() of %arg0 : !Random : () -> !b10i
     }
   }
@@ -75,12 +75,12 @@ module {
   p4hir.control @caller(%arg0: !Random {p4hir.dir = #undir, p4hir.param_name = "rand"})() {
     // CHECK: p4hir.control_local @__local_caller_rand_0 = %arg0 : !Random
     // CHECK: %[[CONST_3:.*]] = p4hir.const #int3_b10i
-    // CHECK: p4hir.instantiate @Random (%[[CONST_3]] : !b10i) as @inst.rand2
+    // CHECK: p4hir.instantiate @p4_main::@Random (%[[CONST_3]] : !b10i) as @inst.rand2
     // CHECK-NOT: p4hir.func
     // CHECK-NOT: p4hir.table
 
     p4hir.control_local @__local_caller_rand_0 = %arg0 : !Random
-    p4hir.instantiate @callee () as @inst
+    p4hir.instantiate @p4_main::@callee () as @inst
     // CHECK:      p4hir.control_apply {
     // CHECK-NEXT: }
     p4hir.control_apply {

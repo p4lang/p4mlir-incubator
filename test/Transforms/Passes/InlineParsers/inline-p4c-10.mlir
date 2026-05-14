@@ -55,7 +55,7 @@
 !egress = !p4hir.control<"egress", (!p4hir.ref<!headers>, !p4hir.ref<!metadata>, !p4hir.ref<!standard_metadata_t>)>
 !ingress = !p4hir.control<"ingress", (!p4hir.ref<!headers>, !p4hir.ref<!metadata>, !p4hir.ref<!standard_metadata_t>)>
 !verifyChecksum = !p4hir.control<"verifyChecksum", (!p4hir.ref<!headers>, !p4hir.ref<!metadata>)>
-module {
+module @p4_main {
   p4hir.extern @packet_in {
     p4hir.overload_set @extract {
       p4hir.func @extract_0<!type_T>(!p4hir.ref<!type_T> {p4hir.dir = #out, p4hir.param_name = "hdr"})
@@ -140,7 +140,7 @@ module {
       %c42_b8i = p4hir.const #int42_b8i
       %cast = p4hir.cast(%c42_b8i : !b8i) : !b8i
       p4hir.assign %cast, %f_field_ref : <!b8i>
-      p4hir.transition to @Subparser::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -148,10 +148,10 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @Subparser::@start
+    p4hir.transition to @start
   }
   p4hir.parser @ParserImpl(%arg0: !packet_in {p4hir.dir = #undir, p4hir.param_name = "packet"}, %arg1: !p4hir.ref<!headers> {p4hir.dir = #out, p4hir.param_name = "hdr"}, %arg2: !p4hir.ref<!metadata> {p4hir.dir = #inout, p4hir.param_name = "meta"}, %arg3: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "standard_metadata"})() {
-    p4hir.instantiate @Subparser () as @p
+    p4hir.instantiate @p4_main::@Subparser () as @p
     p4hir.state @start {
       p4hir.scope {
         %h1_field_ref = p4hir.struct_field_ref %arg1["h1"] : <!headers>
@@ -174,21 +174,21 @@ module {
           %c0_b9i = p4hir.const #int0_b9i
           %set = p4hir.set (%c0_b9i) : !p4hir.set<!b9i>
           p4hir.yield %set : !p4hir.set<!b9i>
-        } to @ParserImpl::@p0
+        } to @p0
         p4hir.select_case {
           %c1_b9i = p4hir.const #int1_b9i
           %set = p4hir.set (%c1_b9i) : !p4hir.set<!b9i>
           p4hir.yield %set : !p4hir.set<!b9i>
-        } to @ParserImpl::@p1
+        } to @p1
         p4hir.select_case {
           %c2_b9i = p4hir.const #int2_b9i
           %set = p4hir.set (%c2_b9i) : !p4hir.set<!b9i>
           p4hir.yield %set : !p4hir.set<!b9i>
-        } to @ParserImpl::@p2
+        } to @p2
         p4hir.select_case {
           %everything = p4hir.const #everything
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
-        } to @ParserImpl::@p3
+        } to @p3
       }
     }
     p4hir.state @p0 {
@@ -197,11 +197,11 @@ module {
         %hdr_inout_arg = p4hir.variable ["hdr_inout_arg", init] : <!data_t>
         %val = p4hir.read %h1_field_ref : <!data_t>
         p4hir.assign %val, %hdr_inout_arg : <!data_t>
-        p4hir.apply @ParserImpl::@p(%arg0, %hdr_inout_arg) : (!packet_in, !p4hir.ref<!data_t>) -> ()
+        p4hir.apply @p(%arg0, %hdr_inout_arg) : (!packet_in, !p4hir.ref<!data_t>) -> ()
         %val_0 = p4hir.read %hdr_inout_arg : <!data_t>
         p4hir.assign %val_0, %h1_field_ref : <!data_t>
       }
-      p4hir.transition to @ParserImpl::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @p1 {
       p4hir.scope {
@@ -209,11 +209,11 @@ module {
         %hdr_inout_arg = p4hir.variable ["hdr_inout_arg", init] : <!data_t>
         %val = p4hir.read %h1_field_ref : <!data_t>
         p4hir.assign %val, %hdr_inout_arg : <!data_t>
-        p4hir.apply @ParserImpl::@p(%arg0, %hdr_inout_arg) : (!packet_in, !p4hir.ref<!data_t>) -> ()
+        p4hir.apply @p(%arg0, %hdr_inout_arg) : (!packet_in, !p4hir.ref<!data_t>) -> ()
         %val_0 = p4hir.read %hdr_inout_arg : <!data_t>
         p4hir.assign %val_0, %h1_field_ref : <!data_t>
       }
-      p4hir.transition to @ParserImpl::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @p2 {
       p4hir.scope {
@@ -221,11 +221,11 @@ module {
         %hdr_inout_arg = p4hir.variable ["hdr_inout_arg", init] : <!data_t>
         %val = p4hir.read %h2_field_ref : <!data_t>
         p4hir.assign %val, %hdr_inout_arg : <!data_t>
-        p4hir.apply @ParserImpl::@p(%arg0, %hdr_inout_arg) : (!packet_in, !p4hir.ref<!data_t>) -> ()
+        p4hir.apply @p(%arg0, %hdr_inout_arg) : (!packet_in, !p4hir.ref<!data_t>) -> ()
         %val_0 = p4hir.read %hdr_inout_arg : <!data_t>
         p4hir.assign %val_0, %h2_field_ref : <!data_t>
       }
-      p4hir.transition to @ParserImpl::@p4
+      p4hir.transition to @p4
     }
     p4hir.state @p3 {
       p4hir.scope {
@@ -233,11 +233,11 @@ module {
         %hdr_inout_arg = p4hir.variable ["hdr_inout_arg", init] : <!data_t>
         %val = p4hir.read %h2_field_ref : <!data_t>
         p4hir.assign %val, %hdr_inout_arg : <!data_t>
-        p4hir.apply @ParserImpl::@p(%arg0, %hdr_inout_arg) : (!packet_in, !p4hir.ref<!data_t>) -> ()
+        p4hir.apply @p(%arg0, %hdr_inout_arg) : (!packet_in, !p4hir.ref<!data_t>) -> ()
         %val_0 = p4hir.read %hdr_inout_arg : <!data_t>
         p4hir.assign %val_0, %h2_field_ref : <!data_t>
       }
-      p4hir.transition to @ParserImpl::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @p4 {
       p4hir.scope {
@@ -247,7 +247,7 @@ module {
         %val = p4hir.read %hdr_out_arg : <!data_t>
         p4hir.assign %val, %h3_field_ref : <!data_t>
       }
-      p4hir.transition to @ParserImpl::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -255,7 +255,7 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @ParserImpl::@start
+    p4hir.transition to @start
   }
   p4hir.control @ingress(%arg0: !p4hir.ref<!headers> {p4hir.dir = #inout, p4hir.param_name = "hdr"}, %arg1: !p4hir.ref<!metadata> {p4hir.dir = #inout, p4hir.param_name = "meta"}, %arg2: !p4hir.ref<!standard_metadata_t> {p4hir.dir = #inout, p4hir.param_name = "standard_metadata"})() {
     p4hir.control_local @__local_ingress_hdr_0 = %arg0 : !p4hir.ref<!headers>
@@ -316,6 +316,6 @@ module {
   %egress = p4hir.construct @egress () : !egress
   %computeChecksum = p4hir.construct @computeChecksum () : !computeChecksum
   %DeparserImpl = p4hir.construct @DeparserImpl () : !DeparserImpl
-  p4hir.instantiate @V1Switch<[!headers, !metadata]> (%ParserImpl, %verifyChecksum, %ingress, %egress, %computeChecksum, %DeparserImpl : !ParserImpl, !verifyChecksum, !ingress, !egress, !computeChecksum, !DeparserImpl) as @main
+  p4hir.instantiate @p4_main::@V1Switch<[!headers, !metadata]> (%ParserImpl, %verifyChecksum, %ingress, %egress, %computeChecksum, %DeparserImpl : !ParserImpl, !verifyChecksum, !ingress, !egress, !computeChecksum, !DeparserImpl) as @main
 }
 

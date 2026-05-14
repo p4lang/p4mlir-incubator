@@ -21,7 +21,7 @@
 !hs_2xHeader = !p4hir.header_stack<2x!Header>
 !p1_ = !p4hir.parser<"p1", (!packet_in, !p4hir.ref<!hs_2xHeader>)>
 !proto = !p4hir.parser<"proto", (!packet_in, !p4hir.ref<!hs_2xHeader>)>
-module {
+module @p4_main {
   p4hir.extern @packet_in {
     p4hir.overload_set @extract {
       p4hir.func @extract_0<!type_T>(!p4hir.ref<!type_T> {p4hir.dir = #out, p4hir.param_name = "hdr"})
@@ -44,7 +44,7 @@ module {
   }
   p4hir.parser @p0(%arg0: !packet_in {p4hir.dir = #undir, p4hir.param_name = "p"}, %arg1: !p4hir.ref<!Header> {p4hir.dir = #out, p4hir.param_name = "h"})() {
     p4hir.state @start {
-      p4hir.transition to @p0::@next
+      p4hir.transition to @next
     }
     p4hir.state @next {
       p4hir.scope {
@@ -53,7 +53,7 @@ module {
         %val = p4hir.read %hdr_out_arg : <!Header>
         p4hir.assign %val, %arg1 : <!Header>
       }
-      p4hir.transition to @p0::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -61,10 +61,10 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @p0::@start
+    p4hir.transition to @start
   }
   p4hir.parser @p1(%arg0: !packet_in {p4hir.dir = #undir, p4hir.param_name = "p"}, %arg1: !p4hir.ref<!hs_2xHeader> {p4hir.dir = #out, p4hir.param_name = "h"})() {
-    p4hir.instantiate @p0 () as @p0inst
+    p4hir.instantiate @p4_main::@p0 () as @p0inst
     p4hir.state @start {
       p4hir.scope {
         %c0 = p4hir.const #int0_infint
@@ -72,7 +72,7 @@ module {
         %cast = p4hir.cast(%c0 : !infint) : !b32i
         %elt_ref = p4hir.array_element_ref %data_field_ref[%cast] : !p4hir.ref<!arr_2xHeader>, !b32i
         %h_out_arg = p4hir.variable ["h_out_arg"] : <!Header>
-        p4hir.apply @p1::@p0inst(%arg0, %h_out_arg) : (!packet_in, !p4hir.ref<!Header>) -> ()
+        p4hir.apply @p0inst(%arg0, %h_out_arg) : (!packet_in, !p4hir.ref<!Header>) -> ()
         %val = p4hir.read %h_out_arg : <!Header>
         p4hir.assign %val, %elt_ref : <!Header>
       }
@@ -82,11 +82,11 @@ module {
         %cast = p4hir.cast(%c1 : !infint) : !b32i
         %elt_ref = p4hir.array_element_ref %data_field_ref[%cast] : !p4hir.ref<!arr_2xHeader>, !b32i
         %h_out_arg = p4hir.variable ["h_out_arg"] : <!Header>
-        p4hir.apply @p1::@p0inst(%arg0, %h_out_arg) : (!packet_in, !p4hir.ref<!Header>) -> ()
+        p4hir.apply @p0inst(%arg0, %h_out_arg) : (!packet_in, !p4hir.ref<!Header>) -> ()
         %val = p4hir.read %h_out_arg : <!Header>
         p4hir.assign %val, %elt_ref : <!Header>
       }
-      p4hir.transition to @p1::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -94,10 +94,10 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @p1::@start
+    p4hir.transition to @start
   }
   p4hir.package @top("_p" : !proto {p4hir.dir = #undir, p4hir.param_name = "_p"})
   %p1 = p4hir.construct @p1 () : !p1_
-  p4hir.instantiate @top (%p1 : !p1_) as @main
+  p4hir.instantiate @p4_main::@top (%p1 : !p1_) as @main
 }
 

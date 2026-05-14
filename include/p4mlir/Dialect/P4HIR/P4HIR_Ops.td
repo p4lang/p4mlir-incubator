@@ -1308,12 +1308,6 @@ def InstantiateOp : P4HIR_Op<"instantiate",
   ];
 
   let extraClassDeclaration = [{
-    template<typename OpTy>
-    OpTy getCallee() {
-      auto mod = getOperation()->getParentOfType<mlir::ModuleOp>();
-      return mod.lookupSymbol<OpTy>(getCallee());
-    }
-
     /// Return the callee of this operation.
     mlir::CallInterfaceCallable getCallableForCallee() {
       return (*this)->getAttrOfType<mlir::SymbolRefAttr>(getCalleeAttrName());
