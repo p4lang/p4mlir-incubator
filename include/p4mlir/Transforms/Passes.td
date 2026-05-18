@@ -157,6 +157,27 @@ def EnumElimination : Pass<"p4hir-enum-elimination", "mlir::ModuleOp"> {
 }
 
 //===----------------------------------------------------------------------===//
+// SwitchElimination
+//===----------------------------------------------------------------------===//
+
+def SwitchElimination : Pass<"p4hir-switch-elimination", "mlir::ModuleOp"> {
+  let summary = "Eliminate switch statements by converting to table lookups";
+  let description = [{
+    This pass converts switch statements on arbitrary expressions to table-based
+    switches on action_run. Some P4 targets do not support switch statements on
+    arbitrary values, so this transformation is required for target compatibility.
+
+    For each switch statement on a non-action_run expression, this pass:
+    1. Creates hidden actions for each case
+    2. Creates a hidden table mapping switch values to actions
+    3. Replaces the switch with a table apply followed by a switch on action_run
+  }];
+
+  let constructor = "P4MLIR::createSwitchEliminationPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // ExpandEmit
 //===----------------------------------------------------------------------===//
 
