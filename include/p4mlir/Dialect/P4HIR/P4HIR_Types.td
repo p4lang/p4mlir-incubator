@@ -57,7 +57,7 @@ def BitsType : P4HIR_TypeNoMnemonic<"Bits", "bits", [HasDefaultValue, DataLayout
       return ::llvm::TypeSize::getFixed(getWidth());
     }
     uint64_t getABIAlignment(const ::mlir::DataLayout &,
-                                 ::mlir::DataLayoutEntryListRef) const { return 1; }
+                             ::mlir::DataLayoutEntryListRef) const { return 1; }
   }];
 }
 
@@ -105,7 +105,7 @@ def InfIntType : P4HIR_Type<"InfInt", "infint", [HasDefaultValue]> {
 // with a fixed maximum width
 //===----------------------------------------------------------------------===//
 
-def VarBitsType : P4HIR_Type<"VarBits", "varbit", [HasDefaultValue]> {
+def VarBitsType : P4HIR_Type<"VarBits", "varbit", [HasDefaultValue, DataLayoutTypeInterface]> {
   let summary = "bit-strings of dynamically-computed width with a fixed maximum width";
   let description = [{
     A variable-width bit-string type with a fixed maximum width.
@@ -117,6 +117,13 @@ def VarBitsType : P4HIR_Type<"VarBits", "varbit", [HasDefaultValue]> {
 
   let extraClassDeclaration = [{
     mlir::TypedAttr getDefaultValue();
+
+    ::llvm::TypeSize getTypeSizeInBits(const ::mlir::DataLayout &,
+                                       ::mlir::DataLayoutEntryListRef) const {
+      return ::llvm::TypeSize::getFixed(getMaxWidth());
+    }
+    uint64_t getABIAlignment(const ::mlir::DataLayout &,
+                             ::mlir::DataLayoutEntryListRef) const { return 1; }
   }];
 }
 
