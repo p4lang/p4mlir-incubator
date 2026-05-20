@@ -2418,8 +2418,7 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         LOG4("resolved as extern instantiation");
         auto externName = builder.getStringAttr(ext->name.string_view());
         auto externSym = lookupSymbol(ext);
-        BUG_CHECK(externSym && externSym.getNestedReferences().size() == 1,
-                  "expected referenced extern to be convered: %1%", dbp(ext));
+        BUG_CHECK(externSym, "expected referenced extern to be convered: %1%", dbp(ext));
         llvm::SmallVector<mlir::FlatSymbolRefAttr> refs(externSym.getNestedReferences());
         refs.push_back(mlir::FlatSymbolRefAttr::get(externName));
         auto fullCtorName =
@@ -2450,6 +2449,8 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
 }
 
 bool P4HIRConverter::preorder(const P4::IR::Type_Extern *ext) {
+    ConversionTracer trace("Converting ", ext);
+
     auto loc = getLoc(ext);
 
     // TODO: Move to common method
@@ -2477,6 +2478,8 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Extern *ext) {
 }
 
 bool P4HIRConverter::preorder(const P4::IR::Type_Package *pkg) {
+    ConversionTracer trace("Converting ", pkg);
+
     auto loc = getLoc(pkg);
 
     auto annotations = convert(pkg->annotations);
