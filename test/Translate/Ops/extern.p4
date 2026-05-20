@@ -35,8 +35,8 @@ extern ext2<H, V> {
 // CHECK-LABEL:  p4hir.extern @ext2<[!type_H, !type_V]> {
 // CHECK:    p4hir.func @ext2(!type_H {p4hir.dir = #undir, p4hir.param_name = "v"})
 // CHECK:    p4hir.overload_set @method {
-// CHECK:      p4hir.func @"$ft1V_t1Ht1T_t1T"<!type_T>(!type_H {p4hir.dir = #in, p4hir.param_name = "h"}, !type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_V
-// CHECK:      p4hir.func @"$ft1H_t1T_t1T"<!type_T>(!type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_H
+// CHECK:      p4hir.func @"$ft1V_t1Ht1T_tZC"<!type_T>(!type_H {p4hir.dir = #in, p4hir.param_name = "h"}, !type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_V
+// CHECK:      p4hir.func @"$ft1H_t1T_tZB"<!type_T>(!type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_H
 // CHECK:    }
 // CHECK:  }
   
