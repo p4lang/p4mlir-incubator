@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <climits>
 
+#include "llvm/ADT/SmallString.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Mangle.h"
 #include "p4mlir/P4C/type_converter.h"
 
 #pragma GCC diagnostic push
@@ -1355,15 +1357,6 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
         LOG4("Function is overloaded");
 
         P4HIR::OverloadSetOp ovl;
-        auto getUniqueName = [&](mlir::StringAttr toRename) {
-            unsigned counter = 0;
-            return mlir::SymbolTable::generateSymbolName<256>(
-                toRename,
-                [&](llvm::StringRef candidate) {
-                    return ovl.lookupSymbol(builder.getStringAttr(candidate)) != nullptr;
-                },
-                counter);
-        };
 
         if (auto otherFunc = llvm::dyn_cast<P4HIR::FuncOp>(otherOp)) {
             LOG4("Creating overload set");
@@ -1376,7 +1369,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
             // overload set takes over the symbol name. Still, all the symbols
             // in `p4Symbol` are created wrt the original name, so we do not use
             // SymbolTable::rename() here.
-            otherFunc.setSymName(getUniqueName(origSymName));
+            otherFunc.setSymName(mangler.getName(otherFunc.getFunctionType()));
         } else {
             LOG4("Adding to overload set");
 
@@ -1384,7 +1377,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
             builder.setInsertionPointToEnd(&ovl.getBody().front());
         }
 
-        symName = builder.getStringAttr(getUniqueName(symName));
+        symName = mangler.getName(funcType);
     }
 
     auto func = P4HIR::FuncOp::create(builder, loc, symName, funcType,
@@ -1427,7 +1420,6 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
     auto annotations = convert(m->annotations);
 
     auto funcType = mlir::cast<P4HIR::FuncType>(getOrCreateType(m->type));
-
     auto argAttrs = convertParamAttributes(m->getParameters());
     assert(funcType.getNumInputs() == argAttrs.size() && "invalid parameter conversion");
 
@@ -1443,16 +1435,6 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
         LOG4("Method is overloaded");
 
         P4HIR::OverloadSetOp ovl;
-        auto getUniqueName = [&](mlir::StringAttr toRename) {
-            unsigned counter = 0;
-            return mlir::SymbolTable::generateSymbolName<256>(
-                toRename,
-                [&](llvm::StringRef candidate) {
-                    return ovl.lookupSymbol(builder.getStringAttr(candidate)) != nullptr;
-                },
-                counter);
-        };
-
         if (auto otherFunc = llvm::dyn_cast<P4HIR::FuncOp>(otherOp)) {
             LOG4("Creating overload set");
 
@@ -1464,7 +1446,7 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
             // overload set takes over the symbol name. Still, all the symbols
             // in `p4Symbol` are created wrt the original name, so we do not use
             // SymbolTable::rename() here.
-            otherFunc.setSymName(getUniqueName(origSymName));
+            otherFunc.setSymName(mangler.getName(otherFunc.getFunctionType()));
         } else {
             LOG4("Adding to overload set");
 
@@ -1472,7 +1454,7 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
             builder.setInsertionPointToEnd(&ovl.getBody().front());
         }
 
-        symName = builder.getStringAttr(getUniqueName(symName));
+        symName = mangler.getName(funcType);
     }
 
     P4HIR::FuncOp::create(builder, loc, symName, funcType,

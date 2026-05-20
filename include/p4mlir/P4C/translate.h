@@ -5,7 +5,6 @@
 #ifndef INCLUDE_P4MLIR_P4C_TRANSLATE_H_
 #define INCLUDE_P4MLIR_P4C_TRANSLATE_H_
 
-#include "ir/ir-generated.h"
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -21,6 +20,7 @@
 #include "llvm/ADT/ScopedHashTable.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Mangle.h"
 #pragma GCC diagnostic pop
 
 namespace P4 {
@@ -37,6 +37,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
  protected:
     mlir::OpBuilder &builder;
     mlir::ModuleOp module;
+    P4HIR::Mangler mangler;
 
     P4::TypeMap *typeMap = nullptr;
     llvm::DenseMap<const P4::IR::Type *, mlir::Type> p4Types;
