@@ -15,6 +15,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Symbols.h"
 #include "p4mlir/Transforms/Passes.h"
 
 using namespace mlir;
@@ -64,7 +65,6 @@ void SymbolDCE::runOnOperation() {
     // be dead.
     symbolTableOp->walk([&](Operation *nestedSymbolTable) {
         if (!nestedSymbolTable->hasTrait<OpTrait::SymbolTable>()) return;
-        bool emptyOp = true;
         for (auto &block : nestedSymbolTable->getRegion(0)) {
             for (Operation &op : llvm::make_early_inc_range(block)) {
                 if (isa<SymbolOpInterface>(&op) && !liveSymbols.count(&op)) {
@@ -73,13 +73,6 @@ void SymbolDCE::runOnOperation() {
                     ++numDCE;
                 }
             }
-            emptyOp &= block.empty();
-        }
-        if (emptyOp && isa<SymbolOpInterface>(nestedSymbolTable) &&
-            !liveSymbols.count(nestedSymbolTable)) {
-            LLVM_DEBUG(llvm::dbgs() << "erasing: " << *nestedSymbolTable << "\n");
-            nestedSymbolTable->erase();
-            ++numDCE;
         }
     });
 }
@@ -179,8 +172,9 @@ LogicalResult SymbolDCE::computeLiveness(Operation *symbolTableOp,
             LLVM_DEBUG(llvm::dbgs() << "  use: " << use.getSymbolRef() << "\n");
             // Lookup the symbols referenced by this use.
             resolvedSymbols.clear();
-            if (failed(symbolTable.lookupSymbolIn(parentOp, use.getSymbolRef(), resolvedSymbols)) &&
-                failed(symbolTable.lookupSymbolIn(moduleOp, use.getSymbolRef(), resolvedSymbols))) {
+
+            if (failed(P4HIR::lookupSymbol(symbolTable, parentOp, use.getSymbolRef(),
+                                           resolvedSymbols))) {
                 LLVM_DEBUG(llvm::dbgs() << "   unknown symbol, ignoring\n");
                 // Ignore references to unknown symbols.
                 continue;

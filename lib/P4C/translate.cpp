@@ -2579,7 +2579,7 @@ bool P4HIRConverter::preorder(const P4::IR::Type_SpecializedCanonical *spec) {
     auto baseExtRef = mlir::SymbolRefAttr::get(baseExternOp);
 
     auto annotations = convert(ext->annotations);
-    auto extType = cast<P4HIR::ExternType>(getOrCreateType(ext));
+    auto extType = llvm::cast<P4HIR::ExternType>(getOrCreateType(ext));
     llvm::SmallVector<mlir::Type> typeArguments;
     for (const auto *type : *spec->arguments) typeArguments.push_back(getOrCreateType(type));
 

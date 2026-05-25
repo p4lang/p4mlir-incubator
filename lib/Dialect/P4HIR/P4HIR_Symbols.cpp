@@ -76,3 +76,54 @@ mlir::Operation *P4HIR::lookupSymbol(mlir::Operation *source, mlir::SymbolRefAtt
 
     return lookupGlobalSymbol(source, symbol);
 }
+
+static mlir::LogicalResult lookupSymbolImpl(
+    mlir::Operation *source, mlir::SymbolRefAttr symbol,
+    llvm::SmallVectorImpl<mlir::Operation *> &symbols,
+    llvm::function_ref<mlir::Operation *(mlir::Operation *, mlir::StringAttr)> lookupSymbolFn) {
+    // Local symbols, resolved against local symbol table
+    if (isa<mlir::FlatSymbolRefAttr>(symbol)) {
+        if (auto result = lookupSymbolFn(source, symbol.getRootReference())) {
+            symbols.push_back(result);
+            return success();
+        }
+        return failure();
+    }
+
+    auto moduleOp = getParentModule(source);
+    if (symbol.getRootReference() != moduleOp.getSymNameAttr()) return failure();
+
+    // Lookup each of the nested references.
+    mlir::Operation *symbolOp = moduleOp;
+    for (mlir::FlatSymbolRefAttr ref : symbol.getNestedReferences()) {
+        // Check that we have a valid symbol table to lookup ref.
+        if (!symbolOp->hasTrait<OpTrait::SymbolTable>()) return failure();
+        symbolOp = lookupSymbolFn(symbolOp, ref.getAttr());
+        // If the nested symbol is private, lookup failed.
+        if (!symbolOp ||
+            SymbolTable::getSymbolVisibility(symbolOp) == SymbolTable::Visibility::Private)
+            return failure();
+        symbols.push_back(symbolOp);
+    }
+
+    return success();
+}
+
+mlir::LogicalResult P4HIR::lookupSymbol(mlir::Operation *source, mlir::SymbolRefAttr symbol,
+                                        llvm::SmallVectorImpl<mlir::Operation *> &symbols) {
+    auto lookupFn = [](Operation *symbolTableOp, StringAttr symbol) {
+        return SymbolTable::lookupNearestSymbolFrom(symbolTableOp, symbol);
+    };
+
+    return lookupSymbolImpl(source, symbol, symbols, lookupFn);
+}
+
+mlir::LogicalResult P4HIR::lookupSymbol(SymbolTableCollection &symbolTable, mlir::Operation *source,
+                                        mlir::SymbolRefAttr symbol,
+                                        llvm::SmallVectorImpl<mlir::Operation *> &symbols) {
+    auto lookupFn = [&](Operation *symbolTableOp, StringAttr symbol) {
+        return symbolTable.lookupNearestSymbolFrom(symbolTableOp, symbol);
+    };
+
+    return lookupSymbolImpl(source, symbol, symbols, lookupFn);
+}
