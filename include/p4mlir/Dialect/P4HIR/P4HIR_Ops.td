@@ -1705,6 +1705,8 @@ def OverloadSetOp : P4HIR_Op<"overload_set",
   }];
 
   let extraClassDeclaration = [{
+    bool canDiscardOnUseEmpty();
+
     mlir::Block &createEntryBlock();
   }];
 }

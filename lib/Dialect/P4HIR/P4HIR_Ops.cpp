@@ -3179,6 +3179,12 @@ void P4HIR::CallMethodOp::getEffects(
 // OverloadSetOp
 //===----------------------------------------------------------------------===//
 
+bool P4HIR::OverloadSetOp::canDiscardOnUseEmpty() {
+    // Decide better what to do with unused extern methods
+    return !(*this)->getParentOfType<P4HIR::ExternOp>();
+    // return getVisibility() != ::mlir::SymbolTable::Visibility::Public;
+}
+
 mlir::Block &P4HIR::OverloadSetOp::createEntryBlock() {
     assert(getBody().empty() && "can only create entry block for empty overload block");
     return getBody().emplaceBlock();
