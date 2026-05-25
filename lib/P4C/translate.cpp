@@ -7,8 +7,12 @@
 #include <algorithm>
 #include <climits>
 
+#include "ir/ir-generated.h"
 #include "llvm/ADT/SmallString.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/Support/LLVM.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Mangle.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Symbols.h"
 #include "p4mlir/P4C/type_converter.h"
 
 #pragma GCC diagnostic push
@@ -17,6 +21,7 @@
 #include "frontends/p4/methodInstance.h"
 #include "frontends/p4/parameterSubstitution.h"
 #include "frontends/p4/typeMap.h"
+#include "ir/dump.h"
 #include "ir/ir.h"
 #include "ir/visitor.h"
 #include "lib/big_int.h"
@@ -688,18 +693,45 @@ mlir::Value P4HIRConverter::materializeConstantDecl(const P4::IR::Declaration_Co
     return P4HIR::ConstOp::create(builder, loc, init, decl->name.string_view(), annotations);
 }
 
-mlir::SymbolRefAttr P4HIRConverter::parentSymbol() {
+P4HIRConverter::P4Symbol P4HIRConverter::parentP4Symbol() const {
     // See, if we are inside of any of symbol tables: parser, control or extern
-    mlir::SymbolRefAttr parentSymbol;
-    if (auto parser = findContext<P4::IR::P4Parser>()) {
-        parentSymbol = p4Symbols.lookup(parser);
-    } else if (auto control = findContext<P4::IR::P4Control>()) {
-        parentSymbol = p4Symbols.lookup(control);
-    } else if (auto ext = findContext<P4::IR::Type_Extern>()) {
-        parentSymbol = p4Symbols.lookup(ext);
+    // Order does matter here as we can have extern instantiation nested inside
+    // parser / control, so check it first
+    if (auto *ext = findContext<P4::IR::Type_Extern>()) {
+        return ext;
+    } else if (auto *spec = findContext<P4::IR::Type_SpecializedCanonical>()) {
+        return spec->substituted->checkedTo<P4::IR::Type_Extern>();
+    } else if (auto *parser = findContext<P4::IR::P4Parser>()) {
+        return parser;
+    } else if (auto *control = findContext<P4::IR::P4Control>()) {
+        return control;
+    } else if (auto *prog = findContext<P4::IR::P4Program>()) {
+        return prog;
     }
 
-    return parentSymbol;
+    return {};
+}
+
+mlir::SymbolRefAttr P4HIRConverter::parentSymbol() const {
+    return p4Symbols.lookup(parentP4Symbol());
+}
+
+void P4HIRConverter::renameMethodSymbol(P4HIR::FuncOp method, mlir::SymbolRefAttr newSymbol) {
+    auto methodIt = p4Methods.find(method);
+    assert(methodIt != p4Methods.end() && "method should be converted");
+    P4Symbol symb = std::visit([](auto &&arg) -> P4Symbol { return arg; }, methodIt->second);
+
+    if (LOGGING(4)) {
+        auto oldSymbol = p4Symbols.lookup(symb);
+        llvm::SmallString<64> s1, s2;
+        llvm::raw_svector_ostream os1(s1), os2(s2);
+        oldSymbol.print(os1);
+        newSymbol.print(os2);
+        LOG4("Renamed symbol " << s1.c_str() << " to " << s2.c_str());
+    }
+
+    // Scope hash table always overrites the value inserted (!)
+    p4Symbols.insert(symb, newSymbol);
 }
 
 mlir::SymbolRefAttr P4HIRConverter::lookupSymbol(P4Symbol symb) {
@@ -708,29 +740,36 @@ mlir::SymbolRefAttr P4HIRConverter::lookupSymbol(P4Symbol symb) {
 
     // See, if we are inside any of symbol tables: parser, control or extern.
     mlir::SymbolRefAttr parentSym = parentSymbol();
+    auto nestedRefs = symbolRef.getNestedReferences();
     if (!parentSym) {
-        // If there is no parent, then we can only refer to top-level symbols
-        assert(symbolRef.getNestedReferences().size() == 1 && "expected top-level decl");
+        assert(nestedRefs.size() && "expected top-level decl");
+        // If there is no parent, then we can only refer to top-level symbols OR overload sets
+        if (nestedRefs.size() != 1) {
+            // TBD: This must be overload set
+            return symbolRef;
+        }
+
         return mlir::FlatSymbolRefAttr::get(symbolRef.getLeafReference());
     }
 
     // Sanity checks
     assert(parentSym.getRootReference() == symbolRef.getRootReference() &&
            "expected same top-level module");
-    auto nestedRefs = symbolRef.getNestedReferences();
     assert(parentSym.getNestedReferences().size() <= nestedRefs.size() && "expected proper parent");
     for (auto [index, ref] : llvm::enumerate(parentSym.getNestedReferences()))
         if (ref != nestedRefs[index])
             // Top-level reference
             return symbolRef;
 
-    assert(parentSym.getNestedReferences().size() + 1 == symbolRef.getNestedReferences().size() &&
-           "expected proper parent");
+    if (parentSym.getNestedReferences().size() + 1 == symbolRef.getNestedReferences().size())
+        return mlir::FlatSymbolRefAttr::get(symbolRef.getLeafReference());
 
-    return mlir::FlatSymbolRefAttr::get(symbolRef.getLeafReference());
+    // TBD: This must be overload set
+    return symbolRef;
 }
 
-mlir::SymbolRefAttr P4HIRConverter::setSymbol(P4Symbol symb, mlir::SymbolRefAttr value) {
+mlir::SymbolRefAttr P4HIRConverter::setSymbol(P4Symbol symb, mlir::SymbolRefAttr value,
+                                              bool topLevel) {
     if (!value) return value;
 
     if (LOGGING(4)) {
@@ -740,15 +779,15 @@ mlir::SymbolRefAttr P4HIRConverter::setSymbol(P4Symbol symb, mlir::SymbolRefAttr
         LOG4("Bind symbol " << s);
     }
 
-    BUG_CHECK(!p4Symbols.count(symb), "duplicate conversion of %1%");
+    BUG_CHECK(!p4Symbols.count(symb), "duplicate conversion");
 
-    p4Symbols.insert(symb, value);
+    p4Symbols.insertIntoScope(topLevel ? topLevelSymbols : p4Symbols.getCurScope(), symb, value);
     return value;
 }
 
 mlir::SymbolRefAttr P4HIRConverter::setSymbol(P4Symbol symb, mlir::Operation *op,
-                                              mlir::SymbolRefAttr parent) {
-    return setSymbol(symb, getQualifiedSymbolRef(op, parent));
+                                              mlir::SymbolRefAttr parent, bool topLevel) {
+    return setSymbol(symb, getQualifiedSymbolRef(op, parent), topLevel);
 }
 
 mlir::SymbolRefAttr P4HIRConverter::getQualifiedSymbolRef(mlir::Operation *op,
@@ -765,9 +804,9 @@ mlir::SymbolRefAttr P4HIRConverter::getQualifiedSymbolRef(mlir::StringAttr attr,
     // Nest symbol inside parent, if any
     if (!parentSym) parentSym = parentSymbol();
     if (parentSym) {
-        assert(parentSym.getNestedReferences().size() == 1 &&
-               "expected top-level extern to be converted");
-        llvm::SmallVector<mlir::FlatSymbolRefAttr> refs(parentSym.getNestedReferences());
+        auto nestedRefs = parentSym.getNestedReferences();
+        assert(nestedRefs.size() <= 2 && "expected top-level extern to be converted");
+        auto refs = llvm::to_vector(nestedRefs);
         refs.push_back(mlir::FlatSymbolRefAttr::get(attr));
         return mlir::SymbolRefAttr::get(parentSym.getRootReference(), refs);
     }
@@ -786,6 +825,8 @@ bool P4HIRConverter::preorder(const P4::IR::P4Program *p) {
 
     ValueScope scope(*p4Values);
     SymbolScope symbols(p4Symbols);
+    topLevelSymbols = p4Symbols.getCurScope();
+    setSymbol(p, mlir::SymbolRefAttr::get(module.getSymNameAttr()));
 
     // Explicitly visit child nodes to create top-level value scope
     visit(p->objects);
@@ -1353,23 +1394,24 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     auto *parentOp = builder.getBlock()->getParentOp();
     auto origSymName = builder.getStringAttr(f->name.string_view());
     auto symName = origSymName;
+    mlir::SymbolRefAttr parentSymRef = nullptr;
     if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
         LOG4("Function is overloaded");
 
         P4HIR::OverloadSetOp ovl;
-
+        parentSymRef = getQualifiedSymbolRef(origSymName);
         if (auto otherFunc = llvm::dyn_cast<P4HIR::FuncOp>(otherOp)) {
             LOG4("Creating overload set");
 
             ovl = P4HIR::OverloadSetOp::create(builder, loc, origSymName);
             builder.setInsertionPointToStart(&ovl.createEntryBlock());
-            otherFunc->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
 
-            // Unique the symbol name to avoid clashes in the symbol table.  The
-            // overload set takes over the symbol name. Still, all the symbols
-            // in `p4Symbol` are created wrt the original name, so we do not use
-            // SymbolTable::rename() here.
-            otherFunc.setSymName(mangler.getName(otherFunc.getFunctionType()));
+            otherFunc->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
+            // The overload set takes over the symbol name, we need to rename
+            // the original symbol in the symbol map.
+            otherFunc.setSymName(mangler.getFunctionName(otherFunc));
+            auto newSymbol = getQualifiedSymbolRef(otherFunc, parentSymRef);
+            renameMethodSymbol(otherFunc, newSymbol);
         } else {
             LOG4("Adding to overload set");
 
@@ -1377,7 +1419,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
             builder.setInsertionPointToEnd(&ovl.getBody().front());
         }
 
-        symName = mangler.getName(funcType);
+        symName = mangler.getFunctionName(funcType, argAttrs);
     }
 
     auto func = P4HIR::FuncOp::create(builder, loc, symName, funcType,
@@ -1406,7 +1448,9 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
         }
     }
 
-    setSymbol(f, getQualifiedSymbolRef(origSymName));
+    setSymbol(f, getQualifiedSymbolRef(func, parentSymRef));
+    auto [_, inserted] = p4Methods.try_emplace(func, f);
+    assert(inserted && "duplicate conversion");
     p4Values = savedValues;
 
     return false;
@@ -1431,22 +1475,23 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
     auto *parentOp = builder.getBlock()->getParentOp();
     auto origSymName = builder.getStringAttr(m->name.string_view());
     auto symName = origSymName;
+    mlir::SymbolRefAttr parentSymRef = nullptr;
     if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
         LOG4("Method is overloaded");
 
         P4HIR::OverloadSetOp ovl;
+        parentSymRef = getQualifiedSymbolRef(origSymName);
         if (auto otherFunc = llvm::dyn_cast<P4HIR::FuncOp>(otherOp)) {
             LOG4("Creating overload set");
 
             ovl = P4HIR::OverloadSetOp::create(builder, loc, origSymName);
             builder.setInsertionPointToStart(&ovl.createEntryBlock());
-            otherFunc->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
 
-            // Unique the symbol name to avoid clashes in the symbol table.  The
-            // overload set takes over the symbol name. Still, all the symbols
-            // in `p4Symbol` are created wrt the original name, so we do not use
-            // SymbolTable::rename() here.
-            otherFunc.setSymName(mangler.getName(otherFunc.getFunctionType()));
+            otherFunc->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
+            // Rename the original symbol and fix the value in `p4Symbols`
+            otherFunc.setSymName(mangler.getFunctionName(otherFunc));
+            auto newSymbol = getQualifiedSymbolRef(otherFunc, parentSymRef);
+            renameMethodSymbol(otherFunc, newSymbol);
         } else {
             LOG4("Adding to overload set");
 
@@ -1454,13 +1499,20 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
             builder.setInsertionPointToEnd(&ovl.getBody().front());
         }
 
-        symName = mangler.getName(funcType);
+        symName = mangler.getFunctionName(funcType, argAttrs);
     }
 
-    P4HIR::FuncOp::create(builder, loc, symName, funcType,
-                          /* isExternal */ true, argAttrs, annotations);
+    auto func = P4HIR::FuncOp::create(builder, loc, symName, funcType,
+                                      /* isExternal */ true, argAttrs, annotations);
+    // See comment below for the explanation
+    if (!p4Symbols.count(m)) setSymbol(m, getQualifiedSymbolRef(func, parentSymRef));
+    auto [_, inserted] = p4Methods.try_emplace(func, m);
+    BUG_CHECK(inserted, "duplicate conversion of %1% (aka %2%)", m, dbp(m));
 
-    setSymbol(m, getQualifiedSymbolRef(origSymName));
+    // We need to potentially visit same method multiple times as non-generic
+    // methods are shared (sic!) between original and instantiated externs
+    visitAgain();
+
     return false;
 }
 
@@ -1830,16 +1882,54 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
         } else if (const auto *fCall = instance->to<P4::ExternMethod>()) {
             LOG4("resolved as extern method call ");
 
-            // We need to do some weird dance to resolve method call, as fCall->method will not
-            // resolve to a known symbol.
+            // We need to do some weird dance to resolve method call, as fCall->originalExternType
+            // will resolve to the instantiated extern (partially substituted), not the original
+            // one.
             const auto *member = mce->method->checkedTo<P4::IR::Member>();
-
-            auto callResultType = getOrCreateType(instance->actualMethodType->returnType);
             auto methodName =
                 mlir::SymbolRefAttr::get(builder.getContext(), member->member.string_view());
-            auto externName = builder.getStringAttr(fCall->actualExternType->name.string_view());
-            auto fullMethodName =
-                mlir::SymbolRefAttr::get(builder.getContext(), externName, {methodName});
+
+            mlir::StringAttr externName;
+            // If the method call is for specialized extern, (optionally) emit its declaration
+            if (const auto *spec = member->expr->type->to<P4::IR::Type_SpecializedCanonical>()) {
+                mlir::OpBuilder::InsertionGuard guard(b);
+
+                auto *baseExternOp =
+                    module.lookupSymbol(fCall->originalExternType->name.string_view());
+                BUG_CHECK(baseExternOp, "expected top-level extern decl to be resolved %1%", spec);
+                b.setInsertionPointAfter(baseExternOp);
+
+                // Maybe emit extern decl
+                visit(spec);
+                auto externSym = lookupSymbol(spec->substituted->checkedTo<P4::IR::Type_Extern>());
+                BUG_CHECK(externSym, "expected top-level extern decl to be resolved %1%", spec);
+                externName = externSym.getLeafReference();
+            } else {
+                externName = b.getStringAttr(fCall->originalExternType->name.string_view());
+            }
+            BUG_CHECK(externName, "Expected top-level decl to be resolved %1%", member->expr);
+
+            auto methodOp = module.lookupSymbol(mlir::SymbolRefAttr::get(externName, {methodName}));
+            mlir::SymbolRefAttr fullMethodRef;
+            if (auto fn = mlir::dyn_cast_or_null<P4HIR::FuncOp>(methodOp)) {
+                fullMethodRef = mlir::SymbolRefAttr::get(
+                    module.getSymNameAttr(), {mlir::SymbolRefAttr::get(externName), methodName});
+            } else if (auto ovl = mlir::dyn_cast_or_null<P4HIR::OverloadSetOp>(methodOp)) {
+                auto funcType =
+                    mlir::cast<P4HIR::FuncType>(getOrCreateType(fCall->originalMethodType));
+                auto argAttrs = convertParamAttributes(fCall->method->getParameters());
+                assert(funcType.getNumInputs() == argAttrs.size() &&
+                       "invalid parameter conversion");
+                auto methodOverloadName = mangler.getFunctionName(funcType, argAttrs);
+                auto overloadNameSym = mlir::SymbolRefAttr::get(methodOverloadName);
+                if (!ovl.lookupSymbol(overloadNameSym))
+                    BUG("Cannot resolve overloaded extern method call %1%", mce);
+                fullMethodRef = mlir::SymbolRefAttr::get(
+                    module.getSymNameAttr(),
+                    {mlir::SymbolRefAttr::get(externName), methodName, overloadNameSym});
+            } else {
+                BUG("Cannot resolve extern method call %1%", mce);
+            }
 
             // TODO: Move to common method
             llvm::SmallVector<mlir::Type> typeArguments;
@@ -1850,17 +1940,18 @@ bool P4HIRConverter::preorder(const P4::IR::MethodCallExpression *mce) {
             if (const auto *pe = member->expr->to<P4::IR::PathExpression>())
                 decl = resolvePath(pe->path, false)->to<P4::IR::Declaration_Instance>();
 
+            auto callResultType = getOrCreateType(instance->actualMethodType->returnType);
             if (decl) {
                 auto dSym = lookupSymbol(decl);
                 BUG_CHECK(dSym, "expected applied declaration to be converted: %1%", decl);
 
                 callResult = P4HIR::CallMethodOp::create(b, loc, callResultType, dSym,
-                                                         fullMethodName, typeArguments, operands)
+                                                         fullMethodRef, typeArguments, operands)
                                  .getResult();
             } else {
                 auto callee = convert(member->expr);
                 callResult = P4HIR::CallMethodOp::create(b, loc, callResultType, callee,
-                                                         fullMethodName, typeArguments, operands)
+                                                         fullMethodRef, typeArguments, operands)
                                  .getResult();
             }
         } else {
@@ -2397,11 +2488,12 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         }
     };
 
+    const P4::IR::Method *ctor = nullptr;
     if (const auto *cont = type->to<P4::IR::IContainer>()) {
         populateOperands(cont->getConstructorParameters());
     } else {
         const auto *ext = type->checkedTo<P4::IR::Type_Extern>();
-        const auto *ctor = ext->lookupConstructor(decl->arguments);
+        ctor = ext->lookupConstructor(decl->arguments);
         populateOperands(ctor->getParameters());
     }
     // TODO: Reduce code duplication below. Unify with ConstructCallExpression
@@ -2416,15 +2508,11 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         setSymbol(decl, instance);
     } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
         LOG4("resolved as extern instantiation");
-        auto externName = builder.getStringAttr(ext->name.string_view());
         auto externSym = lookupSymbol(ext);
         BUG_CHECK(externSym, "expected referenced extern to be convered: %1%", dbp(ext));
-        llvm::SmallVector<mlir::FlatSymbolRefAttr> refs(externSym.getNestedReferences());
-        refs.push_back(mlir::FlatSymbolRefAttr::get(externName));
-        auto fullCtorName =
-            mlir::SymbolRefAttr::get(builder.getContext(), externSym.getRootReference(), refs);
-
-        auto instance = P4HIR::InstantiateOp::create(builder, getLoc(decl), fullCtorName, operands,
+        auto ctorSym = lookupSymbol(ctor);
+        BUG_CHECK(ctorSym, "expected referenced extern ctor to be convered: %1%", dbp(ctor));
+        auto instance = P4HIR::InstantiateOp::create(builder, getLoc(decl), ctorSym, operands,
                                                      nameAttr, typeParameters, annotations);
         setSymbol(decl, instance);
     } else if (const auto *control = type->to<P4::IR::P4Control>()) {
@@ -2464,6 +2552,45 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Extern *ext) {
     auto extOp =
         P4HIR::ExternOp::create(builder, loc, ext->name.string_view(), typeParameters, annotations);
     setSymbol(ext, extOp);
+
+    extOp.createEntryBlock();
+    {
+        mlir::OpBuilder::InsertionGuard guard(builder);
+        builder.setInsertionPointToStart(&extOp.getBody().front());
+
+        // Materialize method declarations
+        visit(ext->methods);
+    }
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::Type_SpecializedCanonical *spec) {
+    ConversionTracer trace("Converting ", spec);
+
+    auto loc = getLoc(spec);
+
+    const auto *ext = spec->substituted->checkedTo<P4::IR::Type_Extern>();
+    BUG_CHECK(ext->getTypeParameters()->parameters.empty(),
+              "expected empty type parameters for instantiated exter");
+
+    auto annotations = convert(ext->annotations);
+    auto extType = cast<P4HIR::ExternType>(getOrCreateType(ext));
+    llvm::SmallVector<mlir::Type> typeArguments;
+    for (const auto *type : *spec->arguments) typeArguments.push_back(getOrCreateType(type));
+
+    auto extName = mangler.getExternName(extType, typeArguments);
+    if (auto extOp = llvm::cast_or_null<P4HIR::ExternOp>(module.lookupSymbol(extName))) {
+        LOG4("Multiple instantiations exists, will not produce duplicates");
+        setSymbol(ext, extOp, mlir::SymbolRefAttr::get(module.getSymNameAttr()),
+                  /* topLevel */ true);
+        return false;
+    }
+
+    auto extOp = P4HIR::ExternOp::create(
+        builder, loc, mangler.getExternName(extType, typeArguments), annotations);
+    setSymbol(ext, extOp, mlir::SymbolRefAttr::get(module.getSymNameAttr()),
+              /* topLevel */ true);
 
     extOp.createEntryBlock();
     {

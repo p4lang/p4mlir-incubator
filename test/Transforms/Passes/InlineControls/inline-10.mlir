@@ -49,12 +49,12 @@ module @p4_main {
     p4hir.instantiate @p4_main::@Random (%c3_b10i : !b10i) as @rand2
     p4hir.func action @a() {
       %__local_callee_rand_0 = p4hir.symbol_ref @__local_callee_rand_0 : !Random
-      %0 = p4hir.call_method @Random::@read () of %__local_callee_rand_0 : !Random : () -> !b10i
+      %0 = p4hir.call_method @p4_main::@Random::@read () of %__local_callee_rand_0 : !Random : () -> !b10i
       p4hir.return
     }
     p4hir.table @b {
       p4hir.table_key(%arg1: !Random) {
-        %0 = p4hir.call_method @Random::@read () of %arg1 : !Random : () -> !b10i
+        %0 = p4hir.call_method @p4_main::@Random::@read () of %arg1 : !Random : () -> !b10i
         p4hir.match_key #exact %0 : !b10i annotations {name = "rand"}
       }
       p4hir.table_actions {
@@ -71,7 +71,7 @@ module @p4_main {
     }
     p4hir.control_apply {
       %b_apply_result = p4hir.table_apply @b with key(%arg0) : (!Random) -> !b
-      %0 = p4hir.call_method @Random::@read() of %arg0 : !Random : () -> !b10i
+      %0 = p4hir.call_method @p4_main::@Random::@read() of %arg0 : !Random : () -> !b10i
     }
   }
 

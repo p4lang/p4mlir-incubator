@@ -2,6 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+// We explicitly do not use push / pop for diagnostic in
+// order to propagate pragma further on
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"

@@ -1,17 +1,9 @@
-//===- P4HIRSymbols.h - P4HIR-related symbol logic --------------*- C++ -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-// Manages lookup logic for P4HIR absolute symbols.
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef P4MLIR_DIALECT_P4HIR_P4HIR_SYMBOLS_H
 #define P4MLIR_DIALECT_P4HIR_P4HIR_SYMBOLS_H
+
+// We explicitly do not use push / pop for diagnostic in
+// order to propagate pragma further on
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"

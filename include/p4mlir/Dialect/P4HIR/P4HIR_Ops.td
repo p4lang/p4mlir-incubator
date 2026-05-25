@@ -951,6 +951,11 @@ def FuncOp : P4HIR_Op<"func", [
       return ParamDirection::None;
     }
 
+    /// Return the `i`th argument name.
+    mlir::StringAttr getArgumentName(unsigned i) {
+      return getArgAttrOfType<mlir::StringAttr>(i, getParamNameAttrName());
+    }
+
     /// Returns 0 or 1 result type of this function (0 in the case of a function
     /// returing void or action)
     llvm::ArrayRef<mlir::Type> getResultTypes() {
@@ -1653,7 +1658,7 @@ def CallMethodOp : P4HIR_Op<"call_method",
     mlir::Operation *resolveCallable();
 
     P4HIR::ExternOp getExtern(mlir::SymbolTableCollection *symbolTable = nullptr);
-    mlir::StringAttr getMethodName();
+    mlir::StringRef getMethodName();
 
     mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
     mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }

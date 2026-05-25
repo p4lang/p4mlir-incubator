@@ -35,8 +35,8 @@ extern ext2<H, V> {
 // CHECK-LABEL:  p4hir.extern @ext2<[!type_H, !type_V]> {
 // CHECK:    p4hir.func @ext2(!type_H {p4hir.dir = #undir, p4hir.param_name = "v"})
 // CHECK:    p4hir.overload_set @method {
-// CHECK:      p4hir.func @"$ft1V_t1Ht1T_tZC"<!type_T>(!type_H {p4hir.dir = #in, p4hir.param_name = "h"}, !type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_V
-// CHECK:      p4hir.func @"$ft1H_t1T_tZB"<!type_T>(!type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_H
+// CHECK:      p4hir.func @"$ft1V_t1Ht1T_tZC_P1h1t"<!type_T>(!type_H {p4hir.dir = #in, p4hir.param_name = "h"}, !type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_V
+// CHECK:      p4hir.func @"$ft1H_t1T_tZB_P1t"<!type_T>(!type_T {p4hir.dir = #in, p4hir.param_name = "t"}) -> !type_H
 // CHECK:    }
 // CHECK:  }
   
@@ -89,17 +89,17 @@ parser p() {
     ext2<bit<16>, void>(16w0) ey;
 
     state start {
-      // CHECK: p4hir.call_method @X::@method (%{{.*}}) of @x : (!i32i) -> !i32i
+      // CHECK: p4hir.call_method @p4_main::@"$x1X_Ti32"::@method (%{{.*}}) of @x : (!i32i) -> !i32i
       x.method(0);
 
-      // CHECK: p4hir.call_method @Y::@method<[!b8i]> (%{{.*}}) of @y : (!b8i) -> ()
+      // CHECK: p4hir.call_method @p4_main::@Y::@method<[!b8i]> (%{{.*}}) of @y : (!b8i) -> ()
       y.method(8w0);
 
-      // CHECK: p4hir.call_method @ext::@method<[!b8i]> (%{{.*}}, %{{.*}}) of @ex : (!b16i, !b8i) -> ()
+      // CHECK: p4hir.call_method @p4_main::@"$x3ext_Tu16"::@method<[!b8i]> (%{{.*}}, %{{.*}}) of @ex : (!b16i, !b8i) -> ()
       ex.method(0, 8w0);
 
-      // CHECK: p4hir.call_method @ext2::@method<[!b12i]> (%{{.*}}) of @ey : (!b12i) -> !b16i
-      // CHECK: p4hir.call_method @ext2::@method<[!b8i]> (%{{.*}}, %{{.*}}) of @ey : (!b16i, !b8i) -> ()
+      // CHECK: p4hir.call_method @p4_main::@"$x4ext2_Tu16v"::@method::@"$fu16_t1T_tZA_P1t"<[!b12i]> (%{{.*}}) of @ey : (!b12i) -> !b16i
+      // CHECK: p4hir.call_method @p4_main::@"$x4ext2_Tu16v"::@method::@"$fv_u16t1T_tZA_P1h1t"<[!b8i]> (%{{.*}}, %{{.*}}) of @ey : (!b16i, !b8i) -> ()
       ey.method(ey.method(12w1), 8w0);
 
       transition accept;
@@ -109,7 +109,7 @@ parser p() {
 // CHECK-LABEL: p4hir.parser @Inner
 parser Inner(my_counter_t counter_set) {
     state start {
-      // CHECK: p4hir.call_method @MyCounter::@count (%{{.*}}) of %arg0 : !MyCounter_b10i : (!b10i) -> ()
+      // CHECK: p4hir.call_method @p4_main::@"$x9MyCounter_Tu10"::@count (%{{.*}}) of %arg0 : !MyCounter_b10i : (!b10i) -> ()
       counter_set.count(10w42);
       transition accept;
     }

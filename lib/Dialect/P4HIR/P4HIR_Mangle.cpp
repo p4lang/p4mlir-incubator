@@ -1,6 +1,7 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Mangle.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -10,6 +11,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_OpsEnums.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
@@ -286,5 +288,66 @@ void P4HIR::Mangler::getName(llvm::SmallVectorImpl<char> &buf, mlir::Type type) 
 mlir::StringAttr P4HIR::Mangler::getName(mlir::Type type) const {
     llvm::SmallString<256> nameBuf;
     getName(nameBuf, type);
+    return mlir::StringAttr::get(type.getContext(), nameBuf.str());
+}
+
+mlir::StringAttr P4HIR::Mangler::getFunctionName(
+    P4HIR::FuncType type, llvm::ArrayRef<mlir::DictionaryAttr> paramAttrs) const {
+    ManglingContext context;
+
+    // Mangle full function name as follows:
+    //  - Mangle function type
+    //  - Attach "_P"
+    //  - Mangle all parameter names in order
+    llvm::SmallString<256> nameBuf;
+    llvm::raw_svector_ostream os(nameBuf);
+
+    os << "$";
+    getNameImpl(os, type, context);
+    os << "_P";
+    for (auto paramAttr : paramAttrs) {
+        auto name = paramAttr.get(P4HIR::FuncOp::getParamNameAttrName());
+        assert(name);
+        mangleIdentifier(os, cast<StringAttr>(name), context);
+    }
+
+    return mlir::StringAttr::get(type.getContext(), nameBuf.str());
+}
+
+mlir::StringAttr P4HIR::Mangler::getFunctionName(P4HIR::FuncOp op) const {
+    ManglingContext context;
+
+    // Mangle full function name as follows:
+    //  - Mangle function type
+    //  - Attach "_P"
+    //  - Mangle all parameter names in order
+    llvm::SmallString<256> nameBuf;
+    llvm::raw_svector_ostream os(nameBuf);
+
+    os << "$";
+    auto funcType = op.getFunctionType();
+    getNameImpl(os, funcType, context);
+    os << "_P";
+    for (unsigned idx = 0; idx < funcType.getNumInputs(); ++idx) {
+        auto name = op.getArgumentName(idx);
+        assert(name);
+        mangleIdentifier(os, name, context);
+    }
+
+    return mlir::StringAttr::get(funcType.getContext(), nameBuf.str());
+}
+
+mlir::StringAttr P4HIR::Mangler::getExternName(P4HIR::ExternType type,
+                                               llvm::ArrayRef<mlir::Type> typeArguments) const {
+    ManglingContext context;
+
+    llvm::SmallString<256> nameBuf;
+    llvm::raw_svector_ostream os(nameBuf);
+
+    os << "$";
+    getNameImpl(os, type, context);
+    os << "_T";
+    for (auto typeArg : typeArguments) getNameImpl(os, typeArg, context);
+
     return mlir::StringAttr::get(type.getContext(), nameBuf.str());
 }
