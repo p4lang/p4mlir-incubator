@@ -2574,6 +2574,10 @@ bool P4HIRConverter::preorder(const P4::IR::Type_SpecializedCanonical *spec) {
     BUG_CHECK(ext->getTypeParameters()->parameters.empty(),
               "expected empty type parameters for instantiated exter");
 
+    auto moduleRef = mlir::SymbolRefAttr::get(module.getSymNameAttr());
+    auto baseExternOp = module.lookupSymbol<P4HIR::ExternOp>(ext->name.string_view());
+    auto baseExtRef = mlir::SymbolRefAttr::get(baseExternOp);
+
     auto annotations = convert(ext->annotations);
     auto extType = cast<P4HIR::ExternType>(getOrCreateType(ext));
     llvm::SmallVector<mlir::Type> typeArguments;
@@ -2582,15 +2586,14 @@ bool P4HIRConverter::preorder(const P4::IR::Type_SpecializedCanonical *spec) {
     auto extName = mangler.getExternName(extType, typeArguments);
     if (auto extOp = llvm::cast_or_null<P4HIR::ExternOp>(module.lookupSymbol(extName))) {
         LOG4("Multiple instantiations exists, will not produce duplicates");
-        setSymbol(ext, extOp, mlir::SymbolRefAttr::get(module.getSymNameAttr()),
-                  /* topLevel */ true);
+        setSymbol(ext, extOp, moduleRef, /* topLevel */ true);
         return false;
     }
 
-    auto extOp = P4HIR::ExternOp::create(
-        builder, loc, mangler.getExternName(extType, typeArguments), annotations);
-    setSymbol(ext, extOp, mlir::SymbolRefAttr::get(module.getSymNameAttr()),
-              /* topLevel */ true);
+    auto extOp =
+        P4HIR::ExternOp::create(builder, loc, mangler.getExternName(extType, typeArguments), {},
+                                annotations, baseExtRef, typeArguments);
+    setSymbol(ext, extOp, moduleRef, /* topLevel */ true);
 
     extOp.createEntryBlock();
     {
