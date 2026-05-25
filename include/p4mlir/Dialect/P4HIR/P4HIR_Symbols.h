@@ -43,6 +43,16 @@ T lookupSymbol(mlir::Operation *source, mlir::SymbolRefAttr symbol) {
     return mlir::dyn_cast_or_null<T>(lookupSymbol(source, symbol));
 }
 
+/// A variant of 'lookupSymbol' that returns all of the symbols referenced by a
+/// given SymbolRefAttr (including nested ones).  Returns failure if any of the
+/// nested references could not be resolved.
+mlir::LogicalResult lookupSymbol(mlir::SymbolTableCollection &symbolTable, mlir::Operation *source,
+                                 mlir::SymbolRefAttr symbol,
+                                 llvm::SmallVectorImpl<mlir::Operation *> &symbols);
+
+mlir::LogicalResult lookupSymbol(mlir::Operation *source, mlir::SymbolRefAttr symbol,
+                                 llvm::SmallVectorImpl<mlir::Operation *> &symbols);
+
 }  // namespace P4::P4MLIR::P4HIR
 
 #endif  // P4MLIR_DIALECT_P4HIR_P4HIR_SYMBOLS_H

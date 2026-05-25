@@ -1425,9 +1425,8 @@ void P4HIR::FuncOp::build(OpBuilder &builder, OperationState &result, llvm::Stri
 
     result.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
     result.addAttribute(getFunctionTypeAttrName(result.name), TypeAttr::get(type));
-    // External functions are private, everything else is public
-    result.addAttribute(SymbolTable::getVisibilityAttrName(),
-                        builder.getStringAttr(isExternal ? "private" : "public"));
+    // Actions within control are private, everything else is nested.
+    result.addAttribute(SymbolTable::getVisibilityAttrName(), builder.getStringAttr("nested"));
     if (annotations && !annotations.empty())
         result.addAttribute(getAnnotationsAttrName(result.name), annotations);
 
@@ -1565,14 +1564,17 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
         parser.emitError(loc, "action shall have a body");
     }
 
-    // All functions are public except declarations
-    state.addAttribute(SymbolTable::getVisibilityAttrName(),
-                       builder.getStringAttr(body->empty() ? "private" : "public"));
+    // Actions inside controls are private, everything else is nested
+    state.addAttribute(SymbolTable::getVisibilityAttrName(), builder.getStringAttr("nested"));
 
     return success();
 }
 
-bool P4HIR::FuncOp::canDiscardOnUseEmpty() { return !isExternal(); }
+bool P4HIR::FuncOp::canDiscardOnUseEmpty() {
+    // Decide better what to do with unused extern methods
+    return !(*this)->getParentOfType<P4HIR::ExternOp>();
+    // return getVisibility() != ::mlir::SymbolTable::Visibility::Public;
+}
 
 void P4HIR::CallOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     if (getResult()) setNameFn(getResult(), "call");
@@ -2254,7 +2256,8 @@ void P4HIR::ParserOp::build(mlir::OpBuilder &builder, mlir::OperationState &resu
     result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(applyType));
     result.addAttribute(getCtorTypeAttrName(result.name), TypeAttr::get(ctorType));
 
-    // Parsers are top-level objects with public visibility
+    // Parsers are top-level objects with nested visibility
+    // result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("nested"));
     result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
 
     if (annotations && !annotations.empty())
@@ -2367,7 +2370,8 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
     if (parser.parseSymbolName(nameAttr, ::SymbolTable::getSymbolAttrName(), result.attributes))
         return mlir::failure();
 
-    // Parsers are visible from top-level
+    // Parsers could be referred from inside other symbol tables
+    // result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("nested"));
     result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
 
     llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
@@ -3194,7 +3198,8 @@ void P4HIR::ControlOp::build(mlir::OpBuilder &builder, mlir::OperationState &res
     result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(applyType));
     result.addAttribute(getCtorTypeAttrName(result.name), TypeAttr::get(ctorType));
 
-    // Controls are top-level objects with public visibility
+    // Controls are top-level objects with nested visibility
+    // result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("nested"));
     result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
 
     if (annotations && !annotations.empty())
@@ -3255,7 +3260,8 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
     if (parser.parseSymbolName(nameAttr, ::SymbolTable::getSymbolAttrName(), result.attributes))
         return mlir::failure();
 
-    // Parsers are visible from top-level
+    // Controls are visible from top-level
+    // result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("nested"));
     result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("public"));
 
     llvm::SmallVector<OpAsmParser::Argument, 8> arguments;
