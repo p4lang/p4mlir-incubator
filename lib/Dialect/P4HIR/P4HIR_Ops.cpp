@@ -1572,22 +1572,10 @@ ParseResult P4HIR::FuncOp::parse(OpAsmParser &parser, OperationState &state) {
     return success();
 }
 
-bool P4HIR::FuncOp::canDiscardOnUseEmpty() {
-    // Declarations inside overload sets are a bit special, while they have private
-    // visibility we cannot delete them unless the top-level overload is gone
-    if ((*this)->getParentOfType<P4HIR::OverloadSetOp>() != nullptr) return false;
-    return !isExternal();
-}
+bool P4HIR::FuncOp::canDiscardOnUseEmpty() { return !isExternal(); }
 
 void P4HIR::CallOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     if (getResult()) setNameFn(getResult(), "call");
-}
-
-static mlir::ModuleOp getParentModule(Operation *from) {
-    if (auto moduleOp = from->getParentOfType<mlir::ModuleOp>()) return moduleOp;
-
-    from->emitOpError("could not find parent module op");
-    return nullptr;
 }
 
 static mlir::Type substituteType(mlir::Type type, mlir::TypeRange calleeTypeArgs,
@@ -1629,17 +1617,7 @@ static mlir::Operation *resolveCallCallableImpl(
                                   : P4HIR::lookupSymbol(callOp, sym);
     if (!decl) return nullptr;
 
-    if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
-        return fn;
-    } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
-        // Find the FuncOp with the correct # of operands
-        for (Operation &nestedOp : ovl.getBody().front()) {
-            auto f = llvm::cast<P4HIR::FuncOp>(nestedOp);
-            if (f.getNumArguments() == callOp.getNumOperands()) return f;
-        }
-    }
-
-    return nullptr;
+    return llvm::dyn_cast<P4HIR::FuncOp>(decl);
 }
 
 mlir::Operation *P4HIR::CallOp::resolveCallableInTable(mlir::SymbolTableCollection *symbolTable) {
@@ -1659,26 +1637,11 @@ LogicalResult P4HIR::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable
     //    References to them should be fully qualified.
     //  - Actions defined at control level.
     // Note that we do allow local functions (defined at control / parser level) here.
-    P4HIR::FuncOp fn;
     mlir::Operation *decl = lookupSymbol(symbolTable, *this, sym);
 
     if (!decl) return emitOpError() << "'" << sym << "' does not reference a valid declaration";
 
-    // Resolve overload, if any
-    if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
-        // Do we need any additional checks?
-    } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
-        // Find the FuncOp with the correct # of operands
-        for (Operation &nestedOp : ovl.getBody().front()) {
-            auto f = llvm::cast<FuncOp>(nestedOp);
-            if (f.getNumArguments() == getNumOperands()) {
-                fn = f;
-                break;
-            }
-        }
-        if (!fn) return emitOpError() << "'" << sym << "' failed to resolve overload set";
-    }
-
+    P4HIR::FuncOp fn = llvm::dyn_cast<P4HIR::FuncOp>(decl);
     if (!fn) return emitOpError() << "'" << sym << "' does not reference a valid function";
 
     auto fnType = fn.getFunctionType();
@@ -3042,13 +3005,6 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
     auto methodSymAttr = (*this)->getAttrOfType<SymbolRefAttr>(getMethodAttrName());
     if (!methodSymAttr) return emitOpError("requires a 'method' symbol reference attribute");
 
-    // Method symbol ref should be pair of extern + method name
-    auto nestedRefs = methodSymAttr.getNestedReferences();
-    if (nestedRefs.size() != 1)
-        return emitOpError("requires a method name in '") << methodSymAttr << "'";
-    auto methodNameAttr = methodSymAttr.getLeafReference();
-    auto extSymAttr = methodSymAttr.getRootReference();
-
     // Extern symbol refers to instantiation here. We need to resolve it first.
     SmallVector<mlir::Type> baseTypeOperands;
     if (!isIndirect()) {
@@ -3071,34 +3027,12 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
         llvm::append_range(baseTypeOperands, extType.getTypeArguments());
     }
     // Grab the extern
-    P4HIR::FuncOp fn;
-    P4HIR::ExternOp ext;
-    if ((ext = symbolTable.lookupNearestSymbolFrom<P4HIR::ExternOp>(getParentModule(*this),
-                                                                    extSymAttr))) {
-        // Now, perform a method lookup
-        auto *decl = ext.lookupSymbol(methodNameAttr);
-        if (!decl)
-            return emitOpError() << "failed to resolve method " << methodNameAttr << " of "
-                                 << extSymAttr;
-        if ((fn = llvm::dyn_cast<P4HIR::FuncOp>(decl))) {
-            // We good here
-        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
-            // Find the FuncOp with the correct # of operands
-            for (Operation &nestedOp : ovl.getBody().front()) {
-                auto f = llvm::cast<FuncOp>(nestedOp);
-                if (f.getNumArguments() == getArgOperands().size()) {
-                    fn = f;
-                    break;
-                }
-            }
-            if (!fn)
-                return emitOpError() << "'" << methodSymAttr << "' failed to resolve overload set";
-        }
-    }
-
-    if (!ext) return emitOpError() << "'" << extSymAttr << "' does not reference a valid extern";
+    auto fn = P4HIR::lookupSymbol<P4HIR::FuncOp>(symbolTable, *this, methodSymAttr);
     if (!fn)
         return emitOpError() << "'" << methodSymAttr << "' does not reference a valid function";
+
+    auto ext = fn->getParentOfType<P4HIR::ExternOp>();
+    if (!ext) return emitOpError() << "'" << methodSymAttr << "' does not reference a valid extern";
 
     auto fnType = fn.getFunctionType();
     auto arguments = getArgOperands();
@@ -3173,51 +3107,26 @@ LogicalResult P4HIR::CallMethodOp::verifySymbolUses(SymbolTableCollection &symbo
     return success();
 }
 
-mlir::StringAttr P4HIR::CallMethodOp::getMethodName() { return getMethod().getLeafReference(); }
+mlir::StringRef P4HIR::CallMethodOp::getMethodName() {
+    auto methodFuncOp = P4HIR::lookupSymbol<P4HIR::FuncOp>(*this, getMethod());
+    if (auto ovl = methodFuncOp->getParentOfType<P4HIR::OverloadSetOp>()) return ovl.getName();
 
-// Callee might be:
-//  - Overload set, then we need to look for a particular overload
-//  - Normal methods
-static mlir::Operation *resolveCallMethodCallableImpl(
-    P4HIR::CallMethodOp callMethodOp, mlir::SymbolTableCollection *symbolTable = nullptr) {
-    // Grab the extern
-    if (auto ext = callMethodOp.getExtern(symbolTable)) {
-        // Now perform a method lookup
-        auto *decl = symbolTable ? symbolTable->lookupSymbolIn(ext, callMethodOp.getMethodName())
-                                 : ext.lookupSymbol(callMethodOp.getMethodName());
-        if (auto fn = llvm::dyn_cast<P4HIR::FuncOp>(decl)) {
-            return fn;
-        } else if (auto ovl = llvm::dyn_cast<P4HIR::OverloadSetOp>(decl)) {
-            // Find the FuncOp with the correct # of operands
-            for (Operation &nestedOp : ovl.getBody().front()) {
-                auto f = llvm::cast<P4HIR::FuncOp>(nestedOp);
-                if (f.getNumArguments() == callMethodOp.getArgOperands().size()) return f;
-            }
-        }
-    }
-
-    return nullptr;
+    return methodFuncOp.getName();
 }
 
 mlir::Operation *P4HIR::CallMethodOp::resolveCallableInTable(
     mlir::SymbolTableCollection *symbolTable) {
-    return resolveCallMethodCallableImpl(*this, symbolTable);
+    return P4HIR::lookupSymbol<P4HIR::FuncOp>(*symbolTable, *this, getMethod());
 }
 
 mlir::Operation *P4HIR::CallMethodOp::resolveCallable() {
-    return resolveCallMethodCallableImpl(*this);
+    return P4HIR::lookupSymbol<P4HIR::FuncOp>(*this, getMethod());
 }
 
 P4HIR::ExternOp P4HIR::CallMethodOp::getExtern(mlir::SymbolTableCollection *symbolTable) {
-    auto sym = getMethod();
-
-    // Symbol ref should be pair of extern + method name
-    auto extSymAttr = sym.getRootReference();
-
-    auto res = symbolTable ? symbolTable->lookupSymbolIn<P4HIR::ExternOp>(getParentModule(*this),
-                                                                          extSymAttr)
-                           : getParentModule(*this).lookupSymbol<P4HIR::ExternOp>(extSymAttr);
-    assert(res && "expected valid extern reference");
+    auto method = symbolTable ? resolveCallableInTable(symbolTable) : resolveCallable();
+    assert(method && "expected valid method reference");
+    auto res = method->getParentOfType<P4HIR::ExternOp>();
     return res;
 }
 
@@ -4892,9 +4801,7 @@ struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
         if (call->getParentOfType<P4HIR::TableOp>() && !call->getParentOfType<P4HIR::TableKeyOp>())
             return false;
 
-        if (mlir::isa<P4HIR::CallOp>(call) &&
-            mlir::isa<P4HIR::FuncOp, P4HIR::OverloadSetOp>(callable))
-            return true;
+        if (mlir::isa<P4HIR::CallOp>(call) && mlir::isa<P4HIR::FuncOp>(callable)) return true;
 
         return false;
     }

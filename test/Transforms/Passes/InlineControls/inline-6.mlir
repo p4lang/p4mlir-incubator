@@ -79,7 +79,7 @@ module @p4_main {
       %action_run = p4hir.struct_extract %t_apply_result["action_run"] : !t
       p4hir.switch (%action_run : !anon) {
         p4hir.case(anyof, [#anon_a1, #anon_a2]) {
-          %0 = p4hir.call_method @Y::@get () of @ext : () -> !b32i
+          %0 = p4hir.call_method @p4_main::@Y::@get () of @ext : () -> !b32i
           %val_3 = p4hir.read %arg0 : <!b32i>
           %add_4 = p4hir.binop(add, %val_3, %0) : !b32i
           p4hir.assign %add_4, %arg0 : <!b32i>

@@ -2,6 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+// We explicitly do not use push / pop for diagnostic in
+// order to propagate pragma further on
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"

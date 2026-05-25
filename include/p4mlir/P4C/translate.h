@@ -5,6 +5,7 @@
 #ifndef INCLUDE_P4MLIR_P4C_TRANSLATE_H_
 #define INCLUDE_P4MLIR_P4C_TRANSLATE_H_
 
+#include "ir/ir-generated.h"
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcovered-switch-default"
 #include "frontends/common/resolveReferences/resolveReferences.h"
@@ -57,10 +58,17 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     using ValueScope = ValueTable::ScopeTy;
 
     using P4Symbol = std::variant<const P4::IR::Declaration *, const P4::IR::P4Parser *,
-                                  const P4::IR::P4Control *, const P4::IR::Type_Extern *>;
+                                  const P4::IR::P4Control *, const P4::IR::Type_Extern *,
+                                  const P4::IR::P4Program *>;
     using SymbolTable = llvm::ScopedHashTable<P4Symbol, mlir::SymbolRefAttr>;
     using SymbolScope = SymbolTable::ScopeTy;
     SymbolTable p4Symbols;
+    SymbolScope *topLevelSymbols = nullptr;
+
+    // To resolve overloads we need to map back from converted function to original method,
+    // to correctly update symbol references.
+    using P4Method = std::variant<const P4::IR::Method *, const P4::IR::Function *>;
+    llvm::DenseMap<P4HIR::FuncOp, P4Method> p4Methods;
 
     bool defaultInitialize = false;
 
@@ -198,11 +206,13 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
         return getValue(node);
     }
 
-    mlir::SymbolRefAttr setSymbol(P4Symbol symb, mlir::SymbolRefAttr value);
+    mlir::SymbolRefAttr setSymbol(P4Symbol symb, mlir::SymbolRefAttr value, bool topLevel = false);
     mlir::SymbolRefAttr setSymbol(P4Symbol symb, mlir::Operation *op,
-                                  mlir::SymbolRefAttr parent = nullptr);
+                                  mlir::SymbolRefAttr parent = nullptr, bool topLevel = false);
     mlir::SymbolRefAttr lookupSymbol(P4Symbol symb);
-    mlir::SymbolRefAttr parentSymbol();
+    P4Symbol parentP4Symbol() const;
+    mlir::SymbolRefAttr parentSymbol() const;
+    void renameMethodSymbol(P4HIR::FuncOp method, mlir::SymbolRefAttr newSymbol);
 
     /// Returns fully qualified symbols, if we're nested inside a symbol table
     /// (parser, control or extern)
@@ -235,6 +245,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::SelectExpression *s) override;
 
     bool preorder(const P4::IR::Type_Extern *e) override;
+    bool preorder(const P4::IR::Type_SpecializedCanonical *e) override;
 
     bool preorder(const P4::IR::P4Control *c) override;
     bool preorder(const P4::IR::P4Table *t) override;
