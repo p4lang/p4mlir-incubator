@@ -1526,38 +1526,48 @@ def ExternOp : P4HIR_Op<"extern",
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, OptionalAttr<ArrayAttr>:$type_parameters,
-                       OptionalAttr<DictionaryAttr>:$annotations);
+                       OptionalAttr<DictionaryAttr>:$annotations,
+                       OptionalAttr<SymbolRefAttr>:$base_extern, OptionalAttr<ArrayAttr>:$base_type_arguments);
   let regions = (region SizedRegion<1>:$body);
 
   let builders = [
       OpBuilder<(ins "mlir::StringRef":$sym_name), [{
-        build($_builder, $_state,  sym_name, mlir::ArrayAttr(), mlir::DictionaryAttr());
+        build($_builder, $_state,  sym_name, mlir::ArrayAttr(), mlir::DictionaryAttr(), nullptr, nullptr);
       }]>,
 
       OpBuilder<(ins "mlir::StringRef":$sym_name, "mlir::TypeRange":$type_parameters), [{
         build($_builder, $_state,
               sym_name,
               type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters),
-              nullptr);
+              nullptr, nullptr, nullptr);
       }]>,
 
       OpBuilder<(ins "mlir::StringRef":$sym_name, "mlir::DictionaryAttr":$annotations), [{
         build($_builder, $_state,
               sym_name, mlir::ArrayAttr(),
-              annotations && annotations.empty() ? nullptr : annotations);
+              annotations && annotations.empty() ? nullptr : annotations, nullptr, nullptr);
       }]>,
 
       OpBuilder<(ins "mlir::StringRef":$sym_name, "mlir::TypeRange":$type_parameters, "mlir::DictionaryAttr":$annotations), [{
         build($_builder, $_state,
               sym_name,
               type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters),
-              annotations && annotations.empty() ? nullptr : annotations);
+              annotations && annotations.empty() ? nullptr : annotations,
+              nullptr, nullptr);
       }]>,
+      OpBuilder<(ins "mlir::StringRef":$sym_name, "mlir::TypeRange":$type_parameters, "mlir::DictionaryAttr":$annotations,
+                     "mlir::SymbolRefAttr":$base_extern, "mlir::TypeRange":$base_type_arguments), [{
+        build($_builder, $_state,
+              sym_name,
+              type_parameters.empty() ? nullptr : $_builder.getTypeArrayAttr(type_parameters),
+              annotations && annotations.empty() ? nullptr : annotations,
+              base_extern, base_type_arguments.empty() ? nullptr : $_builder.getTypeArrayAttr(base_type_arguments));
+      }]>,
+
   ];
 
-
   let assemblyFormat = [{
-    $sym_name (`<` $type_parameters^ `>`)? (`annotations` $annotations^)? $body attr-dict
+    $sym_name (`<` $type_parameters^ `>`)? (`annotations` $annotations^)? (`instance_of` $base_extern^ (`<` $base_type_arguments^ `>`)?)? $body attr-dict
   }];
 
   let extraClassDeclaration = [{
