@@ -7,10 +7,6 @@
 #include <algorithm>
 #include <climits>
 
-#include "ir/ir-generated.h"
-#include "llvm/ADT/SmallString.h"
-#include "mlir/IR/OperationSupport.h"
-#include "mlir/Support/LLVM.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Mangle.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Symbols.h"
 #include "p4mlir/P4C/type_converter.h"
@@ -42,9 +38,12 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseMapInfoVariant.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopedHashTable.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -55,9 +54,11 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Verifier.h"
+#include "mlir/Support/LLVM.h"
 #pragma GCC diagnostic pop
 
 using namespace P4::P4MLIR;
@@ -430,6 +431,20 @@ mlir::Value P4HIRConverter::resolveReference(const P4::IR::Node *node, bool unch
             }
 
             return setValue(a, eltRef);
+        } else if (a->left->type->is<P4::IR::Type_Tuple>()) {
+            mlir::Value eltRef;
+            if (auto refType = mlir::dyn_cast<P4HIR::ReferenceType>(base.getType())) {
+                BUG("Does not support tuple reference yet");
+            } else {
+                if (mlir::isa<P4HIR::HeaderStackType>(base.getType()))
+                    base = P4HIR::StructExtractOp::create(builder, loc, base,
+                                                          P4HIR::HeaderStackType::dataFieldName)
+                               .getResult();
+                auto idx = mlir::cast<P4HIR::IntAttr>(getOrCreateConstantExpr(a->right));
+                eltRef = P4HIR::TupleExtractOp::create(builder, loc, base, idx);
+            }
+
+            return setValue(a, eltRef);
         } else
             BUG("unsupported array index reference %1% (aka %2%)", node, dbp(node));
     }
@@ -581,6 +596,12 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
         auto field = base.getFields()[idx.getUInt()];
         auto fieldType = getOrCreateType(arr->type);
         return setConstantExpr(expr, getTypedConstant(fieldType, field));
+    }
+    if (const auto *arr = expr->to<P4::IR::ArrayExpression>()) {
+        auto type = getOrCreateType(arr->type);
+        llvm::SmallVector<mlir::Attribute, 4> elts;
+        for (const auto *elt : arr->components) elts.push_back(getOrCreateConstantExpr(elt));
+        return setConstantExpr(expr, P4HIR::AggAttr::get(type, builder.getArrayAttr(elts)));
     }
     if (const auto *range = expr->to<P4::IR::Range>()) {
         auto rangeType = mlir::cast<P4HIR::SetType>(getOrCreateType(range->type));
@@ -2193,19 +2214,31 @@ void P4HIRConverter::postorder(const P4::IR::Member *m) {
 bool P4HIRConverter::preorder(const P4::IR::StructExpression *str) {
     ConversionTracer trace("Converting ", str);
 
-    auto type = getOrCreateType(str->structType);
-
+    auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(getOrCreateType(str->structType));
     auto loc = getLoc(str);
-    llvm::SmallVector<mlir::Value, 4> fields;
-    for (const auto *field : str->components) {
-        fields.push_back(convert(field->expression));
+
+    llvm::MapVector<mlir::StringAttr, mlir::Value> namedFields;
+    for (const auto &field : structType.getFields()) {
+        namedFields[field.name] = {};
     }
 
-    // If this is header, make it valid as well
-    if (mlir::isa<P4HIR::HeaderType>(type))
-        fields.push_back(emitValidityConstant(loc, P4HIR::ValidityBit::Valid));
+    for (const auto *field : str->components)
+        namedFields.insert_or_assign(builder.getStringAttr(field->name.string_view()),
+                                     convert(field->expression));
 
-    setValue(str, P4HIR::StructOp::create(builder, loc, type, fields).getResult());
+    // If this is header, make it valid as well
+    if (mlir::isa<P4HIR::HeaderType>(structType))
+        namedFields.insert_or_assign(builder.getStringAttr(P4HIR::HeaderType::validityBit),
+                                     emitValidityConstant(loc, P4HIR::ValidityBit::Valid));
+
+    for (const auto &entry : namedFields)
+        BUG_CHECK(entry.second, "expected field %1% of %2% to be converted", entry.first.str(),
+                  str);
+
+    setValue(str, P4HIR::StructOp::create(
+                      builder, loc, structType,
+                      llvm::map_to_vector(namedFields, [](auto entry) { return entry.second; }))
+                      .getResult());
 
     return false;
 }
@@ -2222,6 +2255,29 @@ bool P4HIRConverter::preorder(const P4::IR::ListExpression *lst) {
     }
 
     setValue(lst, P4HIR::TupleOp::create(builder, loc, type, fields).getResult());
+
+    return false;
+}
+
+bool P4HIRConverter::preorder(const P4::IR::ArrayExpression *arr) {
+    ConversionTracer trace("Converting ", arr);
+
+    auto type = getOrCreateType(arr->type);
+
+    auto loc = getLoc(arr);
+    llvm::SmallVector<mlir::Value, 4> elts;
+    for (const auto *elt : arr->components) {
+        elts.push_back(convert(elt));
+    }
+
+    if (auto hsType = mlir::dyn_cast<P4HIR::HeaderStackType>(type)) {
+        auto dataType = hsType.getDataType();
+        auto hsData = P4HIR::ArrayOp::create(builder, loc, dataType, elts).getResult();
+        auto nextIndex = getUIntConstant(loc, 0, 32);
+        setValue(arr, P4HIR::StructOp::create(builder, loc, type, {hsData, nextIndex}).getResult());
+    } else {
+        setValue(arr, P4HIR::ArrayOp::create(builder, loc, type, elts).getResult());
+    }
 
     return false;
 }

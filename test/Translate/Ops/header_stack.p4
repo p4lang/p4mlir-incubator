@@ -52,9 +52,11 @@ control c() {
         h b = stack[3];
         hustack[1].h1 = hustack[0].h1;
         stack[2] = b;
-        // TODO: Support header stakc operations
+        // TODO: Support header stack operations
         // stack.push_front(2);
         // stack.pop_front(2);
         bit<32> sz = stack.size;
+        stack = ...;
+        stack = { b, ... };
     }
 }
