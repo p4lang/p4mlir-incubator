@@ -18,7 +18,7 @@
 #out = #p4hir<dir out>
 #undir = #p4hir<dir undir>
 !b = !p4hir.struct<"b", hit: !p4hir.bool, miss: !p4hir.bool, action_run: !anon>
-module {
+module @p4_main {
   p4hir.extern @packet_in {
     p4hir.overload_set @extract {
       p4hir.func @extract_0<!type_T>(!p4hir.ref<!type_T> {p4hir.dir = #out, p4hir.param_name = "hdr"})
@@ -46,30 +46,30 @@ module {
   p4hir.control @callee(%arg0: !Random {p4hir.dir = #undir, p4hir.param_name = "rand"})() {
     p4hir.control_local @__local_callee_rand_0 = %arg0 : !Random
     p4hir.func action @a() {
-      %__local_callee_rand_0 = p4hir.symbol_ref @callee::@__local_callee_rand_0 : !Random
-      %0 = p4hir.call_method @Random::@read () of %__local_callee_rand_0 : !Random : () -> !b10i
+      %__local_callee_rand_0 = p4hir.symbol_ref @__local_callee_rand_0 : !Random
+      %0 = p4hir.call_method @p4_main::@Random::@read () of %__local_callee_rand_0 : !Random : () -> !b10i
       p4hir.return
     }
     p4hir.table @b {
       p4hir.table_key(%arg1: !Random) {
-        %0 = p4hir.call_method @Random::@read () of %arg1 : !Random : () -> !b10i
+        %0 = p4hir.call_method @p4_main::@Random::@read () of %arg1 : !Random : () -> !b10i
         p4hir.match_key #exact %0 : !b10i annotations {name = "rand"}
       }
       p4hir.table_actions {
         p4hir.table_action @a() {
-          p4hir.call @callee::@a () : () -> ()
+          p4hir.call @a () : () -> ()
         }
         p4hir.table_action @NoAction() annotations {defaultonly} {
-          p4hir.call @NoAction () : () -> ()
+          p4hir.call @p4_main::@NoAction () : () -> ()
         }
       }
       p4hir.table_default_action {
-        p4hir.call @NoAction () : () -> ()
+        p4hir.call @p4_main::@NoAction () : () -> ()
       }
     }
     p4hir.control_apply {
-      %b_apply_result = p4hir.table_apply @callee::@b with key(%arg0) : (!Random) -> !b
-      %0 = p4hir.call_method @Random::@read () of %arg0 : !Random : () -> !b10i
+      %b_apply_result = p4hir.table_apply @b with key(%arg0) : (!Random) -> !b
+      %0 = p4hir.call_method @p4_main::@Random::@read () of %arg0 : !Random : () -> !b10i
     }
   }
   // CHECK-LABEL: p4hir.control @caller
@@ -77,41 +77,41 @@ module {
     // CHECK: p4hir.control_local @[[ARG:.*]] = %arg0 : !Random
     // CHECK-NOT: p4hir.instantiate @callee
     p4hir.control_local @__local_caller_rand_0 = %arg0 : !Random
-    p4hir.instantiate @callee () as @inst
+    p4hir.instantiate @p4_main::@callee () as @inst
 
     // CHECK: p4hir.func action @inst.a() {
-    // CHECK:   %[[RAND:.*]] = p4hir.symbol_ref @caller::@[[ARG]] : !Random
-    // CHECK:   %{{.*}} = p4hir.call_method @Random::@read () of %[[RAND]] : !Random : () -> !b10i
+    // CHECK:   %[[RAND:.*]] = p4hir.symbol_ref @[[ARG]] : !Random
+    // CHECK:   %{{.*}} = p4hir.call_method @p4_main::@Random::@read () of %[[RAND]] : !Random : () -> !b10i
     // CHECK:   p4hir.return
     // CHECK: }
     // CHECK: p4hir.table @inst.b {
     // CHECK:   p4hir.table_key(%[[KEY_ARG:.*]]: !Random) {
-    // CHECK:     %0 = p4hir.call_method @Random::@read () of %[[KEY_ARG]] : !Random : () -> !b10i
+    // CHECK:     %0 = p4hir.call_method @p4_main::@Random::@read () of %[[KEY_ARG]] : !Random : () -> !b10i
     // CHECK:     p4hir.match_key #exact %0 : !b10i annotations {name = "rand"}
     // CHECK:   }
     // CHECK:   p4hir.table_actions {
     // CHECK:     p4hir.table_action @a() {
-    // CHECK:       p4hir.call @caller::@inst.a () : () -> ()
+    // CHECK:       p4hir.call @inst.a () : () -> ()
     // CHECK:     }
     // CHECK:     p4hir.table_action @NoAction() annotations {defaultonly} {
-    // CHECK:       p4hir.call @NoAction () : () -> ()
+    // CHECK:       p4hir.call @p4_main::@NoAction () : () -> ()
     // CHECK:     }
     // CHECK:   }
     // CHECK:   p4hir.table_default_action {
-    // CHECK:     p4hir.call @NoAction () : () -> ()
+    // CHECK:     p4hir.call @p4_main::@NoAction () : () -> ()
     // CHECK:   }
     // CHECK: }
 
 
     // CHECK-LABEL: p4hir.control_apply
     p4hir.control_apply {
-      // CHECK-DAG: %inst.b_apply_result = p4hir.table_apply @caller::@inst.b with key(%arg0) : (!Random) -> !b
-      // CHECK-DAG: %{{.*}} = p4hir.call_method @Random::@read () of %arg0 : !Random : () -> !b10i
-      // CHECK-DAG: %inst.b_apply_result_0 = p4hir.table_apply @caller::@inst.b with key(%arg0) : (!Random) -> !b
-      // CHECK-DAG: %{{.*}} = p4hir.call_method @Random::@read () of %arg0 : !Random : () -> !b10i
+      // CHECK-DAG: %inst.b_apply_result = p4hir.table_apply @inst.b with key(%arg0) : (!Random) -> !b
+      // CHECK-DAG: %{{.*}} = p4hir.call_method @p4_main::@Random::@read () of %arg0 : !Random : () -> !b10i
+      // CHECK-DAG: %inst.b_apply_result_0 = p4hir.table_apply @inst.b with key(%arg0) : (!Random) -> !b
+      // CHECK-DAG: %{{.*}} = p4hir.call_method @p4_main::@Random::@read () of %arg0 : !Random : () -> !b10i
 
-      p4hir.apply @caller::@inst(%arg0) : (!Random) -> ()
-      p4hir.apply @caller::@inst(%arg0) : (!Random) -> ()
+      p4hir.apply @inst(%arg0) : (!Random) -> ()
+      p4hir.apply @inst(%arg0) : (!Random) -> ()
     }
   }
 }

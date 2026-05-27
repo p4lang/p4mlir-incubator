@@ -57,16 +57,16 @@ module {
       %c1_i10i = p4hir.const #int1_i10i
       %cast = p4hir.cast(%c1_i10i : !i10i) : !i10i
       p4hir.assign %cast, %s : <!i10i>
-      p4hir.transition to @p::@next
+      p4hir.transition to @next
     }
     p4hir.state @next {
       %c2_i10i = p4hir.const #int2_i10i
       %cast = p4hir.cast(%c2_i10i : !i10i) : !i10i
       p4hir.assign %cast, %s : <!i10i>
-      p4hir.transition to @p::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @drop {
-      p4hir.transition to @p::@reject
+      p4hir.transition to @reject
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -74,7 +74,7 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @p::@start
+    p4hir.transition to @start
   }
   p4hir.control @c(%arg0: !Foo {p4hir.dir = #in, p4hir.param_name = "ff"}, %arg1: !p4hir.bool {p4hir.dir = #undir, p4hir.param_name = "bb"})() annotations {pkginfo = {bar = "42", foo = 10 : i64}} {
     p4hir.func action @a() annotations {hidden} {
@@ -95,17 +95,17 @@ module {
       }
       p4hir.table_actions {
         p4hir.table_action @a() {
-          p4hir.call @c::@a () : () -> ()
+          p4hir.call @a () : () -> ()
         }
         p4hir.table_action @b() annotations {tableonly} {
-          p4hir.call @c::@b () : () -> ()
+          p4hir.call @b () : () -> ()
         }
         p4hir.table_action @cc() annotations {defaultonly} {
-          p4hir.call @c::@cc () : () -> ()
+          p4hir.call @cc () : () -> ()
         }
       }
       p4hir.table_default_action annotations {name = "bar"} {
-        p4hir.call @c::@cc () : () -> ()
+        p4hir.call @cc () : () -> ()
       }
       %implementation = p4hir.table_property "implementation" annotations {name = "foo"} {
         %Annotated = p4hir.construct @Annotated() : !Annotated

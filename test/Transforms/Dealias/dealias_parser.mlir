@@ -35,7 +35,7 @@
 !Parsed_packet = !p4hir.struct<"Parsed_packet", ethernet: !Ethernet_h, ipv4: !ipv4_t>
 // CHECK: #[[$DIR_IN:.+]] = #p4hir<dir in>
 // CHECK: #[[$DIR_OUT:.+]] = #p4hir<dir out>
-module {
+module @p4_main {
   p4hir.extern @packet_in {
     p4hir.overload_set @extract {
       p4hir.func @extract_0<!type_T>(!p4hir.ref<!type_T> {p4hir.dir = #out, p4hir.param_name = "hdr"})
@@ -53,19 +53,19 @@ module {
 // CHECK:           p4hir.state @start {
 // CHECK:             p4hir.scope {
 // CHECK:               %[[VAL_5:.*]] = p4hir.struct_field_ref %[[ARG1]]["ethernet"] : <!Parsed_packet>
-// CHECK:               p4hir.call_method @packet_in::@extract<[!Ethernet_h]> (%[[VAL_5]]) of %[[ARG0]] : !packet_in : (!p4hir.ref<!Ethernet_h>) -> ()
+// CHECK:               p4hir.call_method @p4_main::@packet_in::@extract::@extract_0<[!Ethernet_h]> (%[[VAL_5]]) of %[[ARG0]] : !packet_in : (!p4hir.ref<!Ethernet_h>) -> ()
 // CHECK:             }
 // CHECK:           p4hir.state @parse_ipv4 {
 // CHECK:             p4hir.scope {
 // CHECK:               %[[VAL_9:.*]] = p4hir.struct_field_ref %[[ARG1]]["ipv4"] : <!Parsed_packet>
-// CHECK:               p4hir.call_method @packet_in::@extract<[!ipv4_t]> (%[[VAL_9]]) of %[[ARG0]] : !packet_in : (!p4hir.ref<!ipv4_t>) -> ()
+// CHECK:               p4hir.call_method @p4_main::@packet_in::@extract::@extract_0<[!ipv4_t]> (%[[VAL_9]]) of %[[ARG0]] : !packet_in : (!p4hir.ref<!ipv4_t>) -> ()
 // CHECK:             }
   p4hir.parser @parserI(%arg0: !packet_in {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "pkt"}, %arg1: !p4hir.ref<!Parsed_packet> {p4hir.dir = #out, p4hir.param_name = "hdr"})() {
     p4hir.state @start {
       p4hir.scope {
         %ethernet_field_ref = p4hir.struct_field_ref %arg1["ethernet"] : <!Parsed_packet>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!Ethernet_h>
-        p4hir.call_method @packet_in::@extract<[!Ethernet_h]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!Ethernet_h>) -> ()
+        p4hir.call_method @p4_main::@packet_in::@extract::@extract_0<[!Ethernet_h]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!Ethernet_h>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!Ethernet_h>
         p4hir.assign %val_0, %ethernet_field_ref : <!Ethernet_h>
       }
@@ -77,18 +77,18 @@ module {
           %c2048_b16i = p4hir.const #int2048_b16i
           %set = p4hir.set (%c2048_b16i) : !p4hir.set<!b16i>
           p4hir.yield %set : !p4hir.set<!b16i>
-        } to @parserI::@parse_ipv4
+        } to @parse_ipv4
         p4hir.select_case {
           %everything = p4hir.const #everything
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
-        } to @parserI::@accept
+        } to @accept
       }
     }
     p4hir.state @parse_ipv4 {
       p4hir.scope {
         %ipv4_field_ref = p4hir.struct_field_ref %arg1["ipv4"] : <!Parsed_packet>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!ipv4_t>
-        p4hir.call_method @packet_in::@extract<[!ipv4_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!ipv4_t>) -> ()
+        p4hir.call_method @p4_main::@packet_in::@extract::@extract_0<[!ipv4_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!ipv4_t>) -> ()
         %val_2 = p4hir.read %hdr_out_arg : <!ipv4_t>
         p4hir.assign %val_2, %ipv4_field_ref : <!ipv4_t>
       }
@@ -105,18 +105,18 @@ module {
           %c6_b8i = p4hir.const #int6_b8i
           %set_2 = p4hir.set (%c6_b8i) : !p4hir.set<!b8i>
           p4hir.yield %set, %set_2 : !p4hir.set<!b4i>, !p4hir.set<!b8i>
-        } to @parserI::@accept
+        } to @accept
         p4hir.select_case {
           %c4_b4i = p4hir.const #int4_b4i
           %set = p4hir.set (%c4_b4i) : !p4hir.set<!b4i>
           %c23_b8i = p4hir.const #int23_b8i
           %set_2 = p4hir.set (%c23_b8i) : !p4hir.set<!b8i>
           p4hir.yield %set, %set_2 : !p4hir.set<!b4i>, !p4hir.set<!b8i>
-        } to @parserI::@accept
+        } to @accept
         p4hir.select_case {
           %everything = p4hir.const #everything
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
-        } to @parserI::@accept
+        } to @accept
       }
     }
     p4hir.state @accept {
@@ -125,11 +125,11 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @parserI::@start
+    p4hir.transition to @start
   }
   p4hir.parser @subparser3(%arg0: !p4hir.ref<!i10i> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "s"}, %arg1: !p4hir.ref<!p4hir.bool> {p4hir.dir = #out, p4hir.param_name = "matched"})() {
     p4hir.state @start {
-      p4hir.transition to @subparser3::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -137,11 +137,11 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @subparser3::@start
+    p4hir.transition to @start
   }
   p4hir.parser @subparser2(%arg0: !p4hir.ref<!p4hir.bool> {p4hir.dir = #out, p4hir.param_name = "matched"})() {
     p4hir.state @start {
-      p4hir.transition to @subparser2::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -149,11 +149,11 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @subparser2::@start
+    p4hir.transition to @start
   }
   p4hir.parser @subparser1(%arg0: !p4hir.ref<!i10i> {p4hir.dir = #p4hir<dir inout>, p4hir.param_name = "s"})() {
     p4hir.state @start {
-      p4hir.transition to @subparser1::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -161,7 +161,7 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @subparser1::@start
+    p4hir.transition to @start
   }
 
 // Check dealiasing of subparser applies
@@ -170,37 +170,37 @@ module {
 // CHECK-SAME:                    %[[ARG1:.*]]: !i10i {p4hir.dir = #[[$DIR_IN]], p4hir.param_name = "sinit"})() {
 // CHECK:           %[[VAL_3:.*]] = p4hir.variable ["s", init] : <!i10i>
 // CHECK:           p4hir.assign %[[ARG1]], %[[VAL_3]] : <!i10i>
-// CHECK:           p4hir.instantiate @subparser1 () as @sp1
-// CHECK:           p4hir.instantiate @subparser2 () as @sp2
-// CHECK:           p4hir.instantiate @subparser3 () as @sp3
+// CHECK:           p4hir.instantiate @p4_main::@subparser1 () as @sp1
+// CHECK:           p4hir.instantiate @p4_main::@subparser2 () as @sp2
+// CHECK:           p4hir.instantiate @p4_main::@subparser3 () as @sp3
 // CHECK:           p4hir.state @start {
 // CHECK:             p4hir.assign %{{.*}}, %[[VAL_3]] : <!i10i>
-// CHECK:             p4hir.transition to @p::@next
+// CHECK:             p4hir.transition to @next
 // CHECK:           }
 // CHECK:           p4hir.state @next {
 // CHECK:             p4hir.assign %{{.*}}, %[[VAL_3]] : <!i10i>
 // CHECK:             %[[VAL_4:.*]] = p4hir.variable ["matched", init] : <!p4hir.bool>
 // CHECK:             p4hir.assign %{{.*}}, %[[VAL_4]] : <!p4hir.bool>
 // CHECK:             p4hir.scope {
-// CHECK:               p4hir.apply @p::@sp1(%[[VAL_3]]) : (!p4hir.ref<!i10i>) -> ()
+// CHECK:               p4hir.apply @sp1(%[[VAL_3]]) : (!p4hir.ref<!i10i>) -> ()
 // CHECK:             }
 // CHECK:             p4hir.scope {
-// CHECK:               p4hir.apply @p::@sp2(%[[VAL_4]]) : (!p4hir.ref<!p4hir.bool>) -> ()
+// CHECK:               p4hir.apply @sp2(%[[VAL_4]]) : (!p4hir.ref<!p4hir.bool>) -> ()
 // CHECK:             }
 // CHECK:             p4hir.scope {
-// CHECK:               p4hir.apply @p::@sp3(%[[VAL_3]], %[[VAL_4]]) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
+// CHECK:               p4hir.apply @sp3(%[[VAL_3]], %[[VAL_4]]) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
 // CHECK:             }
   p4hir.parser @p(%arg0: !empty {p4hir.dir = #in, p4hir.param_name = "e"}, %arg1: !i10i {p4hir.dir = #in, p4hir.param_name = "sinit"})() {
     %s = p4hir.variable ["s", init] : <!i10i>
     p4hir.assign %arg1, %s : <!i10i>
-    p4hir.instantiate @subparser1 () as @sp1
-    p4hir.instantiate @subparser2 () as @sp2
-    p4hir.instantiate @subparser3 () as @sp3
+    p4hir.instantiate @p4_main::@subparser1 () as @sp1
+    p4hir.instantiate @p4_main::@subparser2 () as @sp2
+    p4hir.instantiate @p4_main::@subparser3 () as @sp3
     p4hir.state @start {
       %c1_i10i = p4hir.const #int1_i10i
       %cast = p4hir.cast(%c1_i10i : !i10i) : !i10i
       p4hir.assign %cast, %s : <!i10i>
-      p4hir.transition to @p::@next
+      p4hir.transition to @next
     }
     p4hir.state @next {
       %c2_i10i = p4hir.const #int2_i10i
@@ -213,13 +213,13 @@ module {
         %s_inout_arg = p4hir.variable ["s_inout_arg", init] : <!i10i>
         %val = p4hir.read %s : <!i10i>
         p4hir.assign %val, %s_inout_arg : <!i10i>
-        p4hir.apply @p::@sp1(%s_inout_arg) : (!p4hir.ref<!i10i>) -> ()
+        p4hir.apply @sp1(%s_inout_arg) : (!p4hir.ref<!i10i>) -> ()
         %val_0 = p4hir.read %s_inout_arg : <!i10i>
         p4hir.assign %val_0, %s : <!i10i>
       }
       p4hir.scope {
         %matched_out_arg = p4hir.variable ["matched_out_arg"] : <!p4hir.bool>
-        p4hir.apply @p::@sp2(%matched_out_arg) : (!p4hir.ref<!p4hir.bool>) -> ()
+        p4hir.apply @sp2(%matched_out_arg) : (!p4hir.ref<!p4hir.bool>) -> ()
         %val = p4hir.read %matched_out_arg : <!p4hir.bool>
         p4hir.assign %val, %matched : <!p4hir.bool>
       }
@@ -228,13 +228,13 @@ module {
         %val = p4hir.read %s : <!i10i>
         p4hir.assign %val, %s_inout_arg : <!i10i>
         %matched_out_arg = p4hir.variable ["matched_out_arg"] : <!p4hir.bool>
-        p4hir.apply @p::@sp3(%s_inout_arg, %matched_out_arg) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
+        p4hir.apply @sp3(%s_inout_arg, %matched_out_arg) : (!p4hir.ref<!i10i>, !p4hir.ref<!p4hir.bool>) -> ()
         %val_0 = p4hir.read %s_inout_arg : <!i10i>
         p4hir.assign %val_0, %s : <!i10i>
         %val_1 = p4hir.read %matched_out_arg : <!p4hir.bool>
         p4hir.assign %val_1, %matched : <!p4hir.bool>
       }
-      p4hir.transition to @p::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -242,6 +242,6 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @p::@start
+    p4hir.transition to @start
   }
 }

@@ -19,7 +19,7 @@
 #int2_b8i = #p4hir.int<2> : !b8i
 #int3_b8i = #p4hir.int<3> : !b8i
 !headers = !p4hir.struct<"headers", h1: !h1_t, h2: !h2_t, h3: !h3_t>
-module {
+module @p4_main {
   p4hir.extern @packet_in annotations {corelib} {
     p4hir.overload_set @extract {
       p4hir.func @extract_0<!type_T>(!p4hir.ref<!type_T> {p4hir.dir = #out, p4hir.param_name = "hdr"})
@@ -44,7 +44,7 @@ module {
       p4hir.scope {
         %h2_field_ref = p4hir.struct_field_ref %arg1["h2"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h2_t>
-        p4hir.call_method @packet_in::@extract<[!h2_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!h2_t>) -> ()
+        p4hir.call_method @p4_main::@packet_in::@extract::@extract_0<[!h2_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!h2_t>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!h2_t>
         p4hir.assign %val_0, %h2_field_ref : <!h2_t>
       }
@@ -52,7 +52,7 @@ module {
       %h2 = p4hir.struct_extract %val["h2"] : !headers
       %next_hdr_type = p4hir.struct_extract %h2["next_hdr_type"] : !h2_t
       p4hir.assign %next_hdr_type, %arg2 : <!b8i>
-      p4hir.transition to @subParserImpl::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -60,18 +60,18 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @subParserImpl::@start
+    p4hir.transition to @start
   }
   // CHECK-LABEL: parserI
   // CHECK-SAME: !p4corelib.packet_in
   p4hir.parser @parserI(%arg0: !packet_in {p4hir.dir = #undir, p4hir.param_name = "pkt"}, %arg1: !p4hir.ref<!headers> {p4hir.dir = #out, p4hir.param_name = "hdr"})() {
-    p4hir.instantiate @subParserImpl() as @subp
+    p4hir.instantiate @p4_main::@subParserImpl() as @subp
     %my_next_hdr_type = p4hir.variable ["my_next_hdr_type"] : <!b8i>
     p4hir.state @start {
       p4hir.scope {
         %h1_field_ref = p4hir.struct_field_ref %arg1["h1"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h1_t>
-        p4hir.call_method @packet_in::@extract<[!h1_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!h1_t>) -> ()
+        p4hir.call_method @p4_main::@packet_in::@extract::@extract_0<[!h1_t]> (%hdr_out_arg) of %arg0 : !packet_in : (!p4hir.ref<!h1_t>) -> ()
         %val_0 = p4hir.read %hdr_out_arg : <!h1_t>
         p4hir.assign %val_0, %h1_field_ref : <!h1_t>
       }
@@ -83,16 +83,16 @@ module {
           %c2_b8i = p4hir.const #int2_b8i
           %set = p4hir.set (%c2_b8i) : !p4hir.set<!b8i>
           p4hir.yield %set : !p4hir.set<!b8i>
-        } to @parserI::@parse_first_h2
+        } to @parse_first_h2
         p4hir.select_case {
           %c3_b8i = p4hir.const #int3_b8i
           %set = p4hir.set (%c3_b8i) : !p4hir.set<!b8i>
           p4hir.yield %set : !p4hir.set<!b8i>
-        } to @parserI::@parse_h3
+        } to @parse_h3
         p4hir.select_case {
           %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
-        } to @parserI::@accept
+        } to @accept
       }
     }
     p4hir.state @parse_first_h2 {
@@ -101,7 +101,7 @@ module {
         %val_0 = p4hir.read %arg1 : <!headers>
         p4hir.assign %val_0, %hdr_inout_arg : <!headers>
         %ret_next_hdr_type_out_arg = p4hir.variable ["ret_next_hdr_type_out_arg"] : <!b8i>
-        p4hir.apply @parserI::@subp(%arg0, %hdr_inout_arg, %ret_next_hdr_type_out_arg) : (!packet_in, !p4hir.ref<!headers>, !p4hir.ref<!b8i>) -> ()
+        p4hir.apply @subp(%arg0, %hdr_inout_arg, %ret_next_hdr_type_out_arg) : (!packet_in, !p4hir.ref<!headers>, !p4hir.ref<!b8i>) -> ()
         %val_1 = p4hir.read %hdr_inout_arg : <!headers>
         p4hir.assign %val_1, %arg1 : <!headers>
         %val_2 = p4hir.read %ret_next_hdr_type_out_arg : <!b8i>
@@ -113,22 +113,22 @@ module {
           %c3_b8i = p4hir.const #int3_b8i
           %set = p4hir.set (%c3_b8i) : !p4hir.set<!b8i>
           p4hir.yield %set : !p4hir.set<!b8i>
-        } to @parserI::@parse_h3
+        } to @parse_h3
         p4hir.select_case {
           %everything = p4hir.const #p4hir.universal_set : !p4hir.set<!p4hir.dontcare>
           p4hir.yield %everything : !p4hir.set<!p4hir.dontcare>
-        } to @parserI::@accept
+        } to @accept
       }
     }
     p4hir.state @parse_h3 {
       p4hir.scope {
         %h3_field_ref = p4hir.struct_field_ref %arg1["h3"] : <!headers>
         %hdr_out_arg = p4hir.variable ["hdr_out_arg"] : <!h3_t>
-        p4hir.call_method @packet_in::@extract<[!h3_t]> (%hdr_out_arg) of %arg0: !packet_in : (!p4hir.ref<!h3_t>) -> ()
+        p4hir.call_method @p4_main::@packet_in::@extract::@extract_0<[!h3_t]> (%hdr_out_arg) of %arg0: !packet_in : (!p4hir.ref<!h3_t>) -> ()
         %val = p4hir.read %hdr_out_arg : <!h3_t>
         p4hir.assign %val, %h3_field_ref : <!h3_t>
       }
-      p4hir.transition to @parserI::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -136,6 +136,6 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @parserI::@start
+    p4hir.transition to @start
   }
 }

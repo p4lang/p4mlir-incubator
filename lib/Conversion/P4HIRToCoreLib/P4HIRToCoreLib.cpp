@@ -98,14 +98,17 @@ struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMet
 
     LogicalResult matchAndRewrite(P4HIR::CallMethodOp op, OpAdaptor operands,
                                   ConversionPatternRewriter &rewriter) const override {
-        auto sym = op.getMethod();
-        auto extSym = sym.getRootReference(), methodSym = sym.getLeafReference();
-        if (extSym == "packet_out" && methodSym == "emit") {
+        auto extOp = op.getExtern();
+        // This returns method name for overloaded methods, not mangled implementation name
+        auto methodName = op.getMethodName();
+
+        if (extOp.getName() == "packet_out" && methodName == "emit") {
             rewriter.replaceOpWithNewOp<P4CoreLib::PacketEmitOp>(op, mlir::TypeRange(),
                                                                  operands.getOperands());
             return success();
-        } else if (extSym == "packet_in") {
-            if (methodSym == "extract") {
+        } else if (extOp.getName() == "packet_in") {
+            if (methodName == "extract") {
+                // Just check number of operands, no need to deal with demangled stuff
                 size_t sz = op.getArgOperands().size();
                 if (sz == 1) {
                     rewriter.replaceOpWithNewOp<P4CoreLib::PacketExtractOp>(op, op.getResultTypes(),
@@ -116,15 +119,15 @@ struct CallMethodOpConversionPattern : public OpConversionPattern<P4HIR::CallMet
                         op, op.getResultTypes(), operands.getOperands());
                     return success();
                 }
-            } else if (methodSym == "length") {
+            } else if (methodName == "length") {
                 rewriter.replaceOpWithNewOp<P4CoreLib::PacketLengthOp>(op, op.getResultTypes(),
                                                                        operands.getOperands());
                 return success();
-            } else if (methodSym == "lookahead") {
+            } else if (methodName == "lookahead") {
                 rewriter.replaceOpWithNewOp<P4CoreLib::PacketLookAheadOp>(op, op.getResultTypes(),
                                                                           operands.getOperands());
                 return success();
-            } else if (methodSym == "advance") {
+            } else if (methodName == "advance") {
                 rewriter.replaceOpWithNewOp<P4CoreLib::PacketAdvanceOp>(op, op.getResultTypes(),
                                                                         operands.getOperands());
                 return success();

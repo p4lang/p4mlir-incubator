@@ -17,12 +17,12 @@ module {
       %error_SomeError = p4hir.const #error_SomeError
       // CHECK: p4corelib.verify
       p4corelib.verify %eq signalling %error_SomeError : !error
-      p4hir.transition to @p2::@next
+      p4hir.transition to @next
     }
     p4hir.state @next {
       %true = p4hir.const #true
       p4hir.assign %true, %arg1 : <!p4hir.bool>
-      p4hir.transition to @p2::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -30,6 +30,6 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @p2::@start
+    p4hir.transition to @start
   }
 }

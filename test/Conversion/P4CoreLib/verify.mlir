@@ -8,7 +8,7 @@
 #in = #p4hir<dir in>
 #true = #p4hir.bool<true> : !p4hir.bool
 #error_SomeError = #p4hir.error<SomeError, !error> : !error
-module {
+module @p4_main {
   // CHECK-NOT: @verify
   p4hir.func @verify(!p4hir.bool {p4hir.dir = #in, p4hir.param_name = "check"}, !error {p4hir.dir = #in, p4hir.param_name = "toSignal"}) annotations {corelib}
   // CHECK-LABEL: p2
@@ -18,13 +18,13 @@ module {
       %eq = p4hir.cmp(eq, %arg0 : !p4hir.bool, %true : !p4hir.bool)
       %error_SomeError = p4hir.const #error_SomeError
       // CHECK: p4corelib.verify %eq signalling %error_SomeError : !error
-      p4hir.call @verify (%eq, %error_SomeError) : (!p4hir.bool, !error) -> ()
-      p4hir.transition to @p2::@next
+      p4hir.call @p4_main::@verify (%eq, %error_SomeError) : (!p4hir.bool, !error) -> ()
+      p4hir.transition to @next
     }
     p4hir.state @next {
       %true = p4hir.const #true
       p4hir.assign %true, %arg1 : <!p4hir.bool>
-      p4hir.transition to @p2::@accept
+      p4hir.transition to @accept
     }
     p4hir.state @accept {
       p4hir.parser_accept
@@ -32,6 +32,6 @@ module {
     p4hir.state @reject {
       p4hir.parser_reject
     }
-    p4hir.transition to @p2::@start
+    p4hir.transition to @start
   }
 }
