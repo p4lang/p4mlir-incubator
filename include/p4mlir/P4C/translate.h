@@ -412,6 +412,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     bool preorder(const P4::IR::ConstructorCallExpression *cce) override;
     bool preorder(const P4::IR::StructExpression *str) override;
     bool preorder(const P4::IR::ListExpression *lst) override;
+    bool preorder(const P4::IR::ArrayExpression *arr) override;
     bool preorder(const P4::IR::Member *m) override;
     bool preorder(const P4::IR::Equ *) override;
     bool preorder(const P4::IR::Neq *) override;
