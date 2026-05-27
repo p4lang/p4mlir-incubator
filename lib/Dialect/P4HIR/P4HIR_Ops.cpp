@@ -2237,7 +2237,6 @@ LogicalResult P4HIR::AssignSliceOp::verify() {
 // ParserOp
 //===----------------------------------------------------------------------===//
 
-// Parser states use fully-qualified names so we lookup from the top-level moduleOp
 static P4HIR::ParserStateOp lookupParserState(Operation *op, mlir::SymbolRefAttr stateName) {
     auto parser = op->getParentOfType<P4HIR::ParserOp>();
     assert(parser && "expected nested parser op");
