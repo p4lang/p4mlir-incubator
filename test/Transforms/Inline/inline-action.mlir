@@ -48,6 +48,7 @@ module {
       p4hir.return
     }
     p4hir.table @t {
+      // CHECK-LABEL: p4hir.table_actions
       p4hir.table_actions {
         p4hir.table_action @b() {
           p4hir.call @p::@b () : () -> ()

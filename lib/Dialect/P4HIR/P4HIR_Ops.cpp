@@ -1987,15 +1987,16 @@ LogicalResult P4HIR::StructExtractOp::canonicalize(P4HIR::StructExtractOp op,
     if (auto readOp = op.getInput().getDefiningOp<P4HIR::ReadOp>()) {
         llvm::SmallVector<P4HIR::StructExtractOp, 4> users;
         for (mlir::Operation *user : readOp->getUsers()) {
-            if (auto structExtract = mlir::dyn_cast<P4HIR::StructExtractOp>(user))
-                users.push_back(structExtract);
-            else
-                return failure();
+            auto structExtract = mlir::dyn_cast<P4HIR::StructExtractOp>(user);
+            if (!structExtract) return failure();
+
+            users.push_back(structExtract);
         }
 
         // Use a map so we don't create duplicate reads of the same field.
         llvm::DenseMap<mlir::Attribute, mlir::Value> fieldVals;
         rewriter.setInsertionPoint(readOp);
+        auto loc = op.getLoc();
         for (auto structExtract : users) {
             auto indexAttr = structExtract.getFieldIndexAttr();
             mlir::Value fieldVal;
@@ -2910,7 +2911,10 @@ LogicalResult P4HIR::SymToValueOp::verifySymbolUses(SymbolTableCollection &symbo
     auto decl = symbolTable.lookupSymbolIn(getParentModule(*this), declAttr);
     if (!decl) return emitOpError("cannot resolve symbol '") << declAttr << "' to declaration";
 
-    if (!mlir::isa<P4HIR::ControlLocalOp, P4HIR::InstantiateOp>(decl))
+    // Allow everything inside table properties and some restricted set otherwise
+    if ((*this)->getParentOfType<P4HIR::TablePropertyOp>()) return mlir::success();
+
+    if (!mlir::isa<P4HIR::ControlLocalOp, P4HIR::InstantiateOp, P4HIR::FuncOp>(decl))
         return emitOpError("invalid symbol reference: ") << decl << ", expected control local";
 
     return mlir::success();
@@ -4701,13 +4705,13 @@ ParseResult P4HIR::InlineAsmOp::parse(OpAsmParser &parser, OperationState &resul
         return mlir::success();
     };
 
-    auto parseOperands = [&](llvm::StringRef name) {
-        if (parser.parseKeyword(name).failed()) return error("expected " + name + " operands here");
-        if (parser.parseEqual().failed()) return expected("=");
-        if (parser.parseLSquare().failed()) return expected("[");
+    auto parseOperands = [&](llvm::StringRef name) -> mlir::ParseResult {
+        if (parser.parseKeyword(name)) return error("expected " + name + " operands here");
+        if (parser.parseEqual()) return expected("=");
+        if (parser.parseLSquare()) return expected("[");
 
         int size = 0;
-        if (parser.parseOptionalRSquare().succeeded()) {
+        if (succeeded(parser.parseOptionalRSquare())) {
             operandsGroupSizes.push_back(size);
             if (parser.parseComma()) return expected(",");
             return mlir::success();
@@ -4734,13 +4738,12 @@ ParseResult P4HIR::InlineAsmOp::parse(OpAsmParser &parser, OperationState &resul
             }))
             return mlir::failure();
 
-        if (parser.parseRSquare().failed() || parser.parseComma().failed()) return expected("]");
+        if (parser.parseRSquare() || parser.parseComma()) return expected("]");
         operandsGroupSizes.push_back(size);
         return mlir::success();
     };
 
-    if (parseOperands("out").failed() || parseOperands("in").failed() ||
-        parseOperands("in_out").failed())
+    if (parseOperands("out") || parseOperands("in") || parseOperands("in_out"))
         return error("failed to parse operands");
 
     if (parser.parseLBrace()) return expected("{");
@@ -4749,12 +4752,11 @@ ParseResult P4HIR::InlineAsmOp::parse(OpAsmParser &parser, OperationState &resul
     if (parser.parseRBrace()) return expected("}");
     if (parser.parseRParen()) return expected(")");
 
-    if (parser.parseOptionalKeyword("side_effects").succeeded())
+    if (succeeded(parser.parseOptionalKeyword("side_effects")))
         result.attributes.set("side_effects", UnitAttr::get(ctxt));
 
-    if (parser.parseOptionalArrow().failed()) return mlir::failure();
-
-    if (parser.parseType(resType).failed()) return mlir::failure();
+    if (succeeded(parser.parseOptionalArrow()))
+        if (parser.parseType(resType)) return mlir::failure();
 
     if (parser.parseOptionalAttrDict(result.attributes)) return mlir::failure();
 
@@ -4894,6 +4896,10 @@ struct P4HIRInlinerInterface : public mlir::DialectInlinerInterface {
     using DialectInlinerInterface::DialectInlinerInterface;
 
     bool isLegalToInline(Operation *call, Operation *callable, bool wouldBeCloned) const final {
+        // Calls inside table properties are merely markers
+        if (call->getParentOfType<P4HIR::TableOp>() && !call->getParentOfType<P4HIR::TableKeyOp>())
+            return false;
+
         if (mlir::isa<P4HIR::CallOp>(call) &&
             mlir::isa<P4HIR::FuncOp, P4HIR::OverloadSetOp>(callable))
             return true;
