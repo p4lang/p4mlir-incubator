@@ -1334,6 +1334,11 @@ def InstantiateOp : P4HIR_Op<"instantiate",
     mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
     mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
     void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
+
+    /// Returns the extern this instantiate constructs, if any. Returns nullptr
+    /// when the callee resolves to something whose parent is not an extern
+    /// (e.g. parser, control or package instantiations).
+    P4HIR::ExternOp getExtern(mlir::SymbolTableCollection *symbolTable = nullptr);
   }];
 
   let assemblyFormat = [{
