@@ -3133,6 +3133,12 @@ P4HIR::ExternOp P4HIR::CallMethodOp::getExtern(mlir::SymbolTableCollection *symb
     return res;
 }
 
+P4HIR::ExternOp P4HIR::InstantiateOp::getExtern(mlir::SymbolTableCollection *symbolTable) {
+    auto *callee = symbolTable ? P4HIR::lookupSymbol(*symbolTable, *this, getCallee())
+                               : P4HIR::lookupSymbol(*this, getCallee());
+    return callee ? callee->getParentOfType<P4HIR::ExternOp>() : nullptr;
+}
+
 void P4HIR::CallMethodOp::getEffects(
     llvm::SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>> &effects) {
     // Get the callee. Note that it already resolves the overload sets.
