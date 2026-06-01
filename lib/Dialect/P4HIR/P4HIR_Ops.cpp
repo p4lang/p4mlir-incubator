@@ -3133,9 +3133,29 @@ P4HIR::ExternOp P4HIR::CallMethodOp::getExtern(mlir::SymbolTableCollection *symb
     return res;
 }
 
+P4HIR::ExternOp P4HIR::CallMethodOp::getExtern(llvm::StringRef name,
+                                               mlir::SymbolTableCollection *symbolTable) {
+    auto ext = getExtern(symbolTable);
+    return (ext && ext.getSymName() == name) ? ext : nullptr;
+}
+
+mlir::Operation *P4HIR::SymToValueOp::getDeclOp(mlir::SymbolTableCollection *symbolTable) {
+    return symbolTable ? P4HIR::lookupSymbol(*symbolTable, *this, getDecl())
+                       : P4HIR::lookupSymbol(*this, getDecl());
+}
+
+mlir::Operation *P4HIR::InstantiateOp::getCalleeOp(mlir::SymbolTableCollection *symbolTable) {
+    return symbolTable ? P4HIR::lookupSymbol(*symbolTable, *this, getCallee())
+                       : P4HIR::lookupSymbol(*this, getCallee());
+}
+
+mlir::Operation *P4HIR::ConstructOp::getCalleeOp(mlir::SymbolTableCollection *symbolTable) {
+    return symbolTable ? P4HIR::lookupSymbol(*symbolTable, *this, getCallee())
+                       : P4HIR::lookupSymbol(*this, getCallee());
+}
+
 P4HIR::ExternOp P4HIR::InstantiateOp::getExtern(mlir::SymbolTableCollection *symbolTable) {
-    auto *callee = symbolTable ? P4HIR::lookupSymbol(*symbolTable, *this, getCallee())
-                               : P4HIR::lookupSymbol(*this, getCallee());
+    auto *callee = getCalleeOp(symbolTable);
     return callee ? callee->getParentOfType<P4HIR::ExternOp>() : nullptr;
 }
 
