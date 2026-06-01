@@ -1335,6 +1335,15 @@ def InstantiateOp : P4HIR_Op<"instantiate",
     mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
     void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
 
+    /// Resolve and return the op this instantiate refers to.
+    mlir::Operation *getCalleeOp(mlir::SymbolTableCollection *symbolTable = nullptr);
+
+    /// Typed variant of getCalleeOp.
+    template <class OpTy>
+    OpTy getCalleeOp(mlir::SymbolTableCollection *symbolTable = nullptr) {
+      return mlir::dyn_cast_or_null<OpTy>(getCalleeOp(symbolTable));
+    }
+
     /// Returns the extern this instantiate constructs, if any. Returns nullptr
     /// when the callee resolves to something whose parent is not an extern
     /// (e.g. parser, control or package instantiations).
@@ -1405,6 +1414,15 @@ def ConstructOp : P4HIR_Op<"construct",
     mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
     mlir::ArrayAttr removeResAttrsAttr() { return nullptr; }
     void setResAttrsAttr(mlir::ArrayAttr) { assert(0 && "expected no result attributes"); }
+
+    /// Resolve and return the op this construct refers to.
+    mlir::Operation *getCalleeOp(mlir::SymbolTableCollection *symbolTable = nullptr);
+
+    /// Typed variant of getCalleeOp.
+    template <class OpTy>
+    OpTy getCalleeOp(mlir::SymbolTableCollection *symbolTable = nullptr) {
+      return mlir::dyn_cast_or_null<OpTy>(getCalleeOp(symbolTable));
+    }
   }];
 
   let assemblyFormat = [{
@@ -1425,6 +1443,17 @@ def SymToValueOp : P4HIR_Op<"symbol_ref",
 
   // TODO: Add verifier
   let hasVerifier = 0;
+
+  let extraClassDeclaration = [{
+    /// Resolve and return the declaration this symbol_ref refers to.
+    mlir::Operation *getDeclOp(mlir::SymbolTableCollection *symbolTable = nullptr);
+
+    /// Typed variant of getDeclOp.
+    template <class OpTy>
+    OpTy getDeclOp(mlir::SymbolTableCollection *symbolTable = nullptr) {
+      return mlir::dyn_cast_or_null<OpTy>(getDeclOp(symbolTable));
+    }
+  }];
 
   let assemblyFormat = [{
     $decl attr-dict `:` type($result)
@@ -1673,6 +1702,12 @@ def CallMethodOp : P4HIR_Op<"call_method",
     mlir::Operation *resolveCallable();
 
     P4HIR::ExternOp getExtern(mlir::SymbolTableCollection *symbolTable = nullptr);
+
+    /// Returns the extern this method belongs to only if its name matches the
+    /// provided `name`; nullptr otherwise.
+    P4HIR::ExternOp getExtern(llvm::StringRef name,
+                              mlir::SymbolTableCollection *symbolTable = nullptr);
+
     mlir::StringRef getMethodName();
 
     mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
