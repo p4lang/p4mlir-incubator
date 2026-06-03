@@ -60,3 +60,22 @@ package top(e _e);
 // CHECK:  %[[c:.*]] = p4hir.construct @c () : !c
 // CHECK:  p4hir.instantiate @top (%[[c]] : !c) as @main
 top(c()) main;
+
+parser Parser2(bit<8> pkt);
+
+package Switch(Parser2 p1);
+package Switch(Parser2 p1, Parser2 p2);
+
+// CHECK:  p4hir.overload_set @Switch {
+// CHECK:    p4hir.package @"$jg6Switch_p7Parser2u8_P2p1"("p1" : !Parser2 {p4hir.dir = #undir, p4hir.param_name = "p1"})
+// CHECK:    p4hir.package @"$jg6Switch_p7Parser2u8pZBu8_P2p12p2"("p1" : !Parser2 {p4hir.dir = #undir, p4hir.param_name = "p1"}, "p2" : !Parser2 {p4hir.dir = #undir, p4hir.param_name = "p2"})
+// CHECK:  }
+
+parser p(bit<8> pkt) {
+    state start {
+        transition accept;
+    }
+}
+
+// CHECK:  p4hir.instantiate @p4_main::@Switch::@"$jg6Switch_p7Parser2u8_P2p1" (%p : !p) as @main2
+Switch(p()) main2;

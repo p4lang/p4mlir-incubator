@@ -59,7 +59,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     using P4Symbol = std::variant<const P4::IR::Declaration *, const P4::IR::P4Parser *,
                                   const P4::IR::P4Control *, const P4::IR::Type_Extern *,
-                                  const P4::IR::P4Program *>;
+                                  const P4::IR::P4Program *, const P4::IR::Type_Package *>;
     using SymbolTable = llvm::ScopedHashTable<P4Symbol, mlir::SymbolRefAttr>;
     using SymbolScope = SymbolTable::ScopeTy;
     SymbolTable p4Symbols;
@@ -67,8 +67,9 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
 
     // To resolve overloads we need to map back from converted function to original method,
     // to correctly update symbol references.
-    using P4Method = std::variant<const P4::IR::Method *, const P4::IR::Function *>;
-    llvm::DenseMap<P4HIR::FuncOp, P4Method> p4Methods;
+    using P4Overload = std::variant<const P4::IR::Method *, const P4::IR::Function *,
+                                    const P4::IR::Type_Package *>;
+    llvm::DenseMap<std::variant<P4HIR::FuncOp, P4HIR::PackageOp>, P4Overload> p4Overloads;
 
     bool defaultInitialize = false;
 
@@ -212,7 +213,8 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     mlir::SymbolRefAttr lookupSymbol(P4Symbol symb);
     P4Symbol parentP4Symbol() const;
     mlir::SymbolRefAttr parentSymbol() const;
-    void renameMethodSymbol(P4HIR::FuncOp method, mlir::SymbolRefAttr newSymbol);
+    void renameOverloadedSymbol(std::variant<P4HIR::FuncOp, P4HIR::PackageOp> ovl,
+                                mlir::SymbolRefAttr newSymbol);
 
     /// Returns fully qualified symbols, if we're nested inside a symbol table
     /// (parser, control or extern)
