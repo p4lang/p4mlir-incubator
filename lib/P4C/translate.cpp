@@ -716,10 +716,11 @@ mlir::SymbolRefAttr P4HIRConverter::parentSymbol() const {
     return p4Symbols.lookup(parentP4Symbol());
 }
 
-void P4HIRConverter::renameMethodSymbol(P4HIR::FuncOp method, mlir::SymbolRefAttr newSymbol) {
-    auto methodIt = p4Methods.find(method);
-    assert(methodIt != p4Methods.end() && "method should be converted");
-    P4Symbol symb = std::visit([](auto &&arg) -> P4Symbol { return arg; }, methodIt->second);
+void P4HIRConverter::renameOverloadedSymbol(std::variant<P4HIR::FuncOp, P4HIR::PackageOp> ovl,
+                                            mlir::SymbolRefAttr newSymbol) {
+    auto ovlIt = p4Overloads.find(ovl);
+    assert(ovlIt != p4Overloads.end() && "overload should be converted");
+    P4Symbol symb = std::visit([](auto &&arg) -> P4Symbol { return arg; }, ovlIt->second);
 
     if (LOGGING(4)) {
         auto oldSymbol = p4Symbols.lookup(symb);
@@ -1411,7 +1412,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
             // the original symbol in the symbol map.
             otherFunc.setSymName(mangler.getFunctionName(otherFunc));
             auto newSymbol = getQualifiedSymbolRef(otherFunc, parentSymRef);
-            renameMethodSymbol(otherFunc, newSymbol);
+            renameOverloadedSymbol(otherFunc, newSymbol);
         } else {
             LOG4("Adding to overload set");
 
@@ -1449,7 +1450,7 @@ bool P4HIRConverter::preorder(const P4::IR::Function *f) {
     }
 
     setSymbol(f, getQualifiedSymbolRef(func, parentSymRef));
-    auto [_, inserted] = p4Methods.try_emplace(func, f);
+    auto [_, inserted] = p4Overloads.try_emplace(func, f);
     assert(inserted && "duplicate conversion");
     p4Values = savedValues;
 
@@ -1491,7 +1492,7 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
             // Rename the original symbol and fix the value in `p4Symbols`
             otherFunc.setSymName(mangler.getFunctionName(otherFunc));
             auto newSymbol = getQualifiedSymbolRef(otherFunc, parentSymRef);
-            renameMethodSymbol(otherFunc, newSymbol);
+            renameOverloadedSymbol(otherFunc, newSymbol);
         } else {
             LOG4("Adding to overload set");
 
@@ -1506,7 +1507,7 @@ bool P4HIRConverter::preorder(const P4::IR::Method *m) {
                                       /* isExternal */ true, argAttrs, annotations);
     // See comment below for the explanation
     if (!p4Symbols.count(m)) setSymbol(m, getQualifiedSymbolRef(func, parentSymRef));
-    auto [_, inserted] = p4Methods.try_emplace(func, m);
+    auto [_, inserted] = p4Overloads.try_emplace(func, m);
     BUG_CHECK(inserted, "duplicate conversion of %1% (aka %2%)", m, dbp(m));
 
     // We need to potentially visit same method multiple times as non-generic
@@ -2055,11 +2056,12 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
         }
     };
 
+    const P4::IR::Method *ctor = nullptr;
     if (const auto *cont = type->to<P4::IR::IContainer>()) {
         populateOperands(cont->getConstructorParameters());
     } else {
         const auto *ext = type->checkedTo<P4::IR::Type_Extern>();
-        const auto *ctor = ext->lookupConstructor(cce->arguments);
+        ctor = ext->lookupConstructor(cce->arguments);
         populateOperands(ctor->getParameters());
     }
 
@@ -2081,15 +2083,19 @@ bool P4HIRConverter::preorder(const P4::IR::ConstructorCallExpression *cce) {
         setValue(cce, instance.getResult());
     } else if (const auto *ext = type->to<P4::IR::Type_Extern>()) {
         LOG4("resolved as extern instantiation");
+        auto externSym = lookupSymbol(ext);
+        BUG_CHECK(externSym, "expected reference extern to be converted: %1%", dbp(ext));
+        auto ctorSym = lookupSymbol(ctor);
+        BUG_CHECK(ctorSym, "expected referenced extern ctor to be convered: %1%", dbp(ctor));
 
-        auto externSym = mlir::SymbolRefAttr::get(context(), ext->name.string_view());
-        auto instance = P4HIR::ConstructOp::create(builder, getLoc(cce), resultType, externSym,
+        auto instance = P4HIR::ConstructOp::create(builder, getLoc(cce), resultType, ctorSym,
                                                    operands, typeParameters);
         setValue(cce, instance.getResult());
     } else if (const auto *pkg = type->to<P4::IR::Type_Package>()) {
         LOG4("resolved as package instantiation");
+        auto pkgSym = lookupSymbol(pkg);
+        BUG_CHECK(pkgSym, "expected reference package to be converted: %1%", dbp(pkg));
 
-        auto pkgSym = mlir::SymbolRefAttr::get(context(), pkg->name.string_view());
         auto instance = P4HIR::ConstructOp::create(builder, getLoc(cce), resultType, pkgSym,
                                                    operands, typeParameters);
         setValue(cce, instance.getResult());
@@ -2525,8 +2531,10 @@ bool P4HIRConverter::preorder(const P4::IR::Declaration_Instance *decl) {
         setSymbol(decl, instance);
     } else if (const auto *pkg = type->to<P4::IR::Type_Package>()) {
         LOG4("resolved as package instantiation");
-        auto packageName = mlir::SymbolRefAttr::get(builder.getContext(), pkg->name.string_view());
-        auto instance = P4HIR::InstantiateOp::create(builder, getLoc(decl), packageName, operands,
+        auto packageSym = lookupSymbol(pkg);
+        BUG_CHECK(packageSym, "expected referenced package to be converted: %1%", dbp(pkg));
+
+        auto instance = P4HIR::InstantiateOp::create(builder, getLoc(decl), packageSym, operands,
                                                      nameAttr, typeParameters, annotations);
         setSymbol(decl, instance);
     } else {
@@ -2633,32 +2641,24 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Package *pkg) {
     auto *parentOp = builder.getBlock()->getParentOp();
     auto origSymName = builder.getStringAttr(pkg->name.string_view());
     auto symName = origSymName;
+    mlir::SymbolRefAttr parentSymRef = nullptr;
     if (auto *otherOp = mlir::SymbolTable::lookupNearestSymbolFrom(parentOp, origSymName)) {
         LOG4("Package constructor is overloaded");
 
         P4HIR::OverloadSetOp ovl;
-        auto getUniqueName = [&](mlir::StringAttr toRename) {
-            unsigned counter = 0;
-            return mlir::SymbolTable::generateSymbolName<256>(
-                toRename,
-                [&](llvm::StringRef candidate) {
-                    return ovl.lookupSymbol(builder.getStringAttr(candidate)) != nullptr;
-                },
-                counter);
-        };
-
+        parentSymRef = getQualifiedSymbolRef(origSymName);
         if (auto otherPkg = llvm::dyn_cast<P4HIR::PackageOp>(otherOp)) {
             LOG4("Creating overload set");
 
             ovl = P4HIR::OverloadSetOp::create(builder, loc, origSymName);
             builder.setInsertionPointToStart(&ovl.createEntryBlock());
-            otherPkg->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
 
-            // Unique the symbol name to avoid clashes in the symbol table.  The
-            // overload set takes over the symbol name. Still, all the symbols
-            // in `p4Symbol` are created wrt the original name, so we do not use
-            // SymbolTable::rename() here.
-            otherPkg.setSymName(getUniqueName(origSymName));
+            otherPkg->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
+            // The overload set takes over the symbol name, we need to rename
+            // the original symbol in the symbol map.
+            otherPkg.setSymName(mangler.getPackageName(otherPkg));
+            auto newSymbol = getQualifiedSymbolRef(otherPkg, parentSymRef);
+            renameOverloadedSymbol(otherPkg, newSymbol);
         } else {
             LOG4("Adding to overload set");
 
@@ -2666,13 +2666,16 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Package *pkg) {
             builder.setInsertionPointToEnd(&ovl.getBody().front());
         }
 
-        symName = builder.getStringAttr(getUniqueName(symName));
+        symName = mangler.getPackageName(ctorType);
 
         LOG4("Translated: " << origSymName.getValue().str() << " -> " << symName.getValue().str());
     }
 
-    P4HIR::PackageOp::create(builder, loc, symName, ctorType, typeParameters, argAttrs,
-                             annotations);
+    auto pkgOp = P4HIR::PackageOp::create(builder, loc, symName, ctorType, typeParameters, argAttrs,
+                                          annotations);
+    setSymbol(pkg, getQualifiedSymbolRef(pkgOp, parentSymRef));
+    auto [_, inserted] = p4Overloads.try_emplace(pkgOp, pkg);
+    assert(inserted && "duplicate conversion");
 
     return false;
 }
