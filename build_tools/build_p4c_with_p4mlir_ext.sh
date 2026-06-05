@@ -59,6 +59,14 @@ CMAKE_FLAGS+=" -DCMAKE_INSTALL_PREFIX=$LLVM_INSTALL_DIR"
 CMAKE_FLAGS+=" -DMLIR_DIR=$LLVM_INSTALL_DIR/lib/cmake/mlir"
 CMAKE_FLAGS+=" -DLLVM_EXTERNAL_LIT=$LLVM_BUILD_DIR/bin/llvm-lit"
 
+# Andy's temporary extra commands to show in CI exactly what Ubuntu
+# packages are installed before the successful build below, to see if
+# that helps him learn how to get a successful build on his local
+# system.
+uname -a
+cat /etc/os-release
+cat /var/lib/dpkg/status
+
 # Build P4C with P4MLIR extension
 mkdir -p "$P4C_BUILD_DIR"
 cd "$P4C_BUILD_DIR"
