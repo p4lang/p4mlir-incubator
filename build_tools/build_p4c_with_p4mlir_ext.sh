@@ -65,7 +65,15 @@ CMAKE_FLAGS+=" -DLLVM_EXTERNAL_LIT=$LLVM_BUILD_DIR/bin/llvm-lit"
 # system.
 uname -a
 cat /etc/os-release
-cat /var/lib/dpkg/status
+#cat /var/lib/dpkg/status
+gcc --version
+g++ --version
+clang --version
+clang++ --version
+ld --version
+cmake --version
+make --version
+ninja --version
 
 # Build P4C with P4MLIR extension
 mkdir -p "$P4C_BUILD_DIR"
