@@ -22,6 +22,14 @@ LLVM_INSTALL_DIR=$P4MLIR_REPO_DIR/install
 mkdir -p "$LLVM_BUILD_DIR"
 cd "$LLVM_BUILD_DIR"
 
+# Andy's temporary extra commands to show in CI exactly what Ubuntu
+# packages are installed before the successful build below, to see if
+# that helps him learn how to get a successful build on his local
+# system.
+uname -a
+cat /etc/os-release
+cat /var/lib/dpkg/status
+
 # Configure CMake flags
 # Note that P4C uses both RTTI and C++ exceptions, so we need to build LLVM/MLIR having them enabled as well
 CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=$LLVM_INSTALL_DIR"
