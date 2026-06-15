@@ -580,14 +580,14 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
         }
 
         for (const auto *field : lst->components) fields.push_back(getOrCreateConstantExpr(field));
-        return setConstantExpr(expr, P4HIR::AggAttr::get(type, builder.getArrayAttr(fields)));
+        return setConstantExpr(expr, P4HIR::AggAttr::get(type, fields));
     }
     if (const auto *str = expr->to<P4::IR::StructExpression>()) {
         auto type = getOrCreateType(str->type);
         llvm::SmallVector<mlir::Attribute, 4> fields;
         for (const auto *field : str->components)
             fields.push_back(getOrCreateConstantExpr(field->expression));
-        return setConstantExpr(expr, P4HIR::AggAttr::get(type, builder.getArrayAttr(fields)));
+        return setConstantExpr(expr, P4HIR::AggAttr::get(type, fields));
     }
     if (const auto *arr = expr->to<P4::IR::ArrayIndex>()) {
         auto base = mlir::cast<P4HIR::AggAttr>(getOrCreateConstantExpr(arr->left));
@@ -601,7 +601,7 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
         auto type = getOrCreateType(arr->type);
         llvm::SmallVector<mlir::Attribute, 4> elts;
         for (const auto *elt : arr->components) elts.push_back(getOrCreateConstantExpr(elt));
-        return setConstantExpr(expr, P4HIR::AggAttr::get(type, builder.getArrayAttr(elts)));
+        return setConstantExpr(expr, P4HIR::AggAttr::get(type, elts));
     }
     if (const auto *range = expr->to<P4::IR::Range>()) {
         auto rangeType = mlir::cast<P4HIR::SetType>(getOrCreateType(range->type));

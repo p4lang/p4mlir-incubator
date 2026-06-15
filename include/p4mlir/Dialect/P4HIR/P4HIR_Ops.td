@@ -1084,6 +1084,7 @@ def StructOp : P4HIR_Op<"struct",
   let results = (outs StructLikeTypeInterface:$result);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def StructExtractOp : P4HIR_Op<"struct_extract",
@@ -1188,6 +1189,7 @@ def TupleOp : P4HIR_Op<"tuple",
   // }];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def TupleExtractOp : P4HIR_Op<"tuple_extract",

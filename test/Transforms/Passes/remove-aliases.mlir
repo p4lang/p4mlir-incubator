@@ -69,7 +69,9 @@ module {
 
   // Test structs and extracts
   %var_s = p4hir.variable ["s"] : <!S>
-  // CHECK: %struct_S = p4hir.struct (%[[c0_b32i]], %[[c2_b32i]]) : !S
+  // CHECK: %[[S_VAR:.*]] = p4hir.variable ["s"] : <!S>
+  // CHECK: %[[AGG_CST:.*]] = p4hir.const #p4hir.aggregate<[#int0_b32i, #int2_b32i]> : !S
+  // CHECK: p4hir.assign %[[AGG_CST]], %[[S_VAR]] : <!S>
   %struct_S = p4hir.struct (%c0_b32i, %c2_N32) : !S
   p4hir.assign %struct_S, %var_s : <!S>
   %struct_extract = p4hir.struct_field_ref %var_s["n"] : <!S>

@@ -1796,6 +1796,15 @@ void P4HIR::StructOp::getAsmResultNames(function_ref<void(Value, StringRef)> set
     setNameFn(getResult(), name);
 }
 
+OpFoldResult P4HIR::StructOp::fold(FoldAdaptor adaptor) {
+    // Fold to aggregate constant
+    bool isCstAgg =
+        llvm::all_of(adaptor.getInput(), [](mlir::Attribute attr) { return attr != nullptr; });
+    if (isCstAgg) return P4HIR::AggAttr::get(getType(), adaptor.getInput());
+
+    return {};
+}
+
 //===----------------------------------------------------------------------===//
 // StructExtractOp
 //===----------------------------------------------------------------------===//
@@ -2087,6 +2096,15 @@ LogicalResult P4HIR::TupleExtractOp::verify() {
                              << " does not match expected type " << getType();
 
     return success();
+}
+
+OpFoldResult P4HIR::TupleOp::fold(FoldAdaptor adaptor) {
+    // Fold to aggregate constant
+    bool isCstAgg =
+        llvm::all_of(adaptor.getInput(), [](mlir::Attribute attr) { return attr != nullptr; });
+    if (isCstAgg) return P4HIR::AggAttr::get(getType(), adaptor.getInput());
+
+    return {};
 }
 
 ParseResult P4HIR::TupleExtractOp::parse(OpAsmParser &parser, OperationState &result) {
