@@ -77,7 +77,10 @@ module {
   %h = p4hir.variable ["h"] : <!H>
   %c0_b32i = p4hir.const #int0_b32i
   %valid = p4hir.const #valid
-  // CHECK: p4hir.struct (%{{.*}}, %[[c2]], %{{.*}}) : !H
+
+  // CHECK: %[[H_VAR:.*]] = p4hir.variable ["h"] : <!H>
+  // CHECK: %[[CST_HDR:.*]] = p4hir.const #p4hir.aggregate<[#int0_b32i, #int1_b32i, #valid]> : !H
+  // CHECK: p4hir.assign %[[CST_HDR]], %[[H_VAR]] : <!H>
   %hdr_H = p4hir.struct (%c0_b32i, %c2, %valid) : !H
   p4hir.assign %hdr_H, %h : <!H>
   %serenum_field_ref = p4hir.struct_field_ref %h["suits"] : <!H>

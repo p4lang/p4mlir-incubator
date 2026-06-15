@@ -27,7 +27,7 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
             attr.getFields().getAsRange<mlir::TypedAttr>(), [&](auto fieldAttr) {
                 return convertTypeAttribute(fieldAttr.getType(), fieldAttr).value_or(nullptr);
             });
-        return P4HIR::AggAttr::get(convertType(type), ArrayAttr::get(attr.getContext(), newAttrs));
+        return P4HIR::AggAttr::get(convertType(type), newAttrs);
     });
 
     addTypeAttributeConversion([&](mlir::Type type, P4HIR::SetAttr attr) {

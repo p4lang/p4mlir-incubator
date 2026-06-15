@@ -839,7 +839,7 @@ mlir::TypedAttr ArrayType::getDefaultValue() {
     if (!defValue) return nullptr;
 
     llvm::SmallVector<Attribute> defVals(getSize(), defValue);
-    return P4HIR::AggAttr::get(*this, mlir::ArrayAttr::get(getContext(), defVals));
+    return P4HIR::AggAttr::get(*this, defVals);
 }
 
 void P4HIRDialect::registerTypes() {

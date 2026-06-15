@@ -88,6 +88,10 @@ def P4HIR_AggAttr : P4HIR_Attr<"Agg", "aggregate", [TypedAttrInterface]> {
     AttrBuilderWithInferredContext<(ins "mlir::Type":$type,
                                         "mlir::ArrayAttr":$members), [{
       return $_get(type.getContext(), type, members);
+    }]>,
+    AttrBuilderWithInferredContext<(ins "mlir::Type":$type,
+                                        "llvm::ArrayRef<mlir::Attribute>":$members), [{
+      return $_get(type.getContext(), type, mlir::ArrayAttr::get(type.getContext(), members));
     }]>
   ];
   let genVerifyDecl = 1;
