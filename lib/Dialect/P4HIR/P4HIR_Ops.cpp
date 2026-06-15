@@ -126,8 +126,7 @@ static LogicalResult checkConstantTypes(mlir::Operation *op, mlir::Type opType,
     }
 
     if (mlir::isa<P4HIR::AggAttr>(attrType)) {
-        if (!mlir::isa<P4HIR::StructType, P4HIR::HeaderType, P4HIR::HeaderUnionType,
-                       mlir::TupleType, P4HIR::ArrayType>(opType))
+        if (!mlir::isa<P4HIR::StructLikeTypeInterface, mlir::TupleType, P4HIR::ArrayType>(opType))
             return op->emitOpError("result type (") << opType << ") is not an aggregate type";
 
         return success();
