@@ -274,6 +274,46 @@ def CastOp : P4HIR_Op<"cast",
     `:` type($result) attr-dict
   }];
 
+  let extraClassDeclaration = [{
+    auto getSrcType() {
+      return getSrc().getType();
+    }
+
+    // Return true iff this is a cast to change the signedness of a fixed-width integer.
+    bool isSignCast() {
+      auto innerBitsType = mlir::dyn_cast<P4HIR::BitsType>(getSrcType());
+      auto resBitsType = mlir::dyn_cast<P4HIR::BitsType>(getType());
+      return innerBitsType && resBitsType &&
+             resBitsType.getWidth() == innerBitsType.getWidth();
+    }
+
+    // Return true iff this is a cast to truncate a fixed-width integer.
+    bool isTruncationCast() {
+      auto innerBitsType = mlir::dyn_cast<P4HIR::BitsType>(getSrcType());
+      auto resBitsType = mlir::dyn_cast<P4HIR::BitsType>(getType());
+      return innerBitsType && resBitsType &&
+             resBitsType.getWidth() < innerBitsType.getWidth();
+    }
+
+    // Return true iff this is a cast to zero extend an unsigned fixed-width integer.
+    bool isZeroExtensionCast() {
+      auto innerBitsType = mlir::dyn_cast<P4HIR::BitsType>(getSrcType());
+      auto resBitsType = mlir::dyn_cast<P4HIR::BitsType>(getType());
+      return innerBitsType && resBitsType &&
+             !resBitsType.isSigned() && !innerBitsType.isSigned() &&
+             resBitsType.getWidth() > innerBitsType.getWidth();
+    }
+
+    // Return true iff this is a cast to sign extend a signed fixed-width integer.
+    bool isSignExtensionCast() {
+      auto innerBitsType = mlir::dyn_cast<P4HIR::BitsType>(getSrcType());
+      auto resBitsType = mlir::dyn_cast<P4HIR::BitsType>(getType());
+      return innerBitsType && resBitsType &&
+             !resBitsType.isSigned() && !innerBitsType.isSigned() &&
+             resBitsType.getWidth() > innerBitsType.getWidth();
+    }
+  }];
+
   let hasFolder = 1;
   let hasCanonicalizeMethod = 1;
   // FIXME: add verifier.
@@ -417,6 +457,7 @@ def ConcatOp : P4HIR_Op<"concat", [Pure]> {
 
   let hasVerifier = 1;
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 
   let assemblyFormat = [{
     `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` `:` type($result) attr-dict

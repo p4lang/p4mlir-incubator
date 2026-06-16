@@ -292,7 +292,7 @@ LogicalResult P4HIR::CastOp::canonicalize(P4HIR::CastOp op, PatternRewriter &rew
     //      cast(%b) : B -> C
     // ===> cast(%a) : A -> C
     if (auto inputCast = mlir::dyn_cast_if_present<CastOp>(op.getSrc().getDefiningOp())) {
-        mlir::Type srcType = inputCast.getSrc().getType();
+        mlir::Type srcType = inputCast.getSrcType();
         mlir::Type midType = inputCast.getType();
         mlir::Type dstType = op.getType();
 
@@ -722,6 +722,47 @@ OpFoldResult P4HIR::ConcatOp::fold(FoldAdaptor adaptor) {
     auto result = (lhsVal.zextOrTrunc(resultWidth) << rhsWidth) | rhsVal.zextOrTrunc(resultWidth);
 
     return P4HIR::IntAttr::get(getContext(), resultType, result);
+}
+
+LogicalResult P4HIR::ConcatOp::canonicalize(P4HIR::ConcatOp op, PatternRewriter &rewriter) {
+    // Canonicalize (A[H2:L2] ++ A[H1:L1]) to A[H2:L1] if H1 == L2.
+    auto *ctx = rewriter.getContext();
+    mlir::Value lhs = op.getLhs();
+    mlir::Value rhs = op.getRhs();
+
+    // We can look through LHS casts, even if they extend or truncate.
+    if (auto lhsCastOp = lhs.getDefiningOp<P4HIR::CastOp>()) lhs = lhsCastOp.getSrc();
+    // We can look through RHS signedness casts.
+    if (auto rhsCastOp = rhs.getDefiningOp<P4HIR::CastOp>(); rhsCastOp && rhsCastOp.isSignCast())
+        rhs = rhsCastOp.getSrc();
+
+    // Check for adjacent slices of the same value.
+    auto lhsSlice = lhs.getDefiningOp<P4HIR::SliceOp>();
+    auto rhsSlice = rhs.getDefiningOp<P4HIR::SliceOp>();
+    if (!lhsSlice || !rhsSlice || (lhsSlice.getInput() != rhsSlice.getInput()) ||
+        (lhsSlice.getLowBit() != rhsSlice.getHighBit() + 1))
+        return failure();
+
+    // Construct new unified slice.
+    auto lhsSliceType = mlir::cast<P4HIR::BitsType>(lhsSlice.getType());
+    auto rhsSliceType = mlir::cast<P4HIR::BitsType>(rhsSlice.getType());
+    auto newSliceType =
+        P4HIR::BitsType::get(ctx, lhsSliceType.getWidth() + rhsSliceType.getWidth(), false);
+    mlir::Value newRes =
+        rewriter.createOrFold<P4HIR::SliceOp>(op.getLoc(), newSliceType, lhsSlice.getInput(),
+                                              lhsSlice.getHighBit(), rhsSlice.getLowBit());
+
+    // Restore signedness based on original result.
+    auto resType = mlir::cast<P4HIR::BitsType>(op.getType());
+    auto signedNewSliceType =
+        P4HIR::BitsType::get(ctx, newSliceType.getWidth(), resType.isSigned());
+    newRes = rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), signedNewSliceType, newRes);
+
+    // Restore width based on original result.
+    newRes = rewriter.createOrFold<P4HIR::CastOp>(op.getLoc(), resType, newRes);
+
+    rewriter.replaceOp(op, newRes);
+    return success();
 }
 
 //===----------------------------------------------------------------------===//

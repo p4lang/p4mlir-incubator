@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// RUN: p4mlir-opt --canonicalize %s | FileCheck %s
+// RUN: p4mlir-opt --canonicalize %s -split-input-file | FileCheck %s
 
 !b3i = !p4hir.bit<3>
 !b5i = !p4hir.bit<5>
@@ -84,6 +84,149 @@ module {
     // CHECK: p4hir.concat
     %r = p4hir.concat(%arg0 : !b3i, %c5_b5i : !b5i) : !b8i
     p4hir.call @blackhole_b8i(%r) : (!b8i) -> ()
+    p4hir.return
+  }
+}
+
+// -----
+
+!b10i = !p4hir.bit<10>
+!b16i = !p4hir.bit<16>
+!b3i = !p4hir.bit<3>
+!b5i = !p4hir.bit<5>
+!b6i = !p4hir.bit<6>
+!i6i = !p4hir.int<6>
+!b7i = !p4hir.bit<7>
+!b9i = !p4hir.bit<9>
+!i10i = !p4hir.int<10>
+!b11i = !p4hir.bit<11>
+!i11i = !p4hir.int<11>
+!i16i = !p4hir.int<16>
+!i5i = !p4hir.int<5>
+module {
+  // CHECK-LABEL: p4hir.func @funcA
+  p4hir.func @funcA(%arg0: !b16i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "val"}) -> !b10i {
+    // CHECK-DAG: %[[NEW_SLICE:.*]] = p4hir.slice %arg0[13 : 4] : !b16i -> !b10i
+    // CHECK-DAG: p4hir.soft_return %[[NEW_SLICE]] : !b10i
+
+    %s13_9 = p4hir.slice %arg0[13 : 9] : !b16i -> !b5i
+    %s8_4 = p4hir.slice %arg0[8 : 4] : !b16i -> !b5i
+    %0 = p4hir.concat(%s13_9 : !b5i, %s8_4 : !b5i) : !b10i
+    p4hir.soft_return %0 : !b10i
+    p4hir.return
+  }
+
+  // CHECK-LABEL: p4hir.func @funcB
+  p4hir.func @funcB(%arg0: !i16i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "val"}) -> !b10i {
+    // CHECK-DAG: %[[NEW_SLICE:.*]] = p4hir.slice %arg0[13 : 4] : !i16i -> !b10i
+    // CHECK-DAG: p4hir.soft_return %[[NEW_SLICE]] : !b10i
+
+    %s13_9 = p4hir.slice %arg0[13 : 9] : !i16i -> !b5i
+    %s8_4 = p4hir.slice %arg0[8 : 4] : !i16i -> !b5i
+    %0 = p4hir.concat(%s13_9 : !b5i, %s8_4 : !b5i) : !b10i
+    p4hir.soft_return %0 : !b10i
+    p4hir.return
+  }
+
+  // CHECK-LABEL: p4hir.func @funcC
+  p4hir.func @funcC(%arg0: !i16i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "val"}) -> !i10i {
+    // CHECK-DAG: %[[NEW_SLICE:.*]] = p4hir.slice %arg0[13 : 4] : !i16i -> !b10i
+    // CHECK-DAG: %[[CAST:.*]] = p4hir.cast(%[[NEW_SLICE]] : !b10i) : !i10i
+    // CHECK-DAG: p4hir.soft_return %[[CAST]] : !i10i
+
+    %s13_9 = p4hir.slice %arg0[13 : 9] : !i16i -> !b5i
+    %cast = p4hir.cast(%s13_9 : !b5i) : !i5i
+    %s8_4 = p4hir.slice %arg0[8 : 4] : !i16i -> !b5i
+    %0 = p4hir.concat(%cast : !i5i, %s8_4 : !b5i) : !i10i
+    p4hir.soft_return %0 : !i10i
+    p4hir.return
+  }
+
+  // CHECK-LABEL: p4hir.func @funcD
+  p4hir.func @funcD(%arg0: !i16i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "val"}) -> !b10i {
+    // CHECK-DAG: %[[NEW_SLICE:.*]] = p4hir.slice %arg0[13 : 4] : !i16i -> !b10i
+    // CHECK-DAG: p4hir.soft_return %[[NEW_SLICE]] : !b10i
+
+    %s13_9 = p4hir.slice %arg0[13 : 9] : !i16i -> !b5i
+    %s8_4 = p4hir.slice %arg0[8 : 4] : !i16i -> !b5i
+    %cast = p4hir.cast(%s8_4 : !b5i) : !i5i
+    %0 = p4hir.concat(%s13_9 : !b5i, %cast : !i5i) : !b10i
+    p4hir.soft_return %0 : !b10i
+    p4hir.return
+  }
+
+  // CHECK-LABEL: p4hir.func @funcE
+  p4hir.func @funcE(%arg0: !i16i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "val"}) -> !i10i {
+    // CHECK-DAG: %[[NEW_SLICE:.*]] = p4hir.slice %arg0[13 : 4] : !i16i -> !b10i
+    // CHECK-DAG: %[[CAST:.*]] = p4hir.cast(%[[NEW_SLICE]] : !b10i) : !i10i
+    // CHECK-DAG: p4hir.soft_return %[[CAST]] : !i10i
+
+    %s13_9 = p4hir.slice %arg0[13 : 9] : !i16i -> !b5i
+    %cast = p4hir.cast(%s13_9 : !b5i) : !i5i
+    %s8_4 = p4hir.slice %arg0[8 : 4] : !i16i -> !b5i
+    %cast_0 = p4hir.cast(%s8_4 : !b5i) : !i5i
+    %0 = p4hir.concat(%cast : !i5i, %cast_0 : !i5i) : !i10i
+    p4hir.soft_return %0 : !i10i
+    p4hir.return
+  }
+
+  // CHECK-LABEL: p4hir.func @funcF
+  p4hir.func @funcF(%arg0: !b16i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "val"}) -> !b16i {
+    // CHECK-DAG: p4hir.soft_return %arg0 : !b16i
+
+    %s15_13 = p4hir.slice %arg0[15 : 13] : !b16i -> !b3i
+    %s12_7 = p4hir.slice %arg0[12 : 7] : !b16i -> !b6i
+    %0 = p4hir.concat(%s15_13 : !b3i, %s12_7 : !b6i) : !b9i
+    %s6_0 = p4hir.slice %arg0[6 : 0] : !b16i -> !b7i
+    %1 = p4hir.concat(%0 : !b9i, %s6_0 : !b7i) : !b16i
+    p4hir.soft_return %1 : !b16i
+    p4hir.return
+  }
+
+  // CHECK-LABEL: p4hir.func @funcG
+  p4hir.func @funcG(%arg0: !b16i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "val"}) -> !b11i {
+    // CHECK-DAG: %[[NEW_SLICE:.*]] = p4hir.slice %arg0[13 : 4] : !b16i -> !b10i
+    // CHECK-DAG: %[[CAST:.*]] = p4hir.cast(%[[NEW_SLICE]] : !b10i) : !b11i
+    // CHECK-DAG: p4hir.soft_return %[[CAST]] : !b11i
+
+    %s13_9 = p4hir.slice %arg0[13 : 9] : !b16i -> !b5i
+    %cast = p4hir.cast(%s13_9 : !b5i) : !b6i
+    %s8_4 = p4hir.slice %arg0[8 : 4] : !b16i -> !b5i
+    %0 = p4hir.concat(%cast : !b6i, %s8_4 : !b5i) : !b11i
+    p4hir.soft_return %0 : !b11i
+    p4hir.return
+  }
+
+  // CHECK-LABEL: p4hir.func @funcH
+  p4hir.func @funcH(%arg0: !i16i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "val"}) -> !i11i {
+    // Cannot optimize with RHS cast that changes width.
+    // CHECK-COUNT-2: p4hir.slice
+    // CHECK: p4hir.concat
+
+    %s13_9 = p4hir.slice %arg0[13 : 9] : !i16i -> !b5i
+    %cast = p4hir.cast(%s13_9 : !b5i) : !i5i
+    %s8_4 = p4hir.slice %arg0[8 : 4] : !i16i -> !b5i
+    %cast_0 = p4hir.cast(%s8_4 : !b5i) : !b6i
+    %cast_1 = p4hir.cast(%cast_0 : !b6i) : !i6i
+    %0 = p4hir.concat(%cast : !i5i, %cast_1 : !i6i) : !i11i
+    p4hir.soft_return %0 : !i11i
+    p4hir.return
+  }
+
+  // CHECK-LABEL: p4hir.func @funcI
+  p4hir.func @funcI(%arg0: !i16i {p4hir.dir = #p4hir<dir undir>, p4hir.param_name = "val"}) -> !i11i {
+    // CHECK-DAG: %[[NEW_SLICE:.*]] = p4hir.slice %arg0[13 : 4] : !i16i -> !b10i
+    // CHECK-DAG: %[[CAST_1:.*]] = p4hir.cast(%[[NEW_SLICE]] : !b10i) : !i10i
+    // CHECK-DAG: %[[CAST_2:.*]] = p4hir.cast(%[[CAST_1]] : !i10i) : !i11i
+    // CHECK-DAG: p4hir.soft_return %[[CAST_2]] : !i11i
+
+    %s13_9 = p4hir.slice %arg0[13 : 9] : !i16i -> !b5i
+    %cast = p4hir.cast(%s13_9 : !b5i) : !b6i
+    %cast_0 = p4hir.cast(%cast : !b6i) : !i6i
+    %s8_4 = p4hir.slice %arg0[8 : 4] : !i16i -> !b5i
+    %cast_1 = p4hir.cast(%s8_4 : !b5i) : !i5i
+    %0 = p4hir.concat(%cast_0 : !i6i, %cast_1 : !i5i) : !i11i
+    p4hir.soft_return %0 : !i11i
     p4hir.return
   }
 }
