@@ -143,3 +143,34 @@ action compare_varbits(inout Hwvb h) {
     return;
   }
 }
+
+// CHECK-LABEL: test_valid_bit
+action test_valid_bit(inout H h) {
+  // CHECK-DAG: %[[VALID_REF_1:.*]] = p4hir.struct_field_ref %arg0["__valid"] : <!H>
+  // CHECK-DAG: %[[VALID_1:.*]] = p4hir.read %[[VALID_REF_1]] : <!validity_bit>
+  // CHECK-DAG: %[[CST_VALID_1:.*]] = p4hir.const #valid
+  // CHECK-DAG: %[[EQ_1:.*]] = p4hir.cmp(eq, %[[VALID_1]] : !validity_bit, %[[CST_VALID_1]] : !validity_bit)
+  // CHECK-DAG: p4hir.if %[[EQ_1]] {
+  // CHECK-DAG:   %[[CST_INVALID:.*]] = p4hir.const #invalid
+  // CHECK-DAG:   %[[VALID_REF_2:.*]] = p4hir.struct_field_ref %arg0["__valid"] : <!H>
+  // CHECK-DAG:   p4hir.assign %[[CST_INVALID]], %[[VALID_REF_2]] : <!validity_bit>
+  // CHECK-DAG: }
+  // CHECK-DAG: %[[VALID_REF_3:.*]] = p4hir.struct_field_ref %arg0["__valid"] : <!H>
+  // CHECK-DAG: %[[VALID_3:.*]] = p4hir.read %[[VALID_REF_3]] : <!validity_bit>
+  // CHECK-DAG: %[[CST_VALID_2:.*]] = p4hir.const #valid
+  // CHECK-DAG: %[[EQ_2:.*]] = p4hir.cmp(eq, %[[VALID_3]] : !validity_bit, %[[CST_VALID_2]] : !validity_bit)
+  // CHECK-DAG: %[[NOT_EQ_2:.*]] = p4hir.unary(not, %[[EQ_2]]) : !p4hir.bool
+  // CHECK-DAG: p4hir.if %[[NOT_EQ_2]] {
+  // CHECK-DAG:   %[[CST_VALID_3:.*]] = p4hir.const #valid
+  // CHECK-DAG:   %[[VALID_REF_4:.*]] = p4hir.struct_field_ref %arg0["__valid"] : <!H>
+  // CHECK-DAG:   p4hir.assign %[[CST_VALID_3]], %[[VALID_REF_4]] : <!validity_bit>
+  // CHECK-DAG: }
+
+  if (h.isValid()) {
+    h.setInvalid();
+  }
+
+  if (!h.isValid()) {
+    h.setValid();
+  }
+}
