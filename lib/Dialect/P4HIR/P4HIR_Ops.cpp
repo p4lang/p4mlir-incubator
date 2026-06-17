@@ -1039,6 +1039,26 @@ LogicalResult P4HIR::ScopeOp::verify() {
     return success();
 }
 
+void P4HIR::ScopeOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>> &effects) {
+    if (auto annotations = getAnnotations()) {
+        bool isEmpty =
+            getScopeRegion().hasOneBlock() && llvm::hasSingleElement(getScopeRegion().front());
+
+        if (llvm::any_of(annotations->getValue(),
+                         [&](auto attr) { return attr.getName() != "atomic" || !isEmpty; })) {
+            effects.emplace_back(MemoryEffects::Write::get(), SideEffects::DefaultResource::get());
+            return;
+        }
+    }
+
+    for (Region &region : getOperation()->getRegions())
+        for (Block &block : region)
+            for (Operation &op : block)
+                if (auto opEffects = mlir::getEffectsRecursively(&op))
+                    effects.append(opEffects->begin(), opEffects->end());
+}
+
 LogicalResult P4HIR::ScopeOp::canonicalize(P4HIR::ScopeOp op, PatternRewriter &rewriter) {
     // Canonicalize scope: one without variables could be inlined
     if (op.getOps<VariableOp>().empty() && op.getScopeRegion().hasOneBlock() &&

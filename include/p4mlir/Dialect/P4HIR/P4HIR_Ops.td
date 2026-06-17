@@ -585,7 +585,8 @@ def CmpOp : P4HIR_Op<"cmp",
 def ScopeOp : P4HIR_Op<"scope", [
        DeclareOpInterfaceMethods<RegionBranchOpInterface>,
        RecursivelySpeculatable,
-       RecursiveMemoryEffects, AutomaticAllocationScope,
+       DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+       AutomaticAllocationScope,
        NoRegionArguments, Annotated]> {
   let summary = "Represents a P4 scope";
   let description = [{
