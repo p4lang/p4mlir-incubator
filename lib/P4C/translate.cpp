@@ -1645,10 +1645,10 @@ mlir::Value P4HIRConverter::emitHeaderBuiltInMethod(mlir::Location loc,
             }
         }
 
-        if (builtInMethod->name == P4::IR::Type_Header::setValid) {
-            emitHeaderValidityBitAssignOp(loc, resolveReference(builtInMethod->appliedTo),
-                                          P4HIR::ValidityBit::Valid);
-        }
+        auto value = (builtInMethod->name == P4::IR::Type_Header::setValid)
+                         ? P4HIR::ValidityBit::Valid
+                         : P4HIR::ValidityBit::Invalid;
+        emitHeaderValidityBitAssignOp(loc, resolveReference(builtInMethod->appliedTo), value);
     } else if (builtInMethod->name == P4::IR::Type_Header::isValid) {
         auto header = resolveReference(builtInMethod->appliedTo, /* unchecked */ true);
         return emitHeaderIsValidCmpOp(loc, header, P4HIR::ValidityBit::Valid);
