@@ -47,16 +47,16 @@ control ingress(inout Header_t h, inout Meta_t m) {
 
     // CHECK-LABEL: p4hir.table @t_exact
     table t_exact {
-  	key = {
+        key = {
             h.h.e : exact;
         }
 
-	actions = {
+        actions = {
             a;
             a_with_control_params;
         }
 
-	default_action = a;
+	    default_action = a;
 
         // CHECK-LABEL: p4hir.table_entries const
         const entries = {
@@ -67,6 +67,24 @@ control ingress(inout Header_t h, inout Meta_t m) {
             // CHECK: p4hir.call @a_with_control_params
             0x02 : a_with_control_params(2);
         }
+    }
+
+    // CHECK-LABEL: p4hir.table @t_exact_zero_entries
+    table t_exact_zero_entries {
+        key = {
+            h.h.e : exact;
+        }
+
+	    actions = {
+            a;
+            a_with_control_params;
+        }
+
+        default_action = a;
+
+        // CHECK-LABEL: p4hir.table_entries const {
+        // CHECK-NEXT:  }
+        const entries = {}
     }
 
     // CHECK-LABEL: p4hir.table @t_lpm
