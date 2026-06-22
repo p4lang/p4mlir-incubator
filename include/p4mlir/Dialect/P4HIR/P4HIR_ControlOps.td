@@ -319,7 +319,7 @@ def TableEntriesOp : P4HIR_Op<"table_entries", [ Annotated,
   }];
 
   let arguments = (ins UnitAttr:$is_const, OptionalAttr<DictionaryAttr>:$annotations);
-  let regions = (region SizedRegion<1>:$body);
+  let regions = (region MaxSizedRegion<1>:$body);
 
   // TODO: Check
   let hasVerifier = 0;

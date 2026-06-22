@@ -105,6 +105,27 @@ module @p4_main {
         }
       }
     }
+    p4hir.table @t_exact_zero_entries {
+      p4hir.table_key(%arg2: !p4hir.ref<!Header_t>) {
+        %val = p4hir.read %arg2 : <!Header_t>
+        %h = p4hir.struct_extract %val["h"] : !Header_t
+        %e = p4hir.struct_extract %h["e"] : !hdr
+        p4hir.match_key #exact %e : !b8i annotations {name = "h.h.e"}
+      }
+      p4hir.table_actions {
+        p4hir.table_action @a() {
+          p4hir.call @a () : () -> ()
+        }
+        p4hir.table_action @a_with_control_params(%arg2: !b9i {p4hir.param_name = "x"}) {
+          p4hir.call @a_with_control_params (%arg2) : (!b9i) -> ()
+        }
+      }
+      p4hir.table_default_action const {
+        p4hir.call @a () : () -> ()
+      }
+      p4hir.table_entries const {
+      }
+    }
     p4hir.table @t_lpm {
       p4hir.table_key(%arg2: !p4hir.ref<!Header_t>) {
         %val = p4hir.read %arg2 : <!Header_t>
