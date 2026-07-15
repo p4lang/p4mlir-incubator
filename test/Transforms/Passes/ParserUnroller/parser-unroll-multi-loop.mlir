@@ -20,12 +20,20 @@ module @test_multi_loop {
         }
         // hs4 → depth 4: loopA unrolls to 3 clones, last loop-back → @reject.
         // CHECK: p4hir.state @loopA {
+        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
         // CHECK:   p4hir.transition to @loopA_1
         // CHECK: p4hir.state @loopA_1 {
+        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK:   p4hir.transition to @loopA_2
         // CHECK: p4hir.state @loopA_2 {
+        // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
         // CHECK:   p4hir.transition to @loopA_3
         // CHECK: p4hir.state @loopA_3 {
+        // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
         // CHECK:   p4hir.transition to @reject
         // CHECK-NOT: @loopA_4
         p4hir.state @loopA {

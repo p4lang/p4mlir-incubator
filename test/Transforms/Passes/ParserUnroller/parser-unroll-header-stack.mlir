@@ -16,12 +16,20 @@ module @test_header_stack_loop {
             p4hir.transition to @parse_loop
         }
         // CHECK: p4hir.state @parse_loop {
+        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
         // CHECK:   p4hir.transition to @parse_loop_1
         // CHECK: p4hir.state @parse_loop_1 {
+        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK:   p4hir.transition to @parse_loop_2
         // CHECK: p4hir.state @parse_loop_2 {
+        // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
         // CHECK:   p4hir.transition to @parse_loop_3
         // CHECK: p4hir.state @parse_loop_3 {
+        // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
         // CHECK:   p4hir.transition to @reject
         p4hir.state @parse_loop {
             %stack = p4hir.variable ["stack"] : <!hs4>
@@ -54,14 +62,30 @@ module @test_header_stack_depth8 {
             p4hir.transition to @loop
         }
         // CHECK: p4hir.state @loop {
+        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
         // CHECK:   p4hir.transition to @loop_1
         // CHECK: p4hir.state @loop_1
+        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK: p4hir.state @loop_2
+        // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
         // CHECK: p4hir.state @loop_3
+        // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
         // CHECK: p4hir.state @loop_4
+        // CHECK:   %[[C4:.*]] = p4hir.const #int4_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C4]]]
         // CHECK: p4hir.state @loop_5
+        // CHECK:   %[[C5:.*]] = p4hir.const #int5_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C5]]]
         // CHECK: p4hir.state @loop_6
+        // CHECK:   %[[C6:.*]] = p4hir.const #int6_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C6]]]
         // CHECK: p4hir.state @loop_7 {
+        // CHECK:   %[[C7:.*]] = p4hir.const #int7_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C7]]]
         // CHECK:   p4hir.transition to @reject
         p4hir.state @loop {
             %stack = p4hir.variable ["stack"] : <!hs8>
@@ -97,6 +121,8 @@ module @test_hs_multistate {
             p4hir.transition to @stateB
         }
         // CHECK: p4hir.state @stateB {
+        // CHECK:   %[[B0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[B0]]]
         // CHECK:   p4hir.transition to @stateC
         p4hir.state @stateB {
             %stack = p4hir.variable ["stack"] : <!hs4>
@@ -111,18 +137,24 @@ module @test_hs_multistate {
         // CHECK: p4hir.state @stateA_1 {
         // CHECK:   p4hir.transition to @stateB_1
         // CHECK: p4hir.state @stateB_1 {
+        // CHECK:   %[[B1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[B1]]]
         // CHECK:   p4hir.transition to @stateC_1
         // CHECK: p4hir.state @stateC_1 {
         // CHECK:   p4hir.transition to @stateA_2
         // CHECK: p4hir.state @stateA_2 {
         // CHECK:   p4hir.transition to @stateB_2
         // CHECK: p4hir.state @stateB_2 {
+        // CHECK:   %[[B2:.*]] = p4hir.const #int2_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[B2]]]
         // CHECK:   p4hir.transition to @stateC_2
         // CHECK: p4hir.state @stateC_2 {
         // CHECK:   p4hir.transition to @stateA_3
         // CHECK: p4hir.state @stateA_3 {
         // CHECK:   p4hir.transition to @stateB_3
         // CHECK: p4hir.state @stateB_3 {
+        // CHECK:   %[[B3:.*]] = p4hir.const #int3_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[B3]]]
         // CHECK:   p4hir.transition to @reject
         p4hir.state @stateC {
             p4hir.transition to @stateA
@@ -147,10 +179,26 @@ module @test_hs_min_depth {
             p4hir.transition to @loop
         }
         // CHECK: p4hir.state @loop {
+        // CHECK:   %[[A0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[A0]]]
+        // CHECK:   %[[B0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[B0]]]
         // CHECK:   p4hir.transition to @loop_1
         // CHECK: p4hir.state @loop_1
+        // CHECK:   %[[A1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[A1]]]
+        // CHECK:   %[[B1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[B1]]]
         // CHECK: p4hir.state @loop_2
+        // CHECK:   %[[A2:.*]] = p4hir.const #int2_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[A2]]]
+        // CHECK:   %[[B2:.*]] = p4hir.const #int2_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[B2]]]
         // CHECK: p4hir.state @loop_3 {
+        // CHECK:   %[[A3:.*]] = p4hir.const #int3_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[A3]]]
+        // CHECK:   %[[B3:.*]] = p4hir.const #int3_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[B3]]]
         // CHECK:   p4hir.transition to @reject
         p4hir.state @loop {
             %s4 = p4hir.variable ["s4"] : <!hs4>
@@ -189,10 +237,18 @@ module @test_hs_fixed_index_ignored {
             p4hir.transition to @loop
         }
         // CHECK: p4hir.state @loop {
+        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
         // CHECK:   p4hir.transition to @loop_1
         // CHECK: p4hir.state @loop_1
+        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK: p4hir.state @loop_2
+        // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
         // CHECK: p4hir.state @loop_3 {
+        // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
         // CHECK:   p4hir.transition to @reject
         p4hir.state @loop {
             %big = p4hir.variable ["big"] : <!hs4>

@@ -26,6 +26,8 @@ module @test_branching_with_stack {
             p4hir.transition to @stateA
         }
         // CHECK: p4hir.state @stateA {
+        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
         // CHECK:   p4hir.transition_select
         // CHECK:   } to @stateB
         // CHECK:   } to @stateC
@@ -58,6 +60,8 @@ module @test_branching_with_stack {
             p4hir.transition to @stateA
         }
         // CHECK: p4hir.state @stateA_1 {
+        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK:   p4hir.transition_select
         // CHECK:   } to @stateB_1
         // CHECK:   } to @stateC_1

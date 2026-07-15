@@ -64,6 +64,8 @@ module @test_disjoint_cycles {
 
     // CHECK-LABEL: p4hir.state @A_1
     // CHECK-LABEL: p4hir.state @B_1
+    // CHECK:        %[[B1:.*]] = p4hir.const #int1_b32i
+    // CHECK:        p4hir.array_element_ref {{.*}}[%[[B1]]]
     // CHECK-LABEL: p4hir.state @C_1
     // CHECK-LABEL: p4hir.state @A_2 {
     // CHECK:        } to @reject

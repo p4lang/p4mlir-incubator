@@ -7,16 +7,24 @@
 // CHECK: p4hir.state @start {
 // CHECK: p4hir.state @start_loops {
 // CHECK: p4hir.state @finite_loop {
+// CHECK:   %[[F0:.*]] = p4hir.const #int0_b32i
+// CHECK:   p4hir.array_element_ref {{.*}}[%[[F0]]]
 // CHECK:   } to @accept
 // CHECK:   } to @finite_loop_1
 // CHECK: p4hir.state @finite_loop_1 {
+// CHECK:   %[[F1:.*]] = p4hir.const #int1_b32i
+// CHECK:   p4hir.array_element_ref {{.*}}[%[[F1]]]
 // CHECK:   } to @accept
 // CHECK:   } to @reject
 // CHECK: p4hir.state @mixed_finite_loop {
+// CHECK:   %[[M0:.*]] = p4hir.const #int0_b32i
+// CHECK:   p4hir.array_element_ref {{.*}}[%[[M0]]]
 // CHECK:   } to @start_loops_1
 // CHECK: p4hir.state @mixed_infinite_loop {
 // CHECK: p4hir.state @start_loops_1 {
 // CHECK: p4hir.state @mixed_finite_loop_1 {
+// CHECK:   %[[M1:.*]] = p4hir.const #int1_b32i
+// CHECK:   p4hir.array_element_ref {{.*}}[%[[M1]]]
 // CHECK:   } to @start_loops_2
 // CHECK: p4hir.state @mixed_infinite_loop_1 {
 // CHECK: p4hir.state @infinite_loop {

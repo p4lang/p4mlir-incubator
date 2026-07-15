@@ -4,12 +4,18 @@
 // CHECK: p4hir.state @start
 // CHECK: p4hir.state @parse_ethernet
 // CHECK: p4hir.state @parse_srcRouting {
+// CHECK:   %[[N0:.*]] = p4hir.const #int0_b32i
+// CHECK:   p4hir.array_element_ref {{.*}}[%[[N0]]]
 // CHECK:   } to @parse_ipv4
 // CHECK:   } to @parse_srcRouting_1
 // CHECK: p4hir.state @parse_srcRouting_1 {
+// CHECK:   %[[N1:.*]] = p4hir.const #int1_b32i
+// CHECK:   p4hir.array_element_ref {{.*}}[%[[N1]]]
 // CHECK:   } to @parse_ipv4
 // CHECK:   } to @parse_srcRouting_2
 // CHECK: p4hir.state @parse_srcRouting_2 {
+// CHECK:   %[[N2:.*]] = p4hir.const #int2_b32i
+// CHECK:   p4hir.array_element_ref {{.*}}[%[[N2]]]
 // CHECK:   } to @parse_ipv4
 // CHECK:   } to @reject
 // CHECK-NOT: @parse_srcRouting_3

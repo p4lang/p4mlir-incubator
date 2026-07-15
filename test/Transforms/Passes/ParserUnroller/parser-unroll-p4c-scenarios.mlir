@@ -29,10 +29,16 @@ module @test1_self_loop_stack3 {
             p4hir.transition to @parse_srcRouting
         }
         // CHECK: p4hir.state @parse_srcRouting {
+        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
         // CHECK:   p4hir.transition to @parse_srcRouting_1
         // CHECK: p4hir.state @parse_srcRouting_1 {
+        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK:   p4hir.transition to @parse_srcRouting_2
         // CHECK: p4hir.state @parse_srcRouting_2 {
+        // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
         // CHECK:   p4hir.transition to @reject
         // CHECK-NOT: @parse_srcRouting_3
         p4hir.state @parse_srcRouting {
@@ -71,6 +77,8 @@ module @test3_multistate_loop_stack4 {
             p4hir.transition to @parse_srcRouting
         }
         // CHECK: p4hir.state @parse_srcRouting {
+        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
         // CHECK:   p4hir.transition to @callMidle
         p4hir.state @parse_srcRouting {
             %srcRoutes = p4hir.variable ["srcRoutes"] : <!hs4>
@@ -87,12 +95,18 @@ module @test3_multistate_loop_stack4 {
             p4hir.transition to @callLast
         }
         // CHECK: p4hir.state @callLast {
+        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK:   p4hir.transition to @parse_srcRouting_1
         // CHECK: p4hir.state @parse_srcRouting_1 {
+        // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
         // CHECK:   p4hir.transition to @callMidle_1
         // CHECK: p4hir.state @callMidle_1 {
         // CHECK:   p4hir.transition to @callLast_1
         // CHECK: p4hir.state @callLast_1 {
+        // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
         // CHECK:   p4hir.transition to @reject
         // CHECK-NOT: @parse_srcRouting_2
         p4hir.state @callLast {
@@ -126,8 +140,12 @@ module @test9_finite_loop {
             p4hir.transition to @finite_loop
         }
         // CHECK: p4hir.state @finite_loop {
+        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
         // CHECK:   p4hir.transition to @finite_loop_1
         // CHECK: p4hir.state @finite_loop_1 {
+        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK:   p4hir.transition to @reject
         // CHECK-NOT: @finite_loop_2
         p4hir.state @finite_loop {
@@ -188,10 +206,14 @@ module @test9_mixed_loops {
             p4hir.transition to @mixed_finite_loop
         }
         // CHECK: p4hir.state @mixed_finite_loop {
+        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
         // CHECK:   p4hir.transition to @start_loops_1
         // CHECK: p4hir.state @start_loops_1 {
         // CHECK:   p4hir.transition to @mixed_finite_loop_1
         // CHECK: p4hir.state @mixed_finite_loop_1 {
+        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK:   p4hir.transition to @start_loops_2
         // CHECK: p4hir.state @start_loops_2 {
         // CHECK:   p4hir.transition to @reject

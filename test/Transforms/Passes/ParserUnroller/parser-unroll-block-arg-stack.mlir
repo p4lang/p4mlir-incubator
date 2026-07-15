@@ -16,10 +16,18 @@ module @test_block_arg_stack {
             p4hir.transition to @loop
         }
         // CHECK: p4hir.state @loop {
+        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
         // CHECK:   p4hir.transition to @loop_1
         // CHECK: p4hir.state @loop_1
+        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK: p4hir.state @loop_2
+        // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
         // CHECK: p4hir.state @loop_3 {
+        // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
+        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
         // CHECK:   p4hir.transition to @reject
         p4hir.state @loop {
             %stack_ref = p4hir.struct_field_ref %hdrs["stack"] : <!hdrs>

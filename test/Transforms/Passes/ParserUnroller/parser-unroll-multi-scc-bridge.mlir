@@ -16,18 +16,26 @@
 
 
 // CHECK-LABEL: p4hir.state @A {
+// CHECK:        %[[A0:.*]] = p4hir.const #int0_b32i
+// CHECK:        p4hir.array_element_ref {{.*}}[%[[A0]]]
 // CHECK:        } to @bridge
 // CHECK:        } to @A_1
 
 // CHECK-LABEL: p4hir.state @A_1 {
+// CHECK:        %[[A1:.*]] = p4hir.const #int1_b32i
+// CHECK:        p4hir.array_element_ref {{.*}}[%[[A1]]]
 // CHECK:        } to @bridge_1
 // CHECK:        } to @A_2
 
 // CHECK-LABEL: p4hir.state @A_2 {
+// CHECK:        %[[A2:.*]] = p4hir.const #int2_b32i
+// CHECK:        p4hir.array_element_ref {{.*}}[%[[A2]]]
 // CHECK:        } to @bridge_2
 // CHECK:        } to @A_3
 
 // CHECK-LABEL: p4hir.state @A_3 {
+// CHECK:        %[[A3:.*]] = p4hir.const #int3_b32i
+// CHECK:        p4hir.array_element_ref {{.*}}[%[[A3]]]
 // CHECK:        } to @bridge_3
 // CHECK:        } to @reject
 
@@ -44,14 +52,20 @@
 // CHECK:        p4hir.transition to @reject
 
 // CHECK-LABEL: p4hir.state @B {
+// CHECK:        %[[B0:.*]] = p4hir.const #int1_b32i
+// CHECK:        p4hir.array_element_ref {{.*}}[%[[B0]]]
 // CHECK:        } to @accept
 // CHECK:        } to @B_1
 
 // CHECK-LABEL: p4hir.state @B_1 {
+// CHECK:        %[[B1:.*]] = p4hir.const #int2_b32i
+// CHECK:        p4hir.array_element_ref {{.*}}[%[[B1]]]
 // CHECK:        } to @accept
 // CHECK:        } to @B_2
 
 // CHECK-LABEL: p4hir.state @B_2 {
+// CHECK:        %[[B2:.*]] = p4hir.const #int3_b32i
+// CHECK:        p4hir.array_element_ref {{.*}}[%[[B2]]]
 // CHECK:        } to @accept
 // CHECK:        } to @reject
 
