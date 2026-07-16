@@ -11,12 +11,18 @@
 @__corelib
 extern packet_in { void extract<T>(out T hdr); }
 
-header test_t { bit<8> f; }
-struct headers { test_t[4] test; }
+header test_t { bit<8> value; }
+struct headers { test_t[2] test; }
 
 parser p(packet_in b, out headers hdr) {
     state start {
         b.extract(hdr.test.next);
-        transition accept;
+        bit<32> test_f = 2 * hdr.test.lastIndex;
+        transition select(test_f - 1) {
+            0: f;
+            _: a;
+        }
     }
+    state a { transition accept; }
+    state f { }
 }

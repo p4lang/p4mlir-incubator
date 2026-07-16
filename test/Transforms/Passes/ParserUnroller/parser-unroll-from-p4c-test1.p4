@@ -50,11 +50,14 @@ struct headers {
 }
 
 parser p(packet_in packet, out headers hdr) {
+    int<32> index;
+
     state start {
         transition parse_ethernet;
     }
 
     state parse_ethernet {
+        index = 0;
         packet.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
             TYPE_SRCROUTING: parse_srcRouting;
@@ -63,8 +66,10 @@ parser p(packet_in packet, out headers hdr) {
     }
 
     state parse_srcRouting {
-        packet.extract(hdr.srcRoutes.next);
-        transition select(hdr.srcRoutes.last.bos) {
+        packet.extract(hdr.srcRoutes[index]);
+        index = (int<32>)((int)index + 1);
+        hdr.srcRoutes[index - 1].port = (bit<15>)((int)hdr.srcRoutes[index - 1].port + 1);
+        transition select(hdr.srcRoutes[index - 1].bos) {
             1: parse_ipv4;
             default: parse_srcRouting;
         }

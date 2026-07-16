@@ -11,15 +11,21 @@
 @__corelib
 extern packet_in { void extract<T>(out T hdr); }
 
-header h_t { bit<8> f; }
-struct headers { h_t[2] h; }
+header h_index1 { bit<8> index; }
+header h_index2 { bit<8> index; }
+header_union h_stack { h_index1 i1; h_index2 i2; }
+header h_index { bit<8> index; }
+
+struct headers { h_stack[2] h; h_index i; }
 
 parser p(packet_in pkt, out headers hdr) {
     state start {
         transition parse_hdrs;
     }
     state parse_hdrs {
-        pkt.extract(hdr.h[0]);
+        pkt.extract(hdr.h[0].i1);
+        pkt.extract(hdr.i);
+        hdr.i.index = hdr.h[0].i1.index;
         transition accept;
     }
 }

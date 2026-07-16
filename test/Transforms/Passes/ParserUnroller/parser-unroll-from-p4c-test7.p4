@@ -16,13 +16,17 @@ extern packet_in {
     void extract<T>(out T hdr);
 }
 
-header data_t { bit<8> f; }
-struct headers { data_t[2] hs; }
+header S { bit<8> t; }
+header O1 { bit<8> data; }
+header O2 { bit<16> data; }
+header_union U { O1 byte; O2 short; }
+
+struct headers { S base; U[2] u; }
 
 parser p(packet_in packet, out headers hdr) {
     state start {
-        packet.extract(hdr.hs.next);
-        packet.extract(hdr.hs.next);
+        packet.extract(hdr.u.next.byte);
+        packet.extract(hdr.u.next.short);
         transition accept;
     }
 }

@@ -13,12 +13,13 @@ extern packet_in {
     void extract<T>(out T hdr);
 }
 
-header data_t { bit<8> f; }
-struct headers { data_t[4] hs; }
+header test_h { bit<8> field; }
+struct headers { test_h[4] hs; }
+struct metadata_t { bit<2> hs_next_index; }
 
-parser p(packet_in packet, out headers hdr, in bit<2> idx) {
+parser p(packet_in pkt, out headers hdr, inout metadata_t meta) {
     state start {
-        packet.extract(hdr.hs[idx]);
+        hdr.hs[meta.hs_next_index].setValid();
         transition accept;
     }
 }

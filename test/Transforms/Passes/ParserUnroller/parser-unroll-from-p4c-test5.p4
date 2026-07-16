@@ -21,18 +21,38 @@ struct headers {
     srcRoute_t srcRoutes1;
     srcRoute_t srcRoutes2;
     srcRoute_t srcRoutes3;
+    bit<32>    index;
 }
 
 parser p(packet_in packet, out headers hdr) {
     state start {
+        hdr.index = 0;
         packet.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
+            0:       last;
             1:       access1;
             2:       access2;
-            default: access3;
+            3:       access3;
+            default: accept;
         }
     }
-    state access1 { packet.extract(hdr.srcRoutes1); transition accept; }
-    state access2 { packet.extract(hdr.srcRoutes2); transition access1; }
-    state access3 { packet.extract(hdr.srcRoutes3); transition access2; }
+    state last {
+        hdr.index = hdr.index + 1;
+        transition accept;
+    }
+    state access1 {
+        hdr.index = hdr.index + 1;
+        packet.extract(hdr.srcRoutes1);
+        transition last;
+    }
+    state access2 {
+        hdr.index = hdr.index + 1;
+        packet.extract(hdr.srcRoutes2);
+        transition access1;
+    }
+    state access3 {
+        hdr.index = hdr.index + 1;
+        packet.extract(hdr.srcRoutes3);
+        transition access2;
+    }
 }
