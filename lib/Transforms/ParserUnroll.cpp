@@ -913,39 +913,65 @@ static void substituteConstantIndices(P4HIR::ParserOp parser, SymResult &sym) {
     for (auto s : parser.states())
         stateByName[s.getSymName()] = s;
 
+    auto nextIndexKeyOf = [](mlir::Value v) -> std::optional<std::string> {
+        if (auto rd = v.getDefiningOp<P4HIR::ReadOp>()) {
+            if (auto ni = rd.getRef().getDefiningOp<P4HIR::StructFieldRefOp>();
+                ni && ni.getFieldName() == "nextIndex")
+                return getStackKey(ni.getInput());
+        } else if (auto se = v.getDefiningOp<P4HIR::StructExtractOp>()) {
+            if (se.getFieldName() == "nextIndex") return getStackKey(se.getInput());
+        }
+        return std::nullopt;
+    };
+
     mlir::OpBuilder builder(parser.getContext());
     for (auto &ss : sym.states) {
         auto stateIt =
             stateByName.find(stateName(ss.state.getSymName(), ss.callIndex));
         if (stateIt == stateByName.end()) continue;
 
-        // Per stack, successive .next accesses in this state take M[key], M[key]+1, …
+        llvm::StringMap<unsigned> count;
+        if (auto accIt = sym.accesses.find(ss.state); accIt != sym.accesses.end())
+            for (auto &acc : accIt->second) count[acc.key] = acc.count;
+
         llvm::StringMap<unsigned> occ;
-        stateIt->second.walk([&](P4HIR::ArrayElementRefOp elemRef) {
-            mlir::Value idx = elemRef.getIndex();
+        stateIt->second.walk([&](mlir::Operation *op) {
+            mlir::Value idxVal;
+            if (auto er = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op))
+                idxVal = er.getIndex();
+            else if (auto ag = mlir::dyn_cast<P4HIR::ArrayGetOp>(op))
+                idxVal = ag.getIndex();
+            else
+                return;
+
+            mlir::Value idx = idxVal;
             while (auto cast = idx.getDefiningOp<P4HIR::CastOp>())
                 idx = cast.getSrc();
 
             std::optional<std::string> key;
-            if (auto rd = idx.getDefiningOp<P4HIR::ReadOp>()) {
-                if (auto ni = rd.getRef().getDefiningOp<P4HIR::StructFieldRefOp>();
-                    ni && ni.getFieldName() == "nextIndex")
-                    key = getStackKey(ni.getInput());
-            } else if (auto se = idx.getDefiningOp<P4HIR::StructExtractOp>()) {
-                if (se.getFieldName() == "nextIndex")
-                    key = getStackKey(se.getInput());
+            int64_t value = 0;
+            if ((key = nextIndexKeyOf(idx))) {
+                value = static_cast<int64_t>(ss.M.indexOf(*key)) + occ[*key]++;
+            } else if (auto bin = idx.getDefiningOp<P4HIR::BinOp>();
+                       bin && bin.getKind() == P4HIR::BinOpKind::Sub) {
+                if (auto ci = bin.getRhs().getDefiningOp<P4HIR::ConstOp>())
+                    if (auto ia = mlir::dyn_cast<P4HIR::IntAttr>(ci.getValue());
+                        ia && (key = nextIndexKeyOf(bin.getLhs())))
+                        value = static_cast<int64_t>(ss.M.indexOf(*key)) + count[*key] -
+                                ia.getValue().getSExtValue();
             }
-            if (!key) return;
+            if (!key || value < 0) return;
 
-            auto idxType =
-                mlir::dyn_cast<P4HIR::BitsType>(elemRef.getIndex().getType());
+            auto idxType = mlir::dyn_cast<P4HIR::BitsType>(idxVal.getType());
             if (!idxType) return;
 
-            unsigned value = ss.M.indexOf(*key) + occ[*key]++;
-            builder.setInsertionPoint(elemRef);
-            auto c = P4HIR::ConstOp::create(
-                builder, elemRef.getLoc(), P4HIR::IntAttr::get(idxType, value));
-            elemRef.getIndexMutable().assign(c.getResult());
+            builder.setInsertionPoint(op);
+            auto c =
+                P4HIR::ConstOp::create(builder, op->getLoc(), P4HIR::IntAttr::get(idxType, value));
+            if (auto er = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op))
+                er.getIndexMutable().assign(c.getResult());
+            else
+                mlir::cast<P4HIR::ArrayGetOp>(op).getIndexMutable().assign(c.getResult());
         });
     }
 }
