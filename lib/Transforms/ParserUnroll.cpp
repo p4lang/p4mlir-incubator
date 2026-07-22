@@ -176,11 +176,6 @@ static mlir::Attribute makeVisitedKey(mlir::MLIRContext *context, mlir::StringAt
         context, {name, indexMap.encode(context), encodeValueMap(context, valueMap)});
 }
 
-// Accept or reject state.
-static inline bool isTerminal(P4HIR::ParserStateOp stateOp) {
-    return stateOp.isAccept() || stateOp.isReject();
-}
-
 // Header-stack element count for a (reference) type, if it is a stack.
 static std::optional<size_t> stackSizeOf(mlir::Type type) {
     if (auto ref = mlir::dyn_cast<P4HIR::ReferenceType>(type)) type = ref.getObjectType();
@@ -498,7 +493,7 @@ static llvm::SmallVector<std::pair<P4HIR::ParserStateOp, P4HIR::ParserStateOp>> 
                      });
 
     for (auto stateOp : parser.states()) {
-        if (visited.contains(stateOp) || isTerminal(stateOp)) continue;
+        if (visited.contains(stateOp) || stateOp.isTerminal()) continue;
         bool warned = false;
         dfsFindBackEdges(stateOp, visited,
                          [&](P4HIR::ParserStateOp /*source*/, P4HIR::ParserStateOp dest) {
@@ -527,7 +522,7 @@ static llvm::DenseMap<P4HIR::ParserStateOp, llvm::DenseSet<P4HIR::ParserStateOp>
         llvm::DenseSet<P4HIR::ParserStateOp> members;
         for (auto *op : component) {
             auto stateOp = mlir::cast<P4HIR::ParserStateOp>(op);
-            if (!isTerminal(stateOp)) members.insert(stateOp);
+            if (!stateOp.isTerminal()) members.insert(stateOp);
         }
         for (auto stateOp : members) result[stateOp] = members;
     }
@@ -668,7 +663,7 @@ static llvm::SmallVector<P4HIR::ParserStateOp> reachableHeads(P4HIR::ParserState
     while (!worklist.empty()) {
         auto current = worklist.pop_back_val();
         if (!visited.insert(current).second) continue;
-        if (isTerminal(current)) continue;
+        if (current.isTerminal()) continue;
         if (auto it = scc.headOf.find(current); it != scc.headOf.end())
             if (seenHeads.insert(it->second).second) heads.push_back(it->second);
         for (auto next : current.getNextStates()) worklist.push_back(next);
@@ -686,7 +681,7 @@ static llvm::SmallVector<StackAccess> reachableAccesses(P4HIR::ParserStateOp sta
     while (!worklist.empty()) {
         auto current = worklist.pop_back_val();
         if (!visited.insert(current).second) continue;
-        if (isTerminal(current)) continue;
+        if (current.isTerminal()) continue;
         if (auto it = stateAccesses.find(current); it != stateAccesses.end())
             for (auto &access : it->second)
                 if (seenKeys.insert(access.key).second) relevant.push_back(access);
@@ -700,7 +695,7 @@ static void computeRelevantStacks(P4HIR::ParserOp parser, SCCInfo &scc,
                                   const AccessMap &stateAccesses) {
     bool acyclic = scc.combinedByHead.empty();
     for (auto stateOp : parser.states()) {
-        if (isTerminal(stateOp)) continue;
+        if (stateOp.isTerminal()) continue;
         llvm::SmallVector<StackAccess> relevant;
         if (acyclic) {
             relevant = reachableAccesses(stateOp, stateAccesses);
@@ -803,7 +798,7 @@ static SymbolicResult runSymbolicExecution(P4HIR::ParserOp parser, const SCCInfo
         auto [state, indexMap, valueMap] = std::move(worklist.front());
         worklist.pop_front();
 
-        if (isTerminal(state)) continue;
+        if (state.isTerminal()) continue;
 
         auto relIt = scc.relevantStacks.find(state);
         llvm::ArrayRef<StackAccess> relevant = (relIt != scc.relevantStacks.end())
@@ -839,7 +834,7 @@ static SymbolicResult runSymbolicExecution(P4HIR::ParserOp parser, const SCCInfo
             state, valueMap, [](P4HIR::ArrayElementRefOp, const ValueMap &) {}, numbering);
 
         for (auto successor : state.getNextStates()) {
-            if (isTerminal(successor)) continue;
+            if (successor.isTerminal()) continue;
             worklist.push_back({successor, indexMapAfter, valueMapAfter});
         }
     }
@@ -965,7 +960,7 @@ static LogicalResult rewriteTransitions(P4HIR::ParserOp parser, SymbolicResult &
 
         StatePlan plan{stateOp, {}};
         for (auto successor : llvm::to_vector(stateOp.getNextStates())) {
-            if (isTerminal(successor)) continue;
+            if (successor.isTerminal()) continue;
 
             mlir::StringAttr successorNameAttr = successor.getSymNameAttr();
             llvm::StringRef successorName = successorNameAttr.getValue();
