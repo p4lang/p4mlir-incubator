@@ -1147,8 +1147,6 @@ struct ParserUnroll : public impl::ParserUnrollBase<ParserUnroll> {
             auto scc = buildSCCInfo(parser, backEdges, stateAccesses, untrackable);
             LLVM_DEBUG(llvm::dbgs() << "  SCC members: " << scc.members.size() << " across "
                                     << scc.combinedByHead.size() << " loop(s)\n");
-            // Acyclic parsers still need index resolution (Stage 4.1)
-            if (scc.empty() && !backEdges.empty()) return;
 
             auto symbolicResult =
                 runSymbolicExecution(parser, scc, std::move(stateAccesses), numbering);
