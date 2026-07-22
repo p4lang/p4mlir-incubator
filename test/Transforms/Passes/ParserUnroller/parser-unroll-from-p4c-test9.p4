@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll 2>&1 | FileCheck %s
 // CHECK: warning:{{.*}}infinite_loop{{.*}}no header stack operations
 // finite_loop unrolls once (h_stack[2]) and its last iteration → @reject.

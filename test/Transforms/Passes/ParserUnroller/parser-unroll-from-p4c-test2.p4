@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
 // srcRoutes[3] via .next → depth 3: 2 clones; last loop-back → @reject.
 // CHECK: p4hir.parser @p

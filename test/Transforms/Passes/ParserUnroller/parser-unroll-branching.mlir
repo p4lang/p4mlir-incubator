@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-opt %s -p4hir-parser-unroll | FileCheck %s
 
 // start -> A -+-> B -> A  (back-edge)

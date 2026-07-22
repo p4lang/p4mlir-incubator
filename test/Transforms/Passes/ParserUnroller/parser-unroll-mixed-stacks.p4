@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 The P4 Language Consortium
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
 // Depth from the SCC's big_stack[4], not min(4,2): 3 clones.  Every clone keeps
 // its exit to @parse_small; only the loop-back advances, last one → @reject.
