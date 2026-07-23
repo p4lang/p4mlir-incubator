@@ -638,14 +638,6 @@ static void acceptLoopSCC(SCCInfo &scc, const PendingSCC &candidate, P4HIR::Pars
         return;
     }
 
-    for (auto stateOp : sccSet)
-        if (scc.headOf.count(stateOp)) {
-            mlir::emitWarning(loopHead.getLoc(),
-                              "parser loop at state '" + loopHead.getName().str() +
-                                  "' overlaps with a nested loop; outer loop will not be unrolled");
-            return;
-        }
-
     scc.combinedByHead[loopHead] = std::move(combined);
     for (auto stateOp : sccSet) {
         scc.members.insert(stateOp);
