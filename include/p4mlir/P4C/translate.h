@@ -72,6 +72,7 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     llvm::DenseMap<std::variant<P4HIR::FuncOp, P4HIR::PackageOp>, P4Overload> p4Overloads;
 
     bool defaultInitialize = false;
+    bool physicalLocs = true;
 
     mlir::TypedAttr resolveConstant(const P4::IR::CompileTimeValue *ctv);
     mlir::Value resolveReference(const P4::IR::Node *node, bool unchecked = false);
@@ -116,8 +117,12 @@ class P4HIRConverter : public P4::Inspector, public P4::ResolutionContext {
     P4HIR::BitsType getB32Type() { return P4HIR::BitsType::get(context(), 32, false); }
 
  public:
-    P4HIRConverter(mlir::OpBuilder &builder, P4::TypeMap *typeMap, bool defaultInitialize = false)
-        : builder(builder), typeMap(typeMap), defaultInitialize(defaultInitialize) {
+    P4HIRConverter(mlir::OpBuilder &builder, P4::TypeMap *typeMap, bool defaultInitialize = false,
+                   bool physicalLocs = true)
+        : builder(builder),
+          typeMap(typeMap),
+          defaultInitialize(defaultInitialize),
+          physicalLocs(physicalLocs) {
         CHECK_NULL(typeMap);
     }
 

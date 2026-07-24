@@ -111,15 +111,22 @@ mlir::Location P4HIRConverter::getLoc(const P4::IR::Node *node) {
     P4::cstring fileName = sourceInfo.getSourceFile();
     const auto &start = sourceInfo.getStart();
     const auto &end = sourceInfo.getEnd();
-    const auto &posStart = sourceInfo.toPosition();
-    const auto &posEnd = sourceInfo.toPositionEnd();
 
-    // TODO: This is actually not correct as we are mixing original file lines
-    // (before preprocessor) with physical columns (after preprocessor), but p4c
-    // does not give / track original columns at all...
-    return mlir::FileLineColRange::get(builder.getStringAttr(fileName.string_view()),
-                                       posStart.sourceLine, start.getColumnNumber() + 1,
-                                       posEnd.sourceLine, end.getColumnNumber() + 1);
+    if (physicalLocs) {
+        const auto &posStart = sourceInfo.toPosition();
+        const auto &posEnd = sourceInfo.toPositionEnd();
+
+        // TODO: This is actually not correct as we are mixing original file lines
+        // (before preprocessor) with physical columns (after preprocessor), but p4c
+        // does not give / track original columns at all...
+        return mlir::FileLineColRange::get(builder.getStringAttr(fileName.string_view()),
+                                           posStart.sourceLine, start.getColumnNumber() + 1,
+                                           posEnd.sourceLine, end.getColumnNumber() + 1);
+    } else {
+        return mlir::FileLineColRange::get(builder.getStringAttr(fileName.string_view()),
+                                           start.getLineNumber(), start.getColumnNumber(),
+                                           end.getLineNumber(), end.getColumnNumber());
+    }
 }
 
 mlir::Type P4HIRConverter::getOrCreateType(const P4::IR::Type *type) {
