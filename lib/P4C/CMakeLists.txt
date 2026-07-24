@@ -9,6 +9,7 @@ set(LIBS
 )
 
 set(P4MLIR_TRANSLATE_LIB_SRCS
+  diagnostics.cpp
   type_converter.cpp
   translate.cpp)
 
