@@ -10,6 +10,7 @@
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
@@ -650,15 +651,13 @@ static llvm::SmallVector<P4HIR::ParserStateOp> reachableHeads(P4HIR::ParserState
                                                               const SCCInfo &scc) {
     llvm::SmallVector<P4HIR::ParserStateOp> heads;
     llvm::DenseSet<P4HIR::ParserStateOp> seenHeads;
-    llvm::DenseSet<P4HIR::ParserStateOp> visited;
-    llvm::SmallVector<P4HIR::ParserStateOp> worklist{start};
-    while (!worklist.empty()) {
-        auto current = worklist.pop_back_val();
-        if (!visited.insert(current).second) continue;
+    llvm::df_iterator_default_set<llvm::GraphTraits<P4HIR::ParserOp>::NodeRef> visited;
+
+    for (auto stateOp : llvm::depth_first_ext(start, visited)) {
+        auto current = mlir::cast<P4HIR::ParserStateOp>(stateOp);
         if (current.isTerminal()) continue;
         if (auto it = scc.headOf.find(current); it != scc.headOf.end())
             if (seenHeads.insert(it->second).second) heads.push_back(it->second);
-        for (auto next : current.getNextStates()) worklist.push_back(next);
     }
     return heads;
 }
