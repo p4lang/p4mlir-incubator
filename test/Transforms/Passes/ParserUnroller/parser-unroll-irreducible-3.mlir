@@ -106,27 +106,53 @@ module @test_irreducible {
 
     // CHECK-LABEL: p4hir.state @A {
     // CHECK:         } to @B
+    // CHECK:         } to @D
     // CHECK:         } to @accept
     // CHECK-LABEL: p4hir.state @B {
     // CHECK:         %[[I0:.*]] = p4hir.const #int0_b32i
     // CHECK:         p4hir.array_element_ref {{.*}}[%[[I0]]]
     // CHECK:         p4hir.transition to @C
     // CHECK-LABEL: p4hir.state @C {
-    // CHECK:         } to @B_1
-    // CHECK:         } to @A_1
-    // CHECK-LABEL: p4hir.state @A_1 {
-    // CHECK:         } to @B_1
-    // CHECK:         } to @accept
-    // CHECK-LABEL: p4hir.state @B_1 {
     // CHECK:         %[[I1:.*]] = p4hir.const #int1_b32i
     // CHECK:         p4hir.array_element_ref {{.*}}[%[[I1]]]
-    // CHECK:         p4hir.transition to @C_1
-    // CHECK-LABEL: p4hir.state @C_1 {
+    // CHECK:         p4hir.transition to @D_1
+    // CHECK-LABEL: p4hir.state @D {
+    // CHECK:         } to @E
+    // CHECK:         } to @C_1
+    // CHECK:         } to @A
+    // CHECK-LABEL: p4hir.state @E {
+    // CHECK:         } to @F
+    // CHECK:         } to @B
+    // CHECK-LABEL: p4hir.state @A_1 {
     // CHECK:         } to @reject
-    // CHECK:         } to @A_2
-    // CHECK-LABEL: p4hir.state @A_2 {
-    // CHECK:         } to @reject
+    // CHECK:         } to @D_1
     // CHECK:         } to @accept
+    // CHECK-LABEL: p4hir.state @B_1 {
+    // CHECK:         %[[I2:.*]] = p4hir.const #int1_b32i
+    // CHECK:         p4hir.array_element_ref {{.*}}[%[[I2]]]
+    // CHECK:         p4hir.transition to @reject
+    // CHECK-LABEL: p4hir.state @C_1 {
+    // CHECK:         %[[I3:.*]] = p4hir.const #int0_b32i
+    // CHECK:         p4hir.array_element_ref {{.*}}[%[[I3]]]
+    // CHECK:         p4hir.transition to @D_2
+    // CHECK-LABEL: p4hir.state @D_1 {
+    // CHECK:         } to @E_1
+    // CHECK:         } to @reject
+    // CHECK:         } to @A_1
+    // CHECK-LABEL: p4hir.state @E_1 {
+    // CHECK:         } to @F
+    // CHECK:         } to @reject
+    // CHECK-LABEL: p4hir.state @A_2 {
+    // CHECK:         } to @B_1
+    // CHECK:         } to @D_2
+    // CHECK:         } to @accept
+    // CHECK-LABEL: p4hir.state @D_2 {
+    // CHECK:         } to @E_2
+    // CHECK:         } to @C
+    // CHECK:         } to @A_2
+    // CHECK-LABEL: p4hir.state @E_2 {
+    // CHECK:         } to @F
+    // CHECK:         } to @B_1
 
     // CHECK-NOT: p4hir.state @B_2
     // CHECK-NOT: p4hir.state @A_3

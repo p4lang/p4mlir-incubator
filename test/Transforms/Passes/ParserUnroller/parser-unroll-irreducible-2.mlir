@@ -37,7 +37,6 @@ module @test_irreducible {
                 } to @accept
             }
         }
-        // expected-warning@below {{parser loop at state 'B' overlaps with a nested loop; outer loop will not be unrolled}}
         p4hir.state @B {
             %stack = p4hir.variable ["hs1"] : <!hs2>
             %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs2>
@@ -92,8 +91,11 @@ module @test_irreducible {
     // CHECK:         p4hir.array_element_ref {{.*}}[%[[I0]]]
     // CHECK:         p4hir.transition to @C
     // CHECK-LABEL: p4hir.state @C {
-    // CHECK:         } to @B_1
+    // CHECK:         } to @D
     // CHECK:         } to @A_1
+    // CHECK-LABEL: p4hir.state @D {
+    // CHECK:         } to @B_1
+    // CHECK:         } to @E
     // CHECK-LABEL: p4hir.state @A_1 {
     // CHECK:         } to @B_1
     // CHECK:         } to @accept
@@ -102,8 +104,11 @@ module @test_irreducible {
     // CHECK:         p4hir.array_element_ref {{.*}}[%[[I1]]]
     // CHECK:         p4hir.transition to @C_1
     // CHECK-LABEL: p4hir.state @C_1 {
-    // CHECK:         } to @reject
+    // CHECK:         } to @D_1
     // CHECK:         } to @A_2
+    // CHECK-LABEL: p4hir.state @D_1 {
+    // CHECK:         } to @reject
+    // CHECK:         } to @E
     // CHECK-LABEL: p4hir.state @A_2 {
     // CHECK:         } to @reject
     // CHECK:         } to @accept

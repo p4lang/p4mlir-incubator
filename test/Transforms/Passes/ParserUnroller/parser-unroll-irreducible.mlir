@@ -36,7 +36,6 @@ module @test_irreducible {
                 } to @accept
             }
         }
-        // expected-warning@below {{parser loop at state 'B' overlaps with a nested loop; outer loop will not be unrolled}}
         p4hir.state @B {
             %stack = p4hir.variable ["hs1"] : <!hs2>
             %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs2>
