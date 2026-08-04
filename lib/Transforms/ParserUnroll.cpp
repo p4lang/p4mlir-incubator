@@ -301,28 +301,6 @@ static ValueMap restrictValueMap(const ValueMap &valueMap, const llvm::DenseSet<
     return restricted;
 }
 
-// Whether a value flows into an array-element-ref index.
-static bool flowsToArrayElementRefIndex(mlir::Value root) {
-    llvm::SmallPtrSet<mlir::Value, 8> seen;
-    llvm::SmallVector<mlir::Value, 8> worklist;
-    worklist.push_back(root);
-    while (!worklist.empty()) {
-        mlir::Value current = worklist.pop_back_val();
-        if (!seen.insert(current).second) continue;
-        for (mlir::OpOperand &use : current.getUses()) {
-            mlir::Operation *user = use.getOwner();
-            if (auto arrayElementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(user)) {
-                if (arrayElementRef.getIndex() == use.get()) return true;
-                continue;
-            }
-            if (mlir::isa<P4HIR::ReadOp, P4HIR::CastOp>(user)) {
-                if (user->getNumResults() == 1) worklist.push_back(user->getResult(0));
-            }
-        }
-    }
-    return false;
-}
-
 // Definition 5 / ParserStructure: builds {HSp} for a single state.
 static std::optional<llvm::SmallVector<StackAccess>> computeStackAccesses(
     P4HIR::ParserStateOp state, StackNumbering &numbering) {
@@ -344,15 +322,7 @@ static std::optional<llvm::SmallVector<StackAccess>> computeStackAccesses(
     };
 
     state.walk([&](mlir::Operation *op) {
-        if (auto fieldRef = mlir::dyn_cast<P4HIR::StructFieldRefOp>(op)) {
-            if (fieldRef.getFieldName() == "nextIndex" &&
-                flowsToArrayElementRefIndex(fieldRef.getResult()))
-                record(fieldRef.getInput());
-        } else if (auto structExtract = mlir::dyn_cast<P4HIR::StructExtractOp>(op)) {
-            if (structExtract.getFieldName() == "nextIndex" &&
-                flowsToArrayElementRefIndex(structExtract.getResult()))
-                record(structExtract.getInput());
-        } else if (auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op)) {
+        if (auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op)) {
             mlir::Value idx = elementRef.getIndex();
             if (evalConstAttr(idx, ValueMap{}, numbering)) return;
 
