@@ -277,12 +277,11 @@ static void collectVarsInIndex(mlir::Value value, llvm::DenseSet<StackId> &out,
                                StackNumbering &numbering) {
     if (auto readOp = value.getDefiningOp<P4HIR::ReadOp>()) {
         if (auto key = getStackId(readOp.getRef(), numbering)) out.insert(*key);
-    } else if (auto castOp = value.getDefiningOp<P4HIR::CastOp>()) {
-        collectVarsInIndex(castOp.getSrc(), out, numbering);
-    } else if (auto binOp = value.getDefiningOp<P4HIR::BinOp>()) {
-        collectVarsInIndex(binOp.getLhs(), out, numbering);
-        collectVarsInIndex(binOp.getRhs(), out, numbering);
+        return;
     }
+    if (auto *definingOp = value.getDefiningOp())
+        for (mlir::Value operand : definingOp->getOperands())
+            collectVarsInIndex(operand, out, numbering);
 }
 
 // Collect all index variables used across the parser.
