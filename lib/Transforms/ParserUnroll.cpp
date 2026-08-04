@@ -37,41 +37,31 @@ namespace {
 static constexpr unsigned kDefaultMaxUnrollDepth = 64;
 static constexpr unsigned kMaxBFSStateInstances = 100000;
 
-// Core types - Definitions 2-5 of the algorithm.
-// Definition 1 (the parser state graph) is P4HIR::ParserOp itself.
-
-// Header-stack storage identity, encoded as an ArrayAttr [base, path...] so it
-// keys llvm::DenseMap via MLIR's DenseMapInfo<Attribute>. The base is a
-// value-numbered VariableOp/BlockArgument; the path is the struct field chain.
+// Header-stack storage identity, stored as DenseI64ArrayAttr for direct access.
 using StackId = mlir::Attribute;
 
 // Build a stack id.
-static StackId makeStackId(mlir::MLIRContext *context, unsigned base,
-                           llvm::ArrayRef<uint32_t> path) {
-    llvm::SmallVector<mlir::Attribute, 5> elements;
-    auto indexType = mlir::IntegerType::get(context, 32);
-    elements.push_back(mlir::IntegerAttr::get(indexType, base));
-    for (uint32_t fieldIndex : path)
-        elements.push_back(mlir::IntegerAttr::get(indexType, fieldIndex));
-    return mlir::ArrayAttr::get(context, elements);
+static StackId makeStackId(mlir::Builder &attrBuilder, int64_t base,
+                           llvm::ArrayRef<int64_t> path) {
+    llvm::SmallVector<int64_t, 5> elements;
+    elements.push_back(base);
+    elements.append(path.begin(), path.end());
+    return attrBuilder.getDenseI64ArrayAttr(elements);
 }
 
 // Order two stack ids.
 static bool stackIdLess(StackId lhs, StackId rhs) {
-    auto lhsArray = mlir::cast<mlir::ArrayAttr>(lhs);
-    auto rhsArray = mlir::cast<mlir::ArrayAttr>(rhs);
-    for (size_t i = 0, n = std::min(lhsArray.size(), rhsArray.size()); i < n; ++i) {
-        int64_t lhsField = mlir::cast<mlir::IntegerAttr>(lhsArray[i]).getInt();
-        int64_t rhsField = mlir::cast<mlir::IntegerAttr>(rhsArray[i]).getInt();
-        if (lhsField != rhsField) return lhsField < rhsField;
+    auto lhsArr = mlir::cast<mlir::DenseI64ArrayAttr>(lhs);
+    auto rhsArr = mlir::cast<mlir::DenseI64ArrayAttr>(rhs);
+    for (size_t i = 0, n = std::min(lhsArr.size(), rhsArr.size()); i < n; ++i) {
+        if (lhsArr[i] != rhsArr[i]) return lhsArr[i] < rhsArr[i];
     }
-    return lhsArray.size() < rhsArray.size();
+    return lhsArr.size() < rhsArr.size();
 }
 
-// Value-numbers each stack base deterministically, on first encounter. Named
-// variables are keyed by name so the base stays stable across state cloning
-// (clones keep the name); block arguments and anonymous variables are keyed by
-// their SSA value (block args are never cloned).
+// Value-numbers each stack base deterministically, on first encounter.
+// Named variables use name-based keys so cloned states (which share the name
+// but have distinct SSA values) map to the same StackId as the original.
 struct StackNumbering {
     llvm::StringMap<unsigned> nameIds;
     llvm::DenseMap<mlir::Value, unsigned> valueIds;
@@ -90,24 +80,22 @@ struct StackNumbering {
 
 static std::string renderStackId(StackId id) {
     std::string rendered;
-    for (auto [index, element] : llvm::enumerate(mlir::cast<mlir::ArrayAttr>(id))) {
-        int64_t field = mlir::cast<mlir::IntegerAttr>(element).getInt();
-        rendered += (index == 0 ? "#" : ".") + std::to_string(field);
+    llvm::raw_string_ostream stream(rendered);
+    for (auto [index, field] :
+         llvm::enumerate(mlir::cast<mlir::DenseI64ArrayAttr>(id).asArrayRef())) {
+        stream << (index == 0 ? "#" : ".") << field;
     }
     return rendered;
 }
 
-// Symbolic value map V (Definition 2).
 using ValueMap = llvm::DenseMap<StackId, mlir::TypedAttr>;
 
-// Definition 5 / {HSp}: a header stack variable used in a state, plus its size.
 struct StackAccess {
     StackId key;         // the stack variable (in {HSp})
     size_t size;         // OOB when the highest index used reaches size
     unsigned count = 1;  // number of .next accesses to this stack in the state
 };
 
-// Definition 2: symbolic index map M = {stack_key -> nextIndex}.
 class IndexMap {
  public:
     bool isOOBFor(const StackAccess &access) const {
@@ -146,11 +134,11 @@ class IndexMap {
         llvm::sort(entries, [](const auto &lhs, const auto &rhs) {
             return stackIdLess(lhs.first, rhs.first);
         });
+        mlir::Builder attrBuilder(context);
         llvm::SmallVector<mlir::Attribute> encoded;
-        auto indexType = mlir::IntegerType::get(context, 32);
         for (auto &entry : entries)
-            encoded.push_back(mlir::ArrayAttr::get(
-                context, {entry.first, mlir::IntegerAttr::get(indexType, entry.second)}));
+            encoded.push_back(
+                mlir::ArrayAttr::get(context, {entry.first, attrBuilder.getIndexAttr(entry.second)}));
         return mlir::ArrayAttr::get(context, encoded);
     }
 
@@ -170,7 +158,7 @@ static mlir::ArrayAttr encodeValueMap(mlir::MLIRContext *context, const ValueMap
     return mlir::ArrayAttr::get(context, encoded);
 }
 
-// Definition 3 / Definition 4: dedup key as an Attribute.
+// Make a stack positin key as an Attribute.
 static mlir::Attribute makeVisitedKey(mlir::MLIRContext *context, mlir::StringAttr name,
                                       const IndexMap &indexMap, const ValueMap &valueMap) {
     return mlir::ArrayAttr::get(
@@ -187,9 +175,9 @@ static std::optional<size_t> stackSizeOf(mlir::Type type) {
 
 // Stack variable id that a value refers to, if any.
 static std::optional<StackId> getStackId(mlir::Value value, StackNumbering &numbering) {
-    auto *context = value.getContext();
-    llvm::SmallVector<uint32_t, 4> reversePath;
-    unsigned base = 0;
+    mlir::Builder attrBuilder(value.getContext());
+    llvm::SmallVector<int64_t, 4> reversePath;
+    int64_t base = 0;
 
     while (true) {
         if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(value)) {
@@ -223,17 +211,13 @@ static std::optional<StackId> getStackId(mlir::Value value, StackNumbering &numb
         return std::nullopt;
     }
 
-    llvm::SmallVector<uint32_t, 4> path(reversePath.rbegin(), reversePath.rend());
-    return makeStackId(context, base, path);
+    llvm::SmallVector<int64_t, 4> path(reversePath.rbegin(), reversePath.rend());
+    return makeStackId(attrBuilder, base, path);
 }
 
 // Fold a value to constant attribute.
 static mlir::TypedAttr evalConstAttr(mlir::Value value, const ValueMap &valueMap,
                                      StackNumbering &numbering) {
-    mlir::Attribute attribute;
-    if (mlir::matchPattern(value, mlir::m_Constant(&attribute)))
-        return mlir::dyn_cast<mlir::TypedAttr>(attribute);
-
     auto *definingOp = value.getDefiningOp();
     if (!definingOp) return {};
 
