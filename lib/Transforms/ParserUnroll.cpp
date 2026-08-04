@@ -248,16 +248,7 @@ static mlir::TypedAttr evalConstAttr(mlir::Value value, const ValueMap &valueMap
     if (auto castOp = mlir::dyn_cast<P4HIR::CastOp>(definingOp)) {
         auto source = evalConstAttr(castOp.getSrc(), valueMap, numbering);
         if (!source) return {};
-        mlir::Type destType = castOp.getType();
-        if (mlir::isa<P4HIR::BitsType>(destType)) return P4HIR::foldConstantCast(destType, source);
-        if (mlir::isa<P4HIR::InfIntType>(destType))
-            if (auto sourceInt = P4HIR::getConstantInt(source)) {
-                llvm::APInt widened = sourceInt->isUnsigned()
-                                          ? sourceInt->zext(sourceInt->getBitWidth() + 1)
-                                          : llvm::APInt(*sourceInt);
-                return P4HIR::IntAttr::get(destType, widened);
-            }
-        return {};
+        return P4HIR::foldConstantCast(castOp.getType(), source);
     }
 
     llvm::SmallVector<mlir::Attribute> operandConsts;
