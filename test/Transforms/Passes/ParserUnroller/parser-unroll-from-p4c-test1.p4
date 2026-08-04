@@ -22,7 +22,7 @@
 // CHECK:   %[[N2:.*]] = p4hir.const #int2_b32i
 // CHECK:   p4hir.array_element_ref {{.*}}[%[[N2]]]
 // CHECK:   } to @parse_ipv4
-// CHECK:   } to @reject
+// CHECK:   } to @stateOutOfBound
 // CHECK-NOT: @parse_srcRouting_3
 // CHECK: p4hir.state @parse_ipv4 {
 

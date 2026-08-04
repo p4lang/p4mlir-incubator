@@ -124,24 +124,24 @@ module @test_irreducible {
     // CHECK:         } to @F
     // CHECK:         } to @B
     // CHECK-LABEL: p4hir.state @A_1 {
-    // CHECK:         } to @reject
+    // CHECK:         } to @stateOutOfBound
     // CHECK:         } to @D_1
     // CHECK:         } to @accept
     // CHECK-LABEL: p4hir.state @B_1 {
     // CHECK:         %[[I2:.*]] = p4hir.const #int1_b32i
     // CHECK:         p4hir.array_element_ref {{.*}}[%[[I2]]]
-    // CHECK:         p4hir.transition to @reject
+    // CHECK:         p4hir.transition to @stateOutOfBound
     // CHECK-LABEL: p4hir.state @C_1 {
     // CHECK:         %[[I3:.*]] = p4hir.const #int0_b32i
     // CHECK:         p4hir.array_element_ref {{.*}}[%[[I3]]]
     // CHECK:         p4hir.transition to @D_2
     // CHECK-LABEL: p4hir.state @D_1 {
     // CHECK:         } to @E_1
-    // CHECK:         } to @reject
+    // CHECK:         } to @stateOutOfBound
     // CHECK:         } to @A_1
     // CHECK-LABEL: p4hir.state @E_1 {
     // CHECK:         } to @F
-    // CHECK:         } to @reject
+    // CHECK:         } to @stateOutOfBound
     // CHECK-LABEL: p4hir.state @A_2 {
     // CHECK:         } to @B_1
     // CHECK:         } to @D_2

@@ -34,7 +34,7 @@ module @test_header_stack_loop {
         // CHECK: p4hir.state @parse_loop_3 {
         // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         p4hir.state @parse_loop {
             %stack = p4hir.variable ["stack"] : <!hs4>
             %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs4>
@@ -90,7 +90,7 @@ module @test_header_stack_depth8 {
         // CHECK: p4hir.state @loop_7 {
         // CHECK:   %[[C7:.*]] = p4hir.const #int7_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[C7]]]
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         p4hir.state @loop {
             %stack = p4hir.variable ["stack"] : <!hs8>
             %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs8>
@@ -159,7 +159,7 @@ module @test_hs_multistate {
         // CHECK: p4hir.state @stateB_3 {
         // CHECK:   %[[B3:.*]] = p4hir.const #int3_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[B3]]]
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         p4hir.state @stateC {
             p4hir.transition to @stateA
         }
@@ -203,7 +203,7 @@ module @test_hs_min_depth {
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[A3]]]
         // CHECK:   %[[B3:.*]] = p4hir.const #int3_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[B3]]]
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         p4hir.state @loop {
             %s4 = p4hir.variable ["s4"] : <!hs4>
             %ni4_ref = p4hir.struct_field_ref %s4["nextIndex"] : <!hs4>
@@ -253,7 +253,7 @@ module @test_hs_fixed_index_ignored {
         // CHECK: p4hir.state @loop_3 {
         // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         p4hir.state @loop {
             %big = p4hir.variable ["big"] : <!hs4>
             %bigNext_ref = p4hir.struct_field_ref %big["nextIndex"] : <!hs4>

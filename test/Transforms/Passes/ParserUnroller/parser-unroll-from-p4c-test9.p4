@@ -19,7 +19,7 @@
 // CHECK:   %[[F1:.*]] = p4hir.const #int1_b32i
 // CHECK:   p4hir.array_element_ref {{.*}}[%[[F1]]]
 // CHECK:   } to @accept
-// CHECK:   } to @reject
+// CHECK:   } to @stateOutOfBound
 // CHECK: p4hir.state @mixed_finite_loop {
 // CHECK:   %[[M0:.*]] = p4hir.const #int0_b32i
 // CHECK:   p4hir.array_element_ref {{.*}}[%[[M0]]]

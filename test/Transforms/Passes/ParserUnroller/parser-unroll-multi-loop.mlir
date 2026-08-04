@@ -38,7 +38,7 @@ module @test_multi_loop {
         // CHECK: p4hir.state @loopA_3 {
         // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         // CHECK-NOT: @loopA_4
         p4hir.state @loopA {
             %stack = p4hir.variable ["stack"] : <!hs4>

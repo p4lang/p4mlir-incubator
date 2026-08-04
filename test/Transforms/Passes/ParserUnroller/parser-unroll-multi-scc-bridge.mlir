@@ -41,7 +41,7 @@
 // CHECK:        %[[A3:.*]] = p4hir.const #int3_b32i
 // CHECK:        p4hir.array_element_ref {{.*}}[%[[A3]]]
 // CHECK:        } to @bridge_3
-// CHECK:        } to @reject
+// CHECK:        } to @stateOutOfBound
 
 // CHECK-LABEL: p4hir.state @bridge {
 // CHECK:        p4hir.transition to @B
@@ -53,7 +53,7 @@
 // CHECK:        p4hir.transition to @B_2
 
 // CHECK-LABEL: p4hir.state @bridge_3 {
-// CHECK:        p4hir.transition to @reject
+// CHECK:        p4hir.transition to @stateOutOfBound
 
 // CHECK-LABEL: p4hir.state @B {
 // CHECK:        %[[B0:.*]] = p4hir.const #int1_b32i
@@ -71,7 +71,7 @@
 // CHECK:        %[[B2:.*]] = p4hir.const #int3_b32i
 // CHECK:        p4hir.array_element_ref {{.*}}[%[[B2]]]
 // CHECK:        } to @accept
-// CHECK:        } to @reject
+// CHECK:        } to @stateOutOfBound
 
 module @test_multi_scc_bridge {
     p4hir.parser @MultiSccBridge(%cond: !b1)() {

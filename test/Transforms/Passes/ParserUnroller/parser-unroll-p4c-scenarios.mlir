@@ -43,7 +43,7 @@ module @test1_self_loop_stack3 {
         // CHECK: p4hir.state @parse_srcRouting_2 {
         // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         // CHECK-NOT: @parse_srcRouting_3
         p4hir.state @parse_srcRouting {
             %srcRoutes = p4hir.variable ["srcRoutes"] : <!hs3>
@@ -111,7 +111,7 @@ module @test3_multistate_loop_stack4 {
         // CHECK: p4hir.state @callLast_1 {
         // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         // CHECK-NOT: @parse_srcRouting_2
         p4hir.state @callLast {
             %srcRoutes = p4hir.variable ["srcRoutes"] : <!hs4>
@@ -150,7 +150,7 @@ module @test9_finite_loop {
         // CHECK: p4hir.state @finite_loop_1 {
         // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         // CHECK-NOT: @finite_loop_2
         p4hir.state @finite_loop {
             %h = p4hir.variable ["h"] : <!hs2>
@@ -220,7 +220,7 @@ module @test9_mixed_loops {
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
         // CHECK:   p4hir.transition to @start_loops_2
         // CHECK: p4hir.state @start_loops_2 {
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         p4hir.state @mixed_finite_loop {
             %h = p4hir.variable ["h"] : <!hs2>
             %nextIdx_ref = p4hir.struct_field_ref %h["nextIndex"] : <!hs2>

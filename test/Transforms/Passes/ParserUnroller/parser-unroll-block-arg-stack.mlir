@@ -32,7 +32,7 @@ module @test_block_arg_stack {
         // CHECK: p4hir.state @loop_3 {
         // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
-        // CHECK:   p4hir.transition to @reject
+        // CHECK:   p4hir.transition to @stateOutOfBound
         p4hir.state @loop {
             %stack_ref = p4hir.struct_field_ref %hdrs["stack"] : <!hdrs>
             %nextIdx_ref = p4hir.struct_field_ref %stack_ref["nextIndex"] : <!hs4>

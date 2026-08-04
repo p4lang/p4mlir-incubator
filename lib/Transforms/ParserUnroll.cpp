@@ -1007,6 +1007,21 @@ static void substituteExplicitIndices(P4HIR::ParserOp parser, SymbolicResult &sy
     }
 }
 
+static mlir::SymbolRefAttr createOOBRejectState(P4HIR::ParserOp parser) {
+    auto *context = parser.getContext();
+    mlir::OpBuilder builder(context);
+    builder.setInsertionPoint(parser.getBody().front().getTerminator());
+    auto state = P4HIR::ParserStateOp::create(
+        builder, parser.getLoc(), "stateOutOfBound", mlir::DictionaryAttr());
+    state.getBody().emplaceBlock();
+    builder.setInsertionPointToStart(&state.getBody().front());
+    auto errorType = P4HIR::ErrorType::get(
+        context, mlir::ArrayAttr::get(context, {mlir::StringAttr::get(context, "StackOutOfBounds")}));
+    P4HIR::ParserRejectOp::create(builder, parser.getLoc(),
+        P4HIR::ErrorCodeAttr::get(errorType, mlir::StringAttr::get(context, "StackOutOfBounds")));
+    return state.getSymbolRef();
+}
+
 // Clone, substitute indices, and rewrite transitions into the unrolled parser.
 static LogicalResult materializeUnrolled(P4HIR::ParserOp parser, SymbolicResult &symbolicResult,
                                          const SCCInfo &scc, StackNumbering &numbering) {
@@ -1020,13 +1035,8 @@ static LogicalResult materializeUnrolled(P4HIR::ParserOp parser, SymbolicResult 
         }
 
     mlir::SymbolRefAttr rejectRef;
-    for (auto stateOp : parser.states())
-        if (stateOp.isReject()) {
-            rejectRef = stateOp.getSymbolRef();
-            break;
-        }
-    if (hasOOB && !rejectRef)
-        return parser.emitError("parser loop unrolling requires a @reject state");
+    if (hasOOB)
+        rejectRef = createOOBRejectState(parser);
 
     if (failed(createClones(parser, symbolicResult, scc))) return failure();
     substituteConstantIndices(parser, symbolicResult, numbering);

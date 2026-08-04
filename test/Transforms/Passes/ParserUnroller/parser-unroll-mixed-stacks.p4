@@ -18,7 +18,7 @@
 // CHECK:   } to @parse_loop_3
 // CHECK: p4hir.state @parse_loop_3 {
 // CHECK:   } to @parse_small
-// CHECK:   } to @reject
+// CHECK:   } to @stateOutOfBound
 // CHECK-NOT: @parse_loop_4
 // CHECK: p4hir.state @parse_small {
 
