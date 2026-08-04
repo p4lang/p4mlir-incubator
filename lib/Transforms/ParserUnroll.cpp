@@ -229,12 +229,6 @@ static mlir::TypedAttr evalConstAttr(mlir::Value value, const ValueMap &valueMap
         return {};
     }
 
-    if (auto castOp = mlir::dyn_cast<P4HIR::CastOp>(definingOp)) {
-        auto source = evalConstAttr(castOp.getSrc(), valueMap, numbering);
-        if (!source) return {};
-        return P4HIR::foldConstantCast(castOp.getType(), source);
-    }
-
     llvm::SmallVector<mlir::Attribute> operandConsts;
     for (mlir::Value operand : definingOp->getOperands()) {
         auto folded = evalConstAttr(operand, valueMap, numbering);
@@ -243,8 +237,11 @@ static mlir::TypedAttr evalConstAttr(mlir::Value value, const ValueMap &valueMap
     }
     llvm::SmallVector<mlir::OpFoldResult> results;
     if (mlir::failed(definingOp->fold(operandConsts, results)) || results.size() != 1) return {};
-    return mlir::dyn_cast_if_present<mlir::TypedAttr>(
-        llvm::dyn_cast_if_present<mlir::Attribute>(results[0]));
+    if (auto attr = llvm::dyn_cast_if_present<mlir::Attribute>(results[0]))
+        return mlir::dyn_cast_if_present<mlir::TypedAttr>(attr);
+    if (auto foldedValue = llvm::dyn_cast_if_present<mlir::Value>(results[0]))
+        return evalConstAttr(foldedValue, valueMap, numbering);
+    return {};
 }
 
 // Fold a value to constant integer.
