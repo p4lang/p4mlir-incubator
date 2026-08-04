@@ -609,39 +609,21 @@ static void acceptLoopSCC(SCCInfo &scc, const PendingSCC &candidate, P4HIR::Pars
     }
 }
 
-// Loop heads reachable from a state.
-static llvm::SmallVector<P4HIR::ParserStateOp> reachableHeads(P4HIR::ParserStateOp start,
-                                                              const SCCInfo &scc) {
-    llvm::SmallVector<P4HIR::ParserStateOp> heads;
-    llvm::DenseSet<P4HIR::ParserStateOp> seenHeads;
+// Unique stack accesses reachable from start via DFS.
+// accessesFor returns the accesses associated with each visited state.
+template <typename AccessProvider>
+static llvm::SmallVector<StackAccess> reachable(P4HIR::ParserStateOp start,
+                                                AccessProvider accessesFor) {
+    llvm::SmallVector<StackAccess> result;
+    llvm::DenseSet<StackId> seenKeys;
     llvm::df_iterator_default_set<llvm::GraphTraits<P4HIR::ParserOp>::NodeRef> visited;
-
     for (auto stateOp : llvm::depth_first_ext(start, visited)) {
         auto current = mlir::cast<P4HIR::ParserStateOp>(stateOp);
         if (current.isTerminal()) continue;
-        if (auto it = scc.headOf.find(current); it != scc.headOf.end())
-            if (seenHeads.insert(it->second).second) heads.push_back(it->second);
+        for (auto &access : accessesFor(current))
+            if (seenKeys.insert(access.key).second) result.push_back(access);
     }
-    return heads;
-}
-
-// Stacks reachable from a state (acyclic).
-static llvm::SmallVector<StackAccess> reachableAccesses(P4HIR::ParserStateOp start,
-                                                        const AccessMap &stateAccesses) {
-    llvm::SmallVector<StackAccess> relevant;
-    llvm::DenseSet<StackId> seenKeys;
-    llvm::DenseSet<P4HIR::ParserStateOp> visited;
-    llvm::SmallVector<P4HIR::ParserStateOp> worklist{start};
-    while (!worklist.empty()) {
-        auto current = worklist.pop_back_val();
-        if (!visited.insert(current).second) continue;
-        if (current.isTerminal()) continue;
-        if (auto it = stateAccesses.find(current); it != stateAccesses.end())
-            for (auto &access : it->second)
-                if (seenKeys.insert(access.key).second) relevant.push_back(access);
-        for (auto next : current.getNextStates()) worklist.push_back(next);
-    }
-    return relevant;
+    return result;
 }
 
 // Per-state stacks that specialise clones.
@@ -652,17 +634,23 @@ static void computeRelevantStacks(P4HIR::ParserOp parser, SCCInfo &scc,
         if (stateOp.isTerminal()) continue;
         llvm::SmallVector<StackAccess> relevant;
         if (acyclic) {
-            relevant = reachableAccesses(stateOp, stateAccesses);
+            relevant = reachable(stateOp,
+                                [&](P4HIR::ParserStateOp state) -> llvm::ArrayRef<StackAccess> {
+                                    auto it = stateAccesses.find(state);
+                                    if (it == stateAccesses.end()) return {};
+                                    return it->second;
+                                });
         } else if (auto it = scc.headOf.find(stateOp); it != scc.headOf.end()) {
             relevant = scc.combinedByHead[it->second];
         } else {
-            llvm::DenseSet<StackId> seenKeys;
-            for (auto head : reachableHeads(stateOp, scc)) {
-                auto combinedIt = scc.combinedByHead.find(head);
-                if (combinedIt == scc.combinedByHead.end()) continue;
-                for (auto &access : combinedIt->second)
-                    if (seenKeys.insert(access.key).second) relevant.push_back(access);
-            }
+            relevant = reachable(stateOp,
+                                [&](P4HIR::ParserStateOp state) -> llvm::ArrayRef<StackAccess> {
+                                    auto headIt = scc.headOf.find(state);
+                                    if (headIt == scc.headOf.end()) return {};
+                                    auto combinedIt = scc.combinedByHead.find(headIt->second);
+                                    if (combinedIt == scc.combinedByHead.end()) return {};
+                                    return combinedIt->second;
+                                });
         }
         scc.relevantStacks[stateOp] = std::move(relevant);
     }
