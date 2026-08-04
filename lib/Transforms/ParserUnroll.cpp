@@ -513,15 +513,6 @@ struct SCCInfo {
     bool empty() const { return members.empty(); }
 };
 
-// Declaration order of each parser state.
-static llvm::DenseMap<P4HIR::ParserStateOp, unsigned> computedeclarationPositions(
-    P4HIR::ParserOp parser) {
-    llvm::DenseMap<P4HIR::ParserStateOp, unsigned> declarationPos;
-    unsigned position = 0;
-    for (auto stateOp : parser.states()) declarationPos[stateOp] = position++;
-    return declarationPos;
-}
-
 // Loop candidate
 struct PendingSCC {
     P4HIR::ParserStateOp head;
@@ -678,11 +669,12 @@ static void computeRelevantStacks(P4HIR::ParserOp parser, SCCInfo &scc,
 }
 
 // Build per-loop SCC info.
-static SCCInfo buildSCCInfo(P4HIR::ParserOp parser, llvm::ArrayRef<BackEdge> backEdges,
-                            const AccessMap &stateAccesses,
-                            const llvm::DenseSet<P4HIR::ParserStateOp> &untrackable) {
+static SCCInfo buildSCCInfo(
+    P4HIR::ParserOp parser, llvm::ArrayRef<BackEdge> backEdges,
+    const AccessMap &stateAccesses,
+    const llvm::DenseSet<P4HIR::ParserStateOp> &untrackable,
+    const llvm::DenseMap<P4HIR::ParserStateOp, unsigned> &declarationPos) {
     SCCInfo scc;
-    auto declarationPos = computedeclarationPositions(parser);
     auto pending = collectPendingSCCs(parser, backEdges, declarationPos);
     for (auto &candidate : pending)
         acceptLoopSCC(scc, candidate, parser, stateAccesses, untrackable);
@@ -1093,11 +1085,14 @@ struct ParserUnroll : public impl::ParserUnrollBase<ParserUnroll> {
             auto backEdges = findBackEdges(parser);
             LLVM_DEBUG(llvm::dbgs() << "  back edges found: " << backEdges.size() << "\n");
 
-            // Collect per-state {HSp}.
+            // Collect per-state {HSp} and declaration positions.
             StackNumbering numbering;
             AccessMap stateAccesses;
             llvm::DenseSet<P4HIR::ParserStateOp> untrackable;
+            llvm::DenseMap<P4HIR::ParserStateOp, unsigned> declarationPos;
+            unsigned position = 0;
             for (auto stateOp : parser.states()) {
+                declarationPos[stateOp] = position++;
                 auto accesses = computeStackAccesses(stateOp, numbering);
                 if (!accesses) {
                     untrackable.insert(stateOp);
@@ -1107,7 +1102,8 @@ struct ParserUnroll : public impl::ParserUnrollBase<ParserUnroll> {
                 }
             }
 
-            auto scc = buildSCCInfo(parser, backEdges, stateAccesses, untrackable);
+            auto scc =
+                buildSCCInfo(parser, backEdges, stateAccesses, untrackable, declarationPos);
             LLVM_DEBUG(llvm::dbgs() << "  SCC members: " << scc.members.size() << " across "
                                     << scc.combinedByHead.size() << " loop(s)\n");
 
