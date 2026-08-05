@@ -348,9 +348,9 @@ static std::optional<llvm::SmallVector<StackAccess>> computeStackAccesses(
     });
 
     if (unidentified) {
-        mlir::emitWarning(state.getLoc(),
-                          "cannot determine identity of header stack accessed in state '" +
-                              state.getName().str() + "'; not unrolling this loop");
+        state.emitWarning()
+            << "cannot determine identity of header stack accessed in state '"
+            << state.getName() << "'; not unrolling this loop";
         return std::nullopt;
     }
     for (auto &access : result) {
@@ -441,10 +441,10 @@ static llvm::SmallVector<std::pair<P4HIR::ParserStateOp, P4HIR::ParserStateOp>> 
                          [&](P4HIR::ParserStateOp /*source*/, P4HIR::ParserStateOp dest) {
                              if (warned) return;
                              warned = true;
-                             mlir::emitWarning(dest.getLoc(),
-                                               "parser state '" + dest.getName().str() +
-                                                   "' is unreachable from @start but is the head "
-                                                   "of a cycle; parser-unroll will not process it");
+                             dest.emitWarning()
+                                 << "parser state '" << dest.getName()
+                                 << "' is unreachable from @start but is the head "
+                                    "of a cycle; parser-unroll will not process it";
                          });
     }
 
@@ -519,10 +519,10 @@ static void addCombinedAccess(const StackAccess &access, P4HIR::ParserStateOp lo
         return;
     }
     if (it->second != access.size && warnedKeys.insert(access.key).second)
-        mlir::emitWarning(loopHead.getLoc(),
-                          "header stack '" + renderStackId(access.key) +
-                              "' appears with conflicting sizes in the same SCC; "
-                              "unroll depth may be incorrect");
+        loopHead.emitWarning()
+            << "header stack '" << renderStackId(access.key)
+            << "' appears with conflicting sizes in the same SCC; "
+               "unroll depth may be incorrect";
 }
 
 // Combined {HSp} across an SCC's states.
@@ -554,20 +554,20 @@ static void acceptLoopSCC(SCCInfo &scc, const PendingSCC &candidate, P4HIR::Pars
 
     auto combined = combineSCCAccesses(parser, loopHead, sccSet, stateAccesses);
     if (combined.empty()) {
-        mlir::emitWarning(loopHead.getLoc(),
-                          "parser loop at state '" + loopHead.getName().str() +
-                              "' has no header stack operations; cannot infer unroll depth");
+        loopHead.emitWarning()
+            << "parser loop at state '" << loopHead.getName()
+            << "' has no header stack operations; cannot infer unroll depth";
         return;
     }
 
     size_t minSize = std::numeric_limits<size_t>::max();
     for (auto &access : combined) minSize = std::min(minSize, access.size);
     if (minSize > kDefaultMaxUnrollDepth) {
-        mlir::emitWarning(loopHead.getLoc(),
-                          "parser loop at state '" + loopHead.getName().str() +
-                              "' would unroll to depth " + std::to_string(minSize) + " (> " +
-                              std::to_string(kDefaultMaxUnrollDepth) +
-                              "); skipping. Reduce header stack size or raise the limit.");
+        loopHead.emitWarning()
+            << "parser loop at state '" << loopHead.getName()
+            << "' would unroll to depth " << minSize << " (> "
+            << kDefaultMaxUnrollDepth
+            << "); skipping. Reduce header stack size or raise the limit.";
         return;
     }
 
@@ -697,11 +697,10 @@ static SymbolicResult runSymbolicExecution(P4HIR::ParserOp parser, const SCCInfo
 
     while (!worklist.empty()) {
         if (++bfsIterations > kMaxBFSStateInstances) {
-            mlir::emitWarning(parser.getLoc(),
-                              "parser-unroll: BFS exceeded " +
-                                  std::to_string(kMaxBFSStateInstances) +
-                                  " state instances; aborting unroll for parser '" +
-                                  parser.getSymName().str() + "'");
+            parser.emitWarning()
+                << "parser-unroll: BFS exceeded " << kMaxBFSStateInstances
+                << " state instances; aborting unroll for parser '"
+                << parser.getSymName() << "'";
             result.states.clear();
             result.visitedMap.clear();
             return result;
