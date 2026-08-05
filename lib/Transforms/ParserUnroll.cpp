@@ -480,8 +480,14 @@ struct SCCInfo {
     llvm::DenseMap<P4HIR::ParserStateOp, P4HIR::ParserStateOp> headOf;
     // Per-state stacks that affect dedup of (state, M).
     llvm::DenseMap<P4HIR::ParserStateOp, llvm::SmallVector<StackAccess>> relevantStacks;
+    // Heads of counter-only SCCs (no stack accesses, select-driven bound).
+    llvm::DenseSet<P4HIR::ParserStateOp> counterOnlyHeads;
 
     bool empty() const { return members.empty(); }
+    bool isCounterOnly(P4HIR::ParserStateOp state) const {
+        auto headIt = headOf.find(state);
+        return headIt != headOf.end() && counterOnlyHeads.contains(headIt->second);
+    }
 };
 
 // Loop candidate
@@ -556,27 +562,44 @@ static void acceptLoopSCC(SCCInfo &scc, const PendingSCC &candidate, P4HIR::Pars
 
     auto combined = combineSCCAccesses(parser, loopHead, sccSet, stateAccesses);
     if (combined.empty()) {
-        loopHead.emitWarning()
-            << "parser loop at state '" << loopHead.getName()
-            << "' has no header stack operations; cannot infer unroll depth";
-        return;
+        bool hasSelect = llvm::any_of(sccSet, [](P4HIR::ParserStateOp stateOp) {
+            return mlir::isa<P4HIR::ParserTransitionSelectOp>(stateOp.getNextTransition());
+        });
+        if (!hasSelect) {
+            loopHead.emitWarning() << "parser loop at state '" << loopHead.getName()
+                                   << "' has no header stack operations; cannot infer unroll depth";
+            return;
+        }
+    } else {
+        size_t minSize = std::numeric_limits<size_t>::max();
+        for (auto &access : combined) minSize = std::min(minSize, access.size);
+        if (minSize > kDefaultMaxUnrollDepth) {
+            loopHead.emitWarning()
+                << "parser loop at state '" << loopHead.getName() << "' would unroll to depth "
+                << minSize << " (> " << kDefaultMaxUnrollDepth
+                << "); skipping. Reduce header stack size or raise the limit.";
+            return;
+        }
     }
 
-    size_t minSize = std::numeric_limits<size_t>::max();
-    for (auto &access : combined) minSize = std::min(minSize, access.size);
-    if (minSize > kDefaultMaxUnrollDepth) {
-        loopHead.emitWarning()
-            << "parser loop at state '" << loopHead.getName()
-            << "' would unroll to depth " << minSize << " (> "
-            << kDefaultMaxUnrollDepth
-            << "); skipping. Reduce header stack size or raise the limit.";
-        return;
-    }
-
+    bool counterOnly = combined.empty();
     scc.combinedByHead[loopHead] = std::move(combined);
+    if (counterOnly) scc.counterOnlyHeads.insert(loopHead);
     for (auto stateOp : sccSet) {
         scc.members.insert(stateOp);
         scc.headOf[stateOp] = loopHead;
+    }
+}
+
+// Collect variables used in transition_select args within counter-only SCC states.
+static void collectSelectVars(P4HIR::ParserOp parser, const SCCInfo &scc,
+                              llvm::DenseSet<StackId> &indexVars, StackNumbering &numbering) {
+    for (auto stateOp : parser.states()) {
+        if (!scc.isCounterOnly(stateOp)) continue;
+        if (auto selectOp =
+                mlir::dyn_cast<P4HIR::ParserTransitionSelectOp>(stateOp.getNextTransition()))
+            for (mlir::Value arg : selectOp.getArgs())
+                collectVarsInIndex(arg, indexVars, numbering);
     }
 }
 
@@ -670,12 +693,66 @@ struct SymbolicResult {
     }
 };
 
+// Check if a constant integer attribute is a member of a constant set attribute.
+static bool setContains(mlir::Attribute setAttr, mlir::Attribute valueAttr) {
+    if (mlir::isa<P4HIR::UniversalSetAttr>(setAttr)) return true;
+    auto set = mlir::dyn_cast<P4HIR::SetAttr>(setAttr);
+    if (!set || set.getKind() != P4HIR::SetKind::Constant) return false;
+    auto valueInt = P4HIR::getConstantInt(valueAttr);
+    if (!valueInt) return false;
+    for (auto member : set.getMembers())
+        if (auto memberInt = P4HIR::getConstantInt(member); memberInt && *memberInt == *valueInt)
+            return true;
+    return false;
+}
+
+// Resolve successor states for a parser state given known variable values.
+// If the terminator is a transition_select and all args evaluate to constants,
+// return only the first matching case's target. Otherwise return all successors.
+static llvm::SmallVector<P4HIR::ParserStateOp> resolveSuccessors(P4HIR::ParserStateOp state,
+                                                                 P4HIR::ParserOp parser,
+                                                                 const ValueMap &valueMap,
+                                                                 StackNumbering &numbering) {
+    auto *terminator = state.getNextTransition();
+    auto selectOp = mlir::dyn_cast<P4HIR::ParserTransitionSelectOp>(terminator);
+    if (!selectOp) return llvm::SmallVector<P4HIR::ParserStateOp>(state.getNextStates());
+
+    llvm::SmallVector<mlir::TypedAttr> foldedArgs;
+    for (mlir::Value arg : selectOp.getArgs()) {
+        auto folded = evalConstAttr(arg, valueMap, numbering);
+        if (!folded) return llvm::SmallVector<P4HIR::ParserStateOp>(state.getNextStates());
+        foldedArgs.push_back(folded);
+    }
+
+    for (auto selectCase : selectOp.selects()) {
+        auto selectKeys = selectCase.getSelectKeys();
+        if (static_cast<size_t>(selectKeys.size()) != foldedArgs.size())
+            return llvm::SmallVector<P4HIR::ParserStateOp>(state.getNextStates());
+
+        bool matches = true;
+        for (auto [key, arg] : llvm::zip(selectKeys, foldedArgs)) {
+            auto foldedKey = evalConstAttr(key, ValueMap{}, numbering);
+            if (!foldedKey || !setContains(foldedKey, arg)) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) {
+            auto targetState = parser.lookupSymbol<P4HIR::ParserStateOp>(selectCase.getStateAttr());
+            if (!targetState) break;
+            return {targetState};
+        }
+    }
+    return llvm::SmallVector<P4HIR::ParserStateOp>(state.getNextStates());
+}
+
 // BFS symbolic execution producing the (state, ind, M) instances to clone.
 static SymbolicResult runSymbolicExecution(P4HIR::ParserOp parser, const SCCInfo &scc,
                                            AccessMap stateAccesses, StackNumbering &numbering) {
     SymbolicResult result;
     result.accesses = std::move(stateAccesses);
     result.indexVars = collectIndexVars(parser, numbering);
+    collectSelectVars(parser, scc, result.indexVars, numbering);
 
     // Stage 1: initialisation.
     auto startState = parser.getStartState();
@@ -746,9 +823,31 @@ static SymbolicResult runSymbolicExecution(P4HIR::ParserOp parser, const SCCInfo
         ValueMap valueMapAfter = interpretState(
             state, valueMap, [](P4HIR::ArrayElementRefOp, const ValueMap &) {}, numbering);
 
-        for (auto successor : state.getNextStates()) {
-            if (successor.isTerminal()) continue;
-            worklist.push_back({successor, indexMapAfter, valueMapAfter});
+        if (scc.isCounterOnly(state)) {
+            auto resolved = resolveSuccessors(state, parser, valueMapAfter, numbering);
+            llvm::DenseSet<P4HIR::ParserStateOp> resolvedSet(resolved.begin(), resolved.end());
+
+            for (auto successor : state.getNextStates()) {
+                if (successor.isTerminal()) continue;
+                if (resolvedSet.contains(successor)) {
+                    worklist.push_back({successor, indexMapAfter, valueMapAfter});
+                    continue;
+                }
+                auto prunedRelIt = scc.relevantStacks.find(successor);
+                IndexMap prunedIndexMap;
+                if (prunedRelIt != scc.relevantStacks.end())
+                    prunedIndexMap = indexMapAfter.restrictTo(prunedRelIt->second);
+                ValueMap prunedValueMap = restrictValueMap(valueMapAfter, result.indexVars);
+                mlir::Attribute prunedKey =
+                    makeVisitedKey(parser.getContext(), successor.getSymNameAttr(), prunedIndexMap,
+                                   prunedValueMap);
+                result.visitedMap.try_emplace(prunedKey, std::nullopt);
+            }
+        } else {
+            for (auto successor : state.getNextStates()) {
+                if (successor.isTerminal()) continue;
+                worklist.push_back({successor, indexMapAfter, valueMapAfter});
+            }
         }
     }
 

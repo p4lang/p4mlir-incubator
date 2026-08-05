@@ -32,8 +32,7 @@
 // CHECK:   } to @start_loops_2
 // CHECK: p4hir.state @mixed_infinite_loop_1 {
 // CHECK: p4hir.state @infinite_loop {
-// CHECK:   } to @accept
-// CHECK:   } to @infinite_loop
+// CHECK:   p4hir.transition to @infinite_loop
 // CHECK-NOT: @infinite_loop_1
 
 @__corelib
@@ -94,10 +93,6 @@ parser p(packet_in pkt, out headers hdr) {
         }
     }
     state infinite_loop {
-        hdr.i.counter = hdr.i.counter + 1;
-        transition select(hdr.i.counter) {
-            3: accept;
-            default: infinite_loop;
-        }
+        transition infinite_loop;
     }
 }
