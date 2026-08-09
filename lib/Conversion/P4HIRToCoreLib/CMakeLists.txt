@@ -17,4 +17,5 @@ add_mlir_dialect_library(P4HIRToCoreLib
   MLIRIR
   MLIRSupport
   MLIRTransforms
+  MLIRArithDialect
 )
