@@ -16,3 +16,4 @@ add_mlir_dialect_library(P4MLIRConversion
 
 add_subdirectory(P4HIRToCoreLib)
 add_subdirectory(P4HIRToBMv2IR)
+add_subdirectory(P4HIRToLLVM)

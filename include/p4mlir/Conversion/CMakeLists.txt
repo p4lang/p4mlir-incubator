@@ -4,3 +4,4 @@
 
 add_subdirectory(P4HIRToCoreLib)
 add_subdirectory(P4HIRToBMv2IR)
+add_subdirectory(P4HIRToLLVM)

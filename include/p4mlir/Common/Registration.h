@@ -9,6 +9,7 @@
 #include "mlir/IR/DialectRegistry.h"
 #include "p4mlir/Conversion/P4HIRToBMv2IR/Passes.h"
 #include "p4mlir/Conversion/P4HIRToCoreLib/Passes.h"
+#include "p4mlir/Conversion/P4HIRToLLVM/Passes.h"
 #include "p4mlir/Dialect/BMv2IR/BMv2IR_Dialect.h"
 #include "p4mlir/Dialect/BMv2IR/Pipelines/Passes.h"
 #include "p4mlir/Dialect/P4CoreLib/P4CoreLib_Dialect.h"
@@ -28,6 +29,7 @@ inline void registerAllPassesAndPipelines() {
     P4::P4MLIR::registerPasses();
     P4::P4MLIR::registerP4HIRToCoreLibPasses();
     P4::P4MLIR::registerP4HIRToBMv2IRPasses();
+    P4::P4MLIR::registerP4HIRToLLVMPasses();
     P4::P4MLIR::registerCommonFrontEndPipeline();
     P4::P4MLIR::registerBMv2Pipeline();
 }
