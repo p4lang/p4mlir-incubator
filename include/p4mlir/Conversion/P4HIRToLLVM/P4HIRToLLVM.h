@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 The P4 Language Consortium
+// SPDX-FileCopyrightText: 2026 The P4 Language Consortium
 //
 // SPDX-License-Identifier: Apache-2.0
 
