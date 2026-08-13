@@ -72,7 +72,7 @@ module @test_disjoint_cycles {
     // CHECK:        p4hir.array_element_ref {{.*}}[%[[B1]]]
     // CHECK-LABEL: p4hir.state @C_1
     // CHECK-LABEL: p4hir.state @A_2 {
-    // CHECK:        } to @stateOutOfBound
+    // CHECK:        } to @start_outOfBound_0
     // CHECK:        } to @C_2
     // CHECK:        } to @accept
     // CHECK-LABEL: p4hir.state @C_2

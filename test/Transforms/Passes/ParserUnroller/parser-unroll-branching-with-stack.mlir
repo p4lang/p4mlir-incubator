@@ -70,9 +70,9 @@ module @test_branching_with_stack {
         // CHECK:   } to @stateB_1
         // CHECK:   } to @stateC_1
         // CHECK: p4hir.state @stateB_1 {
-        // CHECK:   p4hir.transition to @stateOutOfBound
+        // CHECK:   p4hir.transition to @start_outOfBound_0
         // CHECK: p4hir.state @stateC_1 {
-        // CHECK:   p4hir.transition to @stateOutOfBound
+        // CHECK:   p4hir.transition to @start_outOfBound_0
         p4hir.state @accept {
             p4hir.parser_accept
         }

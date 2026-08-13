@@ -16,7 +16,7 @@
 // CHECK:   } to @parse_loop_2
 // CHECK: p4hir.state @parse_loop_2 {
 // CHECK:   } to @accept
-// CHECK:   } to @stateOutOfBound
+// CHECK:   } to @start_outOfBound_0
 // CHECK-NOT: @parse_loop_3
 
 @__corelib

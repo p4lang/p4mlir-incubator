@@ -26,7 +26,7 @@
 // CHECK: p4hir.state @callLast_1 {
 // CHECK:   %[[N3:.*]] = p4hir.const #int3_b32i
 // CHECK:   p4hir.array_element_ref {{.*}}[%[[N3]]]
-// CHECK:   } to @stateOutOfBound
+// CHECK:   } to @start_outOfBound_0
 // CHECK: p4hir.state @callMidle_1 {
 // CHECK:   p4hir.transition to @callLast_1
 // CHECK-NOT: @parse_srcRouting_2

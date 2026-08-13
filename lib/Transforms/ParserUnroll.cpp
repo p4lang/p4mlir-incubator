@@ -22,6 +22,7 @@
 #include "mlir/IR/SymbolTable.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Attrs.h"
 #include "p4mlir/Dialect/P4HIR/ParserGraph.h"
+#include "p4mlir/Transforms/IRUtils.h"
 #include "p4mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "p4hir-parser-unroll"
@@ -216,7 +217,7 @@ static mlir::FailureOr<StackId> getStackId(mlir::Value value, StackNumbering &nu
 }
 
 // Fold a value to constant attribute.
-static mlir::TypedAttr evalConstAttr(mlir::Value value, const ValueMap &valueMap,
+static mlir::TypedAttr foldToConstAttr(mlir::Value value, const ValueMap &valueMap,
                                      StackNumbering &numbering) {
     auto *definingOp = value.getDefiningOp();
     if (!definingOp) return {};
@@ -231,7 +232,7 @@ static mlir::TypedAttr evalConstAttr(mlir::Value value, const ValueMap &valueMap
 
     llvm::SmallVector<mlir::Attribute> operandConsts;
     for (mlir::Value operand : definingOp->getOperands()) {
-        auto folded = evalConstAttr(operand, valueMap, numbering);
+        auto folded = foldToConstAttr(operand, valueMap, numbering);
         if (!folded) return {};
         operandConsts.push_back(folded);
     }
@@ -240,36 +241,46 @@ static mlir::TypedAttr evalConstAttr(mlir::Value value, const ValueMap &valueMap
     if (auto attr = llvm::dyn_cast_if_present<mlir::Attribute>(results[0]))
         return mlir::dyn_cast_if_present<mlir::TypedAttr>(attr);
     if (auto foldedValue = llvm::dyn_cast_if_present<mlir::Value>(results[0]))
-        return evalConstAttr(foldedValue, valueMap, numbering);
+        return foldToConstAttr(foldedValue, valueMap, numbering);
     return {};
 }
 
 // Fold a value to constant integer.
-static mlir::FailureOr<llvm::APSInt> evalConst(mlir::Value value, const ValueMap &valueMap,
+static mlir::FailureOr<llvm::APSInt> foldToConstInt(mlir::Value value, const ValueMap &valueMap,
                                                StackNumbering &numbering) {
-    if (auto attribute = evalConstAttr(value, valueMap, numbering))
+    if (auto attribute = foldToConstAttr(value, valueMap, numbering))
         if (auto constInt = P4HIR::getConstantInt(attribute))
             return *constInt;
     return mlir::failure();
 }
 
-// Symbolically interpret a state's body, updating the value map.
-static ValueMap interpretState(
-    P4HIR::ParserStateOp state, ValueMap valueMap,
-    llvm::function_ref<void(P4HIR::ArrayElementRefOp, const ValueMap &)> onAccess,
+static void interpretBlock(
+    mlir::Block &block, ValueMap &valueMap,
+    llvm::function_ref<void(mlir::Operation *, const ValueMap &)> onAccess,
     StackNumbering &numbering) {
-    state.walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
-        if (auto arrayElementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op)) {
-            onAccess(arrayElementRef, valueMap);
-        } else if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(op)) {
+    for (auto &op : block) {
+        if (mlir::isa<P4HIR::ArrayElementRefOp, P4HIR::ArrayGetOp>(&op)) {
+            onAccess(&op, valueMap);
+        } else if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(&op)) {
             auto key = getStackId(assignOp.getRef(), numbering);
-            if (failed(key)) return;
-            if (auto attribute = evalConstAttr(assignOp.getValue(), valueMap, numbering))
+            if (failed(key)) continue;
+            if (auto attribute = foldToConstAttr(assignOp.getValue(), valueMap, numbering))
                 valueMap[*key] = attribute;
             else
                 valueMap.erase(*key);
+        } else if (auto scopeOp = mlir::dyn_cast<P4HIR::ScopeOp>(&op)) {
+            for (auto &scopeBlock : scopeOp.getRegion())
+                interpretBlock(scopeBlock, valueMap, onAccess, numbering);
         }
-    });
+    }
+}
+
+// Symbolically interpret a state's body, updating the value map.
+static ValueMap interpretState(
+    P4HIR::ParserStateOp state, ValueMap valueMap,
+    llvm::function_ref<void(mlir::Operation *, const ValueMap &)> onAccess,
+    StackNumbering &numbering) {
+    interpretBlock(*state.getBlock(), valueMap, onAccess, numbering);
     return valueMap;
 }
 
@@ -325,7 +336,7 @@ static mlir::FailureOr<llvm::SmallVector<StackAccess>> computeStackAccesses(
     state.walk([&](mlir::Operation *op) {
         if (auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op)) {
             mlir::Value idx = elementRef.getIndex();
-            if (evalConstAttr(idx, ValueMap{}, numbering)) return;
+            if (matchPattern(idx, m_Constant())) return;
 
             auto *arrayDef = elementRef.getInput().getDefiningOp();
             if (!arrayDef) return;
@@ -719,7 +730,7 @@ static llvm::SmallVector<P4HIR::ParserStateOp> resolveSuccessors(P4HIR::ParserSt
 
     llvm::SmallVector<mlir::TypedAttr> foldedArgs;
     for (mlir::Value arg : selectOp.getArgs()) {
-        auto folded = evalConstAttr(arg, valueMap, numbering);
+        auto folded = foldToConstAttr(arg, valueMap, numbering);
         if (!folded) return llvm::SmallVector<P4HIR::ParserStateOp>(state.getNextStates());
         foldedArgs.push_back(folded);
     }
@@ -731,7 +742,7 @@ static llvm::SmallVector<P4HIR::ParserStateOp> resolveSuccessors(P4HIR::ParserSt
 
         bool matches = true;
         for (auto [key, arg] : llvm::zip(selectKeys, foldedArgs)) {
-            auto foldedKey = evalConstAttr(key, ValueMap{}, numbering);
+            auto foldedKey = foldToConstAttr(key, ValueMap{}, numbering);
             if (!foldedKey || !setContains(foldedKey, arg)) {
                 matches = false;
                 break;
@@ -821,7 +832,7 @@ static SymbolicResult runSymbolicExecution(P4HIR::ParserOp parser, const SCCInfo
         // Stage 4, step 1: advance M for successors using the state's own accesses.
         IndexMap indexMapAfter = indexMap.advanced(accessesIt->second);
         ValueMap valueMapAfter = interpretState(
-            state, valueMap, [](P4HIR::ArrayElementRefOp, const ValueMap &) {}, numbering);
+            state, valueMap, [](mlir::Operation *, const ValueMap &) {}, numbering);
 
         if (scc.isCounterOnly(state)) {
             auto resolved = resolveSuccessors(state, parser, valueMapAfter, numbering);
@@ -967,7 +978,7 @@ static LogicalResult rewriteTransitions(P4HIR::ParserOp parser, SymbolicResult &
         ValueMap lookupValueMap =
             restrictValueMap(interpretState(
                                  symbolicState.state, symbolicState.entryValueMap,
-                                 [](P4HIR::ArrayElementRefOp, const ValueMap &) {}, numbering),
+                                 [](mlir::Operation *, const ValueMap &) {}, numbering),
                              symbolicResult.indexVars);
 
         StatePlan plan{stateOp, {}};
@@ -1002,8 +1013,6 @@ static LogicalResult rewriteTransitions(P4HIR::ParserOp parser, SymbolicResult &
     return success();
 }
 
-// Stage 4.1: substitute the concrete header-stack index (map M) into each
-// materialised state, turning stack.next accesses into constant-index accesses.
 static void substituteConstantIndices(P4HIR::ParserOp parser, SymbolicResult &symbolicResult,
                                       StackNumbering &numbering) {
     llvm::StringMap<P4HIR::ParserStateOp> stateByName;
@@ -1035,40 +1044,21 @@ static void substituteConstantIndices(P4HIR::ParserOp parser, SymbolicResult &sy
             for (auto &access : accessIt->second) count[access.key] = access.count;
 
         llvm::DenseMap<StackId, unsigned> occurrence;
-        stateIt->second.walk([&](mlir::Operation *op) {
-            mlir::Value idxVal;
-            if (auto arrayElementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op))
-                idxVal = arrayElementRef.getIndex();
-            else if (auto arrayGet = mlir::dyn_cast<P4HIR::ArrayGetOp>(op))
-                idxVal = arrayGet.getIndex();
-            else
-                return;
+        stateIt->second.walk([&](P4HIR::ArrayElementRefOp elementRef) {
+            auto key = nextIndexKeyOf(elementRef.getIndex());
+            if (!key) return;
 
-            std::optional<StackId> key;
-            int64_t value = 0;
-            if ((key = nextIndexKeyOf(idxVal))) {
-                value =
-                    static_cast<int64_t>(symbolicState.indexMap.indexOf(*key)) + occurrence[*key]++;
-            } else if (auto binOp = idxVal.getDefiningOp<P4HIR::BinOp>();
-                       binOp && binOp.getKind() == P4HIR::BinOpKind::Sub) {
-                if (auto rhsConstOp = binOp.getRhs().getDefiningOp<P4HIR::ConstOp>())
-                    if (auto rhsIntAttr = mlir::dyn_cast<P4HIR::IntAttr>(rhsConstOp.getValue());
-                        rhsIntAttr && (key = nextIndexKeyOf(binOp.getLhs())))
-                        value = static_cast<int64_t>(symbolicState.indexMap.indexOf(*key)) +
-                                count[*key] - rhsIntAttr.getValue().getSExtValue();
-            }
-            if (!key || value < 0) return;
+            int64_t value =
+                static_cast<int64_t>(symbolicState.indexMap.indexOf(*key)) + occurrence[*key]++;
+            if (value < 0) return;
 
-            auto idxType = mlir::dyn_cast<P4HIR::BitsType>(idxVal.getType());
+            auto idxType = mlir::dyn_cast<P4HIR::BitsType>(elementRef.getIndex().getType());
             if (!idxType) return;
 
-            builder.setInsertionPoint(op);
-            auto constOp =
-                P4HIR::ConstOp::create(builder, op->getLoc(), P4HIR::IntAttr::get(idxType, value));
-            if (auto arrayElementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op))
-                arrayElementRef.getIndexMutable().assign(constOp.getResult());
-            else
-                mlir::cast<P4HIR::ArrayGetOp>(op).getIndexMutable().assign(constOp.getResult());
+            builder.setInsertionPoint(elementRef);
+            auto constOp = P4HIR::ConstOp::create(builder, elementRef.getLoc(),
+                                                   P4HIR::IntAttr::get(idxType, value));
+            elementRef.getIndexMutable().assign(constOp.getResult());
         });
     }
 }
@@ -1089,21 +1079,31 @@ static void substituteExplicitIndices(P4HIR::ParserOp parser, SymbolicResult &sy
 
         interpretState(
             stateIt->second, symbolicState.entryValueMap,
-            [&](P4HIR::ArrayElementRefOp elementRef, const ValueMap &valueMap) {
-                mlir::Value idx = elementRef.getIndex();
-                if (evalConstAttr(idx, ValueMap{}, numbering)) return;
+            [&](mlir::Operation *op, const ValueMap &valueMap) {
+                mlir::Value idx;
+                if (auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op))
+                    idx = elementRef.getIndex();
+                else if (auto arrayGet = mlir::dyn_cast<P4HIR::ArrayGetOp>(op))
+                    idx = arrayGet.getIndex();
+                else
+                    return;
+
+                if (matchPattern(idx, m_Constant())) return;
 
                 auto idxType = mlir::dyn_cast<P4HIR::BitsType>(idx.getType());
                 if (!idxType) return;
 
-                auto value = evalConst(idx, valueMap, numbering);
+                auto value = foldToConstInt(idx, valueMap, numbering);
                 if (failed(value) || value->isNegative()) return;
 
-                builder.setInsertionPoint(elementRef);
+                builder.setInsertionPoint(op);
                 auto constOp = P4HIR::ConstOp::create(
-                    builder, elementRef.getLoc(),
+                    builder, op->getLoc(),
                     P4HIR::IntAttr::get(idxType, value->extOrTrunc(idxType.getWidth())));
-                elementRef.getIndexMutable().assign(constOp.getResult());
+                if (auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op))
+                    elementRef.getIndexMutable().assign(constOp.getResult());
+                else
+                    mlir::cast<P4HIR::ArrayGetOp>(op).getIndexMutable().assign(constOp.getResult());
             },
             numbering);
     }
@@ -1111,15 +1111,14 @@ static void substituteExplicitIndices(P4HIR::ParserOp parser, SymbolicResult &sy
 
 static mlir::SymbolRefAttr createOOBRejectState(P4HIR::ParserOp parser) {
     auto *context = parser.getContext();
-    mlir::OpBuilder builder(context);
-    builder.setInsertionPoint(parser.getBody().front().getTerminator());
-    auto state = P4HIR::ParserStateOp::create(
-        builder, parser.getLoc(), "stateOutOfBound", mlir::DictionaryAttr());
-    state.getBody().emplaceBlock();
-    builder.setInsertionPointToStart(&state.getBody().front());
+    auto startState = parser.getStartState();
+    mlir::IRRewriter rewriter(context);
+    rewriter.setInsertionPoint(parser.getBody().front().getTerminator());
+    auto state = IRUtils::createSubState(rewriter, startState, "outOfBound");
+    rewriter.setInsertionPointToStart(state.getBlock());
     auto errorType = P4HIR::ErrorType::get(
         context, mlir::ArrayAttr::get(context, {mlir::StringAttr::get(context, "StackOutOfBounds")}));
-    P4HIR::ParserRejectOp::create(builder, parser.getLoc(),
+    P4HIR::ParserRejectOp::create(rewriter, parser.getLoc(),
         P4HIR::ErrorCodeAttr::get(errorType, mlir::StringAttr::get(context, "StackOutOfBounds")));
     return state.getSymbolRef();
 }
@@ -1154,7 +1153,6 @@ struct ParserUnroll : public impl::ParserUnrollBase<ParserUnroll> {
             auto backEdges = findBackEdges(parser);
             LLVM_DEBUG(llvm::dbgs() << "  back edges found: " << backEdges.size() << "\n");
 
-            // Collect per-state {HSp} and declaration positions.
             StackNumbering numbering;
             AccessMap stateAccesses;
             llvm::DenseSet<P4HIR::ParserStateOp> untrackable;

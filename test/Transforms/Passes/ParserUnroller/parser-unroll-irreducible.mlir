@@ -84,10 +84,10 @@ module @test_irreducible {
     // CHECK:         p4hir.array_element_ref {{.*}}[%[[I1]]]
     // CHECK:         p4hir.transition to @C_1
     // CHECK-LABEL: p4hir.state @C_1 {
-    // CHECK:         } to @stateOutOfBound
+    // CHECK:         } to @start_outOfBound_0
     // CHECK:         } to @A_2
     // CHECK-LABEL: p4hir.state @A_2 {
-    // CHECK:         } to @stateOutOfBound
+    // CHECK:         } to @start_outOfBound_0
     // CHECK:         } to @accept
 
     // CHECK-NOT: p4hir.state @B_2

@@ -33,9 +33,9 @@
 // CHECK:   } to @cont_a_2
 // CHECK:   } to @cont_b_2
 // CHECK: p4hir.state @cont_a_2 {
-// CHECK:   p4hir.transition to @stateOutOfBound
+// CHECK:   p4hir.transition to @start_outOfBound_0
 // CHECK: p4hir.state @cont_b_2 {
-// CHECK:   p4hir.transition to @stateOutOfBound
+// CHECK:   p4hir.transition to @start_outOfBound_0
 // CHECK-NOT: @parse_srcRouting_3
 // CHECK-NOT: @cont_a_3
 

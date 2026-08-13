@@ -107,10 +107,10 @@ module @test_irreducible {
     // CHECK:         } to @D_1
     // CHECK:         } to @A_2
     // CHECK-LABEL: p4hir.state @D_1 {
-    // CHECK:         } to @stateOutOfBound
+    // CHECK:         } to @start_outOfBound_0
     // CHECK:         } to @E
     // CHECK-LABEL: p4hir.state @A_2 {
-    // CHECK:         } to @stateOutOfBound
+    // CHECK:         } to @start_outOfBound_0
     // CHECK:         } to @accept
 
     // CHECK-NOT: p4hir.state @B_2
