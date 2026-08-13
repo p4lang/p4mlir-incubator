@@ -109,7 +109,7 @@ module @test_header_stack_depth8 {
     }
 }
 
-// 3 clones of each SCC state → chain: C→A_1→B_1→C_1→A_2→B_2→C_2→A_3→B_3→reject
+// 3 clones of each SCC state -> chain: C->A_1->B_1->C_1->A_2->B_2->C_2->A_3->B_3->reject
 
 // CHECK-LABEL: @test_hs_multistate
 module @test_hs_multistate {

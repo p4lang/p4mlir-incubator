@@ -15,7 +15,7 @@
 
 // No back-edge, yet @mid is reached at index 0 (straight from @start) and at
 // index 1 (via @a's stack.next), so it specialises into two constant-index
-// clones — loop-less unrolling, matching p4c.
+// clones - loop-less unrolling, matching p4c.
 // CHECK-LABEL: @test_loopless_merge
 module @test_loopless_merge {
     p4hir.parser @LooplessMerge(%cond: !b1)() {

@@ -19,7 +19,7 @@
 !arr_2xhstk = !p4hir.array<2x!hstk>
 !hs2 = !p4hir.header_stack<2x!hstk>       // stack size 2  (test9)
 
-//   Self-loop parse_srcRouting → parse_srcRouting (back-edge)
+//   Self-loop parse_srcRouting -> parse_srcRouting (back-edge)
 // CHECK-LABEL: @test1_self_loop_stack3
 module @test1_self_loop_stack3 {
     // CHECK: p4hir.parser @SrcRoutingParser
@@ -67,7 +67,7 @@ module @test1_self_loop_stack3 {
     }
 }
 
-//     parse_srcRouting → callMidle → callLast → parse_srcRouting (back-edge)
+//     parse_srcRouting -> callMidle -> callLast -> parse_srcRouting (back-edge)
 // CHECK-LABEL: @test3_multistate_loop_stack4
 module @test3_multistate_loop_stack4 {
     // CHECK: p4hir.parser @SrcRouting4Parser

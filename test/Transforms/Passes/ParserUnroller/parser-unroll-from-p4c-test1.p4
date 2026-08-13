@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
-// srcRoutes[3] → depth 3: 2 clones; each loop-back advances one clone, the
+// srcRoutes[3] -> depth 3: 2 clones; each loop-back advances one clone, the
 // last redirects to @reject.  The bos=1 exit keeps targeting @parse_ipv4.
 // CHECK: p4hir.parser @p
 // CHECK: p4hir.state @start

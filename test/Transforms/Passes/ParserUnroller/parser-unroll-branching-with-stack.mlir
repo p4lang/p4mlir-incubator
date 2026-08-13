@@ -4,14 +4,14 @@
 
 // RUN: p4mlir-opt %s -p4hir-parser-unroll | FileCheck %s
 
-//   start → stateA (extract hs2) → select → stateB → stateA  (back-edge)
-//                                           → stateC → stateA  (back-edge)
-//   stateA   → select → stateB, stateC          (original paths unchanged)
-//   stateB   → stateA_1                         (was → stateA)
-//   stateC   → stateA_1                         (was → stateA)
-//   stateA_1 → select → stateB_1, stateC_1
-//   stateB_1 → @reject                          (stateA at hs:2 is OOB)
-//   stateC_1 → @reject
+//   start -> stateA (extract hs2) -> select -> stateB -> stateA  (back-edge)
+//                                           -> stateC -> stateA  (back-edge)
+//   stateA   -> select -> stateB, stateC          (original paths unchanged)
+//   stateB   -> stateA_1                         (was -> stateA)
+//   stateC   -> stateA_1                         (was -> stateA)
+//   stateA_1 -> select -> stateB_1, stateC_1
+//   stateB_1 -> @reject                          (stateA at hs:2 is OOB)
+//   stateC_1 -> @reject
 
 !validity_bit = !p4hir.validity.bit
 !hdr = !p4hir.header<"hdr", __valid: !validity_bit>

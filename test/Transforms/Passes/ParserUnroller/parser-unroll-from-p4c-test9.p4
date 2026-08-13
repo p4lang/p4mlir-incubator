@@ -4,7 +4,7 @@
 
 // RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll 2>&1 | FileCheck %s
 // CHECK: warning:{{.*}}infinite_loop{{.*}}no header stack operations
-// finite_loop unrolls once (h_stack[2]) and its last iteration → @reject.
+// finite_loop unrolls once (h_stack[2]) and its last iteration -> @reject.
 // The counter-driven infinite_loop keeps its self-loop (no clone).  The
 // start_loops SCC is cloned per M (start_loops_1, start_loops_2).
 // CHECK: p4hir.parser @p

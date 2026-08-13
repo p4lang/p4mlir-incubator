@@ -34,7 +34,7 @@ module @test_branching_loop {
                 } to @stateC
             }
         }
-        // No header stack → not unrolled: both back-edges preserved, no clone.
+        // No header stack -> not unrolled: both back-edges preserved, no clone.
         // CHECK: p4hir.state @stateB {
         // CHECK:   p4hir.transition to @stateA
         p4hir.state @stateB {

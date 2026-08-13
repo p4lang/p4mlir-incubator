@@ -4,7 +4,7 @@
 
 // RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
 // p4c parser-unroll-test5: extracts go to individual headers (no header stack),
-// so there is nothing to unroll — the parser passes through unchanged.
+// so there is nothing to unroll - the parser passes through unchanged.
 
 // CHECK: p4hir.parser @p
 // CHECK: p4hir.state @start

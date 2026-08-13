@@ -4,7 +4,7 @@
 
 // RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
 // Multi-state loop {parse_srcRouting, callMidle, callLast}, 2 extracts/iter of
-// srcRoutes[4] → 1 clone of each.  callLast's loop-back to parse_srcRouting is
+// srcRoutes[4] -> 1 clone of each.  callLast's loop-back to parse_srcRouting is
 // rewired to the clone; the clone's callLast_1 loop-back hits @reject.
 // CHECK: p4hir.parser @p
 // CHECK: p4hir.state @start

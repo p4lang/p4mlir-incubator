@@ -22,7 +22,7 @@ module @test_multistate_loop {
         p4hir.state @stateB {
             p4hir.transition to @stateC
         }
-        // No header stack → not unrolled: A→B→C→A back-edge preserved, no clone.
+        // No header stack -> not unrolled: A->B->C->A back-edge preserved, no clone.
         // CHECK: p4hir.state @stateC {
         // CHECK:   p4hir.transition to @stateA
         // CHECK-NOT: @stateA_1

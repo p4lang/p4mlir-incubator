@@ -14,7 +14,7 @@ module @test_parser {
             // CHECK: p4hir.transition to @parse_loop
             p4hir.transition to @parse_loop
         }
-        // No header stack → not unrolled: self-loop preserved, no clone.
+        // No header stack -> not unrolled: self-loop preserved, no clone.
         // CHECK: p4hir.state @parse_loop {
         // CHECK:   p4hir.transition to @parse_loop
         // CHECK-NOT: @parse_loop_1

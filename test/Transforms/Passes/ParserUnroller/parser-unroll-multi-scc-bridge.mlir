@@ -4,11 +4,11 @@
 
 // RUN: p4mlir-opt %s -p4hir-parser-unroll | FileCheck %s
 
-//   start → A   (SCC_A, advances hs)
-//             ↘
+//   start -> A   (SCC_A, advances hs)
+//             \
 //              bridge (NOT in any SCC)
-//             ↗
-//   B → ... (SCC_B, advances hs)
+//             /
+//   B -> ... (SCC_B, advances hs)
 
 !validity_bit = !p4hir.validity.bit
 !hdr = !p4hir.header<"hdr", __valid: !validity_bit>

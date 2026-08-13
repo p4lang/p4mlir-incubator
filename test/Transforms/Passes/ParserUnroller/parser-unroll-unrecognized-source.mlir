@@ -18,7 +18,7 @@ module @test_unrecognized_stack_source {
         p4hir.state @start {
             p4hir.transition to @loop
         }
-        // Stack source unrecognized → not unrolled: self-loop kept, no clone.
+        // Stack source unrecognized -> not unrolled: self-loop kept, no clone.
         // CHECK: p4hir.state @loop {
         // CHECK:   p4hir.transition to @loop
         // CHECK-NOT: @loop_1

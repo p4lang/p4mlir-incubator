@@ -10,7 +10,7 @@ module @test_no_stack_warning {
         p4hir.state @start {
             p4hir.transition to @parse_loop
         }
-        // No header stack → not unrolled: self-loop kept, no clone.
+        // No header stack -> not unrolled: self-loop kept, no clone.
         // CHECK: p4hir.state @parse_loop {
         // CHECK:   p4hir.transition to @parse_loop
         // CHECK-NOT: @parse_loop_1

@@ -4,9 +4,9 @@
 
 // RUN: p4mlir-opt %s -p4hir-parser-unroll | FileCheck %s
 
-//   A → B → A   (cycle 1, B advances hs1; size 2)
-//   A → C → A   (cycle 2, C advances NO stack)
-//   A → accept
+//   A -> B -> A   (cycle 1, B advances hs1; size 2)
+//   A -> C -> A   (cycle 2, C advances NO stack)
+//   A -> accept
 
 !validity_bit = !p4hir.validity.bit
 !hdr = !p4hir.header<"hdr", __valid: !validity_bit>

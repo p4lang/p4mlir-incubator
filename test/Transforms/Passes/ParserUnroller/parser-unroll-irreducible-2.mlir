@@ -4,10 +4,10 @@
 
 // RUN: p4mlir-opt %s -p4hir-parser-unroll -verify-diagnostics | FileCheck %s
 
-//     start → A
-//     A → B
-//     B → C,A
-//     C → D,B
+//     start -> A
+//     A -> B
+//     B -> C,A
+//     C -> D,B
 //     
 
 !validity_bit = !p4hir.validity.bit

@@ -4,8 +4,8 @@
 
 // RUN: p4mlir-opt %s -p4hir-parser-unroll -verify-diagnostics | FileCheck %s
 
-//   start → loopA → loopA  (back-edge, has hs4)
-//   start → loopX → loopX  (back-edge, no stack)
+//   start -> loopA -> loopA  (back-edge, has hs4)
+//   start -> loopX -> loopX  (back-edge, no stack)
 
 !b32i = !p4hir.bit<32>
 !validity_bit = !p4hir.validity.bit
@@ -22,7 +22,6 @@ module @test_multi_loop {
         p4hir.state @start {
             p4hir.transition to @loopA
         }
-        // hs4 → depth 4: loopA unrolls to 3 clones, last loop-back → @reject.
         // CHECK: p4hir.state @loopA {
         // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
         // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
@@ -63,7 +62,6 @@ module @test_multi_loop {
         p4hir.state @start {
             p4hir.transition to @loopX
         }
-        // loopX has no header stack → not unrolled: self-loop kept, no clone.
         // CHECK: p4hir.state @loopX {
         // CHECK:   p4hir.transition to @loopX
         // CHECK-NOT: @loopX_1

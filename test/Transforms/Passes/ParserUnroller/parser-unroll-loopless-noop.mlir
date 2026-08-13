@@ -39,7 +39,7 @@ module @issue4932_trivial {
 !headers = !p4hir.struct<"headers", u: !hs1>
 
 // issue561-7: a *constant* header-stack index (hdr.u[0]) is not a .next access,
-// so it must be kept verbatim — no clones, no index substitution.
+// so it must be kept verbatim - no clones, no index substitution.
 // CHECK-LABEL: @issue561_const_index
 module @issue561_const_index {
     // CHECK: p4hir.parser @P

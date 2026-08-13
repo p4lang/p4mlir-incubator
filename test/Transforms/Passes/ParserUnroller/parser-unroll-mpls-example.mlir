@@ -24,7 +24,7 @@ module @test_mpls_loop {
         p4hir.state @parse_ethernet {
             p4hir.transition to @parse_mpls
         }
-        // bos is a parser param, not a header stack → not unrolled: the
+        // bos is a parser param, not a header stack -> not unrolled: the
         // self-loop is preserved and no clone is produced.
         // CHECK: p4hir.state @parse_mpls {
         // CHECK:   } to @parse_mpls

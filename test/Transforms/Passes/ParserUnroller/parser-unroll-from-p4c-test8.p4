@@ -4,7 +4,7 @@
 
 // RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
 // p4c parser-unroll-test8: a constant stack index hdr.h[0] is not a .next access
-// and is kept verbatim — no folding beyond the literal, no clones.
+// and is kept verbatim - no folding beyond the literal, no clones.
 
 // CHECK: p4hir.parser @p
 // CHECK: p4hir.state @parse_hdrs {
