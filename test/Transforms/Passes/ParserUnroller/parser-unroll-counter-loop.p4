@@ -3,9 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
-// Counter-based loop with no header stacks. The counter starts at 0 and
-// increments each iteration; the loop exits when counter == 3.
-// Unrolled into 3 copies: counter goes 0→1→2→3, exiting at 3.
+// Simple counter-based loop that should unroll 3 times.
 // CHECK: p4hir.parser @p
 // CHECK: p4hir.state @start
 // CHECK: p4hir.state @parse_loop {
