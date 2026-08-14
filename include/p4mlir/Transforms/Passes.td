@@ -98,8 +98,15 @@ def ParserUnroll : Pass<"p4hir-parser-unroll"> {
     The pass depends on `lower-to-p4corelib` for incrementing the nextIndex
     of header stacks.
   }];
-  let constructor = "P4MLIR::createParserUnrollPass()";
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+  let options = [
+    Option<"maxUnrollDepth", "max-unroll-depth", "unsigned",
+           /*default=*/"64",
+           "Maximum header stack size allowed for unrolling">,
+    Option<"symbolicExecutionLimit", "symbolic-execution-limit", "unsigned",
+           /*default=*/"100000",
+           "Maximum BFS state instances before aborting symbolic execution">,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

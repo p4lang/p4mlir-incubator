@@ -30,8 +30,6 @@ namespace P4::P4MLIR {
 
 namespace {
 
-static constexpr unsigned kDefaultMaxUnrollDepth = 64;
-
 using BackEdge = std::pair<P4HIR::ParserStateOp, P4HIR::ParserStateOp>;
 
 // Apply transition rewrites to a state's transitions and select cases.
@@ -160,6 +158,7 @@ struct StateInfo {
 struct SCCInfo {
     llvm::SmallVector<LoopInfo> loops;
     llvm::DenseMap<P4HIR::ParserStateOp, StateInfo> stateInfo;
+    llvm::DenseSet<P4HIR::ParserStateOp> rejectedMembers;
 
     bool empty() const { return loops.empty(); }
     bool isCounterOnly(P4HIR::ParserStateOp state) const {
@@ -233,12 +232,19 @@ static llvm::SmallVector<StackAccess> combineSCCAccesses(
 // Accept one SCC as an unrollable loop.
 static void acceptLoopSCC(SCCInfo &scc, const PendingSCC &candidate, P4HIR::ParserOp parser,
                           const AccessMap &stateAccesses,
-                          const llvm::DenseSet<P4HIR::ParserStateOp> &untrackable) {
+                          const llvm::DenseSet<P4HIR::ParserStateOp> &untrackable,
+                          unsigned maxUnrollDepth) {
     P4HIR::ParserStateOp loopHead = candidate.head;
     const auto &sccSet = candidate.members;
 
-    for (auto stateOp : sccSet)
-        if (untrackable.contains(stateOp)) return;
+    auto reject = [&] { scc.rejectedMembers.insert(sccSet.begin(), sccSet.end()); };
+
+    for (auto stateOp : sccSet) {
+        if (untrackable.contains(stateOp)) {
+            reject();
+            return;
+        }
+    }
 
     auto combined = combineSCCAccesses(parser, loopHead, sccSet, stateAccesses);
     if (combined.empty()) {
@@ -248,16 +254,18 @@ static void acceptLoopSCC(SCCInfo &scc, const PendingSCC &candidate, P4HIR::Pars
         if (!hasSelect) {
             loopHead.emitWarning() << "parser loop at state '" << loopHead.getName()
                                    << "' has no header stack operations; cannot infer unroll depth";
+            reject();
             return;
         }
     } else {
         size_t minSize = std::numeric_limits<size_t>::max();
         for (auto &access : combined) minSize = std::min(minSize, access.size);
-        if (minSize > kDefaultMaxUnrollDepth) {
+        if (minSize > maxUnrollDepth) {
             loopHead.emitWarning()
                 << "parser loop at state '" << loopHead.getName() << "' would unroll to depth "
-                << minSize << " (> " << kDefaultMaxUnrollDepth
+                << minSize << " (> " << maxUnrollDepth
                 << "); skipping. Reduce header stack size or raise the limit.";
+            reject();
             return;
         }
     }
@@ -304,9 +312,10 @@ static void computeStateInfo(P4HIR::ParserOp parser, SCCInfo &scc,
         for (auto stateOp : loop.members)
             scc.stateInfo[stateOp].loopIndex = static_cast<int>(loopIndex);
 
-    bool acyclic = scc.loops.empty();
+    bool acyclic = scc.loops.empty() && scc.rejectedMembers.empty();
     for (auto stateOp : parser.states()) {
         if (stateOp.isTerminal()) continue;
+        if (scc.rejectedMembers.contains(stateOp)) continue;
         auto &info = scc.stateInfo[stateOp];
         if (acyclic) {
             info.relevantStacks =
@@ -335,11 +344,12 @@ static SCCInfo buildSCCInfo(
     P4HIR::ParserOp parser, llvm::ArrayRef<BackEdge> backEdges,
     const AccessMap &stateAccesses,
     const llvm::DenseSet<P4HIR::ParserStateOp> &untrackable,
-    const llvm::DenseMap<P4HIR::ParserStateOp, unsigned> &declarationPos) {
+    const llvm::DenseMap<P4HIR::ParserStateOp, unsigned> &declarationPos,
+    unsigned maxUnrollDepth) {
     SCCInfo scc;
     auto pending = collectPendingSCCs(parser, backEdges, declarationPos);
     for (auto &candidate : pending)
-        acceptLoopSCC(scc, candidate, parser, stateAccesses, untrackable);
+        acceptLoopSCC(scc, candidate, parser, stateAccesses, untrackable, maxUnrollDepth);
     computeStateInfo(parser, scc, stateAccesses);
     return scc;
 }
@@ -456,6 +466,7 @@ static void rewriteTransitions(P4HIR::ParserOp parser, SymbolicResult &symbolicR
         llvm::DenseSet<P4HIR::ParserStateOp> seenSuccessors;
         for (auto successor : stateOp.getNextStates()) {
             if (successor.isTerminal()) continue;
+            if (scc.rejectedMembers.contains(successor)) continue;
             if (!seenSuccessors.insert(successor).second) continue;
 
             IndexMap lookupIndexMap = indexMapAfter.restrictTo(scc.getRelevantStacks(successor));
@@ -611,6 +622,8 @@ static LogicalResult materializeUnrolled(P4HIR::ParserOp parser, SymbolicResult 
 }
 
 struct ParserUnroll : public impl::ParserUnrollBase<ParserUnroll> {
+    using ParserUnrollBase::ParserUnrollBase;
+
     void runOnOperation() override {
         getOperation()->walk([&](P4HIR::ParserOp parser) {
             LLVM_DEBUG(llvm::dbgs() << "\n=== Parser Unroll: " << parser.getName() << " ===\n");
@@ -635,8 +648,8 @@ struct ParserUnroll : public impl::ParserUnrollBase<ParserUnroll> {
                 }
             }
 
-            auto scc =
-                buildSCCInfo(parser, backEdges, stateAccesses, untrackable, declarationPos);
+            auto scc = buildSCCInfo(parser, backEdges, stateAccesses, untrackable,
+                                    declarationPos, maxUnrollDepth);
             LLVM_DEBUG({
                 unsigned memberCount = 0;
                 for (auto &loop : scc.loops) memberCount += loop.members.size();
@@ -651,7 +664,7 @@ struct ParserUnroll : public impl::ParserUnrollBase<ParserUnroll> {
                     parser, std::move(stateAccesses), numbering,
                     [&](P4HIR::ParserStateOp state) { return scc.getRelevantStacks(state); },
                     [&](P4HIR::ParserStateOp state) { return scc.isCounterOnly(state); },
-                    selectVars);
+                    symbolicExecutionLimit, scc.rejectedMembers, selectVars);
             if (failed(materializeUnrolled(parser, symbolicResult, scc, numbering)))
                 signalPassFailure();
         });

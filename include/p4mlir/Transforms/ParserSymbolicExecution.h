@@ -110,11 +110,12 @@ void canonicalizeParserVariables(P4HIR::ParserOp parser, StackNumbering &numberi
 mlir::FailureOr<llvm::SmallVector<StackAccess>> computeStackAccesses(
     P4HIR::ParserStateOp state, StackNumbering &numbering);
 
-SymbolicResult runSymbolicExecution(P4HIR::ParserOp parser, AccessMap stateAccesses,
-                                    StackNumbering &numbering,
-                                    RelevantStacksProvider getRelevantStacks,
-                                    CounterOnlyCheck isCounterOnly,
-                                    const llvm::DenseSet<StackId> &extraIndexVars = {});
+SymbolicResult runSymbolicExecution(
+    P4HIR::ParserOp parser, AccessMap stateAccesses, StackNumbering &numbering,
+    RelevantStacksProvider getRelevantStacks, CounterOnlyCheck isCounterOnly,
+    unsigned symbolicExecutionLimit,
+    const llvm::DenseSet<P4HIR::ParserStateOp> &skipStates = {},
+    const llvm::DenseSet<StackId> &extraIndexVars = {});
 
 }  // namespace P4::P4MLIR
 

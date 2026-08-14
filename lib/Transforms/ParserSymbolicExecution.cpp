@@ -20,7 +20,7 @@ using namespace mlir;
 
 namespace P4::P4MLIR {
 
-static constexpr unsigned kMaxBFSStateInstances = 100000;
+
 
 // Build a stack id.
 StackId makeStackId(mlir::Builder &attrBuilder, int64_t base, llvm::ArrayRef<int64_t> path) {
@@ -410,11 +410,12 @@ static llvm::SmallVector<P4HIR::ParserStateOp> resolveSuccessors(P4HIR::ParserSt
 }
 
 // Traverse through states calculating correct indices for each loop iteration.
-SymbolicResult runSymbolicExecution(P4HIR::ParserOp parser, AccessMap stateAccesses,
-                                    StackNumbering &numbering,
-                                    RelevantStacksProvider getRelevantStacks,
-                                    CounterOnlyCheck isCounterOnly,
-                                    const llvm::DenseSet<StackId> &extraIndexVars) {
+SymbolicResult runSymbolicExecution(
+    P4HIR::ParserOp parser, AccessMap stateAccesses, StackNumbering &numbering,
+    RelevantStacksProvider getRelevantStacks, CounterOnlyCheck isCounterOnly,
+    unsigned symbolicExecutionLimit,
+    const llvm::DenseSet<P4HIR::ParserStateOp> &skipStates,
+    const llvm::DenseSet<StackId> &extraIndexVars) {
     SymbolicResult result;
     result.accesses = std::move(stateAccesses);
     result.indexVars = collectIndexVars(parser, numbering);
@@ -437,10 +438,10 @@ SymbolicResult runSymbolicExecution(P4HIR::ParserOp parser, AccessMap stateAcces
     unsigned bfsIterations = 0;
 
     while (!worklist.empty()) {
-        if (++bfsIterations > kMaxBFSStateInstances) {
+        if (++bfsIterations > symbolicExecutionLimit) {
             parser.emitWarning()
-                << "parser-unroll: BFS exceeded " << kMaxBFSStateInstances
-                << " state instances; aborting unroll for parser '"
+                << "symbolic execution exceeded " << symbolicExecutionLimit
+                << " state instances; skipping unroll for parser '"
                 << parser.getSymName() << "'";
             result.states.clear();
             result.visitedMap.clear();
@@ -450,7 +451,7 @@ SymbolicResult runSymbolicExecution(P4HIR::ParserOp parser, AccessMap stateAcces
         auto [state, indexMap, valueMap] = std::move(worklist.front());
         worklist.pop_front();
 
-        if (state.isTerminal()) continue;
+        if (state.isTerminal() || skipStates.contains(state)) continue;
 
         llvm::ArrayRef<StackAccess> relevant = getRelevantStacks(state);
         IndexMap restrictedIndexMap = indexMap.restrictTo(relevant);
