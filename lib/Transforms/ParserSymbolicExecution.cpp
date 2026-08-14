@@ -118,11 +118,11 @@ VisitedKey makeVisitedKey(mlir::MLIRContext *context, P4HIR::ParserStateOp state
                                  {indexMap.encode(context), encodeValueMap(context, valueMap)})};
 }
 
-SymbolicResult::SuccessorLookup SymbolicResult::lookupSuccessor(
+mlir::FailureOr<std::optional<unsigned>> SymbolicResult::lookupSuccessor(
     P4HIR::ParserStateOp state, const IndexMap &indexMap, const ValueMap &valueMap) const {
     auto it = visitedMap.find(makeVisitedKey(state.getContext(), state, indexMap, valueMap));
-    if (it == visitedMap.end()) return {};
-    return {true, it->second};
+    if (it == visitedMap.end()) return mlir::failure();
+    return it->second;
 }
 
 // Header-stack element count for a (reference) type, if it is a stack.
@@ -363,12 +363,10 @@ static bool setContains(mlir::Attribute setAttr, mlir::Attribute valueAttr) {
     if (mlir::isa<P4HIR::UniversalSetAttr>(setAttr)) return true;
     auto set = mlir::dyn_cast<P4HIR::SetAttr>(setAttr);
     if (!set || set.getKind() != P4HIR::SetKind::Constant) return false;
+    assert(set.getMembers().size() == 1 && "expected single-member constant set");
     auto valueInt = P4HIR::getConstantInt(valueAttr);
-    if (!valueInt) return false;
-    for (auto member : set.getMembers())
-        if (auto memberInt = P4HIR::getConstantInt(member); memberInt && *memberInt == *valueInt)
-            return true;
-    return false;
+    auto memberInt = P4HIR::getConstantInt(set.getMembers()[0]);
+    return valueInt && memberInt && *memberInt == *valueInt;
 }
 
 // Tries to fold transitionSelects, returns all successors if it doesn't succeed.
@@ -393,7 +391,7 @@ static llvm::SmallVector<P4HIR::ParserStateOp> resolveSuccessors(P4HIR::ParserSt
             return llvm::to_vector(state.getNextStates());
 
         bool matches = true;
-        for (auto [key, arg] : llvm::zip(selectKeys, foldedArgs)) {
+        for (auto [key, arg] : llvm::zip_equal(selectKeys, foldedArgs)) {
             auto foldedKey = foldToConstAttr(key, ValueMap{}, numbering);
             if (!foldedKey || !setContains(foldedKey, arg)) {
                 matches = false;
@@ -409,10 +407,32 @@ static llvm::SmallVector<P4HIR::ParserStateOp> resolveSuccessors(P4HIR::ParserSt
     return llvm::to_vector(state.getNextStates());
 }
 
+// Resolve value map against nextIndex entries to contain interference 
+// between header stack derived indices and plain indices
+static ValueMap buildResolveValueMap(P4HIR::ParserStateOp state,
+                                     const ValueMap &valueMap,
+                                     const IndexMap &indexMap,
+                                     StackNumbering &numbering) {
+    ValueMap resolveMap = valueMap;
+    for (auto &op : *state.getBlock()) {
+        auto fieldRef = mlir::dyn_cast<P4HIR::StructFieldRefOp>(&op);
+        if (!fieldRef || fieldRef.getFieldName() != "nextIndex") continue;
+        auto nextIdxStackId = getStackId(fieldRef.getResult(), numbering);
+        auto stackStackId = getStackId(fieldRef.getInput(), numbering);
+        if (failed(nextIdxStackId) || failed(stackStackId)) continue;
+        unsigned index = indexMap.indexOf(*stackStackId);
+        auto refType = mlir::cast<P4HIR::ReferenceType>(fieldRef.getType());
+        auto indexType = refType.getObjectType();
+        resolveMap[*nextIdxStackId] =
+            P4HIR::IntAttr::get(indexType, static_cast<int64_t>(index));
+    }
+    return resolveMap;
+}
+
 // Traverse through states calculating correct indices for each loop iteration.
 SymbolicResult runSymbolicExecution(
     P4HIR::ParserOp parser, AccessMap stateAccesses, StackNumbering &numbering,
-    RelevantStacksProvider getRelevantStacks, CounterOnlyCheck isCounterOnly,
+    RelevantStacksProvider getRelevantStacks,
     unsigned symbolicExecutionLimit,
     const llvm::DenseSet<P4HIR::ParserStateOp> &skipStates,
     const llvm::DenseSet<StackId> &extraIndexVars) {
@@ -480,29 +500,23 @@ SymbolicResult runSymbolicExecution(
         ValueMap valueMapAfter = interpretState(
             state, valueMap, [](mlir::Operation *, const ValueMap &) {}, numbering);
 
-        if (isCounterOnly(state)) {
-            auto resolved = resolveSuccessors(state, parser, valueMapAfter, numbering);
-            llvm::DenseSet<P4HIR::ParserStateOp> resolvedSet(resolved.begin(), resolved.end());
+        ValueMap resolveMap = buildResolveValueMap(state, valueMap, indexMap, numbering);
+        auto resolved = resolveSuccessors(state, parser, resolveMap, numbering);
+        llvm::DenseSet<P4HIR::ParserStateOp> resolvedSet(resolved.begin(), resolved.end());
 
-            for (auto successor : state.getNextStates()) {
-                if (successor.isTerminal()) continue;
-                if (resolvedSet.contains(successor)) {
-                    worklist.push_back({successor, indexMapAfter, valueMapAfter});
-                    continue;
-                }
-                IndexMap prunedIndexMap =
-                    indexMapAfter.restrictTo(getRelevantStacks(successor));
-                ValueMap prunedValueMap = restrictValueMap(valueMapAfter, result.indexVars);
-                VisitedKey prunedKey =
-                    makeVisitedKey(parser.getContext(), successor, prunedIndexMap,
-                                   prunedValueMap);
-                result.visitedMap.try_emplace(prunedKey, std::nullopt);
-            }
-        } else {
-            for (auto successor : state.getNextStates()) {
-                if (successor.isTerminal()) continue;
+        for (auto successor : state.getNextStates()) {
+            if (successor.isTerminal()) continue;
+            if (resolvedSet.contains(successor)) {
                 worklist.push_back({successor, indexMapAfter, valueMapAfter});
+                continue;
             }
+            IndexMap prunedIndexMap =
+                indexMapAfter.restrictTo(getRelevantStacks(successor));
+            ValueMap prunedValueMap = restrictValueMap(valueMapAfter, result.indexVars);
+            VisitedKey prunedKey =
+                makeVisitedKey(parser.getContext(), successor, prunedIndexMap,
+                               prunedValueMap);
+            result.visitedMap.try_emplace(prunedKey, std::nullopt);
         }
     }
 

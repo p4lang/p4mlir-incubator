@@ -73,17 +73,13 @@ struct SymbolicResult {
     AccessMap accesses;
     llvm::DenseSet<StackId> indexVars;
 
-    struct SuccessorLookup {
-        bool found = false;
-        std::optional<unsigned> index;
-    };
-    SuccessorLookup lookupSuccessor(P4HIR::ParserStateOp state, const IndexMap &indexMap,
-                                    const ValueMap &valueMap) const;
+    mlir::FailureOr<std::optional<unsigned>> lookupSuccessor(
+        P4HIR::ParserStateOp state, const IndexMap &indexMap,
+        const ValueMap &valueMap) const;
 };
 
 using RelevantStacksProvider =
     llvm::function_ref<llvm::ArrayRef<StackAccess>(P4HIR::ParserStateOp)>;
-using CounterOnlyCheck = llvm::function_ref<bool(P4HIR::ParserStateOp)>;
 
 StackId makeStackId(mlir::Builder &attrBuilder, int64_t base, llvm::ArrayRef<int64_t> path);
 bool stackIdLess(StackId lhs, StackId rhs);
@@ -112,7 +108,7 @@ mlir::FailureOr<llvm::SmallVector<StackAccess>> computeStackAccesses(
 
 SymbolicResult runSymbolicExecution(
     P4HIR::ParserOp parser, AccessMap stateAccesses, StackNumbering &numbering,
-    RelevantStacksProvider getRelevantStacks, CounterOnlyCheck isCounterOnly,
+    RelevantStacksProvider getRelevantStacks,
     unsigned symbolicExecutionLimit,
     const llvm::DenseSet<P4HIR::ParserStateOp> &skipStates = {},
     const llvm::DenseSet<StackId> &extraIndexVars = {});

@@ -63,9 +63,9 @@ struct DfsFrame {
 };
 
 // DFS from a particular state.
-template <typename OnBackEdge>
-static void dfsFindBackEdges(P4HIR::ParserStateOp seed,
-                             llvm::DenseSet<P4HIR::ParserStateOp> &visited, OnBackEdge onBackEdge) {
+static void dfsFindBackEdges(
+    P4HIR::ParserStateOp seed, llvm::DenseSet<P4HIR::ParserStateOp> &visited,
+    llvm::function_ref<void(P4HIR::ParserStateOp, P4HIR::ParserStateOp)> onBackEdge) {
     if (visited.contains(seed)) return;
     llvm::DenseSet<P4HIR::ParserStateOp> onStack;
     llvm::SmallVector<DfsFrame> stack;
@@ -146,7 +146,6 @@ struct LoopInfo {
     P4HIR::ParserStateOp head;
     llvm::DenseSet<P4HIR::ParserStateOp> members;
     llvm::SmallVector<StackAccess> combinedAccesses;
-    bool counterOnly = false;
 };
 
 struct StateInfo {
@@ -161,10 +160,6 @@ struct SCCInfo {
     llvm::DenseSet<P4HIR::ParserStateOp> rejectedMembers;
 
     bool empty() const { return loops.empty(); }
-    bool isCounterOnly(P4HIR::ParserStateOp state) const {
-        auto *loop = loopOf(state);
-        return loop && loop->counterOnly;
-    }
     const LoopInfo *loopOf(P4HIR::ParserStateOp state) const {
         auto it = stateInfo.find(state);
         if (it == stateInfo.end() || it->second.loopIndex < 0) return nullptr;
@@ -251,9 +246,12 @@ static void acceptLoopSCC(SCCInfo &scc, const PendingSCC &candidate, P4HIR::Pars
         bool hasSelect = llvm::any_of(sccSet, [](P4HIR::ParserStateOp stateOp) {
             return mlir::isa<P4HIR::ParserTransitionSelectOp>(stateOp.getNextTransition());
         });
+	// If the loop has no header stack and no select backedge, then it is infinite.
         if (!hasSelect) {
-            loopHead.emitWarning() << "parser loop at state '" << loopHead.getName()
-                                   << "' has no header stack operations; cannot infer unroll depth";
+            loopHead.emitWarning()
+                << "parser loop at state '" << loopHead.getName()
+                << "' has no header stack operations and no select exit condition; "
+                   "cannot unroll";
             reject();
             return;
         }
@@ -270,16 +268,15 @@ static void acceptLoopSCC(SCCInfo &scc, const PendingSCC &candidate, P4HIR::Pars
         }
     }
 
-    bool counterOnly = combined.empty();
-    scc.loops.push_back({loopHead, sccSet, std::move(combined), counterOnly});
+    scc.loops.push_back({loopHead, sccSet, std::move(combined)});
 }
 
-// Collect variables used in transition_select args within counter-only SCC states.
+// Collect variables used in transition_select args within loop states.
 static llvm::DenseSet<StackId> collectSelectVars(P4HIR::ParserOp parser, const SCCInfo &scc,
                                                   StackNumbering &numbering) {
     llvm::DenseSet<StackId> selectVars;
     for (auto stateOp : parser.states()) {
-        if (!scc.isCounterOnly(stateOp)) continue;
+        if (!scc.loopOf(stateOp)) continue;
         if (auto selectOp =
                 mlir::dyn_cast<P4HIR::ParserTransitionSelectOp>(stateOp.getNextTransition()))
             for (mlir::Value arg : selectOp.getArgs())
@@ -290,9 +287,9 @@ static llvm::DenseSet<StackId> collectSelectVars(P4HIR::ParserOp parser, const S
 
 // Unique stack accesses reachable from start via DFS.
 // accessesFor returns the accesses associated with each visited state.
-template <typename AccessProvider>
-static llvm::SmallVector<StackAccess> reachable(P4HIR::ParserStateOp start,
-                                                AccessProvider accessesFor) {
+static llvm::SmallVector<StackAccess> reachable(
+    P4HIR::ParserStateOp start,
+    llvm::function_ref<llvm::ArrayRef<StackAccess>(P4HIR::ParserStateOp)> accessesFor) {
     llvm::SmallVector<StackAccess> result;
     llvm::DenseSet<StackId> seenKeys;
     llvm::df_iterator_default_set<llvm::GraphTraits<P4HIR::ParserOp>::NodeRef> visited;
@@ -471,13 +468,14 @@ static void rewriteTransitions(P4HIR::ParserOp parser, SymbolicResult &symbolicR
 
             IndexMap lookupIndexMap = indexMapAfter.restrictTo(scc.getRelevantStacks(successor));
 
-            auto [found, successorIdx] = symbolicResult.lookupSuccessor(
+            auto successorIdx = symbolicResult.lookupSuccessor(
                 successor, lookupIndexMap, lookupValueMap);
-            assert(found && "BFS invariant violated: successor not found in visited map");
-            if (successorIdx && *successorIdx == 0) continue;
+            assert(mlir::succeeded(successorIdx) &&
+                   "BFS invariant violated: successor not found in visited map");
+            if (*successorIdx && **successorIdx == 0) continue;
 
-            if (successorIdx) {
-                auto cloneIt = cloneIndex.find({successor, *successorIdx});
+            if (*successorIdx) {
+                auto cloneIt = cloneIndex.find({successor, **successorIdx});
                 assert(cloneIt != cloneIndex.end() && "clone op missing from index");
                 plan.rewrites[successor] = cloneIt->second.getSymbolRef();
             } else {
@@ -663,7 +661,6 @@ struct ParserUnroll : public impl::ParserUnrollBase<ParserUnroll> {
                 runSymbolicExecution(
                     parser, std::move(stateAccesses), numbering,
                     [&](P4HIR::ParserStateOp state) { return scc.getRelevantStacks(state); },
-                    [&](P4HIR::ParserStateOp state) { return scc.isCounterOnly(state); },
                     symbolicExecutionLimit, scc.rejectedMembers, selectVars);
             if (failed(materializeUnrolled(parser, symbolicResult, scc, numbering)))
                 signalPassFailure();

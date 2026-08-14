@@ -14,7 +14,7 @@ module @test_no_stack_warning {
         // CHECK: p4hir.state @parse_loop {
         // CHECK:   p4hir.transition to @parse_loop
         // CHECK-NOT: @parse_loop_1
-        // expected-warning@below {{parser loop at state 'parse_loop' has no header stack operations; cannot infer unroll depth}}
+        // expected-warning@below {{parser loop at state 'parse_loop' has no header stack operations and no select exit condition; cannot unroll}}
         p4hir.state @parse_loop {
             p4hir.transition to @parse_loop
         }
@@ -38,7 +38,7 @@ module @test_no_stack_multistate {
         }
         // CHECK: p4hir.state @stateA {
         // CHECK:   p4hir.transition to @stateB
-        // expected-warning@below {{parser loop at state 'stateA' has no header stack operations; cannot infer unroll depth}}
+        // expected-warning@below {{parser loop at state 'stateA' has no header stack operations and no select exit condition; cannot unroll}}
         p4hir.state @stateA {
             p4hir.transition to @stateB
         }

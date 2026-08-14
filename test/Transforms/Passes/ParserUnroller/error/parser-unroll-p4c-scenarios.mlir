@@ -181,7 +181,7 @@ module @test9_infinite_loop {
         // CHECK: p4hir.state @infinite_loop {
         // CHECK:   p4hir.transition to @infinite_loop
         // CHECK-NOT: @infinite_loop_1
-        // expected-warning@below {{parser loop at state 'infinite_loop' has no header stack operations; cannot infer unroll depth}}
+        // expected-warning@below {{parser loop at state 'infinite_loop' has no header stack operations and no select exit condition; cannot unroll}}
         p4hir.state @infinite_loop {
             %counter = p4hir.variable ["counter"] : <!b32>
             p4hir.transition to @infinite_loop

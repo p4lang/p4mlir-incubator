@@ -18,7 +18,7 @@ module @test_nextindex_inspection_only {
         }
         // CHECK: p4hir.state @inspect
         // CHECK-NOT: @inspect_1
-        // expected-warning@below {{parser loop at state 'inspect' has no header stack operations; cannot infer unroll depth}}
+        // expected-warning@below {{parser loop at state 'inspect' has no header stack operations and no select exit condition; cannot unroll}}
         p4hir.state @inspect {
             %stack = p4hir.variable ["stack"] : <!hs4>
             %val = p4hir.read %stack : <!hs4>

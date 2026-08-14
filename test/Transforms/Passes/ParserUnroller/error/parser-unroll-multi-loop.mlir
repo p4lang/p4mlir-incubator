@@ -65,7 +65,7 @@ module @test_multi_loop {
         // CHECK: p4hir.state @loopX {
         // CHECK:   p4hir.transition to @loopX
         // CHECK-NOT: @loopX_1
-        // expected-warning@below {{parser loop at state 'loopX' has no header stack operations; cannot infer unroll depth}}
+        // expected-warning@below {{parser loop at state 'loopX' has no header stack operations and no select exit condition; cannot unroll}}
         p4hir.state @loopX {
             p4hir.transition to @loopX
         }
