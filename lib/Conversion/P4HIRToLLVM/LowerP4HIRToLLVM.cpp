@@ -117,6 +117,90 @@ struct BinOpConversion : public ConvertOpToLLVMPattern<P4HIR::BinOp> {
     }
 };
 
+struct UnaryOpConversion : public ConvertOpToLLVMPattern<P4HIR::UnaryOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::UnaryOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto input = adaptor.getInput();
+        auto intType = dyn_cast<IntegerType>(input.getType());
+        if (!intType) {
+            return rewriter.notifyMatchFailure(op, "unsupported unary operand type");
+        }
+
+        auto createConstant = [&](int64_t value) {
+            return LLVM::ConstantOp::create(rewriter, op.getLoc(), intType, value);
+        };
+
+        switch (op.getKind()) {
+            case P4HIR::UnaryOpKind::UPlus:
+                rewriter.replaceOp(op, input);
+                return success();
+            case P4HIR::UnaryOpKind::Neg:
+                // LLVM has no integer negation, so `-x` is emitted as `0 - x`.
+                rewriter.replaceOpWithNewOp<LLVM::SubOp>(op, createConstant(0), input);
+                return success();
+            case P4HIR::UnaryOpKind::Cmpl:
+                rewriter.replaceOpWithNewOp<LLVM::XOrOp>(op, input, createConstant(-1));
+                return success();
+            case P4HIR::UnaryOpKind::LNot:
+                if (intType.getWidth() != 1) {
+                    return rewriter.notifyMatchFailure(op, "logical not requires i1 operand");
+                }
+                rewriter.replaceOpWithNewOp<LLVM::XOrOp>(op, input, createConstant(1));
+                return success();
+        }
+        return rewriter.notifyMatchFailure(op, "unsupported unary op kind");
+    }
+};
+
+LogicalResult lowerToICmpOp(P4HIR::CmpOp op, P4HIR::CmpOp::Adaptor adaptor,
+                            ConversionPatternRewriter &rewriter, LLVM::ICmpPredicate predicate) {
+    rewriter.replaceOpWithNewOp<LLVM::ICmpOp>(op, predicate, adaptor.getLhs(), adaptor.getRhs());
+    return success();
+}
+
+struct CmpOpConversion : public ConvertOpToLLVMPattern<P4HIR::CmpOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CmpOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto lhsType = op.getLhs().getType();
+        if (!isa<P4HIR::BitsType, P4HIR::BoolType>(lhsType)) {
+            return rewriter.notifyMatchFailure(op, "unsupported cmp operand type");
+        }
+
+        bool isSigned = false;  // BoolType lowers to i1 and is always compared as unsigned.
+        if (auto bitsType = dyn_cast<P4HIR::BitsType>(lhsType)) {
+            isSigned = bitsType.isSigned();
+        }
+
+        switch (op.getKind()) {
+            case P4HIR::CmpOpKind::Eq:
+                return lowerToICmpOp(op, adaptor, rewriter, LLVM::ICmpPredicate::eq);
+            case P4HIR::CmpOpKind::Ne:
+                return lowerToICmpOp(op, adaptor, rewriter, LLVM::ICmpPredicate::ne);
+            case P4HIR::CmpOpKind::Lt:
+                return lowerToICmpOp(
+                    op, adaptor, rewriter,
+                    isSigned ? LLVM::ICmpPredicate::slt : LLVM::ICmpPredicate::ult);
+            case P4HIR::CmpOpKind::Le:
+                return lowerToICmpOp(
+                    op, adaptor, rewriter,
+                    isSigned ? LLVM::ICmpPredicate::sle : LLVM::ICmpPredicate::ule);
+            case P4HIR::CmpOpKind::Gt:
+                return lowerToICmpOp(
+                    op, adaptor, rewriter,
+                    isSigned ? LLVM::ICmpPredicate::sgt : LLVM::ICmpPredicate::ugt);
+            case P4HIR::CmpOpKind::Ge:
+                return lowerToICmpOp(
+                    op, adaptor, rewriter,
+                    isSigned ? LLVM::ICmpPredicate::sge : LLVM::ICmpPredicate::uge);
+        }
+        return rewriter.notifyMatchFailure(op, "unsupported cmp op kind");
+    }
+};
+
 struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<LowerP4HIRToLLVMPass> {
     void runOnOperation() override {
         auto &context = getContext();
@@ -152,6 +236,9 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
         return IntegerType::get(bitsType.getContext(), bitsType.getWidth());
     });
 
+    converter.addConversion(
+        [](P4HIR::BoolType boolType) { return IntegerType::get(boolType.getContext(), 1); });
+
     converter.addTypeAttributeConversion(
         [&converter](P4HIR::BitsType bitsType,
                      P4HIR::IntAttr attr) -> LLVMTypeConverter::AttributeConversionResult {
@@ -161,9 +248,14 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
             }
             return LLVMTypeConverter::AttributeConversionResult::na();
         });
+
+    converter.addTypeAttributeConversion(
+        [&converter](P4HIR::BoolType boolType, P4HIR::BoolAttr attr) {
+            return IntegerAttr::get(converter.convertType(boolType), attr.getValue() ? 1 : 0);
+        });
 }
 
 void P4::P4MLIR::populateP4HIRToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                                        RewritePatternSet &patterns) {
-    patterns.add<ConstOpConversion, BinOpConversion>(converter);
+    patterns.add<ConstOpConversion, BinOpConversion, UnaryOpConversion, CmpOpConversion>(converter);
 }
