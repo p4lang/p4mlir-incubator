@@ -62,10 +62,10 @@ struct DfsFrame {
     unsigned nextIdx = 0;
 };
 
-// DFS from a particular state.
+// DFS from a particular state, collecting back edges.
 static void dfsFindBackEdges(
     P4HIR::ParserStateOp seed, llvm::DenseSet<P4HIR::ParserStateOp> &visited,
-    llvm::function_ref<void(P4HIR::ParserStateOp, P4HIR::ParserStateOp)> onBackEdge) {
+    llvm::SmallVectorImpl<BackEdge> &backEdges) {
     if (visited.contains(seed)) return;
     llvm::DenseSet<P4HIR::ParserStateOp> onStack;
     llvm::SmallVector<DfsFrame> stack;
@@ -75,11 +75,12 @@ static void dfsFindBackEdges(
     stack.push_back({seed, llvm::to_vector(seed.getNextStates()), 0});
 
     while (!stack.empty()) {
+        auto &frame = stack.back();
         bool descended = false;
-        while (stack.back().nextIdx < stack.back().nexts.size()) {
-            P4HIR::ParserStateOp next = stack.back().nexts[stack.back().nextIdx++];
+        while (frame.nextIdx < frame.nexts.size()) {
+            P4HIR::ParserStateOp next = frame.nexts[frame.nextIdx++];
             if (onStack.contains(next)) {
-                onBackEdge(stack.back().state, next);
+                backEdges.push_back({frame.state, next});
             } else if (!visited.contains(next)) {
                 visited.insert(next);
                 onStack.insert(next);
@@ -89,7 +90,7 @@ static void dfsFindBackEdges(
             }
         }
         if (!descended) {
-            onStack.erase(stack.back().state);
+            onStack.erase(frame.state);
             stack.pop_back();
         }
     }
@@ -103,23 +104,17 @@ static llvm::SmallVector<BackEdge> findBackEdges(P4HIR::ParserOp parser) {
     if (!startState) return result;
 
     llvm::DenseSet<P4HIR::ParserStateOp> visited;
-    dfsFindBackEdges(startState, visited,
-                     [&](P4HIR::ParserStateOp source, P4HIR::ParserStateOp dest) {
-                         result.push_back({source, dest});
-                     });
+    dfsFindBackEdges(startState, visited, result);
 
     for (auto stateOp : parser.states()) {
         if (visited.contains(stateOp) || stateOp.isTerminal()) continue;
-        bool warned = false;
-        dfsFindBackEdges(stateOp, visited,
-                         [&](P4HIR::ParserStateOp /*source*/, P4HIR::ParserStateOp dest) {
-                             if (warned) return;
-                             warned = true;
-                             dest.emitWarning()
-                                 << "parser state '" << dest.getName()
-                                 << "' is unreachable from @start but is the head "
-                                    "of a cycle; parser-unroll will not process it";
-                         });
+        llvm::SmallVector<BackEdge> unreachableEdges;
+        dfsFindBackEdges(stateOp, visited, unreachableEdges);
+        if (!unreachableEdges.empty())
+            unreachableEdges.front().second.emitWarning()
+                << "parser state '" << unreachableEdges.front().second.getName()
+                << "' is unreachable from @start but is the head "
+                   "of a cycle; parser-unroll will not process it";
     }
 
     return result;
@@ -214,11 +209,13 @@ static llvm::SmallVector<StackAccess> combineSCCAccesses(
                 combined.push_back(access);
                 continue;
             }
-            if (existing->size != access.size)
+            if (existing->size != access.size) {
                 loopHead.emitWarning()
                     << "header stack '" << renderStackId(access.key)
                     << "' appears with conflicting sizes in the same SCC; "
-                       "unroll depth may be incorrect";
+                       "using the smaller bound";
+                existing->size = std::min(existing->size, access.size);
+            }
         }
     }
     return combined;

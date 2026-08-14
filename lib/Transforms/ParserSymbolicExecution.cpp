@@ -354,7 +354,7 @@ mlir::FailureOr<llvm::SmallVector<StackAccess>> computeStackAccesses(
     }
     for (auto &access : result) {
         auto it = counts.find(access.key);
-        access.count = std::max<unsigned>(1, it == counts.end() ? 0 : it->second);
+        access.count = it == counts.end() ? 1 : it->second;
     }
     return result;
 }
