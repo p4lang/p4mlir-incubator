@@ -50,9 +50,8 @@ mlir::TypedAttr P4::P4MLIR::P4HIR::foldConstantCast(mlir::Type destType, mlir::A
 
     if (mlir::isa<InfIntType>(destType)) {
         if (auto srcCst = getConstantInt(srcAttr)) {
-            llvm::APInt widened = srcCst->isUnsigned()
-                                      ? srcCst->zext(srcCst->getBitWidth() + 1)
-                                      : llvm::APInt(*srcCst);
+            // InfInt is signed, so needs extend by one for unsigned case.
+            llvm::APInt widened = srcCst->extOrTrunc(srcCst->getBitWidth() + 1);
             return IntAttr::get(destType, widened);
         }
     }

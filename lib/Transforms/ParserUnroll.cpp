@@ -211,7 +211,7 @@ static llvm::SmallVector<StackAccess> combineSCCAccesses(
             }
             if (existing->size != access.size) {
                 loopHead.emitWarning()
-                    << "header stack '" << renderStackId(access.key)
+                    << "header stack '" << access.key.render()
                     << "' appears with conflicting sizes in the same SCC; "
                        "using the smaller bound";
                 existing->size = std::min(existing->size, access.size);
@@ -277,7 +277,7 @@ static llvm::DenseSet<StackId> collectSelectVars(P4HIR::ParserOp parser, const S
         if (auto selectOp =
                 mlir::dyn_cast<P4HIR::ParserTransitionSelectOp>(stateOp.getNextTransition()))
             for (mlir::Value arg : selectOp.getArgs())
-                collectVarsInIndex(arg, selectVars, numbering);
+                numbering.collectVarsInIndex(arg, selectVars);
     }
     return selectVars;
 }
@@ -419,8 +419,7 @@ static void createClones(P4HIR::ParserOp parser, SymbolicResult &symbolicResult,
             mlir::cast<P4HIR::ParserStateOp>(builder.clone(*pending.originalState.getOperation(), mapping));
         clone.setSymName(uniqueName);
         for (auto [original, cloned] : mapping.getValueMap())
-            if (auto it = numbering.valueIds.find(original); it != numbering.valueIds.end())
-                numbering.valueIds[cloned] = it->second;
+            numbering.copyNumbering(original, cloned);
         pending.symbolicState->cloneOp = clone;
         cursorIt->second = clone;
     }
@@ -450,10 +449,10 @@ static void rewriteTransitions(P4HIR::ParserOp parser, SymbolicResult &symbolicR
                "symbolicResult state missing from accesses map");
         IndexMap indexMapAfter = symbolicState.indexMap.advanced(symbolicStateAccessIt->second);
         ValueMap lookupValueMap =
-            restrictValueMap(interpretState(
-                                 symbolicState.state, symbolicState.entryValueMap,
-                                 [](mlir::Operation *, const ValueMap &) {}, numbering),
-                             symbolicResult.indexVars);
+            numbering.interpretState(
+                         symbolicState.state, symbolicState.entryValueMap,
+                         [](mlir::Operation *, const ValueMap &) {})
+                .restrictTo(symbolicResult.indexVars);
 
         StatePlan plan;
         plan.stateOp = stateOp;
@@ -491,12 +490,12 @@ static void substituteConstantIndices(P4HIR::ParserOp parser, SymbolicResult &sy
     auto nextIndexKeyOf = [&](mlir::Value value) -> std::optional<StackId> {
         if (auto readOp = value.getDefiningOp<P4HIR::ReadOp>()) {
             if (auto nextIndexRef = readOp.getRef().getDefiningOp<P4HIR::StructFieldRefOp>();
-                nextIndexRef && nextIndexRef.getFieldName() == "nextIndex")
-                if (auto key = getStackId(nextIndexRef.getInput(), numbering); succeeded(key))
+                nextIndexRef && nextIndexRef.getFieldName() == P4HIR::HeaderStackType::nextIndexFieldName)
+                if (auto key = numbering.getStackId(nextIndexRef.getInput()); succeeded(key))
                     return *key;
         } else if (auto structExtract = value.getDefiningOp<P4HIR::StructExtractOp>()) {
-            if (structExtract.getFieldName() == "nextIndex")
-                if (auto key = getStackId(structExtract.getInput(), numbering); succeeded(key))
+            if (structExtract.getFieldName() == P4HIR::HeaderStackType::nextIndexFieldName)
+                if (auto key = numbering.getStackId(structExtract.getInput()); succeeded(key))
                     return *key;
         }
         return std::nullopt;
@@ -551,7 +550,7 @@ static void substituteExplicitIndices(P4HIR::ParserOp parser, SymbolicResult &sy
     for (auto &symbolicState : symbolicResult.states) {
         if (!symbolicState.cloneOp) continue;
 
-        interpretState(
+        numbering.interpretState(
             symbolicState.cloneOp, symbolicState.entryValueMap,
             [&](mlir::Operation *op, const ValueMap &valueMap) {
                 mlir::Value idx;
@@ -567,7 +566,7 @@ static void substituteExplicitIndices(P4HIR::ParserOp parser, SymbolicResult &sy
                 auto idxType = mlir::dyn_cast<P4HIR::BitsType>(idx.getType());
                 if (!idxType) return;
 
-                auto value = foldToConstInt(idx, valueMap, numbering);
+                auto value = numbering.foldToConstInt(idx, valueMap);
                 if (failed(value) || value->isNegative()) return;
 
                 builder.setInsertionPoint(op);
@@ -578,8 +577,7 @@ static void substituteExplicitIndices(P4HIR::ParserOp parser, SymbolicResult &sy
                     elementRef.getIndexMutable().assign(constOp.getResult());
                 else
                     mlir::cast<P4HIR::ArrayGetOp>(op).getIndexMutable().assign(constOp.getResult());
-            },
-            numbering);
+            });
     }
 }
 
@@ -627,14 +625,14 @@ struct ParserUnroll : public impl::ParserUnrollBase<ParserUnroll> {
             LLVM_DEBUG(llvm::dbgs() << "  back edges found: " << backEdges.size() << "\n");
 
             StackNumbering numbering;
-            canonicalizeParserVariables(parser, numbering);
+            numbering.canonicalizeParserVariables(parser);
             AccessMap stateAccesses;
             llvm::DenseSet<P4HIR::ParserStateOp> untrackable;
             llvm::DenseMap<P4HIR::ParserStateOp, unsigned> declarationPos;
             unsigned position = 0;
             for (auto stateOp : parser.states()) {
                 declarationPos[stateOp] = position++;
-                auto accesses = computeStackAccesses(stateOp, numbering);
+                auto accesses = numbering.computeStackAccesses(stateOp);
                 if (failed(accesses)) {
                     untrackable.insert(stateOp);
                     stateAccesses[stateOp] = {};
@@ -654,11 +652,10 @@ struct ParserUnroll : public impl::ParserUnrollBase<ParserUnroll> {
 
             auto selectVars = collectSelectVars(parser, scc, numbering);
 
-            auto symbolicResult =
-                runSymbolicExecution(
+            auto symbolicResult = SymbolicExecution(
                     parser, std::move(stateAccesses), numbering,
                     [&](P4HIR::ParserStateOp state) { return scc.getRelevantStacks(state); },
-                    symbolicExecutionLimit, scc.rejectedMembers, selectVars);
+                    symbolicExecutionLimit, scc.rejectedMembers, selectVars).run();
             if (failed(materializeUnrolled(parser, symbolicResult, scc, numbering)))
                 signalPassFailure();
         });
