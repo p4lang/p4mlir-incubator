@@ -133,7 +133,7 @@ void StackNumbering::copyNumbering(mlir::Value original, mlir::Value cloned) {
         valueIds[cloned] = it->second;
 }
 
--// Stack variable id that a value refers to, if any.
+// Stack variable id that a value refers to, if any.
 mlir::FailureOr<StackId> StackNumbering::getStackId(mlir::Value value) {
     auto *context = value.getContext();
     llvm::SmallVector<int64_t, 4> reversePath;
