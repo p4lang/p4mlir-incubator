@@ -45,8 +45,8 @@ struct P4HIRToBMv2IRTypeConverter : public mlir::TypeConverter {
         addConversion([&](mlir::Type t) { return t; });
         addConversion([&](P4HIR::HeaderType headerType) -> Type {
             SmallVector<BMv2IR::FieldInfo> newFields;
-            for (auto field : headerType.getFields()) {
-                if (!BMv2IR::HeaderType::isAllowedFieldType(field.type)) return nullptr;
+            for (auto field : headerType.getElements()) {
+                if (!BMv2IR::HeaderType::isAllowedFieldType(field.getType())) return nullptr;
                 newFields.push_back(convertFieldInfo(field));
             }
             return BMv2IR::HeaderType::get(headerType.getContext(), headerType.getName(),

@@ -92,22 +92,18 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
     });
 
     addConversion([&](P4HIR::HeaderUnionType headerunionType) {
-        SmallVector<P4HIR::FieldInfo> newFields;
-        llvm::transform(headerunionType.getFields(), std::back_inserter(newFields),
-                        [&](auto field) -> P4HIR::FieldInfo {
-                            return {field.name, convertType(field.type), field.annotations};
-                        });
+        auto newFields = llvm::map_to_vector(headerunionType.getElements(), [&](auto field) {
+            return P4HIR::FieldInfo(field.name, convertType(field.type), field.annotations);
+        });
 
         return P4HIR::HeaderUnionType::get(headerunionType.getContext(), headerunionType.getName(),
                                            newFields, headerunionType.getAnnotations());
     });
 
     addConversion([&](P4HIR::HeaderType headerType) {
-        SmallVector<P4HIR::FieldInfo> newFields;
-        llvm::transform(headerType.getFields(), std::back_inserter(newFields),
-                        [&](auto field) -> P4HIR::FieldInfo {
-                            return {field.name, convertType(field.type), field.annotations};
-                        });
+        auto newFields = llvm::map_to_vector(headerType.getElements(), [&](auto field) {
+            return P4HIR::FieldInfo(field.name, convertType(field.type), field.annotations);
+        });
         // Remove validity bit field, it is added automatically
         newFields.pop_back();
 
@@ -116,11 +112,9 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
     });
 
     addConversion([&](P4HIR::StructType structType) {
-        SmallVector<P4HIR::FieldInfo> newFields;
-        llvm::transform(structType.getFields(), std::back_inserter(newFields),
-                        [&](auto field) -> P4HIR::FieldInfo {
-                            return {field.name, convertType(field.type), field.annotations};
-                        });
+        auto newFields = llvm::map_to_vector(structType.getElements(), [&](auto field) {
+            return P4HIR::FieldInfo(field.name, convertType(field.type), field.annotations);
+        });
 
         return P4HIR::StructType::get(structType.getContext(), structType.getName(), newFields,
                                       structType.getAnnotations());

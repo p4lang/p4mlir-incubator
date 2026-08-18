@@ -56,7 +56,7 @@ llvm::hash_code hash_value(const FieldInfo &fi) {
 mlir::TypedAttr getStructLikeDefaultValue(StructLikeTypeInterface type) {
     llvm::SmallVector<mlir::Attribute> fieldDefaults;
     for (auto field : type.getFields()) {
-        auto hasDef = mlir::dyn_cast<HasDefaultValue>(field.type);
+        auto hasDef = mlir::dyn_cast<HasDefaultValue>(field.getType());
         if (!hasDef) return nullptr;
         auto defValue = hasDef.getDefaultValue();
         if (!defValue) return nullptr;
@@ -785,49 +785,18 @@ void printArray(mlir::AsmPrinter &p, ArrayType arrayType) {
     printArray(p, arrayType.getSize(), arrayType.getElementType());
 }
 
-LogicalResult ArrayType::verify(function_ref<InFlightDiagnostic()> emitError, size_t size,
-                                Type elementType) {
-    if (mlir::isa<ReferenceType>(elementType))
-        return emitError() << "p4hir.array cannot contain reference types";
-    return success();
-}
-
-unsigned ArrayType::getMaxFieldID() const {
-    return getSize() * (FieldIdImpl::getMaxFieldID(getElementType()) + 1);
-}
-
-std::pair<Type, unsigned> ArrayType::getSubTypeByFieldID(unsigned fieldID) const {
-    if (fieldID == 0) return {*this, 0};
-    return {getElementType(), getIndexAndSubfieldID(fieldID).second};
-}
-
-std::pair<unsigned, bool> ArrayType::projectToChildFieldID(unsigned fieldID, unsigned index) const {
-    auto childRoot = getFieldID(index);
-    auto rangeEnd = index >= getSize() ? getMaxFieldID() : (getFieldID(index + 1) - 1);
-    return std::make_pair(fieldID - childRoot, fieldID >= childRoot && fieldID <= rangeEnd);
-}
-
-unsigned ArrayType::getIndexForFieldID(unsigned fieldID) const {
-    assert(fieldID && "fieldID must be at least 1");
-    // Divide the field ID by the number of fieldID's per element.
-    return (fieldID - 1) / (FieldIdImpl::getMaxFieldID(getElementType()) + 1);
-}
-
-std::pair<unsigned, unsigned> ArrayType::getIndexAndSubfieldID(unsigned fieldID) const {
-    auto index = getIndexForFieldID(fieldID);
-    auto elementFieldID = getFieldID(index);
-    return {index, fieldID - elementFieldID};
-}
-
-unsigned ArrayType::getFieldID(unsigned index) const {
-    return 1 + index * (FieldIdImpl::getMaxFieldID(getElementType()) + 1);
-}
-
 std::optional<DenseMap<Attribute, Type>> ArrayType::getSubelementIndexMap() const {
     DenseMap<Attribute, Type> destructured;
     for (unsigned i = 0; i < getSize(); ++i)
         destructured.insert({IntegerAttr::get(IndexType::get(getContext()), i), getElementType()});
     return destructured;
+}
+
+LogicalResult ArrayType::verify(function_ref<InFlightDiagnostic()> emitError, size_t size,
+                                Type elementType) {
+    if (mlir::isa<ReferenceType>(elementType))
+        return emitError() << "p4hir.array cannot contain reference types";
+    return success();
 }
 
 Type ArrayType::getTypeAtIndex(Attribute) const { return getElementType(); }

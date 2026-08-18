@@ -1152,7 +1152,7 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
   let hasCanonicalizeMethod = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::Value":$input, "P4HIR::FieldInfo":$field)>,
+    OpBuilder<(ins "mlir::Value":$input, "P4HIR::IndexedField":$field)>,
     OpBuilder<(ins "mlir::Value":$input, "mlir::StringAttr":$fieldName)>,
     OpBuilder<(ins "mlir::Value":$input, "llvm::StringRef":$fieldName), [{
       build($_builder, $_state, input, $_builder.getStringAttr(fieldName));
@@ -1163,7 +1163,7 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
     /// Return the name attribute of the accessed field.
     mlir::StringAttr getFieldNameAttr() {
       auto type = mlir::cast<P4HIR::StructLikeTypeInterface>(getInput().getType());
-      return type.getFields()[getFieldIndex()].name;
+      return type.getField(getFieldIndex()).getNameAttr();
     }
 
     /// Return the name of the accessed field.
@@ -1196,7 +1196,7 @@ def StructFieldRefOp : P4HIR_Op<"struct_field_ref",
   let hasVerifier = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::Value":$input, "P4HIR::FieldInfo":$field)>,
+    OpBuilder<(ins "mlir::Value":$input, "P4HIR::IndexedField":$field)>,
     OpBuilder<(ins "mlir::Value":$input, "mlir::StringAttr":$fieldName)>,
     OpBuilder<(ins "mlir::Value":$input, "llvm::StringRef":$fieldName), [{
       build($_builder, $_state, input, $_builder.getStringAttr(fieldName));
@@ -1207,7 +1207,7 @@ def StructFieldRefOp : P4HIR_Op<"struct_field_ref",
     /// Return the name attribute of the accessed field.
     mlir::StringAttr getFieldNameAttr() {
       auto type = mlir::cast<StructLikeTypeInterface>(mlir::cast<ReferenceType>(getInput().getType()).getObjectType());
-      return type.getFields()[getFieldIndex()].name;
+      return type.getField(getFieldIndex()).getNameAttr();
     }
 
     /// Return the name of the accessed field.

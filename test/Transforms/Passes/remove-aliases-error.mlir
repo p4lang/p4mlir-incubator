@@ -49,7 +49,7 @@ module {
 
 // CHECK: module
 module {
-  // expected-error@below {{aggregate initializer type for struct field '"t2"' must match, expected: '!p4hir.alias<"N32", !p4hir.bit<32>>', got: '!p4hir.bit<32>'}}
+  // expected-error@below {{aggregate initializer type for struct field 't2' must match, expected: '!p4hir.alias<"N32", !p4hir.bit<32>>', got: '!p4hir.bit<32>'}}
   %agg = p4hir.const #p4hir.aggregate<[#int1_b32i, #int1_b32i]> : !T
 }
 

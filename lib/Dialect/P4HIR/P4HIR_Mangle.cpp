@@ -93,15 +93,16 @@ static void mangleTypes(llvm::raw_ostream &os,
     for (auto type : types) getNameImpl(os, type.second, ctx);
 }
 
-static void mangleFields(llvm::raw_ostream &os, llvm::ArrayRef<P4HIR::FieldInfo> fields,
-                         ManglingContext &ctx) {
+template <typename CollectionT>
+static void mangleFields(llvm::raw_ostream &os, CollectionT fields, ManglingContext &ctx) {
     for (auto field : fields) {
         // Do not mangle validity bit if any
-        if (mlir::isa<P4HIR::ValidBitType>(field.type)) continue;
+        if (mlir::isa<P4HIR::ValidBitType>(field.getType())) continue;
 
-        if (ctx.mangleFieldNames) mangleIdentifier(os, field.name, ctx);
-        getNameImpl(os, field.type, ctx);
-        if (ctx.mangleAnnotations && field.annotations) mangleAnnotations(os, field.annotations);
+        if (ctx.mangleFieldNames) mangleIdentifier(os, field.getName(), ctx);
+        getNameImpl(os, field.getType(), ctx);
+        if (ctx.mangleAnnotations && field.getAnnotations())
+            mangleAnnotations(os, field.getAnnotations());
     }
     os << "_";
 }

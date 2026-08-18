@@ -228,8 +228,8 @@ DeletionKind P4HIR::AssignOp::rewire(const DestructurableMemorySlot &slot,
     mlir::TypeSwitch<Type>(slot.elemType)
         .Case<StructLikeTypeInterface>([&](auto structType) {
             for (auto [idx, elt] : elements) {
-                auto &fieldInfo = structType.getFields()[idx];
-                auto val = P4HIR::StructExtractOp::create(builder, getLoc(), getValue(), fieldInfo);
+                auto field = structType.getField(idx);
+                auto val = P4HIR::StructExtractOp::create(builder, getLoc(), getValue(), field);
                 P4HIR::AssignOp::create(builder, getLoc(), val, elt);
             }
         })

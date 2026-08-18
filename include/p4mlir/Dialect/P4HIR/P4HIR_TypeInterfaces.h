@@ -5,41 +5,50 @@
 #ifndef P4MLIR_DIALECT_P4HIR_P4HIR_TYPEINTERFACES_H
 #define P4MLIR_DIALECT_P4HIR_P4HIR_TYPEINTERFACES_H
 
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Types.h"
 
 namespace P4::P4MLIR::P4HIR {
 
-/// Struct defining a field. Used in structs and header
+/// Struct that represents a particular field of an IndexableType.
+struct IndexedField {
+    IndexedField(mlir::Type indexableType, unsigned index)
+        : indexableType(indexableType), index(index) {}
+    unsigned getIndex() const { return index; }
+    mlir::Type getParentType() const { return indexableType; }
+    mlir::Type getType() const;
+    std::string getName() const;
+    mlir::StringAttr getNameAttr() const;
+    mlir::DictionaryAttr getAnnotations() const;
+
+    bool operator==(const IndexedField &o) const {
+        return indexableType == o.indexableType && index == o.index;
+    }
+    bool operator!=(const IndexedField &o) const { return !operator==(o); }
+
+ private:
+    mlir::Type indexableType;
+    unsigned index;
+};
+
+/// Struct field definition. Used to define structs and headers
 struct FieldInfo {
+    FieldInfo(mlir::StringAttr name, mlir::Type type, mlir::DictionaryAttr annotations = {})
+        : name(name),
+          type(type),
+          annotations(annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr()) {}
+
+    mlir::Type getType() const { return type; }
+    std::string getName() const { return name.getValue().str(); }
+    mlir::StringAttr getNameAttr() const { return name; }
+    mlir::DictionaryAttr getAnnotations() const { return annotations; }
+
     mlir::StringAttr name;
     mlir::Type type;
     mlir::DictionaryAttr annotations;
-
-  FieldInfo(mlir::StringAttr name,
-            mlir::Type type,
-            mlir::DictionaryAttr annotations = {})
-    : name(name), type(type),
-      annotations(annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr())
-  { }
 };
 
-namespace FieldIdImpl {
-unsigned getMaxFieldID(::mlir::Type);
-
-std::pair<::mlir::Type, unsigned> getSubTypeByFieldID(::mlir::Type, unsigned fieldID);
-
-::mlir::Type getFinalTypeByFieldID(::mlir::Type type, unsigned fieldID);
-
-std::pair<unsigned, bool> projectToChildFieldID(::mlir::Type, unsigned fieldID, unsigned index);
-
-std::pair<unsigned, unsigned> getIndexAndSubfieldID(::mlir::Type type, unsigned fieldID);
-
-unsigned getFieldID(::mlir::Type type, unsigned index);
-
-unsigned getIndexForFieldID(::mlir::Type type, unsigned fieldID);
-
-}  // namespace FieldIdImpl
 }  // namespace P4::P4MLIR::P4HIR
 
 // We explicitly do not use push / pop for diagnostic in

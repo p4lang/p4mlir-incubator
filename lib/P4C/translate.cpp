@@ -643,11 +643,9 @@ mlir::TypedAttr P4HIRConverter::getOrCreateConstantExpr(const P4::IR::Expression
         auto base = mlir::cast<P4HIR::AggAttr>(getOrCreateConstantExpr(m->expr));
         auto structType = mlir::cast<P4HIR::StructType>(base.getType());
 
-        if (auto maybeIdx = structType.getFieldIndex(m->member.string_view())) {
-            auto field = base.getFields()[*maybeIdx];
-            auto fieldType = structType.getFieldType(m->member.string_view());
-
-            return setConstantExpr(expr, getTypedConstant(fieldType, field));
+        if (auto field = structType.getFieldByName(m->member.string_view())) {
+            auto attr = base.getFields()[field->getIndex()];
+            return setConstantExpr(expr, getTypedConstant(field->getType(), attr));
         } else
             BUG("invalid member reference %1%", m);
     }
@@ -1090,16 +1088,16 @@ P4HIR::CmpOp P4HIRConverter::emitHeaderUnionIsValidCmpOp(mlir::Location loc,
         [&](size_t fieldIndex) -> mlir::Value {
         auto headerUnionType = mlir::cast<P4HIR::HeaderUnionType>(getObjectType(headerUnion));
         // If all the fields were checked, return false
-        if (fieldIndex >= headerUnionType.getFields().size()) {
+        if (fieldIndex >= headerUnionType.getFieldCount()) {
             return getBoolConstant(loc, false);
         }
 
-        auto fieldInfo = headerUnionType.getFields()[fieldIndex];
+        auto field = headerUnionType.getField(fieldIndex);
         mlir::Value header;
         if (mlir::isa<P4HIR::ReferenceType>(headerUnion.getType())) {
-            header = P4HIR::StructFieldRefOp::create(builder, loc, headerUnion, fieldInfo.name);
+            header = P4HIR::StructFieldRefOp::create(builder, loc, headerUnion, field);
         } else {
-            header = P4HIR::StructExtractOp::create(builder, loc, headerUnion, fieldInfo.name);
+            header = P4HIR::StructExtractOp::create(builder, loc, headerUnion, field);
         }
 
         // Check if this member header is valid
@@ -1133,10 +1131,9 @@ P4HIR::CmpOp P4HIRConverter::emitHeaderUnionIsValidCmpOp(mlir::Location loc,
 void P4HIRConverter::emitSetInvalidForAllHeaders(mlir::Location loc, mlir::Value headerUnion,
                                                  const P4::cstring headerNameToSkip) {
     auto headerUnionType = mlir::cast<P4HIR::HeaderUnionType>(getObjectType(headerUnion));
-    llvm::for_each(headerUnionType.getFields(), [&](P4HIR::FieldInfo fieldInfo) {
-        if (headerNameToSkip != fieldInfo.name.getValue()) {
-            auto header =
-                P4HIR::StructFieldRefOp::create(builder, loc, headerUnion, fieldInfo.name);
+    llvm::for_each(headerUnionType.getFields(), [&](P4HIR::IndexedField field) {
+        if (headerNameToSkip != field.getName()) {
+            auto header = P4HIR::StructFieldRefOp::create(builder, loc, headerUnion, field);
             emitHeaderValidityBitAssignOp(loc, header, P4HIR::ValidityBit::Invalid);
         }
     });
@@ -2225,8 +2222,8 @@ bool P4HIRConverter::preorder(const P4::IR::StructExpression *str) {
     auto loc = getLoc(str);
 
     llvm::MapVector<mlir::StringAttr, mlir::Value> namedFields;
-    for (const auto &field : structType.getFields()) {
-        namedFields[field.name] = {};
+    for (auto field : structType.getFields()) {
+        namedFields[field.getNameAttr()] = {};
     }
 
     for (const auto *field : str->components)

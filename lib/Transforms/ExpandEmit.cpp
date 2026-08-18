@@ -48,10 +48,9 @@ struct ExpandEmitPattern : public mlir::OpRewritePattern<P4CoreLib::PacketEmitOp
             })
             .Case<P4HIR::HeaderUnionType, P4HIR::StructType>(
                 [&](P4HIR::StructLikeTypeInterface tp) -> mlir::LogicalResult {
-                    auto elements = tp.getFields();
-                    for (const auto &elt : elements) {
+                    for (auto elt : tp.getFields()) {
                         auto extrData =
-                            P4HIR::StructExtractOp::create(rewriter, loc, emitArg, elt.name);
+                            P4HIR::StructExtractOp::create(rewriter, loc, emitArg, elt.getName());
                         if (!mlir::isa<P4HIR::StructLikeTypeInterface>(extrData.getType()))
                             return emitOp.emitOpError() << "Invalid type contained in emit call";
                         P4CoreLib::PacketEmitOp::create(rewriter, loc, dstPkt, extrData);

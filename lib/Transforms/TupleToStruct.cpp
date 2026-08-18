@@ -44,10 +44,9 @@ class TupleToStructTypeConverter : public P4HIRTypeConverter {
             }
 
             SmallVector<P4HIR::FieldInfo> structFields;
-            mlir::StringAttr name;
-
             for (auto [index, type] : llvm::enumerate(convertedElements)) {
-                name = mlir::StringAttr::get(ctx, "element_" + std::to_string(index));
+                mlir::StringAttr name =
+                    mlir::StringAttr::get(ctx, "element_" + std::to_string(index));
                 structFields.emplace_back(name, type);
             }
             return P4HIR::StructType::get(ctx, "_tupleToStruct", structFields);
@@ -83,11 +82,11 @@ struct TupleExtractOpConversion : public OpConversionPattern<P4HIR::TupleExtract
         if (!structType)
             return rewriter.notifyMatchFailure(op, "expected P4HIR StructType as input operand");
 
-        if (index >= structType.getFields().size())
+        if (index >= structType.getFieldCount())
             return rewriter.notifyMatchFailure(op, "index out of bounds in P4HIR StructType");
 
         rewriter.replaceOpWithNewOp<P4HIR::StructExtractOp>(op, input,
-                                                            structType.getFields()[index].name);
+                                                            structType.getField(index).getName());
         return success();
     }
 };

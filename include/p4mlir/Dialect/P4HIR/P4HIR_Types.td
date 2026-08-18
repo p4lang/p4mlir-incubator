@@ -411,115 +411,31 @@ class StructLikeType<string name, string typeMnemonic>
     }]>
   ];
 
-  string commonClassDeclaration = [{
-    mlir::Type getFieldType(mlir::StringRef fieldName) {
-      for (const auto &field : getElements())
-        if (field.name == fieldName) return field.type;
-       return {};
+  string commonClassDeclaration = IndexableTypeInterface.extraClassDeclaration # [{
+    unsigned getFieldCount() {
+      return getElements().size();
     }
 
-    std::optional<P4HIR::FieldInfo> getField(mlir::StringRef fieldName) {
-      for (const auto &field : getElements())
-        if (field.name == fieldName) return field;
-       return {};
+    mlir::Type getFieldType(unsigned index) {
+      return getElements()[index].type;
     }
 
-    llvm::ArrayRef<P4HIR::FieldInfo> getFields() {
-      return getElements();
+    std::string getFieldName(unsigned index) {
+      return getElements()[index].name.getValue().str();
     }
 
-    void getInnerTypes(mlir::SmallVectorImpl<mlir::Type> &types) {
-      for (const auto &field : getElements()) types.push_back(field.type);
+    mlir::StringAttr getFieldNameAttr(unsigned index) {
+      return getElements()[index].name;
     }
 
-    P4HIR::FieldInfo getFieldByID(unsigned fieldID) {
-      assert((fieldID != 0) && "invalid fieldID");
-      mlir::Type type = *this;
-      const P4HIR::FieldInfo *nestedField = nullptr;
-      while (fieldID) {
-        auto stype = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(type);
-        if (stype) {
-          auto [index, newFieldID] = stype.getIndexAndSubfieldID(fieldID);
-          nestedField = &stype.getFields()[index];
-          type = nestedField->type;
-          fieldID = newFieldID;
-        } else {
-          llvm::report_fatal_error("fieldID indexing into a non-struct type");
-        }
-      }
-      return *nestedField;
+    mlir::DictionaryAttr getFieldAnnotations(unsigned index) {
+      return getElements()[index].annotations;
     }
 
-    std::optional<unsigned> getFieldIndex(mlir::StringRef fieldName) {
-      llvm::ArrayRef<P4HIR::FieldInfo> elems = getElements();
-      for (size_t idx = 0, numElems = elems.size(); idx < numElems; ++idx)
-        if (elems[idx].name == fieldName) return idx;
+    std::optional<P4HIR::IndexedField> getFieldByName(mlir::StringRef fieldName) {
+      for (auto field : getFields())
+        if (field.getName() == fieldName) return field;
       return {};
-    }
-
-    std::optional<unsigned> getFieldIndex(mlir::StringAttr fieldName) {
-      llvm::ArrayRef<P4HIR::FieldInfo> elems = getElements();
-      for (size_t idx = 0, numElems = elems.size(); idx < numElems; ++idx)
-        if (elems[idx].name == fieldName) return idx;
-      return {};
-    }
-
-    // FieldID type interface implementation
-    std::pair<unsigned, llvm::SmallVector<unsigned>> getFieldIDsStruct() const {
-      unsigned fieldID = 0;
-      auto elements = getElements();
-      llvm::SmallVector<unsigned> fieldIDs;
-      fieldIDs.reserve(elements.size());
-      for (auto &element : elements) {
-          auto type = element.type;
-          fieldID += 1;
-          fieldIDs.push_back(fieldID);
-          // Increment the field ID for the next field by the number of subfields.
-          fieldID += FieldIdImpl::getMaxFieldID(type);
-      }
-      return {fieldID, fieldIDs};
-    }
-
-    std::pair<mlir::Type, unsigned> getSubTypeByFieldID(unsigned fieldID) const {
-      if (fieldID == 0) return {*this, 0};
-      auto [maxId, fieldIDs] = getFieldIDsStruct();
-      auto *it = std::prev(llvm::upper_bound(fieldIDs, fieldID));
-      auto subfieldIndex = std::distance(fieldIDs.begin(), it);
-      auto subfieldType = getElements()[subfieldIndex].type;
-      auto subfieldID = fieldID - fieldIDs[subfieldIndex];
-      return {subfieldType, subfieldID};
-    }
-
-    unsigned getFieldID(unsigned index) const {
-      auto [maxId, fieldIDs] = getFieldIDsStruct();
-      return fieldIDs[index];
-    }
-
-    unsigned getMaxFieldID() const {
-      unsigned fieldID = 0;
-      for (const auto &field : getElements()) fieldID += 1 + FieldIdImpl::getMaxFieldID(field.type);
-      return fieldID;
-    }
-
-    unsigned getIndexForFieldID(unsigned fieldID) const {
-      assert(!getElements().empty() && "struct must have >0 fields");
-      auto [maxId, fieldIDs] = getFieldIDsStruct();
-      auto *it = std::prev(llvm::upper_bound(fieldIDs, fieldID));
-      return std::distance(fieldIDs.begin(), it);
-    }
-
-    std::pair<unsigned, unsigned> getIndexAndSubfieldID(unsigned fieldID) const {
-      auto index = getIndexForFieldID(fieldID);
-      auto elementFieldID = getFieldID(index);
-      return {index, fieldID - elementFieldID};
-    }
-
-    std::pair<unsigned, bool> projectToChildFieldID(unsigned fieldID,
-                                                    unsigned index) const {
-      auto [maxId, fieldIDs] = getFieldIDsStruct();
-      auto childRoot = fieldIDs[index];
-      auto rangeEnd = index + 1 >= getElements().size() ? maxId : (fieldIDs[index + 1] - 1);
-      return std::make_pair(fieldID - childRoot, fieldID >= childRoot && fieldID <= rangeEnd);
     }
 
     // DestructurableTypeInterface implementation
@@ -934,7 +850,7 @@ def AliasType : P4HIR_Type<"Alias", "alias", [AnnotatedType]> {
 //===----------------------------------------------------------------------===//
 def ArrayType : P4HIR_Type<"Array", "array", [
   DeclareTypeInterfaceMethods<DestructurableTypeInterface>,
-  DeclareTypeInterfaceMethods<FieldIDTypeInterface>,
+  IndexableTypeInterface,
   HasDefaultValue
 ]> {
   let summary = "fixed-sized array";
@@ -958,7 +874,19 @@ def ArrayType : P4HIR_Type<"Array", "array", [
     `<` custom<Array>($size, $elementType) `>`
   }];
 
-  let extraClassDeclaration = [{
+  let extraClassDeclaration = IndexableTypeInterface.extraClassDeclaration # [{
+    unsigned getFieldCount() {
+      return getSize();
+    }
+
+    mlir::Type getFieldType(unsigned index) {
+      return getElementType();
+    }
+
+    std::string getFieldName(unsigned index) const {
+      return ("[" + llvm::Twine(index) + "]").str();
+    }
+
     mlir::TypedAttr getDefaultValue();
   }];
 }

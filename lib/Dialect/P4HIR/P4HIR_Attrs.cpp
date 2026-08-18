@@ -228,16 +228,16 @@ LogicalResult AggAttr::verify(function_ref<InFlightDiagnostic()> emitError, Type
 
     return llvm::TypeSwitch<mlir::Type, mlir::LogicalResult>(type)
         .Case<P4HIR::StructLikeTypeInterface>([&](auto structLike) {
-            if (failed(checkSize(structLike.getFields().size(), value.size()))) return failure();
+            if (failed(checkSize(structLike.getFieldCount(), value.size()))) return failure();
 
             for (auto [index, field] : llvm::enumerate(value.getValue())) {
                 if (auto typedField = mlir::dyn_cast<mlir::TypedAttr>(field)) {
-                    const auto &structField = structLike.getFields()[index];
-                    if (typedField.getType() != structField.type) {
-                        emitError()
-                            << "aggregate initializer type for struct field '" << structField.name
-                            << "' must match, expected: " << structField.type
-                            << ", got: " << typedField.getType();
+                    auto structField = structLike.getField(index);
+                    if (typedField.getType() != structField.getType()) {
+                        emitError() << "aggregate initializer type for struct field '"
+                                    << structField.getName()
+                                    << "' must match, expected: " << structField.getType()
+                                    << ", got: " << typedField.getType();
                         return failure();
                     }
                 } else {

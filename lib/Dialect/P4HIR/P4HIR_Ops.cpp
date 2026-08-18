@@ -1788,8 +1788,7 @@ ParseResult P4HIR::StructOp::parse(OpAsmParser &parser, OperationState &result) 
     auto structType = mlir::dyn_cast<StructLikeTypeInterface>(declType);
     if (!structType) return parser.emitError(parser.getNameLoc(), "expected !p4hir.struct type");
 
-    llvm::SmallVector<Type, 4> structInnerTypes;
-    structType.getInnerTypes(structInnerTypes);
+    auto structInnerTypes = llvm::to_vector(structType.getFieldTypes());
     result.addTypes(structType);
 
     if (parser.resolveOperands(operands, structInnerTypes, inputOperandsLoc, result.operands))
@@ -1806,13 +1805,13 @@ void P4HIR::StructOp::print(OpAsmPrinter &printer) {
 }
 
 LogicalResult P4HIR::StructOp::verify() {
-    auto elements = mlir::cast<StructLikeTypeInterface>(getType()).getFields();
+    auto structLikeType = mlir::cast<StructLikeTypeInterface>(getType());
+    if (structLikeType.getFieldCount() != getInput().size())
+        return emitOpError("struct field count mismatch");
 
-    if (elements.size() != getInput().size()) return emitOpError("struct field count mismatch");
-
-    for (const auto &[field, value] : llvm::zip(elements, getInput()))
-        if (field.type != value.getType())
-            return emitOpError("struct field `") << field.name << "` type does not match";
+    for (auto [field, value] : llvm::zip(structLikeType.getElements(), getInput()))
+        if (field.getType() != value.getType())
+            return emitOpError("struct field `") << field.getName() << "` type does not match";
 
     return success();
 }
@@ -1853,13 +1852,12 @@ static LogicalResult verifyAggregateFieldIndexAndType(AggregateOp &op,
                                                       P4HIR::StructLikeTypeInterface aggType,
                                                       Type elementType) {
     auto index = op.getFieldIndex();
-    auto fields = aggType.getFields();
-    if (index >= fields.size())
+    if (index >= aggType.getFieldCount())
         return op.emitOpError() << "field index " << index
                                 << " exceeds element count of aggregate type";
 
-    if (elementType != fields[index].type)
-        return op.emitOpError() << "type " << fields[index].type
+    if (elementType != aggType.getFieldType(index))
+        return op.emitOpError() << "type " << aggType.getFieldType(index)
                                 << " of accessed field in aggregate at index " << index
                                 << " does not match expected type " << elementType;
 
@@ -1887,17 +1885,16 @@ static ParseResult parseExtractOp(OpAsmParser &parser, OperationState &result) {
         return failure();
     }
 
-    auto fieldIndex = aggType.getFieldIndex(fieldName);
-    if (!fieldIndex) {
+    auto field = aggType.getFieldByName(fieldName);
+    if (!field) {
         parser.emitError(parser.getNameLoc(),
                          "field name '" + fieldName.getValue() + "' not found in aggregate type");
         return failure();
     }
 
-    auto indexAttr = IntegerAttr::get(IntegerType::get(parser.getContext(), 32), *fieldIndex);
+    auto indexAttr = IntegerAttr::get(IntegerType::get(parser.getContext(), 32), field->getIndex());
     result.addAttribute("fieldIndex", indexAttr);
-    Type resultType = aggType.getFields()[*fieldIndex].type;
-    result.addTypes(resultType);
+    result.addTypes(field->getType());
 
     if (parser.resolveOperand(operand, declType, result.operands)) return failure();
     return success();
@@ -1918,16 +1915,16 @@ static ParseResult parseExtractRefOp(OpAsmParser &parser, OperationState &result
         parser.emitError(parser.getNameLoc(), "expected reference to aggregate type");
         return failure();
     }
-    auto fieldIndex = aggType.getFieldIndex(fieldName);
-    if (!fieldIndex) {
+    auto field = aggType.getFieldByName(fieldName);
+    if (!field) {
         parser.emitError(parser.getNameLoc(),
                          "field name '" + fieldName.getValue() + "' not found in aggregate type");
         return failure();
     }
 
-    auto indexAttr = IntegerAttr::get(IntegerType::get(parser.getContext(), 32), *fieldIndex);
+    auto indexAttr = IntegerAttr::get(IntegerType::get(parser.getContext(), 32), field->getIndex());
     result.addAttribute("fieldIndex", indexAttr);
-    Type resultType = P4HIR::ReferenceType::get(aggType.getFields()[*fieldIndex].type);
+    Type resultType = P4HIR::ReferenceType::get(field->getType());
     result.addTypes(resultType);
 
     if (parser.resolveOperand(operand, declType, result.operands)) return failure();
@@ -1958,20 +1955,18 @@ ParseResult P4HIR::StructExtractOp::parse(OpAsmParser &parser, OperationState &r
 void P4HIR::StructExtractOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
 
 void P4HIR::StructExtractOp::build(OpBuilder &builder, OperationState &odsState, Value input,
-                                   P4HIR::FieldInfo field) {
+                                   P4HIR::IndexedField field) {
     auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(input.getType());
-    auto fieldIndex = structType.getFieldIndex(field.name);
-    assert(fieldIndex.has_value() && "field name not found in aggregate type");
-    build(builder, odsState, field.type, input, *fieldIndex);
+    assert((structType == field.getParentType()) && "Invalid field argument");
+    build(builder, odsState, field.getType(), input, field.getIndex());
 }
 
 void P4HIR::StructExtractOp::build(OpBuilder &builder, OperationState &odsState, Value input,
                                    StringAttr fieldName) {
     auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(input.getType());
-    auto fieldIndex = structType.getFieldIndex(fieldName);
-    auto fieldType = structType.getFieldType(fieldName);
-    assert(fieldIndex.has_value() && "field name not found in aggregate type");
-    build(builder, odsState, fieldType, input, *fieldIndex);
+    auto field = structType.getFieldByName(fieldName);
+    assert(field.has_value() && "field name not found in aggregate type");
+    build(builder, odsState, field->getType(), input, field->getIndex());
 }
 
 void P4HIR::StructExtractOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
@@ -2054,22 +2049,20 @@ LogicalResult P4HIR::StructFieldRefOp::verify() {
 }
 
 void P4HIR::StructFieldRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
-                                    P4HIR::FieldInfo field) {
+                                    P4HIR::IndexedField field) {
     auto structLikeType = mlir::cast<ReferenceType>(input.getType()).getObjectType();
     auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(structLikeType);
-    auto fieldIndex = structType.getFieldIndex(field.name);
-    assert(fieldIndex.has_value() && "field name not found in aggregate type");
-    build(builder, odsState, ReferenceType::get(field.type), input, *fieldIndex);
+    assert((structType == field.getParentType()) && "Invalid field argument");
+    build(builder, odsState, ReferenceType::get(field.getType()), input, field.getIndex());
 }
 
 void P4HIR::StructFieldRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
                                     StringAttr fieldName) {
     auto structLikeType = mlir::cast<ReferenceType>(input.getType()).getObjectType();
     auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(structLikeType);
-    auto fieldIndex = structType.getFieldIndex(fieldName);
-    auto fieldType = structType.getFieldType(fieldName);
-    assert(fieldIndex.has_value() && "field name not found in aggregate type");
-    build(builder, odsState, ReferenceType::get(fieldType), input, *fieldIndex);
+    auto field = structType.getFieldByName(fieldName);
+    assert(field.has_value() && "field name not found in aggregate type");
+    build(builder, odsState, ReferenceType::get(field->getType()), input, field->getIndex());
 }
 
 Value P4HIR::StructFieldRefOp::getViewSource() { return getInput(); }
