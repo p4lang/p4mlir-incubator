@@ -35,7 +35,7 @@ struct FieldPath {
         unsigned childFieldId;
     };
 
-    /// Find the immidiate field of `itype` that contains the field referenced by `fieldID` and
+    /// Find the immediate field of `itype` that contains the field referenced by `fieldID` and
     /// return indexing information.
     static IndexingResult indexInto(P4HIR::IndexableTypeInterface itype, unsigned fieldID);
 

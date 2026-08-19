@@ -434,7 +434,7 @@ class StructLikeType<string name, string typeMnemonic>
 
     std::optional<P4HIR::IndexedField> getFieldByName(mlir::StringRef fieldName) {
       for (auto field : getFields())
-        if (field.getName() == fieldName) return field;
+        if (field.getNameAttr() == fieldName) return field;
       return {};
     }
 
