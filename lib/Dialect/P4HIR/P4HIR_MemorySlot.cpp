@@ -251,6 +251,89 @@ LogicalResult P4HIR::AssignOp::ensureOnlySafeAccesses(const MemorySlot &slot,
                                                       const DataLayout &dataLayout) {
     return success();
 }
+
+//===----------------------------------------------------------------------===//
+// Interfaces for AssignSliceOp
+//===----------------------------------------------------------------------===//
+
+// Read-modify-write of the whole slot
+bool P4HIR::AssignSliceOp::loadsFrom(const MemorySlot &slot) { return getRef() == slot.ptr; }
+
+bool P4HIR::AssignSliceOp::storesTo(const MemorySlot &slot) { return getRef() == slot.ptr; }
+
+Value P4HIR::AssignSliceOp::getStored(const MemorySlot &slot, OpBuilder &builder, Value reachingDef,
+                                      const DataLayout &dataLayout) {
+    auto elemType = llvm::cast<P4HIR::BitsType>(slot.elemType);
+    unsigned width = elemType.getWidth();
+    unsigned hi = getHighBit(), lo = getLowBit();
+
+    Value result = getValue();
+
+    if (lo > 0) {
+        auto lowType = P4HIR::BitsType::get(getContext(), lo, false);
+        Value low = P4HIR::SliceOp::create(builder, getLoc(), lowType, reachingDef, lo - 1, 0);
+        result = P4HIR::ConcatOp::create(builder, getLoc(), result, low);
+    }
+
+    if (hi + 1 < width) {
+        auto highType = P4HIR::BitsType::get(getContext(), width - 1 - hi, false);
+        Value high =
+            P4HIR::SliceOp::create(builder, getLoc(), highType, reachingDef, width - 1, hi + 1);
+        result = P4HIR::ConcatOp::create(builder, getLoc(), high, result);
+    }
+
+    if (result.getType() != elemType)
+        result = P4HIR::CastOp::create(builder, getLoc(), elemType, result);
+
+    return result;
+}
+
+bool P4HIR::AssignSliceOp::canUsesBeRemoved(const MemorySlot &slot,
+                                            const SmallPtrSetImpl<OpOperand *> &blockingUses,
+                                            SmallVectorImpl<OpOperand *> &newBlockingUses,
+                                            const DataLayout &dataLayout) {
+    if (blockingUses.size() != 1) return false;
+    Value blockingUse = (*blockingUses.begin())->get();
+    return blockingUse == slot.ptr && getRef() == slot.ptr;
+}
+
+DeletionKind P4HIR::AssignSliceOp::removeBlockingUses(
+    const MemorySlot &slot, const SmallPtrSetImpl<OpOperand *> &blockingUses, OpBuilder &builder,
+    Value reachingDefinition, const DataLayout &dataLayout) {
+    return DeletionKind::Delete;
+}
+
+//===----------------------------------------------------------------------===//
+// Interfaces for ReadSliceOp
+//===----------------------------------------------------------------------===//
+
+bool P4HIR::ReadSliceOp::loadsFrom(const MemorySlot &slot) { return getInput() == slot.ptr; }
+
+bool P4HIR::ReadSliceOp::storesTo(const MemorySlot &slot) { return false; }
+
+Value P4HIR::ReadSliceOp::getStored(const MemorySlot &slot, OpBuilder &builder, Value reachingDef,
+                                    const DataLayout &dataLayout) {
+    llvm_unreachable("getStored should not be called on ReadSliceOp");
+}
+
+bool P4HIR::ReadSliceOp::canUsesBeRemoved(const MemorySlot &slot,
+                                          const SmallPtrSetImpl<OpOperand *> &blockingUses,
+                                          SmallVectorImpl<OpOperand *> &newBlockingUses,
+                                          const DataLayout &dataLayout) {
+    if (blockingUses.size() != 1) return false;
+    Value blockingUse = (*blockingUses.begin())->get();
+    return blockingUse == slot.ptr && getInput() == slot.ptr;
+}
+
+DeletionKind P4HIR::ReadSliceOp::removeBlockingUses(
+    const MemorySlot &slot, const SmallPtrSetImpl<OpOperand *> &blockingUses, OpBuilder &builder,
+    Value reachingDefinition, const DataLayout &dataLayout) {
+    Value slice = P4HIR::SliceOp::create(builder, getLoc(), getType(), reachingDefinition,
+                                         getHighBit(), getLowBit());
+    getResult().replaceAllUsesWith(slice);
+    return DeletionKind::Delete;
+}
+
 //===----------------------------------------------------------------------===//
 // Interfaces for StructFieldRefOp
 //===----------------------------------------------------------------------===//

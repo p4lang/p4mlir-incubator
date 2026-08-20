@@ -234,7 +234,8 @@ def AssignOp : P4HIR_Op<"assign", [
   // FIXME: add verifier.
 }
 
-def AssignSliceOp : P4HIR_Op<"assign_slice", []> {
+def AssignSliceOp : P4HIR_Op<"assign_slice",
+                    [DeclareOpInterfaceMethods<PromotableMemOpInterface>]> {
   let summary = "Assign a slice of values to variable";
   let description = [{
     ..
@@ -1286,6 +1287,7 @@ def SliceOp : P4HIR_Op<"slice",
 
 def ReadSliceOp : P4HIR_Op<"read_slice",
     [Pure,
+     DeclareOpInterfaceMethods<PromotableMemOpInterface>,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Extract a range or single bits from a referenced value";
   let description = [{
