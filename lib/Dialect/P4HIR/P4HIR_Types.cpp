@@ -336,7 +336,7 @@ Type HeaderType::parse(AsmParser &p) {
     mlir::DictionaryAttr annotations;
     if (parseFields(p, name, parameters, annotations)) return {};
     // Do not use our own get() here as it adds __validity bit. And we do have it already.
-    return Base::get(p.getContext(), name, parameters,
+    return Base::get(p.getContext(), name, parameters, _computeNestedFieldCount(parameters),
                      annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
 }
 
@@ -370,7 +370,8 @@ void HeaderStackType::print(AsmPrinter &p) const {
 }
 
 LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
-                                 ArrayRef<FieldInfo> elements, DictionaryAttr) {
+                                 ArrayRef<FieldInfo> elements, unsigned nestedFieldCount,
+                                 DictionaryAttr) {
     llvm::SmallDenseSet<StringAttr> fieldNameSet;
     LogicalResult result = success();
     fieldNameSet.reserve(elements.size());
@@ -380,11 +381,15 @@ LogicalResult StructType::verify(function_ref<InFlightDiagnostic()> emitError, S
             emitError() << "duplicate field name '" << elt.name.getValue()
                         << "' in p4hir.struct type";
         }
+    if (nestedFieldCount != _computeNestedFieldCount(elements))
+        emitError() << "Incorrect cached value for nested field count";
+
     return result;
 }
 
 LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
-                                 ArrayRef<FieldInfo> elements, DictionaryAttr) {
+                                 ArrayRef<FieldInfo> elements, unsigned nestedFieldCount,
+                                 DictionaryAttr) {
     if (elements.empty()) {
         emitError() << "empty p4hir.header type";
         return failure();
@@ -400,6 +405,8 @@ LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, S
                         << "' in p4hir.header type";
         }
     }
+    if (nestedFieldCount != _computeNestedFieldCount(elements))
+        emitError() << "Incorrect cached value for nested field count";
 
     auto lastField = elements.back();
     if (lastField.name != validityBit || !mlir::isa<P4HIR::ValidBitType>(lastField.type)) {
@@ -468,7 +475,8 @@ LogicalResult HeaderType::verify(function_ref<InFlightDiagnostic()> emitError, S
 }
 
 LogicalResult HeaderUnionType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
-                                      ArrayRef<FieldInfo> elements, DictionaryAttr) {
+                                      ArrayRef<FieldInfo> elements, unsigned nestedFieldCount,
+                                      DictionaryAttr) {
     llvm::SmallDenseSet<StringAttr> fieldNameSet;
     LogicalResult result = success();
     fieldNameSet.reserve(elements.size());
@@ -486,6 +494,8 @@ LogicalResult HeaderUnionType::verify(function_ref<InFlightDiagnostic()> emitErr
                         << "' must be a header type";
         }
     }
+    if (nestedFieldCount != _computeNestedFieldCount(elements))
+        emitError() << "Incorrect cached value for nested field count";
 
     if (elements.empty()) {
         emitError() << "empty p4hir.header_union type";
@@ -496,7 +506,8 @@ LogicalResult HeaderUnionType::verify(function_ref<InFlightDiagnostic()> emitErr
 }
 
 LogicalResult HeaderStackType::verify(function_ref<InFlightDiagnostic()> emitError, StringRef,
-                                      ArrayRef<FieldInfo> elements, DictionaryAttr) {
+                                      ArrayRef<FieldInfo> elements, unsigned nestedFieldCount,
+                                      DictionaryAttr) {
     if (elements.size() != 2) {
         emitError() << "invalid struct size for header stack";
         return failure();
@@ -504,6 +515,9 @@ LogicalResult HeaderStackType::verify(function_ref<InFlightDiagnostic()> emitErr
 
     FieldInfo dataField = elements.front();
     FieldInfo nextIndexField = elements.back();
+
+    if (nestedFieldCount != _computeNestedFieldCount(elements))
+        emitError() << "Incorrect cached value for nested field count";
 
     auto arrayType = mlir::dyn_cast<P4HIR::ArrayType>(dataField.type);
     if (!arrayType ||
@@ -537,8 +551,8 @@ HeaderStackType HeaderStackType::get(mlir::MLIRContext *context, size_t sz,
     FieldInfo dataField(mlir::StringAttr::get(context, dataFieldName), dataType);
     FieldInfo nextIndexField(mlir::StringAttr::get(context, nextIndexFieldName),
                              P4HIR::BitsType::get(context, 32, false));
-
-    return Base::get(context, "hs", ArrayRef{dataField, nextIndexField}, nullptr);
+    SmallVector<FieldInfo> elements = {dataField, nextIndexField};
+    return Base::get(context, "hs", elements, _computeNestedFieldCount(elements), nullptr);
 }
 
 ArrayType HeaderStackType::getDataType() const {
@@ -610,7 +624,7 @@ HeaderType HeaderType::get(mlir::MLIRContext *context, llvm::StringRef name,
     realFields.emplace_back(mlir::StringAttr::get(context, validityBit),
                             P4HIR::ValidBitType::get(context));
 
-    return Base::get(context, name, realFields,
+    return Base::get(context, name, realFields, _computeNestedFieldCount(realFields),
                      annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
 }
 

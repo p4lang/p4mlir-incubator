@@ -16,6 +16,7 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 
 namespace P4::P4MLIR::P4HIR {
+
 mlir::TypedAttr getStructLikeDefaultValue(StructLikeTypeInterface type);
 
 void printFieldInfo(mlir::AsmPrinter &p, const FieldInfo &fi);
@@ -34,5 +35,22 @@ void printFields(mlir::AsmPrinter &p, llvm::StringRef name, llvm::ArrayRef<Field
 
 #define GET_TYPEDEF_CLASSES
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h.inc"
+
+namespace P4::P4MLIR::P4HIR {
+
+template <typename TypeT = mlir::Type>
+inline TypeT maybeUnref(mlir::Type type) {
+    if (auto refType = mlir::dyn_cast<P4::P4MLIR::P4HIR::ReferenceType>(type))
+        type = refType.getObjectType();
+    return mlir::dyn_cast<TypeT>(type);
+}
+
+template <typename TypeT = mlir::Type>
+inline TypeT unref(mlir::Type type) {
+    auto refType = mlir::cast<P4::P4MLIR::P4HIR::ReferenceType>(type);
+    return mlir::dyn_cast<TypeT>(refType.getObjectType());
+}
+
+}  // namespace P4::P4MLIR::P4HIR
 
 #endif  // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_H

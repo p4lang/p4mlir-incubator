@@ -1153,7 +1153,14 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$input, "P4HIR::IndexedField":$field)>,
-    OpBuilder<(ins "mlir::Value":$input, "mlir::StringAttr":$fieldName)>,
+    OpBuilder<(ins "mlir::Value":$input, "unsigned":$fieldIndex), [{
+      auto structLikeType = mlir::cast<P4HIR::StructLikeTypeInterface>(input.getType());
+      build($_builder, $_state, input, structLikeType.getField(fieldIndex));
+    }]>,
+    OpBuilder<(ins "mlir::Value":$input, "mlir::StringAttr":$fieldName), [{
+      auto structLikeType = mlir::cast<P4HIR::StructLikeTypeInterface>(input.getType());
+      build($_builder, $_state, input, *structLikeType.getFieldByName(fieldName));
+    }]>,
     OpBuilder<(ins "mlir::Value":$input, "llvm::StringRef":$fieldName), [{
       build($_builder, $_state, input, $_builder.getStringAttr(fieldName));
     }]>
@@ -1197,7 +1204,14 @@ def StructFieldRefOp : P4HIR_Op<"struct_field_ref",
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$input, "P4HIR::IndexedField":$field)>,
-    OpBuilder<(ins "mlir::Value":$input, "mlir::StringAttr":$fieldName)>,
+    OpBuilder<(ins "mlir::Value":$input, "unsigned":$fieldIndex), [{
+      auto structLikeType = P4HIR::unref<P4HIR::StructLikeTypeInterface>(input.getType());
+      build($_builder, $_state, input, structLikeType.getField(fieldIndex));
+    }]>,
+    OpBuilder<(ins "mlir::Value":$input, "mlir::StringAttr":$fieldName), [{
+      auto structLikeType = P4HIR::unref<P4HIR::StructLikeTypeInterface>(input.getType());
+      build($_builder, $_state, input, *structLikeType.getFieldByName(fieldName));
+    }]>,
     OpBuilder<(ins "mlir::Value":$input, "llvm::StringRef":$fieldName), [{
       build($_builder, $_state, input, $_builder.getStringAttr(fieldName));
     }]>

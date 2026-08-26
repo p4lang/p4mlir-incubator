@@ -1961,14 +1961,6 @@ void P4HIR::StructExtractOp::build(OpBuilder &builder, OperationState &odsState,
     build(builder, odsState, field.getType(), input, field.getIndex());
 }
 
-void P4HIR::StructExtractOp::build(OpBuilder &builder, OperationState &odsState, Value input,
-                                   StringAttr fieldName) {
-    auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(input.getType());
-    auto field = structType.getFieldByName(fieldName);
-    assert(field.has_value() && "field name not found in aggregate type");
-    build(builder, odsState, field->getType(), input, field->getIndex());
-}
-
 void P4HIR::StructExtractOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
     setNameFn(getResult(), getFieldName());
 }
@@ -2050,19 +2042,9 @@ LogicalResult P4HIR::StructFieldRefOp::verify() {
 
 void P4HIR::StructFieldRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
                                     P4HIR::IndexedField field) {
-    auto structLikeType = mlir::cast<ReferenceType>(input.getType()).getObjectType();
-    auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(structLikeType);
+    auto structType = P4HIR::unref<P4HIR::StructLikeTypeInterface>(input.getType());
     assert((structType == field.getParentType()) && "Invalid field argument");
     build(builder, odsState, ReferenceType::get(field.getType()), input, field.getIndex());
-}
-
-void P4HIR::StructFieldRefOp::build(OpBuilder &builder, OperationState &odsState, Value input,
-                                    StringAttr fieldName) {
-    auto structLikeType = mlir::cast<ReferenceType>(input.getType()).getObjectType();
-    auto structType = mlir::cast<P4HIR::StructLikeTypeInterface>(structLikeType);
-    auto field = structType.getFieldByName(fieldName);
-    assert(field.has_value() && "field name not found in aggregate type");
-    build(builder, odsState, ReferenceType::get(field->getType()), input, field->getIndex());
 }
 
 Value P4HIR::StructFieldRefOp::getViewSource() { return getInput(); }

@@ -398,6 +398,7 @@ class StructLikeType<string name, string typeMnemonic>
   let parameters = (
     ins StringRefParameter<"struct name">:$name,
         ArrayRefParameter<"P4HIR::FieldInfo", "struct fields">:$elements,
+        "unsigned":$nestedFieldCount,
         OptionalParameter<"mlir::DictionaryAttr", "annotations">:$annotations
   );
 
@@ -406,33 +407,50 @@ class StructLikeType<string name, string typeMnemonic>
     TypeBuilder<(ins "llvm::StringRef":$name,
                      "llvm::ArrayRef<P4HIR::FieldInfo>":$fields,
                      CArg<"mlir::DictionaryAttr", "{}">:$annotations), [{
-      return $_get($_ctxt, name, fields,
+      // Compute nested field count once and store it for fast access.
+      unsigned nestedFieldCount = _computeNestedFieldCount(fields);
+      return $_get($_ctxt, name, fields, nestedFieldCount,
                    annotations && !annotations.empty() ? annotations : mlir::DictionaryAttr());
     }]>
   ];
 
   string commonClassDeclaration = IndexableTypeInterface.extraClassDeclaration # [{
-    unsigned getFieldCount() {
+    static unsigned _computeNestedFieldCount(llvm::ArrayRef<P4HIR::FieldInfo> fields) {
+      unsigned nestedFieldCount = 0;
+
+      for (const auto &field : fields) {
+        // Count this field.
+        nestedFieldCount += 1;
+
+        // If this field is also indexable, count all nested sub-fields.
+        auto itype = mlir::dyn_cast<P4::P4MLIR::P4HIR::IndexableTypeInterface>(field.getType());
+        if (itype) nestedFieldCount += itype.getNestedFieldCount();
+      }
+
+      return nestedFieldCount;
+    }
+
+    unsigned getFieldCount() const {
       return getElements().size();
     }
 
-    mlir::Type getFieldType(unsigned index) {
+    mlir::Type getFieldType(unsigned index) const {
       return getElements()[index].type;
     }
 
-    std::string getFieldName(unsigned index) {
+    std::string getFieldName(unsigned index) const {
       return getElements()[index].name.getValue().str();
     }
 
-    mlir::StringAttr getFieldNameAttr(unsigned index) {
+    mlir::StringAttr getFieldNameAttr(unsigned index) const {
       return getElements()[index].name;
     }
 
-    mlir::DictionaryAttr getFieldAnnotations(unsigned index) {
+    mlir::DictionaryAttr getFieldAnnotations(unsigned index) const {
       return getElements()[index].annotations;
     }
 
-    std::optional<P4HIR::IndexedField> getFieldByName(mlir::StringRef fieldName) {
+    std::optional<P4::P4MLIR::P4HIR::IndexedField> getFieldByName(mlir::StringRef fieldName) const {
       for (auto field : getFields())
         if (field.getNameAttr() == fieldName) return field;
       return {};
@@ -875,16 +893,22 @@ def ArrayType : P4HIR_Type<"Array", "array", [
   }];
 
   let extraClassDeclaration = IndexableTypeInterface.extraClassDeclaration # [{
-    unsigned getFieldCount() {
+    unsigned getFieldCount() const {
       return getSize();
     }
 
-    mlir::Type getFieldType(unsigned index) {
+    mlir::Type getFieldType(unsigned index) const {
       return getElementType();
     }
 
     std::string getFieldName(unsigned index) const {
       return ("[" + llvm::Twine(index) + "]").str();
+    }
+
+    unsigned getNestedFieldCount() const {
+      auto itype = mlir::dyn_cast<P4::P4MLIR::P4HIR::IndexableTypeInterface>(getElementType());
+      unsigned nestedFieldCountPerElem = itype ? itype.getNestedFieldCount() : 1;
+      return nestedFieldCountPerElem * getSize();
     }
 
     mlir::TypedAttr getDefaultValue();

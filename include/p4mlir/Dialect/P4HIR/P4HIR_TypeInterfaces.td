@@ -24,12 +24,12 @@ def IndexableTypeInterface : TypeInterface<"IndexableTypeInterface"> {
       "mlir::Type", "getFieldType", (ins "unsigned":$index)>,
 
     InterfaceMethod<[{
-      Get the name for the field at a specific index.
+      Get a name for the field at a specific index.
     }],
       "std::string", "getFieldName", (ins "unsigned":$index)>,
 
     InterfaceMethod<[{
-      Get the name for the field at a specific index as a StringAttr.
+      Get a name for the field at a specific index as a StringAttr.
       Override to provide more optimized access for cases where the indexable type
       already has a StringAttr for field names.
     }],
@@ -47,20 +47,40 @@ def IndexableTypeInterface : TypeInterface<"IndexableTypeInterface"> {
       /*defaultImpl=*/ [{
         return {};
       }]>,
+
+    InterfaceMethod<[{
+      Get the number of fields recursively nested under this type.
+    }],
+      "unsigned", "getNestedFieldCount", (ins),
+      /*methodBody=*/  [{}],
+      /*defaultImpl=*/ [{
+        unsigned nestedFieldCount = 0;
+
+        for (auto field : $_type.getFields()) {
+          // Count this field.
+          nestedFieldCount += 1;
+
+          // If this field is also indexable, count all nested sub-fields.
+          auto itype = mlir::dyn_cast<P4::P4MLIR::P4HIR::IndexableTypeInterface>(field.getType());
+          if (itype) nestedFieldCount += itype.getNestedFieldCount();
+        }
+
+        return nestedFieldCount;
+      }]>,
   ];
 
   let extraClassDeclaration = [{
-    IndexedField getField(unsigned idx) {
-      return P4HIR::IndexedField(*this, idx);
+    auto getField(unsigned idx) const {
+      return P4::P4MLIR::P4HIR::IndexedField(*this, idx);
     }
 
-    auto getFields() {
+    auto getFields() const {
       return llvm::map_range(llvm::seq(0u, getFieldCount()), [this](unsigned idx) {
         return getField(idx);
       });
     }
 
-    auto getFieldTypes() {
+    auto getFieldTypes() const {
       return llvm::map_range(llvm::seq(0u, getFieldCount()), [this](unsigned idx) {
         return getField(idx).getType();
       });
@@ -85,7 +105,7 @@ def StructLikeTypeInterface : TypeInterface<"StructLikeTypeInterface", [Indexabl
    InterfaceMethod<[{
       Get the field given the name in StringRef
     }],
-     "std::optional<IndexedField>", "getFieldByName", (ins "mlir::StringRef":$fieldName)>,
+     "std::optional<P4::P4MLIR::P4HIR::IndexedField>", "getFieldByName", (ins "mlir::StringRef":$fieldName)>,
   ];
   let cppNamespace = "::P4::P4MLIR::P4HIR";
 }
