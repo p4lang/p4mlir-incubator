@@ -258,7 +258,7 @@ struct FieldPath {
  public:
     /// Iterate all prefix paths that make up this path.
     /// For a path T.x.y.z this will yield T, T.x, T.x.y and T.x.y.z.
-    auto iterPaths() const {
+    auto paths() const {
         mlir::iterator_range<PathIterator> range = {begin(), end()};
         return llvm::map_range(range, [&](auto info) {
             auto [parentType, type, index, lhsFid, rhsFid] = info;
@@ -268,12 +268,16 @@ struct FieldPath {
 
     /// Iterate all fields that make up this path.
     /// For a path T.x.y.z this will yield .x, .y and .z.
-    auto iterFields() const {
+    auto fields() const {
         mlir::iterator_range<PathIterator> range = {std::next(begin()), end()};
         return llvm::map_range(range, [&](auto info) {
             auto [parentType, type, index, lhsFid, rhsFid] = info;
             return IndexedField(parentType, index);
         });
+    }
+
+    auto field_indices() const {
+        return llvm::map_range(fields(), [](auto field) { return field.getIndex(); });
     }
 
     /// Create a new path by appending the field indices of this path on top of `newRootType`.

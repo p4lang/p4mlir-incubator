@@ -84,7 +84,7 @@ P4HIR::FieldPath &FieldPath::concat(FieldPath rhs) {
 std::pair<FieldPath, FieldPath> FieldPath::split(llvm::function_ref<bool(FieldPath)> pred) const {
     FieldPath lhs;
     bool doSplit = false;
-    for (auto prefixPath : iterPaths()) {
+    for (auto prefixPath : paths()) {
         lhs = prefixPath;
         if (pred(prefixPath)) {
             doSplit = true;
@@ -125,17 +125,15 @@ FieldPath FieldPath::withRoot(mlir::Type newRootType) const {
     if (isEmpty()) return *this;
 
     FieldPath newPath(newRootType);
-    for (auto field : iterFields()) newPath.append(field.getIndex());
+    for (unsigned idx : field_indices()) newPath.append(idx);
 
     return newPath;
 }
 
 std::string FieldPath::getIdentifier(llvm::StringRef delimiter) const {
     llvm::SmallString<64> name;
-    for (auto field : iterFields()) {
-        if (!name.empty()) name += delimiter;
-        name += field.getName();
-    }
+    llvm::interleave(
+        fields(), [&](auto field) { name += field.getName(); }, [&]() { name += delimiter; });
     return (std::string)name;
 }
 
