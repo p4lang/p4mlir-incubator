@@ -100,6 +100,11 @@ def ParserStateOp : P4HIR_Op<"state",
       return mlir::isa<ParserRejectOp>(getNextTransition());
     }
 
+    /// Checks if this state is terminal (accepts or rejects)
+    bool isTerminal() {
+      return isAccept() || isReject();
+    }
+
    /// Iterator adaptor that extracts ParserStateOp's from the transitions
    class StateIterator final
     : public llvm::mapped_iterator_base<StateIterator,
