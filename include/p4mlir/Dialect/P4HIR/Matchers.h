@@ -194,7 +194,7 @@ inline auto m_ZeroInt(bool matchBool = false) { return m_ConstantInt((unsigned)0
 
 template <typename Matcher>
 inline auto m_UnaryOp(P4::P4MLIR::P4HIR::UnaryOpKind kind, Matcher matcher) {
-    return detail::m_OpWithPred<P4::P4MLIR::P4HIR::BinOp>(
+    return detail::m_OpWithPred<P4::P4MLIR::P4HIR::UnaryOp>(
         [kind](P4::P4MLIR::P4HIR::UnaryOp op) { return op.getKind() == kind; }, matcher);
 }
 

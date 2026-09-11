@@ -46,6 +46,8 @@
 using namespace mlir;
 using namespace P4::P4MLIR;
 
+using mlir::matchers::m_Any;
+
 //===----------------------------------------------------------------------===//
 // Pattern helpers
 //===----------------------------------------------------------------------===//
@@ -872,6 +874,16 @@ OpFoldResult P4HIR::CmpOp::fold(FoldAdaptor adaptor) {
         }
     }
 
+    // Special handling for validity bits as valid bit constants do not have a constant int
+    // representation.
+    if (mlir::isa<P4HIR::ValidBitType>(getLhs().getType())) {
+        auto lhs = mlir::dyn_cast_if_present<P4HIR::ValidityBitAttr>(adaptor.getLhs());
+        auto rhs = mlir::dyn_cast_if_present<P4HIR::ValidityBitAttr>(adaptor.getRhs());
+        if (lhs && rhs) return P4HIR::BoolAttr::get(getContext(), lhs.getValue() == rhs.getValue());
+
+        return {};
+    }
+
     // Move constant to the right side.
     if (adaptor.getLhs() && !adaptor.getRhs()) {
         using KindPair = std::pair<P4HIR::CmpOpKind, P4HIR::CmpOpKind>;
@@ -921,6 +933,86 @@ OpFoldResult P4HIR::CmpOp::fold(FoldAdaptor adaptor) {
     };
 
     return constFoldBinOp(adaptor.getOperands(), getType(), InfIntExt::Max, binop);
+}
+
+LogicalResult P4HIR::CmpOp::canonicalize(P4HIR::CmpOp op, PatternRewriter &rewriter) {
+    P4HIR::CmpOpKind kind = op.getKind();
+
+    if (mlir::isa<P4HIR::BoolType>(op.getLhs().getType())) {
+        assert((kind == P4HIR::CmpOpKind::Eq || kind == P4HIR::CmpOpKind::Ne) && "Unexpected kind");
+
+        {
+            // Fold logical not in boolean comparisons by swapping the comparison kind.
+            bool newKindIsEq = (kind == P4HIR::CmpOpKind::Eq);
+            mlir::Value lhs = op.getLhs();
+            mlir::Value rhs = op.getRhs();
+
+            if (matchPattern(lhs, m_UnaryOp(P4HIR::UnaryOpKind::LNot, m_Any(&lhs))))
+                newKindIsEq = !newKindIsEq;
+            if (matchPattern(rhs, m_UnaryOp(P4HIR::UnaryOpKind::LNot, m_Any(&rhs))))
+                newKindIsEq = !newKindIsEq;
+
+            if (lhs != op.getLhs() || rhs != op.getRhs()) {
+                auto newKind = newKindIsEq ? P4HIR::CmpOpKind::Eq : P4HIR::CmpOpKind::Ne;
+                rewriter.replaceOpWithNewOp<P4HIR::CmpOp>(op, newKind, lhs, rhs);
+                return success();
+            }
+        }
+
+        // Helper to check if `val` is a validity bit check, equivalent to (validBit ==
+        // valid/invalid).
+        auto matchValidityCheck = [](mlir::Value val) -> std::pair<mlir::Value, bool> {
+            auto cmpOp = val.getDefiningOp<P4HIR::CmpOp>();
+            if (!cmpOp || !mlir::isa<P4HIR::ValidBitType>(cmpOp.getLhs().getType()))
+                return {{}, false};
+
+            mlir::Attribute validBitAttr;
+            if (!matchPattern(cmpOp.getRhs(), m_Constant(&validBitAttr))) return {{}, false};
+
+            bool isValidCheck = true;
+            if (mlir::cast<P4HIR::ValidityBitAttr>(validBitAttr).getValue() ==
+                P4HIR::ValidityBit::Invalid)
+                isValidCheck = !isValidCheck;
+
+            P4HIR::CmpOpKind kind = cmpOp.getKind();
+            assert((kind == P4HIR::CmpOpKind::Eq || kind == P4HIR::CmpOpKind::Ne) &&
+                   "Unexpected kind");
+            if (kind == P4HIR::CmpOpKind::Ne) isValidCheck = !isValidCheck;
+
+            return {cmpOp.getLhs(), isValidCheck};
+        };
+
+        if (auto [lhsValidBit, lhsIsValidCheck] = matchValidityCheck(op.getLhs()); lhsValidBit) {
+            unsigned cst;
+            if (matchPattern(op.getRhs(), m_ConstantInt(&cst, true))) {
+                // Canonicalize cmp(cmp(V, #valid/#invalid), #true/#false)
+                // to cmp(V, #valid/#invalid).
+                bool useEq = lhsIsValidCheck;
+                if (cst == 0) useEq = !useEq;
+                if (kind == P4HIR::CmpOpKind::Ne) useEq = !useEq;
+
+                auto validAttr =
+                    P4HIR::ValidityBitAttr::get(rewriter.getContext(), P4HIR::ValidityBit::Valid);
+                auto validCst = P4HIR::ConstOp::create(rewriter, op.getLoc(), validAttr);
+                auto newKind = useEq ? P4HIR::CmpOpKind::Eq : P4HIR::CmpOpKind::Ne;
+                rewriter.replaceOpWithNewOp<P4HIR::CmpOp>(op, newKind, lhsValidBit, validCst);
+                return success();
+            } else if (auto [rhsValidBit, rhsIsValidCheck] = matchValidityCheck(op.getRhs());
+                       rhsValidBit) {
+                // Canonicalize cmp(cmp(V1, #valid/#invalid), cmp(V2, #valid/#invalid))
+                // to cmp(V1, V2).
+                bool useEq = lhsIsValidCheck;
+                if (!rhsIsValidCheck) useEq = !useEq;
+                if (kind == P4HIR::CmpOpKind::Ne) useEq = !useEq;
+
+                auto newKind = useEq ? P4HIR::CmpOpKind::Eq : P4HIR::CmpOpKind::Ne;
+                rewriter.replaceOpWithNewOp<P4HIR::CmpOp>(op, newKind, lhsValidBit, rhsValidBit);
+                return success();
+            }
+        }
+    }
+
+    return failure();
 }
 
 //===----------------------------------------------------------------------===//

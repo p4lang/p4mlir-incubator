@@ -581,6 +581,7 @@ def CmpOp : P4HIR_Op<"cmp",
   // Already covered by the traits
   let hasVerifier = 0;
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def ScopeOp : P4HIR_Op<"scope", [
