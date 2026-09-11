@@ -206,7 +206,7 @@ class PathWalker {
 
     /// Walk field-access operations and uses starting from `root`. If `rootType` is additionally
     /// provided it is used to compute field paths instead of `root.getType()`. This is useful when
-    /// doing type convertions. If `rootType` is provided it must have the same shape as
+    /// doing type conversions. If `rootType` is provided it must have the same shape as
     /// `root.getType()`.
     mlir::WalkResult walk(mlir::Value root, mlir::Type rootType = mlir::Type()) {
         if (!rootType) rootType = root.getType();
