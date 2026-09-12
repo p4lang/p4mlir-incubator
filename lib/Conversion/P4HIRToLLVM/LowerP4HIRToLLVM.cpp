@@ -14,7 +14,6 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Conversion/P4HIRToLLVM/P4HIRToLLVM.h"
-#include "p4mlir/Dialect/P4HIR/Matchers.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"  // IWYU pragma: keep (required for Passes.cpp.inc)
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
@@ -85,21 +84,6 @@ LogicalResult lowerToUnsignedDivisionOp(P4HIR::BinOp op, P4HIR::BinOp::Adaptor a
     return lowerToOp<UnsignedOp>(op, adaptor, rewriter);
 }
 
-LogicalResult diagnoseDivisionByZero(ModuleOp module) {
-    auto walkResult = module.walk([](P4HIR::BinOp op) -> WalkResult {
-        auto kind = op.getKind();
-        if (kind != P4HIR::BinOpKind::Div && kind != P4HIR::BinOpKind::Mod) {
-            return WalkResult::advance();
-        }
-        if (!mlir::matchPattern(op.getRhs(), m_ZeroInt())) {
-            return WalkResult::advance();
-        }
-        return op.emitError(kind == P4HIR::BinOpKind::Div ? "division by zero"
-                                                          : "modulo by zero");
-    });
-    return failure(walkResult.wasInterrupted());
-}
-
 struct BinOpConversion : public ConvertOpToLLVMPattern<P4HIR::BinOp> {
     using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
@@ -138,11 +122,6 @@ struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<Lowe
         auto &context = getContext();
         auto module = getOperation();
 
-        if (failed(diagnoseDivisionByZero(module))) {
-            signalPassFailure();
-            return;
-        }
-
         LLVMTypeConverter typeConverter(&context);
         populateP4HIRToLLVMTypeConversion(typeConverter);
 
@@ -169,9 +148,7 @@ struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<Lowe
 void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter) {
     converter.addConversion([](P4HIR::BitsType bitsType) -> std::optional<Type> {
         // P4 allows `bit<0>`, LLVM has no `i0`: leave such values unconverted.
-        if (bitsType.getWidth() == 0) {
-            return std::nullopt;
-        }
+        if (bitsType.getWidth() == 0) return std::nullopt;
         return IntegerType::get(bitsType.getContext(), bitsType.getWidth());
     });
 
@@ -179,11 +156,10 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
         [&converter](P4HIR::BitsType bitsType,
                      P4HIR::IntAttr attr) -> LLVMTypeConverter::AttributeConversionResult {
             // Types without an LLVM counterpart (e.g. `bit<0>`) have no attribute either.
-            auto convertedType = converter.convertType(bitsType);
-            if (!convertedType) {
-                return LLVMTypeConverter::AttributeConversionResult::na();
+            if (auto convertedType = converter.convertType(bitsType)) {
+                return IntegerAttr::get(convertedType, attr.getValue());
             }
-            return IntegerAttr::get(convertedType, attr.getValue());
+            return LLVMTypeConverter::AttributeConversionResult::na();
         });
 }
 

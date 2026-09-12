@@ -4,9 +4,6 @@
 
 // RUN: p4mlir-opt %s --lower-p4hir-to-llvm -split-input-file | FileCheck %s
 
-// P4 specifies no result for a zero divisor, so the lowering keeps the LLVM one: nothing
-// is emitted around the division. A divisor known to be zero is rejected, see
-// `division-errors.mlir`.
 
 !u32i = !p4hir.bit<32>
 
