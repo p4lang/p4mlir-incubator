@@ -17,6 +17,8 @@ def LowerP4HIRToLLVM : Pass<"lower-p4hir-to-llvm", "mlir::ModuleOp"> {
   let summary = "Lowers P4HIR to the LLVM dialect";
   let description = [{
     This pass lowers P4HIR operations and types to their LLVM dialect counterparts.
+    Operations and types that have no LLVM counterpart are left unconverted; the pass
+    does not fail on them.
   }];
   let dependentDialects = [
       "::P4::P4MLIR::P4HIR::P4HIRDialect",

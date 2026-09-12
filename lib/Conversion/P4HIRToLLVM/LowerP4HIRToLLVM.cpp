@@ -11,11 +11,10 @@
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Conversion/P4HIRToLLVM/P4HIRToLLVM.h"
-#include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"  // IWYU pragma: keep (required for Passes.cpp.inc)
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
@@ -37,13 +36,53 @@ struct ConstOpConversion : public ConvertOpToLLVMPattern<P4HIR::ConstOp> {
 
     LogicalResult matchAndRewrite(P4HIR::ConstOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
-        auto newAttr =
-            getTypeConverter()->convertTypeAttribute(op.getValue().getType(), op.getValue());
-        if (!newAttr) return rewriter.notifyMatchFailure(op, "unsupported constant type");
+        auto value = adaptor.getValue();
+        // Passing the interface handle by its base type drops a cached concept pointer, which
+        // is exactly what `convertTypeAttribute` takes.
+        // NOLINTNEXTLINE(cppcoreguidelines-slicing)
+        auto newAttr = getTypeConverter()->convertTypeAttribute(value.getType(), value);
+        if (!newAttr) {
+            return rewriter.notifyMatchFailure(op, "unsupported constant type");
+        }
         rewriter.replaceOpWithNewOp<LLVM::ConstantOp>(op, cast<TypedAttr>(*newAttr));
         return success();
     }
 };
+
+template <typename Op>
+LogicalResult lowerToOp(P4HIR::BinOp op, P4HIR::BinOp::Adaptor adaptor,
+                        ConversionPatternRewriter &rewriter) {
+    rewriter.replaceOpWithNewOp<Op>(op, adaptor.getOperands());
+    return success();
+}
+
+// LLVM integers are signless; signedness comes from the original BitsType.
+template <typename SignedOp, typename UnsignedOp>
+LogicalResult lowerToSignedOrUnsignedOp(P4HIR::BinOp op, P4HIR::BinOp::Adaptor adaptor,
+                                        ConversionPatternRewriter &rewriter) {
+    if (auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(op.getType())) {
+        if (bitsType.isSigned()) {
+            rewriter.replaceOpWithNewOp<SignedOp>(op, adaptor.getOperands());
+        } else {
+            rewriter.replaceOpWithNewOp<UnsignedOp>(op, adaptor.getOperands());
+        }
+        return success();
+    }
+    return rewriter.notifyMatchFailure(op, "expected bits type");
+}
+
+template <typename UnsignedOp>
+LogicalResult lowerToUnsignedDivisionOp(P4HIR::BinOp op, P4HIR::BinOp::Adaptor adaptor,
+                                        ConversionPatternRewriter &rewriter) {
+    auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(op.getType());
+    if (!bitsType) {
+        return rewriter.notifyMatchFailure(op, "expected bits type");
+    }
+    if (bitsType.isSigned()) {
+        return rewriter.notifyMatchFailure(op, "not defined on signed values");
+    }
+    return lowerToOp<UnsignedOp>(op, adaptor, rewriter);
+}
 
 struct BinOpConversion : public ConvertOpToLLVMPattern<P4HIR::BinOp> {
     using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
@@ -52,17 +91,29 @@ struct BinOpConversion : public ConvertOpToLLVMPattern<P4HIR::BinOp> {
                                   ConversionPatternRewriter &rewriter) const override {
         switch (op.getKind()) {
             case P4HIR::BinOpKind::Add:
-                rewriter.replaceOpWithNewOp<LLVM::AddOp>(op, adaptor.getOperands());
-                return success();
+                return lowerToOp<LLVM::AddOp>(op, adaptor, rewriter);
+            case P4HIR::BinOpKind::AddSat:
+                return lowerToSignedOrUnsignedOp<LLVM::SAddSat, LLVM::UAddSat>(op, adaptor,
+                                                                               rewriter);
             case P4HIR::BinOpKind::Sub:
-                rewriter.replaceOpWithNewOp<LLVM::SubOp>(op, adaptor.getOperands());
-                return success();
+                return lowerToOp<LLVM::SubOp>(op, adaptor, rewriter);
+            case P4HIR::BinOpKind::SubSat:
+                return lowerToSignedOrUnsignedOp<LLVM::SSubSat, LLVM::USubSat>(op, adaptor,
+                                                                               rewriter);
             case P4HIR::BinOpKind::Mul:
-                rewriter.replaceOpWithNewOp<LLVM::MulOp>(op, adaptor.getOperands());
-                return success();
-            default:
-                return rewriter.notifyMatchFailure(op, "unsupported binop kind");
+                return lowerToOp<LLVM::MulOp>(op, adaptor, rewriter);
+            case P4HIR::BinOpKind::Div:
+                return lowerToUnsignedDivisionOp<LLVM::UDivOp>(op, adaptor, rewriter);
+            case P4HIR::BinOpKind::Mod:
+                return lowerToUnsignedDivisionOp<LLVM::URemOp>(op, adaptor, rewriter);
+            case P4HIR::BinOpKind::And:
+                return lowerToOp<LLVM::AndOp>(op, adaptor, rewriter);
+            case P4HIR::BinOpKind::Or:
+                return lowerToOp<LLVM::OrOp>(op, adaptor, rewriter);
+            case P4HIR::BinOpKind::Xor:
+                return lowerToOp<LLVM::XOrOp>(op, adaptor, rewriter);
         }
+        return rewriter.notifyMatchFailure(op, "unsupported binop kind");
     }
 };
 
@@ -86,21 +137,29 @@ struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<Lowe
         ConversionConfig config;
         config.foldingMode = DialectConversionFoldingMode::Never;
 
-        if (failed(applyPartialConversion(module, target, std::move(patterns), config)))
+        if (failed(applyPartialConversion(module, target, std::move(patterns), config))) {
             signalPassFailure();
+        }
     }
 };
 
 }  // namespace
 
 void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter) {
-    converter.addConversion([](P4HIR::BitsType bitsType) {
+    converter.addConversion([](P4HIR::BitsType bitsType) -> std::optional<Type> {
+        // P4 allows `bit<0>`, LLVM has no `i0`: leave such values unconverted.
+        if (bitsType.getWidth() == 0) return std::nullopt;
         return IntegerType::get(bitsType.getContext(), bitsType.getWidth());
     });
 
     converter.addTypeAttributeConversion(
-        [&converter](P4HIR::BitsType bitsType, P4HIR::IntAttr attr) {
-            return IntegerAttr::get(converter.convertType(bitsType), attr.getValue());
+        [&converter](P4HIR::BitsType bitsType,
+                     P4HIR::IntAttr attr) -> LLVMTypeConverter::AttributeConversionResult {
+            // Types without an LLVM counterpart (e.g. `bit<0>`) have no attribute either.
+            if (auto convertedType = converter.convertType(bitsType)) {
+                return IntegerAttr::get(convertedType, attr.getValue());
+            }
+            return LLVMTypeConverter::AttributeConversionResult::na();
         });
 }
 
