@@ -112,13 +112,38 @@ class PathWalker {
  public:
     using IndirectUsesMap = llvm::DenseMap<mlir::Value, llvm::SmallVector<mlir::Value>>;
     using NodeCallbackFn = std::function<mlir::WalkResult(mlir::Value, P4HIR::FieldPath)>;
-    using LeafCallbackFn =
-        std::function<mlir::WalkResult(mlir::Operation *, mlir::OpOperand &, P4HIR::FieldPath)>;
+    using LeafCallbackFn = std::function<mlir::WalkResult(
+        mlir::Operation *, const mlir::OpOperand &, P4HIR::FieldPath)>;
 
-    PathWalker() {}
+    ///  - `nodeCb` is the callback function for intermediate nodes. This callback is called for
+    ///  field-access operations. The result value and the corresponding accessed field are provided
+    ///  as arguments to the callback.
+    ///  - `leafCb` is the callback function for leaf operations. This callback is called for
+    ///  operations that are not field-access operations and that access a value with a known path.
+    ///  The operation, the operand and the corresponding path are provided as arguments to the
+    ///  callback. If a leaf operation has multiple operands with known paths then the callback will
+    ///  be called multiple times.
+    ///  - `indirectUses` is a mapping that provides additional uses for values that are accessed
+    ///  by means other than SSA def-use chains (e.g. symbol-based access).
+    PathWalker(NodeCallbackFn nodeCb, LeafCallbackFn leafCb,
+               const IndirectUsesMap *indirectUses = nullptr)
+        : nodeCb(nodeCb), leafCb(leafCb), indirectUses(indirectUses) {}
     virtual ~PathWalker() {}
 
-    /// Return an indirect use mapping for P4HIR `control_local` and `symbol_ref`-based accesses.
+    /// Create a `PathWalker` with a node callback.
+    static PathWalker forNodes(NodeCallbackFn nodeCb,
+                               const IndirectUsesMap *indirectUses = nullptr) {
+        return PathWalker(nodeCb, {}, indirectUses);
+    }
+
+    /// Create a `PathWalker` with a leaf callback.
+    static PathWalker forLeafs(LeafCallbackFn leafCb,
+                               const IndirectUsesMap *indirectUses = nullptr) {
+        return PathWalker({}, leafCb, indirectUses);
+    }
+
+    /// Return an indirect use mapping for P4HIR `control_local` and `symbol_ref`-based
+    /// accesses.
     static IndirectUsesMap getIndirectSymbolUses(P4HIR::ControlOp control) {
         IndirectUsesMap result;
         control.walk([&](P4HIR::SymToValueOp symbolRef) {
@@ -130,34 +155,9 @@ class PathWalker {
         return result;
     }
 
-    /// Set the indirect use mapping to use. This mapping provides additional uses for values that
-    /// are accessed by means other than SSA def-use chains (e.g. symbol-based access).
-    PathWalker &setIndirectUsesMap(const IndirectUsesMap *indirectUsesMap) {
-        indirectUses = indirectUsesMap;
-        return *this;
-    }
-
-    /// Set the callback function for leaf operations. This callback is called for operations that
-    /// are not field-access operations and that access a value with a known path. The operation,
-    /// the operand and the corresponding path are provided as arguments to the callback. If a leaf
-    /// operation has multiple operands with known paths then the callback will be called multiple
-    /// times.
-    PathWalker &setLeafCallback(LeafCallbackFn cb) {
-        leafCb = std::move(cb);
-        return *this;
-    }
-
-    /// Set the callback function for intermediate nodes. This callback is called for field-access
-    /// operations. The result value and the corresponding accessed field are provided as arguments
-    /// to the callback.
-    PathWalker &setNodeCallback(NodeCallbackFn cb) {
-        nodeCb = std::move(cb);
-        return *this;
-    }
-
     /// Helper to look through a P4HIR `struct_extract` or `struct_field_ref` operation.
     static std::pair<mlir::Value, P4HIR::FieldPath> lookThroughStructAccess(
-        mlir::Operation *op, mlir::OpOperand &operand, P4HIR::FieldPath path) {
+        mlir::Operation *op, const mlir::OpOperand &operand, P4HIR::FieldPath path) {
         return llvm::TypeSwitch<mlir::Operation *, std::pair<mlir::Value, P4HIR::FieldPath>>(op)
             .Case<P4HIR::StructExtractOp, P4HIR::StructFieldRefOp>([&](auto structAccessOp) {
                 assert((operand.get() == structAccessOp.getInput()) && "Unexpected operand");
@@ -168,9 +168,8 @@ class PathWalker {
     }
 
     /// Helper to look through a P4HIR `array_get` or `array_element_ref` operation.
-    static std::pair<mlir::Value, P4HIR::FieldPath> lookThroughArrayAccess(mlir::Operation *op,
-                                                                           mlir::OpOperand &operand,
-                                                                           P4HIR::FieldPath path) {
+    static std::pair<mlir::Value, P4HIR::FieldPath> lookThroughArrayAccess(
+        mlir::Operation *op, const mlir::OpOperand &operand, P4HIR::FieldPath path) {
         return llvm::TypeSwitch<mlir::Operation *, std::pair<mlir::Value, P4HIR::FieldPath>>(op)
             .Case<P4HIR::ArrayGetOp, P4HIR::ArrayElementRefOp>(
                 [&](auto arrayAccessOp) -> std::pair<mlir::Value, P4HIR::FieldPath> {
@@ -191,7 +190,7 @@ class PathWalker {
     /// determined based on `path`, then this function should return the resulting new value and
     /// path. Otherwise an empty value must be returned.
     virtual std::pair<mlir::Value, P4HIR::FieldPath> lookThroughUser(mlir::Operation *op,
-                                                                     mlir::OpOperand &operand,
+                                                                     const mlir::OpOperand &operand,
                                                                      P4HIR::FieldPath path) {
         // Default implementation to handle P4HIR operations. Users should override this to also
         // support operations from other dialects.
@@ -246,9 +245,9 @@ class PathWalker {
         return mlir::WalkResult::advance();
     }
 
-    const IndirectUsesMap *indirectUses = nullptr;
     NodeCallbackFn nodeCb;
     LeafCallbackFn leafCb;
+    const IndirectUsesMap *indirectUses;
 };
 
 }  // namespace P4::P4MLIR::IRUtils
