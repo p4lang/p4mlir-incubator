@@ -745,26 +745,41 @@ Type SerEnumType::parse(AsmParser &p) {
 
     // Parse "<name, type, " part
     if (p.parseLess() || p.parseKeywordOrString(&name) || p.parseOptionalAttrDict(annotations) ||
-        p.parseComma() || p.parseCustomTypeWithFallback<P4HIR::BitsType>(type) || p.parseComma())
+        p.parseComma() || p.parseCustomTypeWithFallback<P4HIR::BitsType>(type))
         return {};
 
-    // Parse comma separated set of fields "name : #value"
-    if (p.parseCommaSeparatedList([&]() {
-            StringRef caseName;
-            P4HIR::IntAttr attr;
-            if (p.parseKeyword(&caseName) || p.parseColon() ||
-                p.parseCustomAttributeWithFallback<P4HIR::IntAttr>(attr))
-                return failure();
+    if (succeeded(p.parseOptionalComma())) {
+        // Parse comma separated set of fields "name : #value"
+        if (p.parseCommaSeparatedList([&]() {
+                StringRef caseName;
+                P4HIR::IntAttr attr;
+                if (p.parseKeyword(&caseName) || p.parseColon() ||
+                    p.parseCustomAttributeWithFallback<P4HIR::IntAttr>(attr))
+                    return failure();
 
-            fields.emplace_back(StringAttr::get(p.getContext(), caseName), attr);
-            return success();
-        }))
-        return {};
+                fields.emplace_back(StringAttr::get(p.getContext(), caseName), attr);
+                return success();
+            }))
+            return {};
+    }
 
     // Parse closing >
     if (p.parseGreater()) return {};
 
     return get(name, type, fields, annotations.getDictionary(p.getContext()));
+}
+
+LogicalResult SerEnumType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                  llvm::StringRef name, P4HIR::BitsType type,
+                                  mlir::DictionaryAttr fields, mlir::DictionaryAttr annotations) {
+    for (auto field : fields) {
+        auto value = mlir::dyn_cast<P4HIR::IntAttr>(field.getValue());
+        if (!value || value.getType() != type)
+            return emitError()
+                   << "p4hir.ser_enum fields values must have the same type as the enum";
+    }
+
+    return success();
 }
 
 // The spec says that the default value is zero even if there is no zero field.

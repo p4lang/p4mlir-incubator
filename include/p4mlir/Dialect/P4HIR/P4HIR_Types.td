@@ -666,6 +666,7 @@ def SerEnumType : P4HIR_Type<"SerEnum", "ser_enum", [AnnotatedType, HasDefaultVa
   }];
 
   let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
 
   let parameters = (ins StringRefParameter<"enum name">:$name,
                         "P4HIR::BitsType":$type, "mlir::DictionaryAttr":$fields,
