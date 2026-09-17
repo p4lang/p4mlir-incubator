@@ -170,6 +170,38 @@ struct ConstantIntBinder {
     }
 };
 
+struct ValidityCheckBinder {
+    mlir::Value *bindValue;
+    bool *bindIsValidCheck;
+
+    ValidityCheckBinder(mlir::Value *bindValue, bool *bindIsValidCheck)
+        : bindValue(bindValue), bindIsValidCheck(bindIsValidCheck) {}
+
+    bool match(mlir::Operation *op) {
+        auto cmpOp = mlir::dyn_cast<P4::P4MLIR::P4HIR::CmpOp>(op);
+        if (!cmpOp || !mlir::isa<P4::P4MLIR::P4HIR::ValidBitType>(cmpOp.getLhs().getType()))
+            return false;
+
+        mlir::Attribute validBitAttr;
+        if (!matchPattern(cmpOp.getRhs(), m_Constant(&validBitAttr))) return false;
+
+        bool isValidCheck = true;
+        if (mlir::cast<P4::P4MLIR::P4HIR::ValidityBitAttr>(validBitAttr).getValue() ==
+            P4::P4MLIR::P4HIR::ValidityBit::Invalid)
+            isValidCheck = !isValidCheck;
+
+        P4::P4MLIR::P4HIR::CmpOpKind kind = cmpOp.getKind();
+        assert((kind == P4::P4MLIR::P4HIR::CmpOpKind::Eq ||
+                kind == P4::P4MLIR::P4HIR::CmpOpKind::Ne) &&
+               "Unexpected kind");
+        if (kind == P4::P4MLIR::P4HIR::CmpOpKind::Ne) isValidCheck = !isValidCheck;
+
+        *bindValue = cmpOp.getLhs();
+        *bindIsValidCheck = isValidCheck;
+        return true;
+    }
+};
+
 }  // namespace detail
 
 inline auto m_ConstantInt(unsigned *bindValue, bool matchBool = false) {
@@ -234,6 +266,13 @@ inline auto m_ZeroExt(Matcher matcher, bool optional = false) {
 template <typename Matcher>
 inline auto m_MaybeZeroExt(Matcher matcher) {
     return m_ZeroExt(matcher, true);
+}
+
+/// Match an isValid() check. `bindVal` binds to the valid bit value that is checked. If
+/// `isValidCheck` is set to true then the matched expression is equivalent to `bindVal.isValid()`,
+/// otherwise it is `!bindVal.isValid()`.
+inline auto m_ValidityCheck(mlir::Value *bindVal, bool *bindIsValidCheck) {
+    return detail::ValidityCheckBinder(bindVal, bindIsValidCheck);
 }
 
 #endif  // P4MLIR_DIALECT_P4HIR_MATCHERS_H

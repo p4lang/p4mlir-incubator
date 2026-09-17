@@ -959,30 +959,9 @@ LogicalResult P4HIR::CmpOp::canonicalize(P4HIR::CmpOp op, PatternRewriter &rewri
             }
         }
 
-        // Helper to check if `val` is a validity bit check, equivalent to (validBit ==
-        // valid/invalid).
-        auto matchValidityCheck = [](mlir::Value val) -> std::pair<mlir::Value, bool> {
-            auto cmpOp = val.getDefiningOp<P4HIR::CmpOp>();
-            if (!cmpOp || !mlir::isa<P4HIR::ValidBitType>(cmpOp.getLhs().getType()))
-                return {{}, false};
-
-            mlir::Attribute validBitAttr;
-            if (!matchPattern(cmpOp.getRhs(), m_Constant(&validBitAttr))) return {{}, false};
-
-            bool isValidCheck = true;
-            if (mlir::cast<P4HIR::ValidityBitAttr>(validBitAttr).getValue() ==
-                P4HIR::ValidityBit::Invalid)
-                isValidCheck = !isValidCheck;
-
-            P4HIR::CmpOpKind kind = cmpOp.getKind();
-            assert((kind == P4HIR::CmpOpKind::Eq || kind == P4HIR::CmpOpKind::Ne) &&
-                   "Unexpected kind");
-            if (kind == P4HIR::CmpOpKind::Ne) isValidCheck = !isValidCheck;
-
-            return {cmpOp.getLhs(), isValidCheck};
-        };
-
-        if (auto [lhsValidBit, lhsIsValidCheck] = matchValidityCheck(op.getLhs()); lhsValidBit) {
+        mlir::Value lhsValidBit, rhsValidBit;
+        bool lhsIsValidCheck, rhsIsValidCheck;
+        if (matchPattern(op.getLhs(), m_ValidityCheck(&lhsValidBit, &lhsIsValidCheck))) {
             unsigned cst;
             if (matchPattern(op.getRhs(), m_ConstantInt(&cst, true))) {
                 // Canonicalize cmp(cmp(V, #valid/#invalid), #true/#false)
@@ -997,8 +976,7 @@ LogicalResult P4HIR::CmpOp::canonicalize(P4HIR::CmpOp op, PatternRewriter &rewri
                 auto newKind = useEq ? P4HIR::CmpOpKind::Eq : P4HIR::CmpOpKind::Ne;
                 rewriter.replaceOpWithNewOp<P4HIR::CmpOp>(op, newKind, lhsValidBit, validCst);
                 return success();
-            } else if (auto [rhsValidBit, rhsIsValidCheck] = matchValidityCheck(op.getRhs());
-                       rhsValidBit) {
+            } else if (matchPattern(op.getRhs(), m_ValidityCheck(&rhsValidBit, &rhsIsValidCheck))) {
                 // Canonicalize cmp(cmp(V1, #valid/#invalid), cmp(V2, #valid/#invalid))
                 // to cmp(V1, V2).
                 bool useEq = lhsIsValidCheck;
