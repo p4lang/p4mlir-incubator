@@ -86,6 +86,30 @@ def SelectFlattenTuples : Pass<"p4hir-select-flatten-tuples", "P4HIR::ParserOp">
 }
 
 //===----------------------------------------------------------------------===//
+// ParserUnroll
+//===----------------------------------------------------------------------===//
+
+def ParserUnroll : Pass<"p4hir-parser-unroll"> {
+  let summary = "Unroll parser loops";
+  let description = [{
+    This pass eliminates loops in parser state machines by unrolling them
+    up to a configurable depth. Parser loops (back-edges in the state graph)
+    are replaced with explicit state sequences.
+    The pass depends on `lower-to-p4corelib` for incrementing the nextIndex
+    of header stacks.
+  }];
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+  let options = [
+    Option<"maxUnrollDepth", "max-unroll-depth", "unsigned",
+           /*default=*/"64",
+           "Maximum header stack size allowed for unrolling">,
+    Option<"symbolicExecutionLimit", "symbolic-execution-limit", "unsigned",
+           /*default=*/"100000",
+           "Maximum BFS state instances before aborting symbolic execution">,
+  ];
+}
+
+//===----------------------------------------------------------------------===//
 // FlattenCFG
 //===----------------------------------------------------------------------===//
 
