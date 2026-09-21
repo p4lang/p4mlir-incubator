@@ -170,6 +170,33 @@ struct ConstantIntBinder {
     }
 };
 
+struct RangeBinder {
+    mlir::OpFoldResult *bindLow;
+    mlir::OpFoldResult *bindHigh;
+
+    RangeBinder(mlir::OpFoldResult *bindLow, mlir::OpFoldResult *bindHigh)
+        : bindLow(bindLow), bindHigh(bindHigh) {}
+
+    bool match(mlir::Operation *op) {
+        mlir::OpFoldResult low, high;
+        if (auto rangeOp = mlir::dyn_cast<P4::P4MLIR::P4HIR::RangeOp>(op)) {
+            low = rangeOp.getLhs();
+            high = rangeOp.getRhs();
+        } else {
+            mlir::Attribute attr;
+            if (!matchPattern(op, m_Constant(&attr))) return false;
+            auto set = mlir::dyn_cast<P4::P4MLIR::P4HIR::SetAttr>(attr);
+            if (!set || set.getKind() != P4::P4MLIR::P4HIR::SetKind::Range) return false;
+            low = set.getMembers()[0];
+            high = set.getMembers()[1];
+        }
+
+        if (bindLow) *bindLow = low;
+        if (bindHigh) *bindHigh = high;
+        return true;
+    }
+};
+
 struct ValidityCheckBinder {
     mlir::Value *bindValue;
     bool *bindIsValidCheck;
@@ -273,6 +300,11 @@ inline auto m_MaybeZeroExt(Matcher matcher) {
 /// otherwise it is `!bindVal.isValid()`.
 inline auto m_ValidityCheck(mlir::Value *bindVal, bool *bindIsValidCheck) {
     return detail::ValidityCheckBinder(bindVal, bindIsValidCheck);
+}
+
+/// Match a range, either a `p4hir.range(lo, hi)` or a constant `#p4hir.set<range : [lo, hi]>`.
+inline auto m_Range(mlir::OpFoldResult *bindLow = nullptr, mlir::OpFoldResult *bindHigh = nullptr) {
+    return detail::RangeBinder(bindLow, bindHigh);
 }
 
 #endif  // P4MLIR_DIALECT_P4HIR_MATCHERS_H
