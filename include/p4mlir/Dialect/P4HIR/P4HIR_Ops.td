@@ -2000,10 +2000,10 @@ def ForInOp : P4HIR_Op<"foreach",
        SingleBlockImplicitTerminator<"P4HIR::YieldOp">,
       ]> {
 
-let summary = "For-In operations";
-let description = [{
-  The `p4hir.foreach` operation executes a statement for each element in a collection.
-}];
+  let summary = "For-In operations";
+  let description = [{
+    The `p4hir.foreach` operation executes a statement for each element in a collection.
+  }];
 
   let arguments = (ins AnyCollectionType:$collection,
                        OptionalAttr<DictionaryAttr>:$annotations);
