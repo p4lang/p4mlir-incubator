@@ -6,8 +6,11 @@
 // order to propagate pragma further on
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
+#include <functional>
+
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "p4mlir/Dialect/P4HIR/Matchers.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Transforms/Passes.h"
 
@@ -128,15 +131,172 @@ class ScopeOpFlattening : public mlir::OpRewritePattern<P4HIR::ScopeOp> {
     }
 };
 
+struct ForOpFlattening : public OpRewritePattern<P4HIR::ForOp> {
+    using OpRewritePattern<P4HIR::ForOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ForOp forOp, PatternRewriter &rewriter) const override {
+        auto loc = forOp.getLoc();
+
+        // Split the block at the for
+        auto *condBlock = rewriter.getInsertionBlock();
+        auto opPosition = rewriter.getInsertionPoint();
+        auto *exitBlock = rewriter.splitBlock(condBlock, opPosition);
+
+        Region &condRegion = forOp.getCondRegion();
+        Block *condEntry = &condRegion.front();
+        Block *condExit = &condRegion.back();
+        Region &bodyRegion = forOp.getBodyRegion();
+        Block *bodyEntry = &bodyRegion.front();
+        Block *bodyExit = &bodyRegion.back();
+        Region &updatesRegion = forOp.getUpdatesRegion();
+        Block *updatesEntry = &updatesRegion.front();
+        Block *updatesExit = &updatesRegion.back();
+
+        // p4hir.condition -> cond_br body, exit
+        auto conditionOp = cast<P4HIR::ConditionOp>(condExit->getTerminator());
+        rewriter.setInsertionPointToEnd(condExit);
+        P4HIR::CondBrOp::create(rewriter, loc, conditionOp.getCondition(), bodyEntry, exitBlock);
+        rewriter.eraseOp(conditionOp);
+
+        // body, p4hir.yield -> br updates
+        Operation *bodyYield = bodyExit->getTerminator();
+        rewriter.setInsertionPointToEnd(bodyExit);
+        P4HIR::BrOp::create(rewriter, loc, updatesEntry);
+        rewriter.eraseOp(bodyYield);
+
+        // updates backedge
+        Operation *updatesYield = updatesExit->getTerminator();
+        rewriter.setInsertionPointToEnd(updatesExit);
+        P4HIR::BrOp::create(rewriter, loc, condEntry);
+        rewriter.eraseOp(updatesYield);
+
+        rewriter.inlineRegionBefore(condRegion, exitBlock);
+        rewriter.inlineRegionBefore(bodyRegion, exitBlock);
+        rewriter.inlineRegionBefore(updatesRegion, exitBlock);
+
+        rewriter.setInsertionPointToEnd(condBlock);
+        P4HIR::BrOp::create(rewriter, loc, condEntry);
+
+        rewriter.eraseOp(forOp);
+        return success();
+    }
+};
+
+// Lowers `p4hir.foreach` into a `p4hir.for`, depending on the collection:
+//   - range:        counter is the element itself, iterating [lo, hi] (cmp le);
+//   - array/stack:  counter is an index, iterating [0, size) (cmp lt), with the
+//                   element read out of the collection at that index.
+struct ForInLowering : public OpRewritePattern<P4HIR::ForInOp> {
+    using OpRewritePattern<P4HIR::ForInOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ForInOp forInOp,
+                                  PatternRewriter &rewriter) const override {
+        mlir::Value collection = forInOp.getCollection();
+        auto loc = forInOp.getLoc();
+        auto *body = &forInOp.getBodyRegion().front();
+
+        mlir::Type counterType;
+        P4HIR::CmpOpKind cmpKind;
+        // Materialize loop bounds;
+        std::function<mlir::Value(mlir::OpBuilder &, mlir::Location)> makeLow;
+        std::function<mlir::Value(mlir::OpBuilder &, mlir::Location)> makeHigh;
+        // Maps the current counter value to the element bound in the loop body.
+        std::function<mlir::Value(mlir::OpBuilder &, mlir::Location, mlir::Value)> getElement;
+
+        auto rangeOp = collection.getDefiningOp<P4HIR::RangeOp>();
+        mlir::TypedAttr loAttr;
+        mlir::TypedAttr hiAttr;
+        bool isRangeSet = !rangeOp && matchPattern(collection, m_RangeSet(&loAttr, &hiAttr));
+        if (rangeOp || isRangeSet) {
+            // foreach over an inclusive [lo, hi] range: the counter is the element.
+            cmpKind = P4HIR::CmpOpKind::Le;
+            getElement = [](mlir::OpBuilder &, mlir::Location, mlir::Value i) { return i; };
+            if (rangeOp) {
+                auto lo = rangeOp.getLhs();
+                auto hi = rangeOp.getRhs();
+                counterType = lo.getType();
+                makeLow = [lo](mlir::OpBuilder &, mlir::Location) { return lo; };
+                makeHigh = [hi](mlir::OpBuilder &, mlir::Location) { return hi; };
+            } else {
+                // Constant range
+                counterType = loAttr.getType();
+                makeLow = [loAttr](mlir::OpBuilder &b, mlir::Location l) {
+                    return P4HIR::ConstOp::create(b, l, loAttr);
+                };
+                makeHigh = [hiAttr](mlir::OpBuilder &b, mlir::Location l) {
+                    return P4HIR::ConstOp::create(b, l, hiAttr);
+                };
+            }
+        } else {
+            size_t size;
+            if (auto arrType = mlir::dyn_cast<P4HIR::ArrayType>(collection.getType())) {
+                size = arrType.getSize();
+                getElement = [collection](mlir::OpBuilder &b, mlir::Location l, mlir::Value i) {
+                    return P4HIR::ArrayGetOp::create(b, l, collection, i);
+                };
+            } else if (auto hsType = mlir::dyn_cast<P4HIR::HeaderStackType>(collection.getType())) {
+                size = hsType.getArraySize();
+                getElement = [collection](mlir::OpBuilder &b, mlir::Location l, mlir::Value i) {
+                    auto data = P4HIR::StructExtractOp::create(
+                        b, l, collection, P4HIR::HeaderStackType::dataFieldName);
+                    return P4HIR::ArrayGetOp::create(b, l, data, i);
+                };
+            } else {
+                return failure();
+            }
+
+            unsigned width = std::max(1U, llvm::Log2_64_Ceil(static_cast<uint64_t>(size) + 1));
+            counterType = P4HIR::BitsType::get(rewriter.getContext(), width, false);
+            cmpKind = P4HIR::CmpOpKind::Lt;
+            makeLow = [counterType](mlir::OpBuilder &b, mlir::Location l) {
+                return P4HIR::ConstOp::create(b, l, P4HIR::IntAttr::get(counterType, 0));
+            };
+            makeHigh = [counterType, size](mlir::OpBuilder &b, mlir::Location l) {
+                return P4HIR::ConstOp::create(b, l, P4HIR::IntAttr::get(counterType, size));
+            };
+        }
+
+        rewriter.setInsertionPoint(forInOp);
+        auto iv = P4HIR::VariableOp::create(rewriter, loc, P4HIR::ReferenceType::get(counterType),
+                                            "i", true);
+        P4HIR::AssignOp::create(rewriter, loc, makeLow(rewriter, loc), iv);
+
+        P4HIR::ForOp::create(
+            rewriter, loc, forInOp.getAnnotations().value_or(nullptr),
+            [&](mlir::OpBuilder &b, mlir::Location l) {
+                auto i = P4HIR::ReadOp::create(b, l, counterType, iv);
+                auto cond = P4HIR::CmpOp::create(b, l, cmpKind, i, makeHigh(b, l));
+                P4HIR::ConditionOp::create(b, l, cond);
+            },
+            [&](mlir::OpBuilder &b, mlir::Location l) {
+                auto i = P4HIR::ReadOp::create(b, l, counterType, iv);
+                auto elem = getElement(b, l, i);
+                rewriter.mergeBlocks(body, b.getInsertionBlock(), mlir::ValueRange{elem});
+            },
+            [&](mlir::OpBuilder &b, mlir::Location l) {
+                auto i = P4HIR::ReadOp::create(b, l, counterType, iv);
+                auto one = P4HIR::ConstOp::create(b, l, P4HIR::IntAttr::get(counterType, 1));
+                auto next = P4HIR::BinOp::create(b, l, P4HIR::BinOpKind::Add, i, one);
+                P4HIR::AssignOp::create(b, l, next, iv);
+                P4HIR::YieldOp::create(b, l);
+            });
+
+        rewriter.eraseOp(forInOp);
+        return success();
+    }
+};
+
 void FlattenCFGPass::runOnOperation() {
     RewritePatternSet patterns(&getContext());
 
-    patterns.add<IfOpFlattening, ScopeOpFlattening>(patterns.getContext());
+    patterns.add<IfOpFlattening, ScopeOpFlattening, ForOpFlattening, ForInLowering>(
+        patterns.getContext());
 
     // Collect operations to apply patterns.
     llvm::SmallVector<Operation *, 16> ops;
     getOperation()->walk<mlir::WalkOrder::PostOrder>([&](Operation *op) {
-        if (mlir::isa<P4HIR::IfOp, P4HIR::ScopeOp>(op)) ops.push_back(op);
+        if (mlir::isa<P4HIR::IfOp, P4HIR::ScopeOp, P4HIR::ForOp, P4HIR::ForInOp>(op))
+            ops.push_back(op);
     });
 
     // Apply patterns.
