@@ -50,10 +50,15 @@ struct ConstOpConversion : public ConvertOpToLLVMPattern<P4HIR::ConstOp> {
 };
 
 template <typename Op>
-LogicalResult lowerToOp(P4HIR::BinOp op, P4HIR::BinOp::Adaptor adaptor,
-                        ConversionPatternRewriter &rewriter) {
-    rewriter.replaceOpWithNewOp<Op>(op, adaptor.getOperands());
+LogicalResult lowerToOp(Operation *op, ValueRange operands, ConversionPatternRewriter &rewriter) {
+    rewriter.replaceOpWithNewOp<Op>(op, operands);
     return success();
+}
+
+template <typename Op>
+LogicalResult lowerToOp(Operation *op, P4HIR::BinOp::Adaptor adaptor,
+                        ConversionPatternRewriter &rewriter) {
+    return lowerToOp<Op>(op, adaptor.getOperands(), rewriter);
 }
 
 // LLVM integers are signless; signedness comes from the original BitsType.
@@ -123,12 +128,9 @@ struct UnaryOpConversion : public ConvertOpToLLVMPattern<P4HIR::UnaryOp> {
     LogicalResult matchAndRewrite(P4HIR::UnaryOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
         auto input = adaptor.getInput();
-        auto intType = dyn_cast<IntegerType>(input.getType());
-        if (!intType) {
-            return rewriter.notifyMatchFailure(op, "unsupported unary operand type");
-        }
+        auto intType = cast<IntegerType>(input.getType());
 
-        auto createConstant = [&](int64_t value) {
+        auto createConstant = [&](int64_t value) -> Value {
             return LLVM::ConstantOp::create(rewriter, op.getLoc(), intType, value);
         };
 
@@ -136,29 +138,16 @@ struct UnaryOpConversion : public ConvertOpToLLVMPattern<P4HIR::UnaryOp> {
             case P4HIR::UnaryOpKind::UPlus:
                 rewriter.replaceOp(op, input);
                 return success();
-            case P4HIR::UnaryOpKind::Neg:
-                // LLVM has no integer negation, so `-x` is emitted as `0 - x`.
-                rewriter.replaceOpWithNewOp<LLVM::SubOp>(op, createConstant(0), input);
-                return success();
-            case P4HIR::UnaryOpKind::Cmpl:
-                rewriter.replaceOpWithNewOp<LLVM::XOrOp>(op, input, createConstant(-1));
-                return success();
-            case P4HIR::UnaryOpKind::LNot:
-                if (intType.getWidth() != 1) {
-                    return rewriter.notifyMatchFailure(op, "logical not requires i1 operand");
-                }
-                rewriter.replaceOpWithNewOp<LLVM::XOrOp>(op, input, createConstant(1));
-                return success();
+            case P4HIR::UnaryOpKind::Neg:  // `-x` is emitted as `0 - x`
+                return lowerToOp<LLVM::SubOp>(op, {createConstant(0), input}, rewriter);
+            case P4HIR::UnaryOpKind::Cmpl:  // `~x` is emitted as `x ^ -1`
+                return lowerToOp<LLVM::XOrOp>(op, {input, createConstant(-1)}, rewriter);
+            case P4HIR::UnaryOpKind::LNot:  // `!x` is emitted as `x ^ 1`
+                return lowerToOp<LLVM::XOrOp>(op, {input, createConstant(1)}, rewriter);
         }
         return rewriter.notifyMatchFailure(op, "unsupported unary op kind");
     }
 };
-
-LogicalResult lowerToICmpOp(P4HIR::CmpOp op, P4HIR::CmpOp::Adaptor adaptor,
-                            ConversionPatternRewriter &rewriter, LLVM::ICmpPredicate predicate) {
-    rewriter.replaceOpWithNewOp<LLVM::ICmpOp>(op, predicate, adaptor.getLhs(), adaptor.getRhs());
-    return success();
-}
 
 struct CmpOpConversion : public ConvertOpToLLVMPattern<P4HIR::CmpOp> {
     using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
@@ -171,31 +160,31 @@ struct CmpOpConversion : public ConvertOpToLLVMPattern<P4HIR::CmpOp> {
         }
 
         bool isSigned = false;  // BoolType lowers to i1 and is always compared as unsigned.
-        if (auto bitsType = dyn_cast<P4HIR::BitsType>(lhsType)) {
-            isSigned = bitsType.isSigned();
-        }
+        if (auto bitsType = dyn_cast<P4HIR::BitsType>(lhsType)) isSigned = bitsType.isSigned();
+
+        auto lowerToICmpOp = [&](LLVM::ICmpPredicate predicate) {
+            rewriter.replaceOpWithNewOp<LLVM::ICmpOp>(op, predicate, adaptor.getLhs(),
+                                                      adaptor.getRhs());
+            return success();
+        };
 
         switch (op.getKind()) {
             case P4HIR::CmpOpKind::Eq:
-                return lowerToICmpOp(op, adaptor, rewriter, LLVM::ICmpPredicate::eq);
+                return lowerToICmpOp(LLVM::ICmpPredicate::eq);
             case P4HIR::CmpOpKind::Ne:
-                return lowerToICmpOp(op, adaptor, rewriter, LLVM::ICmpPredicate::ne);
+                return lowerToICmpOp(LLVM::ICmpPredicate::ne);
             case P4HIR::CmpOpKind::Lt:
-                return lowerToICmpOp(
-                    op, adaptor, rewriter,
-                    isSigned ? LLVM::ICmpPredicate::slt : LLVM::ICmpPredicate::ult);
+                return lowerToICmpOp(isSigned ? LLVM::ICmpPredicate::slt
+                                              : LLVM::ICmpPredicate::ult);
             case P4HIR::CmpOpKind::Le:
-                return lowerToICmpOp(
-                    op, adaptor, rewriter,
-                    isSigned ? LLVM::ICmpPredicate::sle : LLVM::ICmpPredicate::ule);
+                return lowerToICmpOp(isSigned ? LLVM::ICmpPredicate::sle
+                                              : LLVM::ICmpPredicate::ule);
             case P4HIR::CmpOpKind::Gt:
-                return lowerToICmpOp(
-                    op, adaptor, rewriter,
-                    isSigned ? LLVM::ICmpPredicate::sgt : LLVM::ICmpPredicate::ugt);
+                return lowerToICmpOp(isSigned ? LLVM::ICmpPredicate::sgt
+                                              : LLVM::ICmpPredicate::ugt);
             case P4HIR::CmpOpKind::Ge:
-                return lowerToICmpOp(
-                    op, adaptor, rewriter,
-                    isSigned ? LLVM::ICmpPredicate::sge : LLVM::ICmpPredicate::uge);
+                return lowerToICmpOp(isSigned ? LLVM::ICmpPredicate::sge
+                                              : LLVM::ICmpPredicate::uge);
         }
         return rewriter.notifyMatchFailure(op, "unsupported cmp op kind");
     }

@@ -17,6 +17,10 @@ module {
   %rhs = p4hir.const #p4hir.int<1> : !infint
   // CHECK: p4hir.binop(add
   %add = p4hir.binop(add, %lhs, %rhs) : !infint
+  // CHECK: p4hir.unary(minus
+  %neg = p4hir.unary(minus, %lhs) : !infint
+  // CHECK: p4hir.cmp(lt
+  %lt = p4hir.cmp(lt, %lhs : !infint, %rhs : !infint)
 }
 
 // -----
@@ -28,7 +32,13 @@ module {
 // CHECK-LABEL: module
 module {
   // CHECK: p4hir.const
-  %val = p4hir.const #p4hir.int<0> : !u0i
+  %lhs = p4hir.const #p4hir.int<0> : !u0i
+  // CHECK: p4hir.const
+  %rhs = p4hir.const #p4hir.int<0> : !u0i
   // CHECK: p4hir.binop(add
-  %add = p4hir.binop(add, %val, %val) : !u0i
+  %add = p4hir.binop(add, %lhs, %rhs) : !u0i
+  // CHECK: p4hir.unary(cmpl
+  %cmpl = p4hir.unary(cmpl, %lhs) : !u0i
+  // CHECK: p4hir.cmp(eq
+  %eq = p4hir.cmp(eq, %lhs : !u0i, %rhs : !u0i)
 }
