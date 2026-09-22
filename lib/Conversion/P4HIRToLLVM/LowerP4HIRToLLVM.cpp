@@ -307,6 +307,69 @@ struct SliceOpConversion : public ConvertOpToLLVMPattern<P4HIR::SliceOp> {
     }
 };
 
+// LLVM shifts are poison past the bit width; P4 shifts are safe for those cases.
+template <typename LLVMShiftOp>
+LogicalResult lowerToShiftOp(Operation *op, Value lhs, Value rhs,
+                             ConversionPatternRewriter &rewriter) {
+    auto resultType = dyn_cast<IntegerType>(lhs.getType());
+    auto shiftType = dyn_cast<IntegerType>(rhs.getType());
+    if (!resultType || !shiftType)
+        return rewriter.notifyMatchFailure(op, "expected converted integer operands");
+
+    auto loc = op->getLoc();
+    auto resultWidth = resultType.getWidth();
+    auto shift = createZExtOrTrunc(rhs, resultType, loc, rewriter);
+    // Truncation drops the very bits that put a shift out of range, so the
+    // overflow check has to see the operand at its original width.
+    auto untruncatedShift = shiftType.getWidth() >= resultWidth ? rhs : shift;
+    Value widthValue = LLVM::ConstantOp::create(
+        rewriter, loc, cast<IntegerType>(untruncatedShift.getType()), resultWidth);
+    Value overflow =
+        LLVM::ICmpOp::create(rewriter, loc, LLVM::ICmpPredicate::uge, untruncatedShift, widthValue);
+
+    if constexpr (std::is_same_v<LLVMShiftOp, LLVM::AShrOp>) {
+        // P4 defines an out-of-range right shift as all sign bits, which `ashr`
+        // by width - 1 already produces: clamping the shift is the whole fix,
+        // and unlike the logical shifts below the result needs no second select.
+        Value maxShift = LLVM::ConstantOp::create(rewriter, loc, resultType, resultWidth - 1);
+        Value safeShift = LLVM::SelectOp::create(rewriter, loc, overflow, maxShift, shift);
+        rewriter.replaceOpWithNewOp<LLVMShiftOp>(op, lhs, safeShift);
+    } else {
+        Value zero = LLVM::ConstantOp::create(rewriter, loc, resultType, 0);
+        Value safeShift = LLVM::SelectOp::create(rewriter, loc, overflow, zero, shift);
+        Value inRangeResult = LLVMShiftOp::create(rewriter, loc, lhs, safeShift);
+        rewriter.replaceOpWithNewOp<LLVM::SelectOp>(op, overflow, zero, inRangeResult);
+    }
+    return success();
+}
+
+struct ShlOpConversion : public ConvertOpToLLVMPattern<P4HIR::ShlOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ShlOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        if (!isa<P4HIR::BitsType>(op.getLhs().getType()) ||
+            !isa<P4HIR::BitsType>(op.getRhs().getType()))
+            return rewriter.notifyMatchFailure(op, "expected fixed-width bits operands");
+        return lowerToShiftOp<LLVM::ShlOp>(op, adaptor.getLhs(), adaptor.getRhs(), rewriter);
+    }
+};
+
+struct ShrOpConversion : public ConvertOpToLLVMPattern<P4HIR::ShrOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ShrOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto lhsBitsType = dyn_cast<P4HIR::BitsType>(op.getLhs().getType());
+        auto rhsBitsType = dyn_cast<P4HIR::BitsType>(op.getRhs().getType());
+        if (!lhsBitsType || !rhsBitsType)
+            return rewriter.notifyMatchFailure(op, "expected fixed-width bits operands");
+        if (lhsBitsType.isSigned())
+            return lowerToShiftOp<LLVM::AShrOp>(op, adaptor.getLhs(), adaptor.getRhs(), rewriter);
+        return lowerToShiftOp<LLVM::LShrOp>(op, adaptor.getLhs(), adaptor.getRhs(), rewriter);
+    }
+};
+
 struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<LowerP4HIRToLLVMPass> {
     void runOnOperation() override {
         auto &context = getContext();
@@ -364,6 +427,6 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
 void P4::P4MLIR::populateP4HIRToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                                        RewritePatternSet &patterns) {
     patterns.add<ConstOpConversion, BinOpConversion, UnaryOpConversion, CmpOpConversion,
-                 BrOpConversion, CondBrOpConversion, ConcatOpConversion, SliceOpConversion>(
-        converter);
+                 BrOpConversion, CondBrOpConversion, ConcatOpConversion, SliceOpConversion,
+                 ShlOpConversion, ShrOpConversion>(converter);
 }

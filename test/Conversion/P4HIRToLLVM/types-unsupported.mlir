@@ -23,6 +23,10 @@ module {
   %lt = p4hir.cmp(lt, %lhs : !infint, %rhs : !infint)
   // CHECK: p4hir.slice
   %slice = p4hir.slice %lhs[3 : 0] : !infint -> !p4hir.bit<4>
+  // CHECK: p4hir.shl
+  %shl = p4hir.shl(%lhs, %rhs : !infint) : !infint
+  // CHECK: p4hir.shr
+  %shr = p4hir.shr(%lhs, %rhs : !infint) : !infint
 }
 
 // -----
@@ -63,4 +67,23 @@ module {
   %val = p4hir.const #p4hir.int<5> : !u8i
   // CHECK: p4hir.concat
   %concat = p4hir.concat(%empty : !u0i, %val : !u8i) : !u8i
+}
+
+// -----
+
+// A compile-time infint shift has no mapping.
+
+!u32i = !p4hir.bit<32>
+!infint = !p4hir.infint
+
+// CHECK-LABEL: module
+module {
+  // CHECK: llvm.mlir.constant(1 : i32)
+  %val = p4hir.const #p4hir.int<1> : !u32i
+  // CHECK: p4hir.const
+  %shift = p4hir.const #p4hir.int<3> : !infint
+  // CHECK: p4hir.shl
+  %shl = p4hir.shl(%val, %shift : !infint) : !u32i
+  // CHECK: p4hir.shr
+  %shr = p4hir.shr(%val, %shift : !infint) : !u32i
 }
