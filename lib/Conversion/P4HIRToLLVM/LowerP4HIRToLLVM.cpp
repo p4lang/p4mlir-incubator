@@ -249,6 +249,64 @@ struct CondBrOpConversion : public ConvertOpToLLVMPattern<P4HIR::CondBrOp> {
     }
 };
 
+Value createZExtOrTrunc(Value value, IntegerType resultType, Location loc,
+                        ConversionPatternRewriter &rewriter) {
+    auto valueType = cast<IntegerType>(value.getType());
+    if (valueType.getWidth() < resultType.getWidth())
+        return LLVM::ZExtOp::create(rewriter, loc, resultType, value);
+    if (valueType.getWidth() > resultType.getWidth())
+        return LLVM::TruncOp::create(rewriter, loc, resultType, value);
+    return value;
+}
+
+struct ConcatOpConversion : public ConvertOpToLLVMPattern<P4HIR::ConcatOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ConcatOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto highType = cast<IntegerType>(adaptor.getLhs().getType());
+        auto lowType = cast<IntegerType>(adaptor.getRhs().getType());
+
+        auto loc = op.getLoc();
+        auto lowWidth = lowType.getWidth();
+        auto resultType = rewriter.getIntegerType(highType.getWidth() + lowWidth);
+
+        // Concatenation operates on the bit patterns of its operands, regardless of
+        // their signedness. Zero-extend both operands so that sign extension cannot
+        // introduce bits into the other half of the result.
+        Value high = createZExtOrTrunc(adaptor.getLhs(), resultType, loc, rewriter);
+        Value low = createZExtOrTrunc(adaptor.getRhs(), resultType, loc, rewriter);
+        // The shift amount is the width of the low half, which is always smaller
+        // than the result width.
+        Value shift = LLVM::ConstantOp::create(rewriter, loc, resultType, lowWidth);
+        high = LLVM::ShlOp::create(rewriter, loc, high, shift);
+        rewriter.replaceOpWithNewOp<LLVM::OrOp>(op, high, low);
+        return success();
+    }
+};
+
+struct SliceOpConversion : public ConvertOpToLLVMPattern<P4HIR::SliceOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::SliceOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto inputType = cast<IntegerType>(adaptor.getInput().getType());
+
+        auto loc = op.getLoc();
+        auto resultType = rewriter.getIntegerType(op.getHighBit() - op.getLowBit() + 1);
+
+        Value value = adaptor.getInput();
+        if (uint32_t lowBit = op.getLowBit(); lowBit > 0) {
+            // Slicing operates on the bit pattern, so shift logically regardless of the
+            // signedness of the input.
+            Value shift = LLVM::ConstantOp::create(rewriter, loc, inputType, lowBit);
+            value = LLVM::LShrOp::create(rewriter, loc, value, shift);
+        }
+        rewriter.replaceOp(op, createZExtOrTrunc(value, resultType, loc, rewriter));
+        return success();
+    }
+};
+
 struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<LowerP4HIRToLLVMPass> {
     void runOnOperation() override {
         auto &context = getContext();
@@ -306,5 +364,6 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
 void P4::P4MLIR::populateP4HIRToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                                        RewritePatternSet &patterns) {
     patterns.add<ConstOpConversion, BinOpConversion, UnaryOpConversion, CmpOpConversion,
-                 BrOpConversion, CondBrOpConversion>(converter);
+                 BrOpConversion, CondBrOpConversion, ConcatOpConversion, SliceOpConversion>(
+        converter);
 }
