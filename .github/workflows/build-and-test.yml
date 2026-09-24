@@ -29,12 +29,28 @@ jobs:
         run: |
           uvx reuse lint
   build-and-test:
-    name: test-${{ matrix.distribution }}
+    name: test-${{ matrix.distribution }}${{ matrix.nix && '-nix' || '' }}
     runs-on: ${{ matrix.distribution }}
     strategy:
       fail-fast: false  # Let all matrix jobs complete, even if one fails
       matrix:
-        distribution: [ubuntu-22.04, ubuntu-24.04]
+        include:
+          - distribution: ubuntu-22.04
+          - distribution: ubuntu-24.04
+          # Same build, with the requirements provided by the Nix dev shell
+          # (flake.nix) instead of the Ubuntu install script.
+          - distribution: ubuntu-24.04
+            nix: true
+          # macOS, where the Nix dev shell is the only supported way to get
+          # the requirements.
+          - distribution: macos-latest
+            nix: true
+    defaults:
+      run:
+        # The Nix entry runs every step inside the dev shell. `bash -e {0}` is
+        # what GitHub uses when no shell is specified, so the other entries are
+        # unchanged.
+        shell: ${{ matrix.nix && 'nix develop --command bash -e {0}' || 'bash -e {0}' }}
 
     steps:
     - name: Checkout repo
@@ -42,9 +58,20 @@ jobs:
       with:
         submodules: recursive
 
+    - name: Install Nix
+      if: ${{ matrix.nix }}
+      uses: cachix/install-nix-action@v31
+
     - name: Get LLVM hash
       id: get-llvm-hash
       run: echo "hash=$(git rev-parse @:./third_party/llvm-project)" >> $GITHUB_OUTPUT
+
+    # Identifies the toolchain in the cache keys below: the distribution for an
+    # apt-provided toolchain, or the Nix flake for a Nix-provided one, since a
+    # cached LLVM build is only valid for the exact toolchain that produced it.
+    - name: Get toolchain id
+      id: get-toolchain-id
+      run: echo "id=${{ matrix.nix && format('nix-{0}', hashFiles('flake.nix', 'flake.lock')) || matrix.distribution }}" >> "$GITHUB_OUTPUT"
 
     - name: Enable ccache
       uses: hendrikmuhs/ccache-action@v1.2
@@ -56,7 +83,7 @@ jobs:
         # - hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh')
         #   - The build_mlir.sh script defines critical build flags (e.g., -DLLVM_ENABLE_RTTI=ON, compiler choices, linker options).
         #     If the script changes (e.g., enabling/disabling features), cached objects from a previous version might be invalid or unsafe to reuse.
-        key: ${{ runner.os }}-${{ matrix.distribution }}-llvm-commit-${{ steps.get-llvm-hash.outputs.hash }}-mlir-build-script-${{ hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh') }}
+        key: ${{ runner.os }}-${{ steps.get-toolchain-id.outputs.id }}-llvm-commit-${{ steps.get-llvm-hash.outputs.hash }}-mlir-build-script-${{ hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh') }}
         max-size: 2G
     - name: Cache LLVM
       id: cache-llvm
@@ -65,9 +92,10 @@ jobs:
         path: |
           third_party/llvm-project/build/bin/llvm-lit
           install
-        key: ${{ runner.os }}-${{ matrix.distribution }}-llvm-commit-${{ steps.get-llvm-hash.outputs.hash }}-mlir-build-script-${{ hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh') }}
+        key: ${{ runner.os }}-${{ steps.get-toolchain-id.outputs.id }}-llvm-commit-${{ steps.get-llvm-hash.outputs.hash }}-mlir-build-script-${{ hashFiles('${{ github.workspace }}/build_tools/build_mlir.sh') }}
 
     - name: Install requirements
+      if: ${{ !matrix.nix }}
       run: |
         build_tools/ubuntu_install_mlir_requirements.sh
 
