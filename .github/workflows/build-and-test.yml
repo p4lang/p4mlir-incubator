@@ -41,6 +41,10 @@ jobs:
           # (flake.nix) instead of the Ubuntu install script.
           - distribution: ubuntu-24.04
             nix: true
+          # macOS, where the Nix dev shell is the only supported way to get
+          # the requirements.
+          - distribution: macos-latest
+            nix: true
     defaults:
       run:
         # The Nix entry runs every step inside the dev shell. `bash -e {0}` is
