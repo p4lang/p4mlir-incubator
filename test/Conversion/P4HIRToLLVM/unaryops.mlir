@@ -4,42 +4,42 @@
 
 // RUN: p4mlir-opt %s --lower-p4hir-to-llvm -split-input-file | FileCheck %s
 
-!u32i = !p4hir.bit<32>
+!u128i = !p4hir.bit<128>
 
 // CHECK-LABEL: module
 module {
-  // CHECK: %[[X:.*]] = llvm.mlir.constant(5 : i32) : i32
-  %x = p4hir.const #p4hir.int<5> : !u32i
+  // CHECK: %[[X:.*]] = llvm.mlir.constant(5 : i128) : i128
+  %x = p4hir.const #p4hir.int<5> : !u128i
   // plus is a no-op: no llvm op is inserted; the result reuses %[[X]].
   // CHECK-NOT: llvm.add
   // CHECK-NOT: llvm.sub
-  %p = p4hir.unary(plus, %x) : !u32i
+  %p = p4hir.unary(plus, %x) : !u128i
 }
 
 // -----
 
-!i32i = !p4hir.int<32>
+!i128i = !p4hir.int<128>
 
 // CHECK-LABEL: module
 module {
-  // CHECK: %[[X:.*]] = llvm.mlir.constant(5 : i32) : i32
-  %x = p4hir.const #p4hir.int<5> : !i32i
-  // CHECK: %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK: llvm.sub %[[ZERO]], %[[X]] : i32
-  %n = p4hir.unary(minus, %x) : !i32i
+  // CHECK: %[[X:.*]] = llvm.mlir.constant(5 : i128) : i128
+  %x = p4hir.const #p4hir.int<5> : !i128i
+  // CHECK: %[[ZERO:.*]] = llvm.mlir.constant(0 : i128) : i128
+  // CHECK: llvm.sub %[[ZERO]], %[[X]] : i128
+  %n = p4hir.unary(minus, %x) : !i128i
 }
 
 // -----
 
-!u32i = !p4hir.bit<32>
+!u128i = !p4hir.bit<128>
 
 // CHECK-LABEL: module
 module {
-  // CHECK: %[[X:.*]] = llvm.mlir.constant(5 : i32) : i32
-  %x = p4hir.const #p4hir.int<5> : !u32i
-  // CHECK: %[[ONES:.*]] = llvm.mlir.constant(-1 : i32) : i32
-  // CHECK: llvm.xor %[[X]], %[[ONES]] : i32
-  %c = p4hir.unary(cmpl, %x) : !u32i
+  // CHECK: %[[X:.*]] = llvm.mlir.constant(5 : i128) : i128
+  %x = p4hir.const #p4hir.int<5> : !u128i
+  // CHECK: %[[ONES:.*]] = llvm.mlir.constant(-1 : i128) : i128
+  // CHECK: llvm.xor %[[X]], %[[ONES]] : i128
+  %c = p4hir.unary(cmpl, %x) : !u128i
 }
 
 // -----

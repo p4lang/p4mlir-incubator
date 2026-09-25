@@ -129,8 +129,9 @@ struct UnaryOpConversion : public ConvertOpToLLVMPattern<P4HIR::UnaryOp> {
                                   ConversionPatternRewriter &rewriter) const override {
         auto input = adaptor.getInput();
         auto intType = cast<IntegerType>(input.getType());
+        auto width = intType.getWidth();
 
-        auto createConstant = [&](int64_t value) -> Value {
+        auto createConstant = [&](const APInt &value) -> Value {
             return LLVM::ConstantOp::create(rewriter, op.getLoc(), intType, value);
         };
 
@@ -139,11 +140,14 @@ struct UnaryOpConversion : public ConvertOpToLLVMPattern<P4HIR::UnaryOp> {
                 rewriter.replaceOp(op, input);
                 return success();
             case P4HIR::UnaryOpKind::Neg:  // `-x` is emitted as `0 - x`
-                return lowerToOp<LLVM::SubOp>(op, {createConstant(0), input}, rewriter);
-            case P4HIR::UnaryOpKind::Cmpl:  // `~x` is emitted as `x ^ -1`
-                return lowerToOp<LLVM::XOrOp>(op, {input, createConstant(-1)}, rewriter);
+                return lowerToOp<LLVM::SubOp>(op, {createConstant(APInt::getZero(width)), input},
+                                              rewriter);
+            case P4HIR::UnaryOpKind::Cmpl:  // `~x` is emitted as `x ^ all-ones`
+                return lowerToOp<LLVM::XOrOp>(op, {input, createConstant(APInt::getAllOnes(width))},
+                                              rewriter);
             case P4HIR::UnaryOpKind::LNot:  // `!x` is emitted as `x ^ 1`
-                return lowerToOp<LLVM::XOrOp>(op, {input, createConstant(1)}, rewriter);
+                return lowerToOp<LLVM::XOrOp>(op, {input, createConstant(APInt(width, 1))},
+                                              rewriter);
         }
         return rewriter.notifyMatchFailure(op, "unsupported unary op kind");
     }
