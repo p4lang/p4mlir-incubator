@@ -361,8 +361,8 @@ struct ShrOpConversion : public ConvertOpToLLVMPattern<P4HIR::ShrOp> {
     LogicalResult matchAndRewrite(P4HIR::ShrOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
         auto lhsBitsType = dyn_cast<P4HIR::BitsType>(op.getLhs().getType());
-        auto rhsBitsType = dyn_cast<P4HIR::BitsType>(op.getRhs().getType());
-        if (!lhsBitsType || !rhsBitsType)
+				auto rhsIsBitsType = isa<P4HIR::BitsType>(op.getRhs().getType());
+        if (!lhsBitsType || !rhsIsBitsType)
             return rewriter.notifyMatchFailure(op, "expected fixed-width bits operands");
         if (lhsBitsType.isSigned())
             return lowerToShiftOp<LLVM::AShrOp>(op, adaptor.getLhs(), adaptor.getRhs(), rewriter);

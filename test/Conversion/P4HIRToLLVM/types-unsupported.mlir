@@ -49,6 +49,10 @@ module {
   %eq = p4hir.cmp(eq, %lhs : !u0i, %rhs : !u0i)
   // CHECK: p4hir.concat
   %concat = p4hir.concat(%lhs : !u0i, %rhs : !u0i) : !u0i
+  // CHECK: p4hir.shl
+  %shl = p4hir.shl(%lhs, %rhs : !u0i) : !u0i
+  // CHECK: p4hir.shr
+  %shr = p4hir.shr(%lhs, %rhs : !u0i) : !u0i
 }
 
 // -----
