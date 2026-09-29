@@ -47,6 +47,7 @@ limitations under the License.
 #include "frontends/p4/validateStringAnnotations.h"
 #include "frontends/p4/validateValueSets.h"
 #include "gc/gc.h"
+#include "ir/dump.h"
 #include "ir/ir.h"
 #include "ir/visitor.h"
 #include "lib/compile_context.h"
