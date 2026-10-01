@@ -853,6 +853,19 @@ OpFoldResult P4HIR::ShrOp::fold(FoldAdaptor adaptor) {
 // CmpOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult P4HIR::CmpOp::verify() {
+    auto type = getLhs().getType();
+    if (auto aliasedType = mlir::dyn_cast<P4HIR::AliasType>(type))
+        type = aliasedType.getCanonicalType();
+
+    // Booleans and validity bits are not ordered.
+    if (mlir::isa<P4HIR::BoolType, P4HIR::ValidBitType>(type) &&
+        getKind() != P4HIR::CmpOpKind::Eq && getKind() != P4HIR::CmpOpKind::Ne)
+        return emitOpError("only eq and ne comparisons are defined on ") << getLhs().getType();
+
+    return success();
+}
+
 void P4HIR::CmpOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), stringifyEnum(getKind()));
 }
@@ -874,14 +887,17 @@ OpFoldResult P4HIR::CmpOp::fold(FoldAdaptor adaptor) {
         }
     }
 
-    // Special handling for validity bits as valid bit constants do not have a constant int
-    // representation.
+    // Validity constants use ValidityBitAttr rather than an integer attribute.
     if (mlir::isa<P4HIR::ValidBitType>(getLhs().getType())) {
+        assert((kind == P4HIR::CmpOpKind::Eq || kind == P4HIR::CmpOpKind::Ne) && "Unexpected kind");
+
         auto lhs = mlir::dyn_cast_if_present<P4HIR::ValidityBitAttr>(adaptor.getLhs());
         auto rhs = mlir::dyn_cast_if_present<P4HIR::ValidityBitAttr>(adaptor.getRhs());
-        if (lhs && rhs) return P4HIR::BoolAttr::get(getContext(), lhs.getValue() == rhs.getValue());
+        if (!lhs || !rhs) return {};
 
-        return {};
+        bool isEqual = lhs.getValue() == rhs.getValue();
+        return P4HIR::BoolAttr::get(getContext(),
+                                    kind == P4HIR::CmpOpKind::Eq ? isEqual : !isEqual);
     }
 
     // Move constant to the right side.

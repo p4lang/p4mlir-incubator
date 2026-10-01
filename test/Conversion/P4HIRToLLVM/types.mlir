@@ -36,3 +36,17 @@ module {
   // CHECK: llvm.mlir.constant(-1 : i32) : i32
   %neg = p4hir.const #p4hir.int<-1> : !s32i
 }
+
+// -----
+
+// The validity bit lowers to the same i1 as bool, with `valid` being 1.
+
+!validity_bit = !p4hir.validity.bit
+
+// CHECK-LABEL: module
+module {
+  // CHECK: llvm.mlir.constant(true) : i1
+  %valid = p4hir.const #p4hir<validity.bit valid> : !validity_bit
+  // CHECK: llvm.mlir.constant(false) : i1
+  %invalid = p4hir.const #p4hir<validity.bit invalid> : !validity_bit
+}

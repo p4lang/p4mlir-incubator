@@ -63,3 +63,21 @@ module {
   // CHECK: llvm.icmp "ne"
   %ne = p4hir.cmp(ne, %a : !p4hir.bool, %b : !p4hir.bool)
 }
+
+// -----
+
+// eq/ne on validity bit operands.
+
+!validity_bit = !p4hir.validity.bit
+
+// CHECK-LABEL: module
+module {
+  // CHECK: %[[VALID:.*]] = llvm.mlir.constant(true) : i1
+  %a = p4hir.const #p4hir<validity.bit valid> : !validity_bit
+  // CHECK: %[[INVALID:.*]] = llvm.mlir.constant(false) : i1
+  %b = p4hir.const #p4hir<validity.bit invalid> : !validity_bit
+  // CHECK: llvm.icmp "eq" %[[VALID]], %[[INVALID]] : i1
+  %eq = p4hir.cmp(eq, %a : !validity_bit, %b : !validity_bit)
+  // CHECK: llvm.icmp "ne" %[[VALID]], %[[INVALID]] : i1
+  %ne = p4hir.cmp(ne, %a : !validity_bit, %b : !validity_bit)
+}

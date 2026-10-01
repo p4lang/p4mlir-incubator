@@ -159,11 +159,12 @@ struct CmpOpConversion : public ConvertOpToLLVMPattern<P4HIR::CmpOp> {
     LogicalResult matchAndRewrite(P4HIR::CmpOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
         auto lhsType = op.getLhs().getType();
-        if (!isa<P4HIR::BitsType, P4HIR::BoolType>(lhsType)) {
+        if (!isa<P4HIR::BitsType, P4HIR::BoolType, P4HIR::ValidBitType>(lhsType)) {
             return rewriter.notifyMatchFailure(op, "unsupported cmp operand type");
         }
 
-        bool isSigned = false;  // BoolType lowers to i1 and is always compared as unsigned.
+        // Signedness only affects ordering comparisons on BitsType operands.
+        bool isSigned = false;
         if (auto bitsType = dyn_cast<P4HIR::BitsType>(lhsType)) isSigned = bitsType.isSigned();
 
         auto lowerToICmpOp = [&](LLVM::ICmpPredicate predicate) {
@@ -232,6 +233,11 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
     converter.addConversion(
         [](P4HIR::BoolType boolType) { return IntegerType::get(boolType.getContext(), 1); });
 
+    // Represent header validity as i1: valid is 1 and invalid is 0.
+    converter.addConversion([](P4HIR::ValidBitType validBitType) {
+        return IntegerType::get(validBitType.getContext(), 1);
+    });
+
     converter.addTypeAttributeConversion(
         [&converter](P4HIR::BitsType bitsType,
                      P4HIR::IntAttr attr) -> LLVMTypeConverter::AttributeConversionResult {
@@ -245,6 +251,12 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
     converter.addTypeAttributeConversion(
         [&converter](P4HIR::BoolType boolType, P4HIR::BoolAttr attr) {
             return IntegerAttr::get(converter.convertType(boolType), attr.getValue() ? 1 : 0);
+        });
+
+    converter.addTypeAttributeConversion(
+        [&converter](P4HIR::ValidBitType validBitType, P4HIR::ValidityBitAttr attr) {
+            bool isValid = attr.getValue() == P4HIR::ValidityBit::Valid;
+            return IntegerAttr::get(converter.convertType(validBitType), isValid ? 1 : 0);
         });
 }
 

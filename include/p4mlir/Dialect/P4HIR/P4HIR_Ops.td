@@ -559,14 +559,17 @@ def CmpOpKind : I32EnumAttr<
 def CmpOp : P4HIR_Op<"cmp",
   [Pure, SameTypeOperands,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
-  let summary = "Compare values two values and produce a boolean result";
+  let summary = "Compare two values and produce a boolean result";
   let description = [{
     `p4hir.cmp` compares two input operands of the same type and produces a
     `p4hir.bool` result. The kinds of comparison available are:
-    [lt,gt,ge,eq,ne]
+    [lt, le, gt, ge, eq, ne]
+
+    Booleans and validity bits are not ordered: only `eq` and `ne` are allowed on
+    `!p4hir.bool` and `!p4hir.validity.bit` operands, including aliases of these types.
 
     ```mlir
-    %7 = p4hir.cmp(gt, %1, %2) : !p4hir.bit<32>
+    %7 = p4hir.cmp(gt, %1 : !p4hir.bit<32>, %2 : !p4hir.bit<32>)
     ```
   }];
 
@@ -578,8 +581,7 @@ def CmpOp : P4HIR_Op<"cmp",
     `(` $kind `,` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` attr-dict
   }];
 
-  // Already covered by the traits
-  let hasVerifier = 0;
+  let hasVerifier = 1;
   let hasFolder = 1;
   let hasCanonicalizeMethod = 1;
 }
