@@ -194,6 +194,61 @@ struct CmpOpConversion : public ConvertOpToLLVMPattern<P4HIR::CmpOp> {
     }
 };
 
+// Converts a successor block's argument types to match the converted branch
+// operands. Entry blocks have no predecessors; their signatures are converted
+// when lowering the operation that owns the region.
+// Follows the upstream ControlFlowToLLVM lowering.
+FailureOr<Block *> getConvertedBlock(ConversionPatternRewriter &rewriter,
+                                     const TypeConverter *converter, Operation *branchOp,
+                                     Block *block, TypeRange expectedTypes) {
+    assert(!block->isEntryBlock() && "entry blocks have no predecessors");
+
+    // There is nothing to do if the types already match, e.g. if the block was already converted
+    // for another predecessor.
+    if (block->getArgumentTypes() == expectedTypes) return block;
+
+    auto conversion = converter->convertBlockSignature(block);
+    if (!conversion)
+        return rewriter.notifyMatchFailure(branchOp, "could not compute block signature");
+    if (expectedTypes != conversion->getConvertedTypes())
+        return rewriter.notifyMatchFailure(branchOp,
+                                           "block signature does not match branch operands");
+    return rewriter.applySignatureConversion(block, *conversion, converter);
+}
+
+struct BrOpConversion : public ConvertOpToLLVMPattern<P4HIR::BrOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::BrOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto dest = getConvertedBlock(rewriter, getTypeConverter(), op, op.getDest(),
+                                      TypeRange(adaptor.getDestOperands()));
+        if (failed(dest)) return failure();
+
+        rewriter.replaceOpWithNewOp<LLVM::BrOp>(op, adaptor.getDestOperands(), *dest);
+        return success();
+    }
+};
+
+struct CondBrOpConversion : public ConvertOpToLLVMPattern<P4HIR::CondBrOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CondBrOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto destTrue = getConvertedBlock(rewriter, getTypeConverter(), op, op.getDestTrue(),
+                                          TypeRange(adaptor.getDestOperandsTrue()));
+        if (failed(destTrue)) return failure();
+        auto destFalse = getConvertedBlock(rewriter, getTypeConverter(), op, op.getDestFalse(),
+                                           TypeRange(adaptor.getDestOperandsFalse()));
+        if (failed(destFalse)) return failure();
+
+        rewriter.replaceOpWithNewOp<LLVM::CondBrOp>(op, adaptor.getCond(), *destTrue,
+                                                    adaptor.getDestOperandsTrue(), *destFalse,
+                                                    adaptor.getDestOperandsFalse());
+        return success();
+    }
+};
+
 struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<LowerP4HIRToLLVMPass> {
     void runOnOperation() override {
         auto &context = getContext();
@@ -250,5 +305,6 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
 
 void P4::P4MLIR::populateP4HIRToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                                        RewritePatternSet &patterns) {
-    patterns.add<ConstOpConversion, BinOpConversion, UnaryOpConversion, CmpOpConversion>(converter);
+    patterns.add<ConstOpConversion, BinOpConversion, UnaryOpConversion, CmpOpConversion,
+                 BrOpConversion, CondBrOpConversion>(converter);
 }
