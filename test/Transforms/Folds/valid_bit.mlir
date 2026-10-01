@@ -68,4 +68,36 @@ module @p4_main {
     p4hir.soft_return %ne : !p4hir.bool
     p4hir.return
   }
+
+  // Comparisons of validity bit constants fold according to the comparison kind.
+
+  // CHECK-LABEL: p4hir.func @eq_valid_invalid
+  p4hir.func @eq_valid_invalid() -> !p4hir.bool {
+    // CHECK: %[[FALSE:.*]] = p4hir.const #false
+    // CHECK: p4hir.return %[[FALSE]] : !p4hir.bool
+    %valid = p4hir.const #valid
+    %invalid = p4hir.const #invalid
+    %eq = p4hir.cmp(eq, %valid : !validity_bit, %invalid : !validity_bit)
+    p4hir.return %eq : !p4hir.bool
+  }
+
+  // CHECK-LABEL: p4hir.func @ne_valid_invalid
+  p4hir.func @ne_valid_invalid() -> !p4hir.bool {
+    // CHECK: %[[TRUE:.*]] = p4hir.const #true
+    // CHECK: p4hir.return %[[TRUE]] : !p4hir.bool
+    %valid = p4hir.const #valid
+    %invalid = p4hir.const #invalid
+    %ne = p4hir.cmp(ne, %valid : !validity_bit, %invalid : !validity_bit)
+    p4hir.return %ne : !p4hir.bool
+  }
+
+  // CHECK-LABEL: p4hir.func @ne_invalid_valid
+  p4hir.func @ne_invalid_valid() -> !p4hir.bool {
+    // CHECK: %[[TRUE:.*]] = p4hir.const #true
+    // CHECK: p4hir.return %[[TRUE]] : !p4hir.bool
+    %invalid = p4hir.const #invalid
+    %valid = p4hir.const #valid
+    %ne = p4hir.cmp(ne, %invalid : !validity_bit, %valid : !validity_bit)
+    p4hir.return %ne : !p4hir.bool
+  }
 }
