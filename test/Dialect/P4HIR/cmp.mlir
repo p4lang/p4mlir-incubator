@@ -16,4 +16,15 @@ module {
   %5 = p4hir.cmp(le, %0 : !p4hir.bit<8>, %1 : !p4hir.bit<8>)
   %6 = p4hir.cmp(ge, %0 : !p4hir.bit<8>, %1 : !p4hir.bit<8>)
   %7 = p4hir.cmp(gt, %0 : !p4hir.bit<8>, %1 : !p4hir.bit<8>)
+
+  // Booleans and validity bits only support eq and ne.
+  %t = p4hir.const #p4hir.bool<true> : !p4hir.bool
+  %f = p4hir.const #p4hir.bool<false> : !p4hir.bool
+  %8 = p4hir.cmp(eq, %t : !p4hir.bool, %f : !p4hir.bool)
+  %9 = p4hir.cmp(ne, %t : !p4hir.bool, %f : !p4hir.bool)
+
+  %valid = p4hir.const #p4hir<validity.bit valid> : !p4hir.validity.bit
+  %invalid = p4hir.const #p4hir<validity.bit invalid> : !p4hir.validity.bit
+  %10 = p4hir.cmp(eq, %valid : !p4hir.validity.bit, %invalid : !p4hir.validity.bit)
+  %11 = p4hir.cmp(ne, %valid : !p4hir.validity.bit, %invalid : !p4hir.validity.bit)
 }
