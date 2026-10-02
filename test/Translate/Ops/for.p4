@@ -141,3 +141,25 @@ bit<32> for_in_array(bit<32>[16] array) {
     }
     return sum;
 }
+
+header h { bit<32> f; }
+
+// CHECK-LABEL: p4hir.func @for_in_stack() -> !b32i
+// CHECK:       %[[STACK:.*]] = p4hir.variable ["stack"] : <!hs_4xh>
+// CHECK:       %[[SUM:.*]] = p4hir.variable ["sum", init] : <!b32i>
+// CHECK:       %[[STACK_VAL:.*]] = p4hir.read %[[STACK]] : <!hs_4xh>
+// CHECK:       p4hir.foreach %[[ARG:.*]] : !h in %[[STACK_VAL]] : !hs_4xh {
+// CHECK:         %[[F:.*]] = p4hir.struct_extract %[[ARG]]["f"] : !h
+// CHECK:         %[[SUM_VAL:.*]] = p4hir.read %sum : <!b32i>
+// CHECK:         %[[ADD:.*]] = p4hir.binop(add, %[[SUM_VAL]], %[[F]]) : !b32i
+// CHECK:         p4hir.assign %[[ADD]], %[[SUM]] : <!b32i>
+// CHECK:         p4hir.yield
+// CHECK:       }
+bit<32> for_in_stack() {
+    h[4] stack;
+    bit<32> sum = 0;
+    for (h x in stack) {
+        sum = sum + x.f;
+    }
+    return sum;
+}
