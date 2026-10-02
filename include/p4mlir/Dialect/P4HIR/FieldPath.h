@@ -128,6 +128,16 @@ struct FieldPath {
     /// Perform a preorder DFS traversal on all fields nested in `type` and call `cb`.
     static void forEachFieldPath(mlir::Type type, llvm::function_ref<void(FieldPath)> cb);
 
+    // Assuming that `fields` are all fields of the same root type, sort these fields, eliminate
+    // duplicates and fields that are nested sub-fields of other fields in the given vector.
+    static void computeRootFields(llvm::SmallVectorImpl<FieldPath> &fields);
+
+    // Return a pair of paths (X, Y) such as that X is present in `rootFields` and
+    // concat(X, Y) == `path`. Returns (EmptyPath, EmptyPath) if no such pair
+    // exists. Assumes `fields` have been processed through `computeRootFields`.
+    static std::pair<FieldPath, FieldPath> findRootField(
+        FieldPath path, const llvm::SmallVectorImpl<FieldPath> &rootFields);
+
     /// Returns true if the given fields paths can be concatenated into a single path with `concat`.
     static bool canConcat(FieldPath lhs, FieldPath rhs) {
         return lhs.isEmpty() || rhs.isEmpty() || lhs.getType() == rhs.getRootType();
@@ -199,6 +209,12 @@ struct FieldPath {
     /// Return a unique ID for the referenced field within the root type.
     unsigned getFieldID() const { return fieldID; }
 
+    /// Return the field ID for the next sibling of this field. If there is no next sibling then the
+    /// next field in field ID order is returned.
+    unsigned getSiblingFieldID() const {
+        return getFieldID() + P4HIR::FieldIDs::getMaxFieldID(getType()) + 1;
+    }
+
     // Get an identified for the the full path.
     std::string getIdentifier(llvm::StringRef delimiter = ".") const;
 
@@ -208,6 +224,12 @@ struct FieldPath {
     }
 
     bool operator!=(const FieldPath &rhs) const { return !operator==(rhs); }
+
+    bool operator<(const FieldPath &rhs) const {
+        assert((getRootType() == rhs.getRootType()) &&
+               "Can only compare field paths of the same root type");
+        return getFieldID() < rhs.getFieldID();
+    }
 
  private:
     // A flexible iterator type to iterate parts of a fieldID access in a type.
