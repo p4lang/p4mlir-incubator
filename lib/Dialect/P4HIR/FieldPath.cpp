@@ -68,6 +68,36 @@ void FieldPath::forEachFieldPath(mlir::Type type, llvm::function_ref<void(FieldP
     forEachFieldPathImpl(FieldPath(type), cb);
 }
 
+void FieldPath::computeRootFields(llvm::SmallVectorImpl<FieldPath> &fields) {
+    llvm::sort(fields);
+
+    unsigned nextFieldID = 0;
+    unsigned idx = 0;
+    for (auto &field : fields) {
+        unsigned curFieldID = field.getFieldID();
+        if (curFieldID < nextFieldID) continue;
+
+        fields[idx] = field;
+        nextFieldID = fields[idx].getSiblingFieldID();
+        idx++;
+    }
+
+    fields.resize(idx);
+}
+
+std::pair<FieldPath, FieldPath> FieldPath::findRootField(
+    FieldPath path, const llvm::SmallVectorImpl<FieldPath> &rootFields) {
+    for (const auto &field : rootFields) {
+        if (path.getFieldID() >= field.getFieldID() &&
+            path.getFieldID() < field.getSiblingFieldID()) {
+            return path.split(
+                [&](FieldPath path) { return path.getFieldID() == field.getFieldID(); });
+        }
+    }
+
+    return {FieldPath(), FieldPath()};
+}
+
 P4HIR::FieldPath &FieldPath::concat(FieldPath rhs) {
     assert(canConcat(*this, rhs) && "Types cannot be concatenated");
 
