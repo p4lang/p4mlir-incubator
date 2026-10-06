@@ -201,7 +201,7 @@ class PathWalker {
         if (lookThroughStruct.first) return lookThroughStruct;
 
         auto lookThroughArray = lookThroughArrayAccess(op, operand, path);
-        if (lookThroughArray.first) return lookThroughStruct;
+        if (lookThroughArray.first) return lookThroughArray;
 
         return {mlir::Value(), P4HIR::FieldPath()};
     }
