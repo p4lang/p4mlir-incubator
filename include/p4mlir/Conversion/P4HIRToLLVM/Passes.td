@@ -21,7 +21,21 @@ def LowerP4HIRToLLVM : Pass<"lower-p4hir-to-llvm", "mlir::ModuleOp"> {
     does not fail on them. Type aliases and enums are expected to be eliminated
     beforehand (see `p4hir-remove-aliases`, `p4hir-enum-elimination`,
     `p4hir-ser-enum-elimination` passes).
+
+    P4 leaves the value of an uninitialized variable unspecified. Like mem2reg on
+    P4HIR, the lowering stores the default value of its type into variables without
+    an initializer. With `initialize-variables=false`, such variables are left
+    uninitialized instead, i.e. undefined in LLVM.
+
+    Variables are allocated where they are declared. Run `p4hir-hoist-variables`
+    before flattening the CFG and lowering to LLVM to place stack allocations in
+    function entry blocks.
   }];
+  let options = [
+    Option<"initializeVariables", "initialize-variables", "bool", /*default=*/"true",
+           "Store the default value of its type into each variable without an "
+           "initializer">,
+  ];
   let dependentDialects = [
       "::P4::P4MLIR::P4HIR::P4HIRDialect",
       "::mlir::LLVM::LLVMDialect",
