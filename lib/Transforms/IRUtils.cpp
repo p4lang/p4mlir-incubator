@@ -4,7 +4,66 @@
 
 #include "p4mlir/Transforms/IRUtils.h"
 
+#include "mlir/Transforms/DialectConversion.h"
+#include "p4mlir/Conversion/ConversionPatterns.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
+#include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
+
 using namespace P4::P4MLIR;
+
+mlir::Value IRUtils::getAccessibleValue(mlir::RewriterBase &rewriter, mlir::Operation *op,
+                                        mlir::Value val) {
+    namespace P4HIR = P4::P4MLIR::P4HIR;
+    auto funcOp = op->template getParentOfType<P4HIR::FuncOp>();
+    if (!funcOp) return val;
+
+    auto parentOp = funcOp->getParentOfType<mlir::FunctionOpInterface>();
+    if (!parentOp) return val;
+
+    // Try to find existing control local for `val`.
+    mlir::Block &body = parentOp.getCallableRegion()->front();
+    P4HIR::ControlLocalOp valControlLocal;
+    for (auto controlLocalOp : body.getOps<P4HIR::ControlLocalOp>()) {
+        if (controlLocalOp.getVal() == val) {
+            valControlLocal = controlLocalOp;
+            break;
+        }
+    }
+
+    if (!valControlLocal) {
+        // If we couldn't find an existing control local then create new one.
+        auto getUniqueName = [&](std::string toRename) {
+            unsigned counter = 0;
+            return mlir::SymbolTable::generateSymbolName<256>(
+                toRename,
+                [&](llvm::StringRef candidate) {
+                    return mlir::SymbolTable::lookupSymbolIn(parentOp, candidate) != nullptr;
+                },
+                counter);
+        };
+
+        std::string valName;
+        if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(val)) {
+            rewriter.setInsertionPointToStart(&body);
+            valName = std::string("arg") + std::to_string(arg.getArgNumber());
+        } else if (auto var = val.getDefiningOp<P4HIR::VariableOp>()) {
+            rewriter.setInsertionPointAfter(var);
+            valName = var.getName().value_or("");
+        } else {
+            llvm_unreachable("Expected argument or variable to create accessible ref");
+        }
+
+        auto controlLocalName = ("__local_" + parentOp.getName() + "_" + valName).str();
+        valControlLocal = P4HIR::ControlLocalOp::create(rewriter, parentOp->getLoc(),
+                                                        getUniqueName(controlLocalName), val);
+    }
+
+    // Finally create sym_to_val at `op`'s location to access `val`.
+    rewriter.setInsertionPoint(op);
+    return P4HIR::SymToValueOp::create(rewriter, op->getLoc(), val.getType(),
+                                       mlir::SymbolRefAttr::get(valControlLocal));
+}
 
 void IRUtils::inlineScope(mlir::RewriterBase &rewriter, P4HIR::ScopeOp scopeOp) {
     mlir::Block *block = &scopeOp.getScopeRegion().front();
@@ -133,7 +192,7 @@ P4HIR::ParserStateOp IRUtils::createSubState(mlir::RewriterBase &rewriter,
     rewriter.createBlock(&newState.getBody(), newState.getBody().begin());
 
     return newState;
-};
+}
 
 mlir::LogicalResult IRUtils::SplitStateRewriter::init() {
     assert(step == CREATED || step == CANCELED);
