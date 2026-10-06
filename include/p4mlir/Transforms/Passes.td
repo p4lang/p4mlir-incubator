@@ -123,6 +123,64 @@ def FlattenCFG : Pass<"p4hir-flatten-cfg"> {
 }
 
 //===----------------------------------------------------------------------===//
+// HoistVariables
+//===----------------------------------------------------------------------===//
+
+def HoistVariables : Pass<"p4hir-hoist-variables"> {
+  let summary = "Hoist variables to the entry block of their allocation scope";
+  let description = [{
+    This pass moves every variable to the start of the entry block of the nearest
+    enclosing allocation scope that is not structured control flow: a function,
+    a parser state, a control apply block, etc. Variables declared in scopes,
+    branches or loops are thus allocated once per execution of that allocation
+    scope, in the order of their declarations.
+
+    The lifetime of a hoisted variable stays with its scope:
+    `p4hir.lifetime_start` marks its declaration, where it comes into existence
+    holding the default value of its type, and `p4hir.lifetime_end` marks the
+    end of its scope. Initializations stay in place. Hoisting thus preserves
+    the semantics of the program; as P4 has no pointers, a variable is never
+    referred to outside of its scope. Variables whose lifetime is already marked
+    are hoisted without new markers.
+
+    The pass is meant to run after soft control flow is removed
+    (`p4hir-remove-soft-cf`) and the IR is canonicalized, which removes unused
+    variables, e.g. the unused guards of soft control flow removal. It must run
+    before the CFG is flattened (`p4hir-flatten-cfg`), while variable scopes
+    are still regions. In a scope with multiple blocks, end markers are added
+    only at exits dominated by the declaration; otherwise, the storage is
+    conservatively kept live until the allocation scope ends.
+    Copy-in/copy-out elimination does not expect lifetime markers on argument
+    temporaries, and should run before.
+
+    For example, the following code:
+    ```mlir
+      p4hir.func @f(%cond : !p4hir.bool) {
+        p4hir.if %cond {
+          %x = p4hir.variable ["x"] : <!b8i>
+          p4hir.call @g(%x) : (!p4hir.ref<!b8i>) -> ()
+        }
+        p4hir.return
+      }
+    ```
+    is transformed into:
+    ```mlir
+      p4hir.func @f(%cond : !p4hir.bool) {
+        %x = p4hir.variable ["x"] : <!b8i>
+        p4hir.if %cond {
+          p4hir.lifetime_start %x : <!b8i>
+          p4hir.call @g(%x) : (!p4hir.ref<!b8i>) -> ()
+          p4hir.lifetime_end %x : <!b8i>
+        }
+        p4hir.return
+      }
+    ```
+  }];
+  let constructor = "P4MLIR::createHoistVariablesPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // SerEnumElimination
 //===----------------------------------------------------------------------===//
 
