@@ -250,6 +250,61 @@ def AssignSliceOp : P4HIR_Op<"assign_slice",
   let hasVerifier = 1;
 }
 
+def LifetimeStartOp : P4HIR_Op<"lifetime_start", [
+  DeclareOpInterfaceMethods<PromotableMemOpInterface>,
+  DeclareOpInterfaceMethods<DestructurableAccessorOpInterface>]> {
+  let summary = "Start the lifetime of a variable";
+  let description = [{
+    `p4hir.lifetime_start` marks the point where a variable comes into
+    existence, which may differ from where it is allocated: e.g. a variable
+    declared in a nested scope may be allocated in the entry block of its
+    function. From this point, the variable holds the default value of its
+    type until it is assigned.
+
+    `p4hir.lifetime_start` and `p4hir.lifetime_end` apply to variables only.
+
+    Example:
+
+    ```mlir
+    %x = p4hir.variable ["x"] : <!b8i>
+    ...
+    p4hir.scope {
+      p4hir.lifetime_start %x : <!b8i>
+      ...
+      p4hir.lifetime_end %x : <!b8i>
+    }
+    ```
+  }];
+
+  let arguments = (ins Arg<ReferenceType, "the variable", [MemWrite]>:$ref);
+
+  let assemblyFormat = [{
+    $ref `:` type($ref) attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
+def LifetimeEndOp : P4HIR_Op<"lifetime_end", [
+  DeclareOpInterfaceMethods<PromotableOpInterface>,
+  DeclareOpInterfaceMethods<DestructurableAccessorOpInterface>]> {
+  let summary = "End the lifetime of a variable";
+  let description = [{
+    `p4hir.lifetime_end` marks the point where a variable goes out of
+    existence. The variable must not be accessed until its lifetime starts
+    again, and its storage may be reused in the meantime. See
+    `p4hir.lifetime_start`.
+  }];
+
+  let arguments = (ins Arg<ReferenceType, "the variable", [MemWrite]>:$ref);
+
+  let assemblyFormat = [{
+    $ref `:` type($ref) attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
 
 // TODO: Decide if we'd want to be more precise and split cast into
 // bitcast, trunc and extensions
