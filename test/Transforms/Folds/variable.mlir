@@ -76,4 +76,19 @@ module {
 
     p4hir.return
   }
+
+  // A variable that is only written to and has its lifetime marked is removed
+  // together with its lifetime markers.
+  // CHECK-LABEL: p4hir.func @test_write_only_with_lifetime
+  // CHECK-NOT:     p4hir.variable
+  // CHECK-NOT:     p4hir.lifetime
+  // CHECK:         p4hir.return
+  p4hir.func @test_write_only_with_lifetime() {
+    %v = p4hir.variable ["v"] : <!b8i>
+    p4hir.lifetime_start %v : <!b8i>
+    %c1 = p4hir.const #int1_b8i
+    p4hir.assign %c1, %v : <!b8i>
+    p4hir.lifetime_end %v : <!b8i>
+    p4hir.return
+  }
 }

@@ -37,6 +37,7 @@ std::unique_ptr<mlir::Pass> createPrintParsersGraphPass();
 std::unique_ptr<mlir::Pass> createSimplifyParsersPass();
 std::unique_ptr<mlir::Pass> createSelectFlattenTuplesPass();
 std::unique_ptr<mlir::Pass> createFlattenCFGPass();
+std::unique_ptr<mlir::Pass> createHoistVariablesPass();
 std::unique_ptr<mlir::Pass> createSerEnumEliminationPass();
 std::unique_ptr<mlir::Pass> createRemoveAliasesPass();
 std::unique_ptr<mlir::Pass> createTupleToStructPass();

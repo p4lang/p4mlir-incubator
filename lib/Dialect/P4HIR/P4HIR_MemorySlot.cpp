@@ -22,22 +22,35 @@ llvm::SmallVector<MemorySlot> P4HIR::VariableOp::getPromotableSlots() {
     return {MemorySlot{getResult(), getObjectType()}};
 }
 
-Value P4HIR::VariableOp::getDefaultValue(const MemorySlot &slot, OpBuilder &builder) {
-    if (auto defaultValueType = mlir::dyn_cast<HasDefaultValue>(slot.elemType)) {
+// Returns whether the default value of `type` can be materialized.
+static bool hasDefaultValue(Type type) {
+    auto defaultValueType = mlir::dyn_cast<P4HIR::HasDefaultValue>(type);
+    return defaultValueType &&
+           (defaultValueType.getDefaultValue() || mlir::isa<P4HIR::SerEnumType>(type));
+}
+
+// Materializes the default value of `type`, or returns null if it has none.
+static Value materializeDefaultValue(OpBuilder &builder, Location loc, Type type) {
+    if (auto defaultValueType = mlir::dyn_cast<P4HIR::HasDefaultValue>(type)) {
         auto defaultValue = defaultValueType.getDefaultValue();
         if (defaultValue) {
-            return P4HIR::ConstOp::create(builder, getLoc(), defaultValue);
+            return P4HIR::ConstOp::create(builder, loc, defaultValue);
         } else if (auto serEnumType = mlir::dyn_cast<P4HIR::SerEnumType>(defaultValueType)) {
             // The spec says that the default value for serialized enums is zero even if
             // there is no zero field. This is non-representable w/o casting to
             // underlying type.
             auto underlyingDefaultValue =
-                cast<HasDefaultValue>(serEnumType.getType()).getDefaultValue();
+                cast<P4HIR::HasDefaultValue>(serEnumType.getType()).getDefaultValue();
             return P4HIR::CastOp::create(
-                builder, getLoc(), slot.elemType,
-                P4HIR::ConstOp::create(builder, getLoc(), underlyingDefaultValue));
+                builder, loc, type, P4HIR::ConstOp::create(builder, loc, underlyingDefaultValue));
         }
     }
+    return {};
+}
+
+Value P4HIR::VariableOp::getDefaultValue(const MemorySlot &slot, OpBuilder &builder) {
+    if (auto defaultValue = materializeDefaultValue(builder, getLoc(), slot.elemType))
+        return defaultValue;
 
     // TODO: This should really not happen
     llvm_unreachable("cannot materialize default value");
@@ -417,4 +430,84 @@ DeletionKind P4HIR::ArrayElementRefOp::rewire(const DestructurableMemorySlot &sl
     replaceAllUsesWith(it->getSecond().ptr);
 
     return DeletionKind::Delete;
+}
+
+//===----------------------------------------------------------------------===//
+// Interfaces for LifetimeStartOp & LifetimeEndOp
+//===----------------------------------------------------------------------===//
+
+// A lifetime marker does not access any element of a destructured variable: it marks the
+// lifetime of each element that remains.
+template <typename OpTy>
+static DeletionKind rewireLifetimeMarker(OpTy op, DenseMap<Attribute, MemorySlot> &subslots,
+                                         OpBuilder &builder) {
+    SmallVector<std::pair<unsigned, mlir::Value>> elements;
+    getSortedPtrs(subslots, elements);
+    for (auto [_, ptr] : elements) OpTy::create(builder, op.getLoc(), ptr);
+    return DeletionKind::Delete;
+}
+
+// A variable comes into existence holding the default value of its type, so the start of its
+// lifetime defines the value of the slot.
+bool P4HIR::LifetimeStartOp::loadsFrom(const MemorySlot &slot) { return false; }
+
+bool P4HIR::LifetimeStartOp::storesTo(const MemorySlot &slot) { return getRef() == slot.ptr; }
+
+Value P4HIR::LifetimeStartOp::getStored(const MemorySlot &slot, OpBuilder &builder,
+                                        Value reachingDef, const DataLayout &dataLayout) {
+    return materializeDefaultValue(builder, getLoc(), slot.elemType);
+}
+
+bool P4HIR::LifetimeStartOp::canUsesBeRemoved(const MemorySlot &slot,
+                                              const SmallPtrSetImpl<OpOperand *> &blockingUses,
+                                              SmallVectorImpl<OpOperand *> &newBlockingUses,
+                                              const DataLayout &dataLayout) {
+    if (blockingUses.size() != 1) return false;
+    Value blockingUse = (*blockingUses.begin())->get();
+    return blockingUse == slot.ptr && getRef() == slot.ptr && hasDefaultValue(slot.elemType);
+}
+
+DeletionKind P4HIR::LifetimeStartOp::removeBlockingUses(
+    const MemorySlot &slot, const SmallPtrSetImpl<OpOperand *> &blockingUses, OpBuilder &builder,
+    Value reachingDefinition, const DataLayout &dataLayout) {
+    return DeletionKind::Delete;
+}
+
+bool P4HIR::LifetimeStartOp::canRewire(const DestructurableMemorySlot &slot,
+                                       SmallPtrSetImpl<Attribute> &usedIndices,
+                                       SmallVectorImpl<MemorySlot> &mustBeSafelyUsed,
+                                       const DataLayout &dataLayout) {
+    return getRef() == slot.ptr;
+}
+
+DeletionKind P4HIR::LifetimeStartOp::rewire(const DestructurableMemorySlot &slot,
+                                            DenseMap<Attribute, MemorySlot> &subslots,
+                                            OpBuilder &builder, const DataLayout &dataLayout) {
+    return rewireLifetimeMarker(*this, subslots, builder);
+}
+
+// The end of a lifetime has no effect on the value of a promoted variable: it is not read
+// until its lifetime starts again.
+bool P4HIR::LifetimeEndOp::canUsesBeRemoved(const SmallPtrSetImpl<OpOperand *> &blockingUses,
+                                            SmallVectorImpl<OpOperand *> &newBlockingUses,
+                                            const DataLayout &dataLayout) {
+    return true;
+}
+
+DeletionKind P4HIR::LifetimeEndOp::removeBlockingUses(
+    const SmallPtrSetImpl<OpOperand *> &blockingUses, OpBuilder &builder) {
+    return DeletionKind::Delete;
+}
+
+bool P4HIR::LifetimeEndOp::canRewire(const DestructurableMemorySlot &slot,
+                                     SmallPtrSetImpl<Attribute> &usedIndices,
+                                     SmallVectorImpl<MemorySlot> &mustBeSafelyUsed,
+                                     const DataLayout &dataLayout) {
+    return getRef() == slot.ptr;
+}
+
+DeletionKind P4HIR::LifetimeEndOp::rewire(const DestructurableMemorySlot &slot,
+                                          DenseMap<Attribute, MemorySlot> &subslots,
+                                          OpBuilder &builder, const DataLayout &dataLayout) {
+    return rewireLifetimeMarker(*this, subslots, builder);
 }

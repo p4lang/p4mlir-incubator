@@ -30,8 +30,10 @@ void populateP4HIRToLLVMTypeConversion(mlir::LLVMTypeConverter &converter);
 // Populates `patterns` with P4HIR -> LLVM dialect conversion patterns. Exposed
 // so that other conversion passes targeting the LLVM dialect can reuse the
 // same operation lowerings instead of duplicating them.
+// `initializeVariables` stores a default value of type into each variable without an initializer.
 void populateP4HIRToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
-                                           mlir::RewritePatternSet &patterns);
+                                           mlir::RewritePatternSet &patterns,
+                                           bool initializeVariables = true);
 
 }  // namespace P4::P4MLIR
 

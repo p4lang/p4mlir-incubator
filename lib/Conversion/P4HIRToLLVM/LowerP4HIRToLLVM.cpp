@@ -307,7 +307,130 @@ struct SliceOpConversion : public ConvertOpToLLVMPattern<P4HIR::SliceOp> {
     }
 };
 
+// Returns the LLVM constant for the default value of `type`, or null if it has none.
+TypedAttr getDefaultValueAttr(Type type, const TypeConverter &converter) {
+    if (auto defaultValueType = dyn_cast<P4HIR::HasDefaultValue>(type))
+        if (auto defaultValue = defaultValueType.getDefaultValue())
+            return dyn_cast_if_present<TypedAttr>(
+                converter.convertTypeAttribute(type, defaultValue).value_or(Attribute()));
+    return {};
+}
+
+// P4 leaves the value of an uninitialized variable unspecified. Like mem2reg on P4HIR, the
+// lowering takes the default value of its type, rather than leaving the alloca undefined, unless
+// `initializeVariables` is off.
+struct VariableOpConversion : public ConvertOpToLLVMPattern<P4HIR::VariableOp> {
+    VariableOpConversion(const LLVMTypeConverter &converter, bool initializeVariables)
+        : ConvertOpToLLVMPattern(converter), initializeVariables(initializeVariables) {}
+
+    LogicalResult matchAndRewrite(P4HIR::VariableOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        if (!isa_and_present<P4HIR::FuncOp>(op->getParentWithTrait<OpTrait::IsIsolatedFromAbove>()))
+            return rewriter.notifyMatchFailure(op, "not in the body of a function");
+
+        auto objectType = getTypeConverter()->convertType(op.getObjectType());
+        if (!objectType) return rewriter.notifyMatchFailure(op, "unsupported object type");
+
+        // A variable with `init` is initialized by its first use. One with a marked lifetime
+        // takes its default value where its lifetime starts.
+        TypedAttr defaultValue;
+        if (initializeVariables && !op.getInit() &&
+            llvm::none_of(op->getUsers(), llvm::IsaPred<P4HIR::LifetimeStartOp>)) {
+            defaultValue = getDefaultValueAttr(op.getObjectType(), *getTypeConverter());
+            if (!defaultValue) return rewriter.notifyMatchFailure(op, "no default value");
+        }
+
+        auto loc = op.getLoc();
+        auto one = LLVM::ConstantOp::create(rewriter, loc, getIndexType(), 1);
+        auto alloca = LLVM::AllocaOp::create(rewriter, loc, getPtrType(), objectType, one);
+        if (defaultValue)
+            LLVM::StoreOp::create(rewriter, loc,
+                                  LLVM::ConstantOp::create(rewriter, loc, defaultValue), alloca);
+        rewriter.replaceOp(op, alloca);
+        return success();
+    }
+
+    // Whether to store the default value into variables without an initializer.
+    bool initializeVariables;
+};
+
+// LLVM only accepts lifetime markers on allocas: those of variables that are not lowered stay.
+FailureOr<LLVM::AllocaOp> getLoweredVariable(Operation *op, Value ref,
+                                             ConversionPatternRewriter &rewriter) {
+    if (auto alloca = ref.getDefiningOp<LLVM::AllocaOp>()) return alloca;
+    return rewriter.notifyMatchFailure(op, "variable is not lowered");
+}
+
+// A variable comes into existence holding the default value of its type.
+struct LifetimeStartOpConversion : public ConvertOpToLLVMPattern<P4HIR::LifetimeStartOp> {
+    LifetimeStartOpConversion(const LLVMTypeConverter &converter, bool initializeVariables)
+        : ConvertOpToLLVMPattern(converter), initializeVariables(initializeVariables) {}
+
+
+    LogicalResult matchAndRewrite(P4HIR::LifetimeStartOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto alloca = getLoweredVariable(op, adaptor.getRef(), rewriter);
+        if (failed(alloca)) return failure();
+
+        // A variable with `init` is initialized by its first use.
+        auto variable = op.getRef().getDefiningOp<P4HIR::VariableOp>();
+        TypedAttr defaultValue;
+        if (initializeVariables && (!variable || !variable.getInit())) {
+            auto objectType = cast<P4HIR::ReferenceType>(op.getRef().getType()).getObjectType();
+            defaultValue = getDefaultValueAttr(objectType, *getTypeConverter());
+            if (!defaultValue) return rewriter.notifyMatchFailure(op, "no default value");
+        }
+
+        auto loc = op.getLoc();
+        LLVM::LifetimeStartOp::create(rewriter, loc, *alloca);
+        if (defaultValue)
+            LLVM::StoreOp::create(rewriter, loc,
+                                  LLVM::ConstantOp::create(rewriter, loc, defaultValue), *alloca);
+        rewriter.eraseOp(op);
+        return success();
+    }
+    // Whether to store the default value into variables without an initializer.
+    bool initializeVariables;
+};
+
+struct LifetimeEndOpConversion : public ConvertOpToLLVMPattern<P4HIR::LifetimeEndOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::LifetimeEndOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto alloca = getLoweredVariable(op, adaptor.getRef(), rewriter);
+        if (failed(alloca)) return failure();
+
+        rewriter.replaceOpWithNewOp<LLVM::LifetimeEndOp>(op, *alloca);
+        return success();
+    }
+};
+
+struct ReadOpConversion : public ConvertOpToLLVMPattern<P4HIR::ReadOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ReadOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto resultType = getTypeConverter()->convertType(op.getType());
+        if (!resultType) return rewriter.notifyMatchFailure(op, "unsupported result type");
+
+        rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, resultType, adaptor.getRef());
+        return success();
+    }
+};
+
+struct AssignOpConversion : public ConvertOpToLLVMPattern<P4HIR::AssignOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::AssignOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        rewriter.replaceOpWithNewOp<LLVM::StoreOp>(op, adaptor.getValue(), adaptor.getRef());
+        return success();
+    }
+};
+
 struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<LowerP4HIRToLLVMPass> {
+    using LowerP4HIRToLLVMBase::LowerP4HIRToLLVMBase;
     void runOnOperation() override {
         auto &context = getContext();
         auto module = getOperation();
@@ -319,7 +442,7 @@ struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<Lowe
         target.addLegalOp<ModuleOp>();
 
         RewritePatternSet patterns(&context);
-        populateP4HIRToLLVMConversionPatterns(typeConverter, patterns);
+        populateP4HIRToLLVMConversionPatterns(typeConverter, patterns, initializeVariables);
 
         // Lowering should be driven by the patterns above, not by constant
         // folding P4HIR ops (e.g. `p4hir.binop(add, ...)` on two constants)
@@ -345,6 +468,13 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
     converter.addConversion(
         [](P4HIR::BoolType boolType) { return IntegerType::get(boolType.getContext(), 1); });
 
+    // References lower to opaque pointers, as the memory operations carry the object type.
+    // A reference to an object without an LLVM counterpart has none either.
+    converter.addConversion([&converter](P4HIR::ReferenceType refType) -> std::optional<Type> {
+        if (!converter.convertType(refType.getObjectType())) return std::nullopt;
+        return LLVM::LLVMPointerType::get(refType.getContext());
+    });
+
     converter.addTypeAttributeConversion(
         [&converter](P4HIR::BitsType bitsType,
                      P4HIR::IntAttr attr) -> LLVMTypeConverter::AttributeConversionResult {
@@ -362,8 +492,11 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
 }
 
 void P4::P4MLIR::populateP4HIRToLLVMConversionPatterns(LLVMTypeConverter &converter,
-                                                       RewritePatternSet &patterns) {
+                                                       RewritePatternSet &patterns,
+                                                       bool initializeVariables) {
     patterns.add<ConstOpConversion, BinOpConversion, UnaryOpConversion, CmpOpConversion,
-                 BrOpConversion, CondBrOpConversion, ConcatOpConversion, SliceOpConversion>(
-        converter);
+                 ConcatOpConversion, SliceOpConversion>(converter);
+    patterns.add<BrOpConversion, CondBrOpConversion>(converter);
+    patterns.add<VariableOpConversion, LifetimeStartOpConversion>(converter, initializeVariables);
+    patterns.add<ReadOpConversion, AssignOpConversion, LifetimeEndOpConversion>(converter);
 }
