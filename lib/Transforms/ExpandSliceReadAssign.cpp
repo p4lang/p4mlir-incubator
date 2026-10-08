@@ -61,7 +61,9 @@ struct ExpandSliceReadAssignPass
 void ExpandSliceReadAssignPass::runOnOperation() {
     IRRewriter rewriter(&getContext());
     getOperation()->walk([&](Operation *op) {
-        if (!isa<P4HIR::ReadSliceOp>(op) && !isa<P4HIR::AssignSliceOp>(op)) return;
+        bool expand = (expandReadSlice && isa<P4HIR::ReadSliceOp>(op)) ||
+                      (expandAssignSlice && isa<P4HIR::AssignSliceOp>(op));
+        if (!expand) return;
         rewriter.setInsertionPoint(op);
         if (auto read = llvm::dyn_cast<P4HIR::ReadSliceOp>(op)) {
             // Read the whole object and take the slice of its value.

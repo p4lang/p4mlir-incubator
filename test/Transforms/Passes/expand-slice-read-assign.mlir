@@ -3,6 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // RUN: p4mlir-opt %s --p4hir-expand-slice-read-assign | FileCheck %s
+// RUN: p4mlir-opt %s --p4hir-expand-slice-read-assign=expand-read-slice=false \
+// RUN:   | FileCheck %s --check-prefix=NO-READ
+// RUN: p4mlir-opt %s --p4hir-expand-slice-read-assign=expand-assign-slice=false \
+// RUN:   | FileCheck %s --check-prefix=NO-ASSIGN
 
 // A slice read becomes a read of the whole object and a slice of its value. A
 // slice assignment becomes a read of the whole object, the replacement of the
@@ -121,5 +125,29 @@ module {
       p4hir.assign_slice %low, %x[31 : 24] : !b8i -> <!b32i>
     }
     p4hir.return
+  }
+
+  // The options select which slice accesses are expanded.
+  // CHECK-LABEL:     p4hir.func @partial(
+  // CHECK-NOT:         p4hir.read_slice
+  // CHECK-NOT:         p4hir.assign_slice
+  // CHECK:             p4hir.return
+  // NO-READ-LABEL:   p4hir.func @partial(
+  // NO-READ-SAME:        %[[X:[^:]*]]: !p4hir.ref<!b16i> {{.*}}, %[[V:.*]]: !b8i)
+  // NO-READ-NEXT:      %[[Y:.*]] = p4hir.read_slice %[[X]][7 : 0] : <!b16i> -> !b8i
+  // NO-READ-NEXT:      %[[OLD:.*]] = p4hir.read %[[X]] : <!b16i>
+  // NO-READ-NOT:       p4hir.assign_slice
+  // NO-READ:           p4hir.assign %{{.*}}, %[[X]] : <!b16i>
+  // NO-READ-NEXT:      p4hir.return %[[Y]] : !b8i
+  // NO-ASSIGN-LABEL: p4hir.func @partial(
+  // NO-ASSIGN-SAME:      %[[X:[^:]*]]: !p4hir.ref<!b16i> {{.*}}, %[[V:.*]]: !b8i)
+  // NO-ASSIGN-NEXT:    %[[VAL:.*]] = p4hir.read %[[X]] : <!b16i>
+  // NO-ASSIGN-NEXT:    %[[Y:.*]] = p4hir.slice %[[VAL]][7 : 0] : !b16i -> !b8i
+  // NO-ASSIGN-NEXT:    p4hir.assign_slice %[[V]], %[[X]][15 : 8] : !b8i -> <!b16i>
+  // NO-ASSIGN-NEXT:    p4hir.return %[[Y]] : !b8i
+  p4hir.func @partial(%x : !p4hir.ref<!b16i> {p4hir.dir = #inout, p4hir.param_name = "x"}, %v : !b8i) -> !b8i {
+    %y = p4hir.read_slice %x[7 : 0] : <!b16i> -> !b8i
+    p4hir.assign_slice %v, %x[15 : 8] : !b8i -> <!b16i>
+    p4hir.return %y : !b8i
   }
 }
