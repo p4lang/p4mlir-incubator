@@ -236,9 +236,17 @@ def AssignOp : P4HIR_Op<"assign", [
 
 def AssignSliceOp : P4HIR_Op<"assign_slice",
                     [DeclareOpInterfaceMethods<PromotableMemOpInterface>]> {
-  let summary = "Assign a slice of values to variable";
+  let summary = "Assign a bit slice of a referenced object";
   let description = [{
-    ..
+    `p4hir.assign_slice` assigns its value to bits `highBit` down to `lowBit` of
+    the referenced object, and leaves its other bits unchanged.
+    The assigned value must be unsigned and have the same width as the slice.
+    The referenced object may be signed or unsigned.
+
+    ```mlir
+    // x[15:8] = v;
+    p4hir.assign_slice %v, %x[15 : 8] : !p4hir.bit<8> -> <!p4hir.bit<32>>
+    ```
   }];
   let arguments = (ins BitsType:$value,
                        Arg<BitsRefType, "the base object to modify the slice", [MemWrite]>:$ref,
@@ -246,7 +254,11 @@ def AssignSliceOp : P4HIR_Op<"assign_slice",
   let assemblyFormat = [{
     $value  `,` $ref`[`$highBit `:` $lowBit`]` attr-dict `:` type($value) `->` type($ref)
   }];
-
+   let extraClassDeclaration = [{
+    /// Returns true if the slice covers the whole referenced object, i.e. this assignment
+    /// replaces all of its bits.
+    bool coversWholeObject();
+   }];
   let hasVerifier = 1;
 }
 
