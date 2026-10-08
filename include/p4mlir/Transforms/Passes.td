@@ -225,6 +225,10 @@ def ExpandSliceReadAssign : Pass<"p4hir-expand-slice-read-assign"> {
     including for signed objects. Its width matches the slice, so no additional
     mask is needed on the shifted replacement.
 
+    Options:
+    - `expand-read-slice` (default: true): expand slice reads.
+    - `expand-assign-slice` (default: true): expand slice assignments.
+
     For example, the following code:
     ```mlir
       // y = x[15:8];
@@ -246,6 +250,13 @@ def ExpandSliceReadAssign : Pass<"p4hir-expand-slice-read-assign"> {
       p4hir.assign %or, %x : <!b32i>
     ```
   }];
+
+  let options = [
+    Option<"expandReadSlice", "expand-read-slice", "bool", /*default=*/"true",
+           "Expand slice reads">,
+    Option<"expandAssignSlice", "expand-assign-slice", "bool", /*default=*/"true",
+           "Expand slice assignments">,
+  ];
 
   let constructor = "P4MLIR::createExpandSliceReadAssignPass()";
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
