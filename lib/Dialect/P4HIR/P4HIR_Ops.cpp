@@ -2362,6 +2362,12 @@ LogicalResult P4HIR::AssignSliceOp::verify() {
     return success();
 }
 
+bool P4HIR::AssignSliceOp::coversWholeObject() {
+    auto objectType = llvm::cast<P4HIR::BitsType>(
+        llvm::cast<P4HIR::ReferenceType>(getRef().getType()).getObjectType());
+    return getLowBit() == 0 && getHighBit() + 1 == objectType.getWidth();
+}
+
 //===----------------------------------------------------------------------===//
 // ParserOp
 //===----------------------------------------------------------------------===//

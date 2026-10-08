@@ -205,6 +205,53 @@ def ExpandEmit : Pass<"p4hir-expand-emit", "mlir::ModuleOp"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ExpandSliceReadAssign
+//===----------------------------------------------------------------------===//
+
+def ExpandSliceReadAssign : Pass<"p4hir-expand-slice-read-assign"> {
+  let summary = "Expand assign_slice and read_slice to operations with whole objects";
+  let description = [{
+    This pass replaces accesses to slices of referenced objects by accesses to
+    the whole objects:
+
+    - A slice read becomes a read of the whole object and a slice of its value.
+    - A slice assignment becomes a read of the whole object, the replacement of
+      the slice in its value, and an assignment of the result. Like
+      `RemoveLeftSlices` in the p4c midend, the bits of the slice are cleared
+      with a mask, and the assigned value is shifted into their place.
+
+    A full-width assignment needs no read of the old object. Otherwise, the
+    unsigned replacement is zero-extended to the object's type before shifting,
+    including for signed objects. Its width matches the slice, so no additional
+    mask is needed on the shifted replacement.
+
+    For example, the following code:
+    ```mlir
+      // y = x[15:8];
+      %y = p4hir.read_slice %x[15 : 8] : <!b32i> -> !b8i
+      // x[15:8] = v;
+      p4hir.assign_slice %v, %x[15 : 8] : !b8i -> <!b32i>
+    ```
+    is transformed into:
+    ```mlir
+      %val = p4hir.read %x : <!b32i>
+      %y = p4hir.slice %val[15 : 8] : !b32i -> !b8i
+      %old = p4hir.read %x : <!b32i>
+      %cast = p4hir.cast(%v : !b8i) : !b32i
+      %c8 = p4hir.const #p4hir.int<8> : !b32i
+      %shl = p4hir.shl(%cast, %c8 : !b32i) : !b32i
+      %mask = p4hir.const #p4hir.int<4294902015> : !b32i
+      %and = p4hir.binop(and, %old, %mask) : !b32i
+      %or = p4hir.binop(or, %and, %shl) : !b32i
+      p4hir.assign %or, %x : <!b32i>
+    ```
+  }];
+
+  let constructor = "P4MLIR::createExpandSliceReadAssignPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // Inline Parsers
 //===----------------------------------------------------------------------===//
 

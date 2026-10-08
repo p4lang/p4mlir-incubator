@@ -46,6 +46,7 @@ std::unique_ptr<mlir::Pass> createCopyInCopyOutEliminationPass();
 std::unique_ptr<mlir::Pass> createInlineParsersPass();
 std::unique_ptr<mlir::Pass> createInlineControlsPass();
 std::unique_ptr<mlir::Pass> createExpandEmitPass();
+std::unique_ptr<mlir::Pass> createExpandSliceReadAssignPass();
 std::unique_ptr<mlir::Pass> createSymbolDCEPass();
 
 #define GEN_PASS_REGISTRATION
