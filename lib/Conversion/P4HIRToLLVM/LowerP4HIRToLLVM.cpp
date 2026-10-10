@@ -329,15 +329,15 @@ LogicalResult lowerToShiftOp(Operation *op, Value lhs, Value rhs,
 
     if constexpr (std::is_same_v<LLVMShiftOp, LLVM::AShrOp>) {
         // P4 defines an out-of-range right shift as all sign bits, which `ashr`
-        // by width - 1 already produces: clamping the shift is the whole fix,
-        // and unlike the logical shifts below the result needs no second select.
+        // by width - 1 already produces, so clamping the shift is the whole fix.
         Value maxShift = LLVM::ConstantOp::create(rewriter, loc, resultType, resultWidth - 1);
         Value safeShift = LLVM::SelectOp::create(rewriter, loc, overflow, maxShift, shift);
         rewriter.replaceOpWithNewOp<LLVMShiftOp>(op, lhs, safeShift);
     } else {
+        // An out-of-range LLVM shift produces poison, but `select` only propagates poison
+        // from the operand it picks, and on overflow it picks zero.
         Value zero = LLVM::ConstantOp::create(rewriter, loc, resultType, 0);
-        Value safeShift = LLVM::SelectOp::create(rewriter, loc, overflow, zero, shift);
-        Value inRangeResult = LLVMShiftOp::create(rewriter, loc, lhs, safeShift);
+        Value inRangeResult = LLVMShiftOp::create(rewriter, loc, lhs, shift);
         rewriter.replaceOpWithNewOp<LLVM::SelectOp>(op, overflow, zero, inRangeResult);
     }
     return success();
@@ -361,7 +361,7 @@ struct ShrOpConversion : public ConvertOpToLLVMPattern<P4HIR::ShrOp> {
     LogicalResult matchAndRewrite(P4HIR::ShrOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
         auto lhsBitsType = dyn_cast<P4HIR::BitsType>(op.getLhs().getType());
-				auto rhsIsBitsType = isa<P4HIR::BitsType>(op.getRhs().getType());
+        auto rhsIsBitsType = isa<P4HIR::BitsType>(op.getRhs().getType());
         if (!lhsBitsType || !rhsIsBitsType)
             return rewriter.notifyMatchFailure(op, "expected fixed-width bits operands");
         if (lhsBitsType.isSigned())

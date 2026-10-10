@@ -16,8 +16,7 @@ module {
   // CHECK-NEXT: %[[WIDTH:.*]] = llvm.mlir.constant(32 : i32) : i32
   // CHECK-NEXT: %[[OVERFLOW:.*]] = llvm.icmp "uge" %[[SHIFT]], %[[WIDTH]] : i32
   // CHECK-NEXT: %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK-NEXT: %[[SAFE_SHIFT:.*]] = llvm.select %[[OVERFLOW]], %[[ZERO]], %[[SHIFT]] : i1, i32
-  // CHECK-NEXT: %[[SHL:.*]] = llvm.shl %[[VAL]], %[[SAFE_SHIFT]] : i32
+  // CHECK-NEXT: %[[SHL:.*]] = llvm.shl %[[VAL]], %[[SHIFT]] : i32
   // CHECK-NEXT: llvm.select %[[OVERFLOW]], %[[ZERO]], %[[SHL]] : i1, i32
   %shl = p4hir.shl(%val, %shift : !u32i) : !u32i
 }
@@ -38,8 +37,7 @@ module {
   // CHECK-NEXT: %[[WIDTH:.*]] = llvm.mlir.constant(32 : i32) : i32
   // CHECK-NEXT: %[[OVERFLOW:.*]] = llvm.icmp "uge" %[[EXT]], %[[WIDTH]] : i32
   // CHECK-NEXT: %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK-NEXT: %[[SAFE_SHIFT:.*]] = llvm.select %[[OVERFLOW]], %[[ZERO]], %[[EXT]] : i1, i32
-  // CHECK-NEXT: %[[SHL:.*]] = llvm.shl %[[VAL]], %[[SAFE_SHIFT]] : i32
+  // CHECK-NEXT: %[[SHL:.*]] = llvm.shl %[[VAL]], %[[EXT]] : i32
   // CHECK-NEXT: llvm.select %[[OVERFLOW]], %[[ZERO]], %[[SHL]] : i1, i32
   %shl = p4hir.shl(%val, %shift : !u8i) : !s32i
 }
@@ -60,8 +58,7 @@ module {
   // CHECK-NEXT: %[[WIDTH:.*]] = llvm.mlir.constant(8 : i16) : i16
   // CHECK-NEXT: %[[OVERFLOW:.*]] = llvm.icmp "uge" %[[SHIFT]], %[[WIDTH]] : i16
   // CHECK-NEXT: %[[ZERO:.*]] = llvm.mlir.constant(0 : i8) : i8
-  // CHECK-NEXT: %[[SAFE_SHIFT:.*]] = llvm.select %[[OVERFLOW]], %[[ZERO]], %[[TRUNC]] : i1, i8
-  // CHECK-NEXT: %[[SHL:.*]] = llvm.shl %[[VAL]], %[[SAFE_SHIFT]] : i8
+  // CHECK-NEXT: %[[SHL:.*]] = llvm.shl %[[VAL]], %[[TRUNC]] : i8
   // CHECK-NEXT: llvm.select %[[OVERFLOW]], %[[ZERO]], %[[SHL]] : i1, i8
   %shl = p4hir.shl(%val, %shift : !u16i) : !u8i
 }
@@ -80,8 +77,7 @@ module {
   // CHECK-NEXT: %[[WIDTH:.*]] = llvm.mlir.constant(32 : i32) : i32
   // CHECK-NEXT: %[[OVERFLOW:.*]] = llvm.icmp "uge" %[[SHIFT]], %[[WIDTH]] : i32
   // CHECK-NEXT: %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK-NEXT: %[[SAFE_SHIFT:.*]] = llvm.select %[[OVERFLOW]], %[[ZERO]], %[[SHIFT]] : i1, i32
-  // CHECK-NEXT: %[[SHR:.*]] = llvm.lshr %[[VAL]], %[[SAFE_SHIFT]] : i32
+  // CHECK-NEXT: %[[SHR:.*]] = llvm.lshr %[[VAL]], %[[SHIFT]] : i32
   // CHECK-NEXT: llvm.select %[[OVERFLOW]], %[[ZERO]], %[[SHR]] : i1, i32
   %shr = p4hir.shr(%val, %shift : !u32i) : !u32i
 }
@@ -102,8 +98,7 @@ module {
   // CHECK-NEXT: %[[WIDTH:.*]] = llvm.mlir.constant(32 : i32) : i32
   // CHECK-NEXT: %[[OVERFLOW:.*]] = llvm.icmp "uge" %[[EXT]], %[[WIDTH]] : i32
   // CHECK-NEXT: %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK-NEXT: %[[SAFE_SHIFT:.*]] = llvm.select %[[OVERFLOW]], %[[ZERO]], %[[EXT]] : i1, i32
-  // CHECK-NEXT: %[[SHR:.*]] = llvm.lshr %[[VAL]], %[[SAFE_SHIFT]] : i32
+  // CHECK-NEXT: %[[SHR:.*]] = llvm.lshr %[[VAL]], %[[EXT]] : i32
   // CHECK-NEXT: llvm.select %[[OVERFLOW]], %[[ZERO]], %[[SHR]] : i1, i32
   %shr = p4hir.shr(%val, %shift : !u8i) : !u32i
 }
@@ -124,8 +119,7 @@ module {
   // CHECK-NEXT: %[[WIDTH:.*]] = llvm.mlir.constant(8 : i16) : i16
   // CHECK-NEXT: %[[OVERFLOW:.*]] = llvm.icmp "uge" %[[SHIFT]], %[[WIDTH]] : i16
   // CHECK-NEXT: %[[ZERO:.*]] = llvm.mlir.constant(0 : i8) : i8
-  // CHECK-NEXT: %[[SAFE_SHIFT:.*]] = llvm.select %[[OVERFLOW]], %[[ZERO]], %[[TRUNC]] : i1, i8
-  // CHECK-NEXT: %[[SHR:.*]] = llvm.lshr %[[VAL]], %[[SAFE_SHIFT]] : i8
+  // CHECK-NEXT: %[[SHR:.*]] = llvm.lshr %[[VAL]], %[[TRUNC]] : i8
   // CHECK-NEXT: llvm.select %[[OVERFLOW]], %[[ZERO]], %[[SHR]] : i1, i8
   %shr = p4hir.shr(%val, %shift : !u16i) : !u8i
 }
