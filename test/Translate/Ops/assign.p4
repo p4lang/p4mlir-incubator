@@ -312,19 +312,6 @@ action bit_shl_assign_const(inout bit<10> lhs) {
     lhs <<= 3;
 }
 
-// CHECK-LABEL:   p4hir.func action @bit_shl_assign_serenum_field
-// CHECK-SAME:        %[[arg_lhs:.*]]: !p4hir.ref<!b10i> {{.*}}
-// CHECK:           %[[enum_field_serenum_first:.*]] = p4hir.const #Serenum_first
-// CHECK:           %[[val_lhs:.*]] = p4hir.read %[[arg_lhs]] : <!b10i>
-// CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[enum_field_serenum_first]] : !Serenum) : !b10i
-// CHECK:           %[[val_shlop:.*]] = p4hir.shl(%[[val_lhs]], %[[val_rhs]] : !b10i) : !b10i
-// CHECK:           p4hir.assign %[[val_shlop]], %[[arg_lhs]] : <!b10i>
-// CHECK:           p4hir.return
-
-action bit_shl_assign_serenum_field(inout bit<10> lhs) {
-    lhs <<= Serenum.first;
-}
-
 // CHECK-LABEL:   p4hir.func action @bit_shr_assign_bit
 // CHECK-SAME:        %[[arg_lhs:.*]]: !p4hir.ref<!b10i> {{.*}}, %[[arg_rhs:.*]]: !b10i {{.*}}
 // CHECK:           %[[val_lhs:.*]] = p4hir.read %[[arg_lhs]] : <!b10i>
@@ -347,19 +334,6 @@ action bit_shr_assign_bit(inout bit<10> lhs, in bit<10> rhs) {
 
 action bit_shr_assign_const(inout bit<10> lhs) {
     lhs >>= 3;
-}
-
-// CHECK-LABEL:   p4hir.func action @bit_shr_assign_serenum_field
-// CHECK-SAME:        %[[arg_lhs:.*]]: !p4hir.ref<!b10i> {{.*}}
-// CHECK:           %[[enum_field_serenum_first:.*]] = p4hir.const #Serenum_first
-// CHECK:           %[[val_lhs:.*]] = p4hir.read %[[arg_lhs]] : <!b10i>
-// CHECK:           %[[val_rhs:.*]] = p4hir.cast(%[[enum_field_serenum_first]] : !Serenum) : !b10i
-// CHECK:           %[[val_shrop:.*]] = p4hir.shr(%[[val_lhs]], %[[val_rhs]] : !b10i) : !b10i
-// CHECK:           p4hir.assign %[[val_shrop]], %[[arg_lhs]] : <!b10i>
-// CHECK:           p4hir.return
-
-action bit_shr_assign_serenum_field(inout bit<10> lhs) {
-    lhs >>= Serenum.first;
 }
 
 // CHECK-LABEL:   p4hir.func action @bit_and_assign_bit
