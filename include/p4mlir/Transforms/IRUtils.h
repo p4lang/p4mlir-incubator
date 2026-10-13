@@ -272,8 +272,6 @@ class PathRewriter {
         isRef = mlir::isa<P4HIR::ReferenceType>(type);
         rootType = P4HIR::maybeUnref(type);
         if (newType) newRootType = P4HIR::maybeUnref(newType);
-        assert(mlir::isa<P4HIR::IndexableTypeInterface>(rootType) &&
-               "Expected indexable root type");
     }
 
     /// Minimal constructor.
