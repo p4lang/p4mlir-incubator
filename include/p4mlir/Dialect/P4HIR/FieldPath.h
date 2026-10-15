@@ -126,7 +126,8 @@ struct FieldPath {
     static FieldPath fromFieldID(mlir::Type rootType, unsigned fieldID);
 
     /// Perform a preorder DFS traversal on all fields nested in `type` and call `cb`.
-    static void forEachFieldPath(mlir::Type type, llvm::function_ref<void(FieldPath)> cb);
+    static mlir::WalkResult forEachFieldPath(mlir::Type type,
+                                             llvm::function_ref<mlir::WalkResult(FieldPath)> cb);
 
     // Assuming that `fields` are all fields of the same root type, sort these fields, eliminate
     // duplicates and fields that are nested sub-fields of other fields in the given vector.
@@ -144,7 +145,7 @@ struct FieldPath {
     }
 
     /// Given two fields paths X->...->Y and Y->...->Z returns X->...->Z.
-    /// Returns FieldPath() if either pah is the special empty path.
+    /// It holds that concat(X, empty) == concat(empty, X) == X.
     /// Assumes that `canConcat(lhs, rhs) == true`.
     static FieldPath concat(FieldPath lhs, FieldPath rhs) { return lhs.concat(rhs); }
 
@@ -152,6 +153,23 @@ struct FieldPath {
     /// Returns FieldPath() if either pah is the special empty path.
     /// Assumes that `canConcat(lhs, rhs) == true`.
     FieldPath &concat(FieldPath rhs);
+
+    /// Returns true if the `rhs` can be subtracted from `lhs` to form a new path.
+    static bool canSubtract(FieldPath lhs, FieldPath rhs) {
+        if (rhs.isEmpty()) return true;
+        if (lhs.isEmpty()) return false;
+        return lhs.getRootType() == rhs.getRootType() && lhs.getFieldID() >= rhs.getFieldID() &&
+               lhs.getFieldID() < rhs.getSiblingFieldID();
+    }
+
+    /// Given two fields paths X->...->Y->...->Z and X->...->Y returns Y->...->Z.
+    /// It holds that subtract(X, empty) == X.
+    /// Assumes that `canSubtract(lhs, rhs) == true`.
+    static FieldPath subtract(FieldPath lhs, FieldPath rhs) {
+        assert(canSubtract(lhs, rhs) && "Types cannot be subtracted");
+        if (!rhs) return lhs;
+        return FieldPath(rhs.getType(), lhs.getType(), lhs.getFieldID() - rhs.getFieldID());
+    }
 
     /// If this path is of the form X->...->Y->...->Z where Y is the first prefix path for
     /// which `pred(Y)` is true then return two new field paths X->...->Y and Y->...->Z.
@@ -298,9 +316,22 @@ struct FieldPath {
         });
     }
 
+    /// Iterate all fields indices that make up this path.
     auto field_indices() const {
         return llvm::map_range(fields(), [](auto field) { return field.getIndex(); });
     }
+
+    /// Iterate all paths for direct subfields of the leaf type of this path.
+    /// If the leaf type has no sunfields an empty range is returned.
+    auto children() const {
+        auto itype = mlir::dyn_cast<P4HIR::IndexableTypeInterface>(getType());
+        unsigned count = itype ? itype.getFieldCount() : 0u;
+        return llvm::map_range(llvm::seq(0u, count),
+                               [this](unsigned index) { return (*this)[index]; });
+    }
+
+    /// Returns true if leaf type of this path has subfields.
+    bool hasChildren() const { return mlir::isa<P4HIR::IndexableTypeInterface>(getType()); }
 
     /// Create a new path by appending the field indices of this path on top of `newRootType`.
     FieldPath withRoot(mlir::Type newRootType) const;
@@ -314,27 +345,9 @@ struct FieldPath {
         return buffer;
     }
 
-    struct DenseMapInfo {
-        static inline FieldPath getEmptyKey() {
-            FieldPath specialEmpty(mlir::Type(), mlir::Type(),
-                                   std::numeric_limits<unsigned>::max());
-            return specialEmpty;
-        }
-
-        static inline FieldPath getTombstoneKey() {
-            FieldPath specialTombstone(mlir::Type(), mlir::Type(),
-                                       std::numeric_limits<unsigned>::max() - 1);
-            return specialTombstone;
-        }
-
-        static unsigned getHashValue(const FieldPath &path) {
-            return llvm::hash_combine(path.getRootType(), path.getType(), path.getFieldID());
-        }
-
-        static bool isEqual(const FieldPath &lhs, const FieldPath &rhs) { return lhs == rhs; }
-    };
-
  private:
+    friend struct llvm::DenseMapInfo<P4::P4MLIR::P4HIR::FieldPath>;
+
     /// The root type that we're indexing into.
     mlir::Type rootType;
     /// Cached type of the referenced field.
@@ -349,5 +362,33 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FieldPath &pat
 }
 
 }  // namespace P4::P4MLIR::P4HIR
+
+namespace llvm {
+template <>
+struct DenseMapInfo<P4::P4MLIR::P4HIR::FieldPath> {
+    static inline P4::P4MLIR::P4HIR::FieldPath getEmptyKey() {
+        P4::P4MLIR::P4HIR::FieldPath specialEmpty(DenseMapInfo<mlir::Type>::getEmptyKey(),
+                                                  DenseMapInfo<mlir::Type>::getEmptyKey(),
+                                                  DenseMapInfo<unsigned>::getEmptyKey());
+        return specialEmpty;
+    }
+
+    static inline P4::P4MLIR::P4HIR::FieldPath getTombstoneKey() {
+        P4::P4MLIR::P4HIR::FieldPath specialTombstone(DenseMapInfo<mlir::Type>::getTombstoneKey(),
+                                                      DenseMapInfo<mlir::Type>::getTombstoneKey(),
+                                                      DenseMapInfo<unsigned>::getTombstoneKey());
+        return specialTombstone;
+    }
+
+    static unsigned getHashValue(const P4::P4MLIR::P4HIR::FieldPath &path) {
+        return llvm::hash_combine(path.getRootType(), path.getType(), path.getFieldID());
+    }
+
+    static bool isEqual(const P4::P4MLIR::P4HIR::FieldPath &lhs,
+                        const P4::P4MLIR::P4HIR::FieldPath &rhs) {
+        return lhs == rhs;
+    }
+};
+}  // namespace llvm
 
 #endif  // P4MLIR_DIALECT_P4HIR_P4HIR_FIELDPATH_H
