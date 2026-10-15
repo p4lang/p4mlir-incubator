@@ -312,8 +312,7 @@ def CastOp : P4HIR_Op<"cast",
     bool isZeroExtensionCast() {
       auto innerBitsType = mlir::dyn_cast<P4HIR::BitsType>(getSrcType());
       auto resBitsType = mlir::dyn_cast<P4HIR::BitsType>(getType());
-      return innerBitsType && resBitsType &&
-             !resBitsType.isSigned() && !innerBitsType.isSigned() &&
+      return innerBitsType && resBitsType && !innerBitsType.isSigned() &&
              resBitsType.getWidth() > innerBitsType.getWidth();
     }
 
@@ -321,15 +320,14 @@ def CastOp : P4HIR_Op<"cast",
     bool isSignExtensionCast() {
       auto innerBitsType = mlir::dyn_cast<P4HIR::BitsType>(getSrcType());
       auto resBitsType = mlir::dyn_cast<P4HIR::BitsType>(getType());
-      return innerBitsType && resBitsType &&
-             !resBitsType.isSigned() && !innerBitsType.isSigned() &&
+      return innerBitsType && resBitsType && innerBitsType.isSigned() &&
              resBitsType.getWidth() > innerBitsType.getWidth();
     }
   }];
 
   let hasFolder = 1;
   let hasCanonicalizeMethod = 1;
-  // FIXME: add verifier.
+  let hasVerifier = 1;
 }
 
 def UnaryOpKind_Neg   : I32EnumAttrCase<"Neg",   1, "minus">; // unary minus (-)

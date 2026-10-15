@@ -307,6 +307,34 @@ struct SliceOpConversion : public ConvertOpToLLVMPattern<P4HIR::SliceOp> {
     }
 };
 
+struct CastOpConversion : public ConvertOpToLLVMPattern<P4HIR::CastOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::CastOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto src = adaptor.getSrc();
+        auto srcType = dyn_cast<IntegerType>(src.getType());
+        auto resultType = getTypeConverter()->convertType<IntegerType>(op.getType());
+        if (!srcType || !resultType)
+            return rewriter.notifyMatchFailure(op, "unsupported cast type");
+
+        if (srcType == resultType) {
+            rewriter.replaceOp(op, src);
+            return success();
+        }
+
+        if (op.isTruncationCast())
+            rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType, src);
+        else if (op.isSignExtensionCast())
+            rewriter.replaceOpWithNewOp<LLVM::SExtOp>(op, resultType, src);
+        else if (op.isZeroExtensionCast())
+            rewriter.replaceOpWithNewOp<LLVM::ZExtOp>(op, resultType, src);
+        else
+            return rewriter.notifyMatchFailure(op, "unsupported cast");
+        return success();
+    }
+};
+
 struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<LowerP4HIRToLLVMPass> {
     void runOnOperation() override {
         auto &context = getContext();
@@ -363,7 +391,8 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
 
 void P4::P4MLIR::populateP4HIRToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                                        RewritePatternSet &patterns) {
-    patterns.add<ConstOpConversion, BinOpConversion, UnaryOpConversion, CmpOpConversion,
-                 BrOpConversion, CondBrOpConversion, ConcatOpConversion, SliceOpConversion>(
-        converter);
+    patterns
+        .add<ConstOpConversion, BinOpConversion, UnaryOpConversion, CmpOpConversion, BrOpConversion,
+             CondBrOpConversion, ConcatOpConversion, SliceOpConversion, CastOpConversion>(
+            converter);
 }

@@ -18,7 +18,9 @@ def LowerP4HIRToLLVM : Pass<"lower-p4hir-to-llvm", "mlir::ModuleOp"> {
   let description = [{
     This pass lowers P4HIR operations and types to their LLVM dialect counterparts.
     Operations and types that have no LLVM counterpart are left unconverted; the pass
-    does not fail on them.
+    does not fail on them. Type aliases and enums are expected to be eliminated
+    beforehand (see `p4hir-remove-aliases`, `p4hir-enum-elimination`,
+    `p4hir-ser-enum-elimination` passes).
   }];
   let dependentDialects = [
       "::P4::P4MLIR::P4HIR::P4HIRDialect",

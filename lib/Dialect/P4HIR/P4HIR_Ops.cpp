@@ -244,6 +244,31 @@ void P4HIR::CastOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "cast");
 }
 
+static bool isBit1Type(mlir::Type type) {
+    auto bitsType = mlir::dyn_cast<P4HIR::BitsType>(type);
+    return bitsType && !bitsType.isSigned() && bitsType.getWidth() == 1;
+}
+
+LogicalResult P4HIR::CastOp::verify() {
+    auto srcType = getSrcType();
+    if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(srcType))
+        srcType = aliasType.getCanonicalType();
+    auto resultType = getType();
+    if (auto aliasType = mlir::dyn_cast<P4HIR::AliasType>(resultType))
+        resultType = aliasType.getCanonicalType();
+
+    if (mlir::isa<P4HIR::BoolType>(srcType) && !mlir::isa<P4HIR::BoolType>(resultType) &&
+        !isBit1Type(resultType))
+        return emitOpError("cast from bool requires bool or bit<1> result, got ") << getType();
+
+    if (mlir::isa<P4HIR::BoolType>(resultType) &&
+        !mlir::isa<P4HIR::BoolType, P4HIR::InfIntType>(srcType) && !isBit1Type(srcType))
+        return emitOpError("cast to bool requires bool, bit<1> or int source, got ")
+               << getSrcType();
+
+    return success();
+}
+
 OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
     // Identity.
     // cast(%a) : A -> A ==> %a

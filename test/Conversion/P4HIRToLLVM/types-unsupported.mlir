@@ -23,6 +23,8 @@ module {
   %lt = p4hir.cmp(lt, %lhs : !infint, %rhs : !infint)
   // CHECK: p4hir.slice
   %slice = p4hir.slice %lhs[3 : 0] : !infint -> !p4hir.bit<4>
+  // CHECK: p4hir.cast
+  %cast = p4hir.cast(%lhs : !infint) : !p4hir.bit<8>
 }
 
 // -----

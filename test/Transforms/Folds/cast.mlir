@@ -49,11 +49,13 @@ module {
 
   // CHECK: p4hir.call @blackhole_i8i (%[[cm128_i8i]]) : (!i8i) -> ()
   
-  %cast2 = p4hir.cast(%false : !p4hir.bool) : !i8i
+  %false_b1i = p4hir.cast(%false : !p4hir.bool) : !b1i
+  %cast2 = p4hir.cast(%false_b1i : !b1i) : !i8i
   p4hir.call @blackhole_i8i(%cast2) : (!i8i) -> ()
   // CHECK: p4hir.call @blackhole_i8i (%c0_i8i) : (!i8i) -> ()
   
-  %cast3 = p4hir.cast(%true : !p4hir.bool) : !i8i
+  %true_b1i = p4hir.cast(%true : !p4hir.bool) : !b1i
+  %cast3 = p4hir.cast(%true_b1i : !b1i) : !i8i
   p4hir.call @blackhole_i8i(%cast3) : (!i8i) -> ()
   // CHECK: p4hir.call @blackhole_i8i (%[[c1_i8i]]) : (!i8i) -> ()
 
