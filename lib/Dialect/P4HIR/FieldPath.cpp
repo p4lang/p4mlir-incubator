@@ -54,18 +54,22 @@ FieldPath FieldPath::fromFieldID(mlir::Type rootType, unsigned fieldID) {
     return FieldPath(rootType, type, fieldID);
 }
 
-static void forEachFieldPathImpl(FieldPath path, llvm::function_ref<void(FieldPath)> cb) {
-    cb(path);
+static mlir::WalkResult forEachFieldPathImpl(FieldPath path,
+                                             llvm::function_ref<mlir::WalkResult(FieldPath)> cb) {
+    auto status = cb(path);
+    if (status.wasSkipped()) return mlir::WalkResult::advance();
+    if (status.wasInterrupted()) return mlir::WalkResult::interrupt();
 
-    auto itype = mlir::dyn_cast<P4HIR::IndexableTypeInterface>(path.getType());
-    if (!itype) return;
+    for (auto childPath : path.children())
+        if (forEachFieldPathImpl(childPath, cb).wasInterrupted())
+            return mlir::WalkResult::interrupt();
 
-    for (auto field : itype.getFields())
-        forEachFieldPathImpl(P4HIR::FieldPath::concat(path, field), cb);
+    return mlir::WalkResult::advance();
 }
 
-void FieldPath::forEachFieldPath(mlir::Type type, llvm::function_ref<void(FieldPath)> cb) {
-    forEachFieldPathImpl(FieldPath(type), cb);
+mlir::WalkResult FieldPath::forEachFieldPath(mlir::Type type,
+                                             llvm::function_ref<mlir::WalkResult(FieldPath)> cb) {
+    return forEachFieldPathImpl(FieldPath(type), cb);
 }
 
 void FieldPath::computeRootFields(llvm::SmallVectorImpl<FieldPath> &fields) {
