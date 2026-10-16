@@ -149,15 +149,13 @@ mlir::Type P4HIRConverter::getOrCreateConstructorType(const P4::IR::Type_Method 
 
     CHECK_NULL(type->parameters);
 
-    mlir::Type resultType = getOrCreateType(type->returnType);
-
     for (const auto *param : type->parameters->parameters) {
         BUG_CHECK(param->direction == P4::IR::Direction::None, "expected directionless parameter");
         mlir::Type type = getOrCreateType(param);
         argTypes.emplace_back(builder.getStringAttr(param->name.string_view()), type);
     }
 
-    auto mlirType = P4HIR::CtorType::get(argTypes, resultType);
+    auto mlirType = P4HIR::CtorArgsType::get(context(), argTypes);
     return setType(type, mlirType);
 }
 
@@ -2337,8 +2335,8 @@ bool P4HIRConverter::preorder(const P4::IR::P4Parser *parser) {
     auto annotations = convert(parser->getAnnotations());
 
     auto applyType = mlir::cast<P4HIR::FuncType>(getOrCreateType(parser->getApplyMethodType()));
-    auto ctorType =
-        mlir::cast<P4HIR::CtorType>(getOrCreateConstructorType(parser->getConstructorMethodType()));
+    auto ctorType = mlir::cast<P4HIR::CtorArgsType>(
+        getOrCreateConstructorType(parser->getConstructorMethodType()));
     auto argAttrs = convertParamAttributes(parser->getApplyParameters());
     assert(applyType.getNumInputs() == argAttrs.size() && "invalid parameter conversion");
 
@@ -2688,8 +2686,8 @@ bool P4HIRConverter::preorder(const P4::IR::Type_Package *pkg) {
         typeParameters.push_back(getOrCreateType(type));
     }
 
-    auto ctorType =
-        mlir::cast<P4HIR::CtorType>(getOrCreateConstructorType(pkg->getConstructorMethodType()));
+    auto ctorType = mlir::cast<P4HIR::CtorArgsType>(
+        getOrCreateConstructorType(pkg->getConstructorMethodType()));
 
     auto argAttrs = convertParamAttributes(pkg->getConstructorParameters());
     assert(ctorType.getNumInputs() == argAttrs.size() && "invalid parameter conversion");
@@ -2749,7 +2747,7 @@ bool P4HIRConverter::preorder(const P4::IR::P4Control *control) {
     auto annotations = convert(control->getAnnotations());
 
     auto applyType = mlir::cast<P4HIR::FuncType>(getOrCreateType(control->getApplyMethodType()));
-    auto ctorType = mlir::cast<P4HIR::CtorType>(
+    auto ctorType = mlir::cast<P4HIR::CtorArgsType>(
         getOrCreateConstructorType(control->getConstructorMethodType()));
 
     auto argAttrs = convertParamAttributes(control->getApplyParameters());

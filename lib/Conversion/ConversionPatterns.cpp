@@ -46,10 +46,11 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
         return P4HIR::EnumFieldAttr::get(convertType(type), attr.getField());
     });
 
-    addConversion([&](P4HIR::CtorType ctorType) {
-        // Expect empty ctor args
-        return P4HIR::CtorType::get(ctorType.getContext(), ctorType.getInputs(),
-                                    convertType(ctorType.getReturnType()));
+    addConversion([&](P4HIR::CtorArgsType ctorArgsType) {
+        SmallVector<std::pair<StringAttr, Type>> namedTypes;
+        for (auto typeAndName : ctorArgsType.getInputs())
+            namedTypes.emplace_back(typeAndName.first, convertType(typeAndName.second));
+        return P4HIR::CtorArgsType::get(ctorArgsType.getContext(), namedTypes);
     });
 
     addConversion([&](P4HIR::ExternType externType) -> mlir::Type {

@@ -128,10 +128,8 @@ static void getNameImpl(llvm::raw_ostream &os, P4HIR::FuncType type, ManglingCon
     }
 }
 
-static void getNameImpl(llvm::raw_ostream &os, P4HIR::CtorType type, ManglingContext &ctx) {
+static void getNameImpl(llvm::raw_ostream &os, P4HIR::CtorArgsType type, ManglingContext &ctx) {
     os << "j";
-    getNameImpl(os, type.getReturnType(), ctx);
-    os << "_";
     mangleTypes(os, type.getInputs(), ctx);
     os << "_P";
     for (auto namedType : type.getInputs()) {
@@ -244,7 +242,7 @@ static void getNameImpl(llvm::raw_ostream &os, mlir::Type type, ManglingContext 
             [&](auto type) { os << (type.isSigned() ? "i" : "u") << type.getWidth(); })
         .Case<P4HIR::InfIntType>([&](auto) { os << "ii"; })
         .Case<P4HIR::VarBitsType>([&](auto type) { os << "iv" << type.getMaxWidth(); })
-        .Case<P4HIR::CtorType>([&](auto type) { /* j */
+        .Case<P4HIR::CtorArgsType>([&](auto type) { /* j */
                                                 getNameImpl(os, type, ctx);
         })
         .Case<P4HIR::HeaderStackType>([&](auto type) {
@@ -372,7 +370,7 @@ mlir::StringAttr P4HIR::Mangler::getFunctionName(P4HIR::FuncOp op) const {
     return mlir::StringAttr::get(funcType.getContext(), nameBuf.str());
 }
 
-mlir::StringAttr P4HIR::Mangler::getPackageName(P4HIR::CtorType ctorType) const {
+mlir::StringAttr P4HIR::Mangler::getPackageName(P4HIR::CtorArgsType ctorType) const {
     ManglingContext context;
 
     llvm::SmallString<256> nameBuf;
@@ -387,7 +385,7 @@ mlir::StringAttr P4HIR::Mangler::getPackageName(P4HIR::CtorType ctorType) const 
 mlir::StringAttr P4HIR::Mangler::getPackageName(P4HIR::PackageOp op) const {
     // No need to mangle full package name in any special way as ctor type
     // carries full parameter names
-    return getPackageName(op.getCtorType());
+    return getPackageName(op.getCtorArgsType());
 }
 
 mlir::StringAttr P4HIR::Mangler::getExternName(P4HIR::ExternType type,

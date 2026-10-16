@@ -2407,13 +2407,13 @@ static P4HIR::ParserStateOp lookupParserState(Operation *op, mlir::SymbolRefAttr
 
 void P4HIR::ParserOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
                             llvm::StringRef sym_name, P4HIR::FuncType applyType,
-                            P4HIR::CtorType ctorType, ArrayRef<DictionaryAttr> argAttrs,
+                            P4HIR::CtorArgsType ctorArgsType, ArrayRef<DictionaryAttr> argAttrs,
                             mlir::DictionaryAttr annotations) {
     result.addRegion();
 
     result.addAttribute(::SymbolTable::getSymbolAttrName(), builder.getStringAttr(sym_name));
     result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(applyType));
-    result.addAttribute(getCtorTypeAttrName(result.name), TypeAttr::get(ctorType));
+    result.addAttribute(getCtorArgsTypeAttrName(result.name), TypeAttr::get(ctorArgsType));
 
     // Parsers are top-level objects with nested visibility
     // result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("nested"));
@@ -2495,8 +2495,9 @@ void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
     function_interface_impl::printFunctionSignature(printer, *this, getApplyType().getInputs(),
                                                     false, {});
 
+    // We do not print ctor type directly here as it might be aliased
     printer << "(";
-    llvm::interleaveComma(getCtorType().getInputs(), printer,
+    llvm::interleaveComma(getCtorArgsType().getInputs(), printer,
                           [&](std::pair<mlir::StringAttr, mlir::Type> namedType) {
                               printer << namedType.first.getValue() << ": ";
                               printer.printType(namedType.second);
@@ -2506,7 +2507,7 @@ void P4HIR::ParserOp::print(mlir::OpAsmPrinter &printer) {
     function_interface_impl::printFunctionAttributes(
         printer, *this,
         // These are all omitted since they are custom printed already.
-        {getApplyTypeAttrName(), getCtorTypeAttrName(), ::SymbolTable::getVisibilityAttrName(),
+        {getApplyTypeAttrName(), getCtorArgsTypeAttrName(), ::SymbolTable::getVisibilityAttrName(),
          getAnnotationsAttrName(), getArgAttrsAttrName()});
 
     if (auto ann = getAnnotations(); ann && !ann->empty()) {
@@ -2575,9 +2576,9 @@ mlir::ParseResult P4HIR::ParserOp::parse(mlir::OpAsmParser &parser, mlir::Operat
             if (parser.parseRParen()) return mlir::failure();
         }
 
-        auto ctorResultType = P4HIR::ParserType::get(parser.getContext(), nameAttr, argTypes);
-        result.addAttribute(getCtorTypeAttrName(result.name),
-                            TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
+        result.addAttribute(
+            getCtorArgsTypeAttrName(result.name),
+            TypeAttr::get(P4HIR::CtorArgsType::get(parser.getContext(), namedTypes)));
     }
 
     // If additional attributes are present, parse them.
@@ -2885,9 +2886,9 @@ ParseResult P4HIR::PackageOp::parse(OpAsmParser &parser, OperationState &result)
                 return mlir::failure();
         }
 
-        auto ctorResultType = P4HIR::PackageType::get(parser.getContext(), nameAttr, {});
-        result.addAttribute(getCtorTypeAttrName(result.name),
-                            TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
+        result.addAttribute(
+            getCtorArgsTypeAttrName(result.name),
+            TypeAttr::get(P4HIR::CtorArgsType::get(parser.getContext(), namedTypes)));
     }
 
     if (!noAttrs)
@@ -2916,7 +2917,7 @@ void P4HIR::PackageOp::print(OpAsmPrinter &printer) {
     printer << '(';
 
     auto argAttrs = getArgAttrsAttr();
-    for (auto [i, namedType] : llvm::enumerate(getCtorType().getInputs())) {
+    for (auto [i, namedType] : llvm::enumerate(getCtorArgsType().getInputs())) {
         if (i > 0) printer << ", ";
         printer << namedType.first << " : ";
         printer.printType(namedType.second);
@@ -2932,12 +2933,12 @@ void P4HIR::PackageOp::print(OpAsmPrinter &printer) {
 }
 
 void P4HIR::PackageOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
-                             llvm::StringRef name, CtorType type,
+                             llvm::StringRef name, CtorArgsType type,
                              llvm::ArrayRef<mlir::Type> type_parameters,
                              llvm::ArrayRef<mlir::DictionaryAttr> argAttrs,
                              mlir::DictionaryAttr annotations) {
     result.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
-    result.addAttribute(getCtorTypeAttrName(result.name), TypeAttr::get(type));
+    result.addAttribute(getCtorArgsTypeAttrName(result.name), TypeAttr::get(type));
     if (!type_parameters.empty())
         result.addAttribute(getTypeParametersAttrName(result.name),
                             builder.getTypeArrayAttr(type_parameters));
@@ -2958,29 +2959,30 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
     auto ctorAttr = (*this)->getAttrOfType<SymbolRefAttr>(getCalleeAttrName());
     if (!ctorAttr) return emitOpError("requires a 'callee' symbol reference attribute");
 
-    auto getCtorType = [&](mlir::SymbolRefAttr ctorAttr) -> std::pair<CtorType, mlir::Operation *> {
+    auto getCtorArgsType =
+        [&](mlir::SymbolRefAttr ctorAttr) -> std::pair<CtorArgsType, mlir::Operation *> {
         auto op = lookupGlobalSymbol(symbolTable, *this, ctorAttr);
         if (auto parser = mlir::dyn_cast_if_present<ParserOp>(op)) {
-            return {parser.getCtorType(), parser.getOperation()};
+            return {parser.getCtorArgsType(), parser.getOperation()};
         } else if (auto control = mlir::dyn_cast_if_present<ControlOp>(op)) {
-            return {control.getCtorType(), control.getOperation()};
+            return {control.getCtorArgsType(), control.getOperation()};
         } else if (auto ext = mlir::dyn_cast_if_present<ExternOp>(op)) {
             // TBD
             return {};
         } else if (auto pkg = mlir::dyn_cast_if_present<PackageOp>(op)) {
-            return {pkg.getCtorType(), pkg.getOperation()};
+            return {pkg.getCtorArgsType(), pkg.getOperation()};
         }
 
         return {};
     };
 
     // Verify that the operand and result types match the callee.
-    auto [ctorType, definingOp] = getCtorType(ctorAttr);
-    if (ctorType) {
-        if (ctorType.getNumInputs() != getNumOperands())
+    auto [ctorArgsType, definingOp] = getCtorArgsType(ctorAttr);
+    if (ctorArgsType) {
+        if (ctorArgsType.getNumInputs() != getNumOperands())
             return emitOpError("incorrect number of operands for callee");
 
-        for (unsigned i = 0, e = ctorType.getNumInputs(); i != e; ++i) {
+        for (unsigned i = 0, e = ctorArgsType.getNumInputs(); i != e; ++i) {
             // Packages are a bit special and nasty: they could have mismatched
             // declaration and instantiation types as name of object is a part of type, e.g.:
             // control e();
@@ -2989,9 +2991,9 @@ LogicalResult P4HIR::InstantiateOp::verifySymbolUses(SymbolTableCollection &symb
             // So we need to be a bit more relaxed here
             if (auto pkg = mlir::dyn_cast<PackageOp>(definingOp)) {
                 // TBD: Check
-            } else if (getOperand(i).getType() != ctorType.getInput(i))
+            } else if (getOperand(i).getType() != ctorArgsType.getInput(i))
                 return emitOpError("operand type mismatch: expected operand type ")
-                       << ctorType.getInput(i) << ", but provided " << getOperand(i).getType()
+                       << ctorArgsType.getInput(i) << ", but provided " << getOperand(i).getType()
                        << " for operand number " << i;
         }
 
@@ -3015,29 +3017,30 @@ LogicalResult P4HIR::ConstructOp::verifySymbolUses(SymbolTableCollection &symbol
     auto ctorAttr = (*this)->getAttrOfType<SymbolRefAttr>(getCalleeAttrName());
     if (!ctorAttr) return emitOpError("requires a 'callee' symbol reference attribute");
 
-    auto getCtorType = [&](mlir::SymbolRefAttr ctorAttr) -> std::pair<CtorType, mlir::Operation *> {
+    auto getCtorArgsType =
+        [&](mlir::SymbolRefAttr ctorAttr) -> std::pair<CtorArgsType, mlir::Operation *> {
         auto op = lookupGlobalSymbol(symbolTable, *this, ctorAttr);
         if (auto parser = mlir::dyn_cast_if_present<ParserOp>(op)) {
-            return {parser.getCtorType(), parser.getOperation()};
+            return {parser.getCtorArgsType(), parser.getOperation()};
         } else if (auto control = mlir::dyn_cast_if_present<ControlOp>(op)) {
-            return {control.getCtorType(), control.getOperation()};
+            return {control.getCtorArgsType(), control.getOperation()};
         } else if (auto ext = mlir::dyn_cast_if_present<ExternOp>(op)) {
             // TBD
             return {};
         } else if (auto pkg = mlir::dyn_cast_if_present<PackageOp>(op)) {
-            return {pkg.getCtorType(), pkg.getOperation()};
+            return {pkg.getCtorArgsType(), pkg.getOperation()};
         }
 
         return {};
     };
 
     // Verify that the operand and result types match the callee.
-    auto [ctorType, definingOp] = getCtorType(ctorAttr);
-    if (ctorType) {
-        if (ctorType.getNumInputs() != getNumOperands())
+    auto [ctorArgsType, definingOp] = getCtorArgsType(ctorAttr);
+    if (ctorArgsType) {
+        if (ctorArgsType.getNumInputs() != getNumOperands())
             return emitOpError("incorrect number of operands for callee");
 
-        for (unsigned i = 0, e = ctorType.getNumInputs(); i != e; ++i) {
+        for (unsigned i = 0, e = ctorArgsType.getNumInputs(); i != e; ++i) {
             // Packages are a bit special and nasty: they could have mismatched
             // declaration and instantiation types as name of object is a part of type, e.g.:
             // control e();
@@ -3046,9 +3049,9 @@ LogicalResult P4HIR::ConstructOp::verifySymbolUses(SymbolTableCollection &symbol
             // So we need to be a bit more relaxed here
             if (auto pkg = mlir::dyn_cast<PackageOp>(definingOp)) {
                 // TBD: Check
-            } else if (getOperand(i).getType() != ctorType.getInput(i))
+            } else if (getOperand(i).getType() != ctorArgsType.getInput(i))
                 return emitOpError("operand type mismatch: expected operand type ")
-                       << ctorType.getInput(i) << ", but provided " << getOperand(i).getType()
+                       << ctorArgsType.getInput(i) << ", but provided " << getOperand(i).getType()
                        << " for operand number " << i;
         }
 
@@ -3421,13 +3424,13 @@ mlir::Block &P4HIR::OverloadSetOp::createEntryBlock() {
 
 void P4HIR::ControlOp::build(mlir::OpBuilder &builder, mlir::OperationState &result,
                              llvm::StringRef sym_name, P4HIR::FuncType applyType,
-                             P4HIR::CtorType ctorType, ArrayRef<DictionaryAttr> argAttrs,
+                             P4HIR::CtorArgsType ctorArgsType, ArrayRef<DictionaryAttr> argAttrs,
                              mlir::DictionaryAttr annotations) {
     result.addRegion();
 
     result.addAttribute(::SymbolTable::getSymbolAttrName(), builder.getStringAttr(sym_name));
     result.addAttribute(getApplyTypeAttrName(result.name), TypeAttr::get(applyType));
-    result.addAttribute(getCtorTypeAttrName(result.name), TypeAttr::get(ctorType));
+    result.addAttribute(getCtorArgsTypeAttrName(result.name), TypeAttr::get(ctorArgsType));
 
     // Controls are top-level objects with nested visibility
     // result.addAttribute(::SymbolTable::getVisibilityAttrName(), builder.getStringAttr("nested"));
@@ -3459,7 +3462,7 @@ void P4HIR::ControlOp::print(mlir::OpAsmPrinter &printer) {
 
     // Print ctor parameters
     printer << "(";
-    llvm::interleaveComma(getCtorType().getInputs(), printer,
+    llvm::interleaveComma(getCtorArgsType().getInputs(), printer,
                           [&](std::pair<mlir::StringAttr, mlir::Type> namedType) {
                               printer << namedType.first.getValue() << ": ";
                               printer.printType(namedType.second);
@@ -3469,7 +3472,7 @@ void P4HIR::ControlOp::print(mlir::OpAsmPrinter &printer) {
     function_interface_impl::printFunctionAttributes(
         printer, *this,
         // These are all omitted since they are custom printed already.
-        {getApplyTypeAttrName(), getCtorTypeAttrName(), ::SymbolTable::getVisibilityAttrName(),
+        {getApplyTypeAttrName(), getCtorArgsTypeAttrName(), ::SymbolTable::getVisibilityAttrName(),
          getAnnotationsAttrName(), getArgAttrsAttrName()});
 
     if (auto ann = getAnnotations(); ann && !ann->empty()) {
@@ -3536,9 +3539,9 @@ mlir::ParseResult P4HIR::ControlOp::parse(mlir::OpAsmParser &parser, mlir::Opera
                 return mlir::failure();
         }
 
-        auto ctorResultType = P4HIR::ControlType::get(parser.getContext(), nameAttr, argTypes);
-        result.addAttribute(getCtorTypeAttrName(result.name),
-                            TypeAttr::get(P4HIR::CtorType::get(namedTypes, ctorResultType)));
+        result.addAttribute(
+            getCtorArgsTypeAttrName(result.name),
+            TypeAttr::get(P4HIR::CtorArgsType::get(parser.getContext(), namedTypes)));
     }
 
     // If additional attributes are present, parse them.
@@ -4942,9 +4945,8 @@ struct P4HIROpAsmDialectInterface : public OpAsmDialectInterface {
                 os << "type_" << type.getName();
                 return AliasResult::OverridableAlias;
             })
-            .Case<P4HIR::CtorType>([&](auto type) {
-                os << "ctor_";
-                getAlias(type.getReturnType(), os);
+            .Case<P4HIR::CtorArgsType>([&](auto type) {
+                os << "ctor_args";
                 return AliasResult::OverridableAlias;
             })
             .Case<P4HIR::ArrayType>([&](auto type) {
