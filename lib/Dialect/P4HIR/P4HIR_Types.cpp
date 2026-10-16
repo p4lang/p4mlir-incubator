@@ -31,17 +31,15 @@ static mlir::ParseResult parseFuncType(mlir::AsmParser &p, llvm::SmallVector<mli
                                        mlir::Type &optionalResultType);
 static mlir::ParseResult parseFuncType(mlir::AsmParser &p, llvm::SmallVector<mlir::Type> &params);
 
-static mlir::ParseResult parseCtorType(
-    mlir::AsmParser &p, llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>> &params,
-    mlir::Type &resultType);
+static mlir::ParseResult parseCtorArgsType(
+    mlir::AsmParser &p, llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>> &params);
 
 static mlir::ParseResult parseArray(mlir::AsmParser &p, size_t &size, mlir::Type &elementType);
 
 static void printFuncType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params,
                           mlir::Type optionalResultType = {});
-static void printCtorType(mlir::AsmPrinter &p,
-                          mlir::ArrayRef<std::pair<mlir::StringAttr, mlir::Type>> params,
-                          mlir::Type resultType);
+static void printCtorArgsType(mlir::AsmPrinter &p,
+                          mlir::ArrayRef<std::pair<mlir::StringAttr, mlir::Type>> params);
 static void printArray(mlir::AsmPrinter &p, size_t size, mlir::Type elementType);
 static void printArray(mlir::AsmPrinter &p, ArrayType arrayType);
 
@@ -176,10 +174,9 @@ static mlir::ParseResult parseFuncType(mlir::AsmParser &p, llvm::SmallVector<mli
     return p.parseRParen();
 }
 
-static mlir::ParseResult parseCtorType(
-    mlir::AsmParser &p, llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>> &params,
-    mlir::Type &returnType) {
-    if (p.parseType(returnType) || p.parseLParen()) return mlir::failure();
+static mlir::ParseResult parseCtorArgsType(
+    mlir::AsmParser &p, llvm::SmallVector<std::pair<mlir::StringAttr, mlir::Type>> &params) {
+    if (p.parseLParen()) return mlir::failure();
 
     // `(` `)`
     if (succeeded(p.parseOptionalRParen())) return mlir::success();
@@ -205,10 +202,8 @@ static void printFuncType(mlir::AsmPrinter &p, mlir::ArrayRef<mlir::Type> params
     p << ')';
 }
 
-static void printCtorType(mlir::AsmPrinter &p,
-                          mlir::ArrayRef<std::pair<mlir::StringAttr, mlir::Type>> params,
-                          mlir::Type returnType) {
-    p << returnType << ' ';
+static void printCtorArgsType(mlir::AsmPrinter &p,
+                              mlir::ArrayRef<std::pair<mlir::StringAttr, mlir::Type>> params) {
     p << '(';
     llvm::interleaveComma(params, p, [&p](std::pair<mlir::StringAttr, mlir::Type> namedType) {
         p << namedType.first << " : ";

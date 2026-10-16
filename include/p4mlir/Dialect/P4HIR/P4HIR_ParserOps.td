@@ -12,7 +12,7 @@ def ParserOp : P4HIR_Op<"parser",
      SingleBlockImplicitTerminator<"ParserTransitionOp">]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FuncType>:$applyType,
-                       TypeAttrOf<CtorType>:$ctorType,
+                       TypeAttrOf<CtorArgsType>:$ctorArgsType,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictionaryAttr>:$annotations);
   let regions = (region SizedRegion<1>:$body);
@@ -21,7 +21,7 @@ def ParserOp : P4HIR_Op<"parser",
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<(ins "llvm::StringRef":$sym_name, "P4HIR::FuncType":$applyType, "P4HIR::CtorType":$ctorType,
+    OpBuilder<(ins "llvm::StringRef":$sym_name, "P4HIR::FuncType":$applyType, "P4HIR::CtorArgsType":$ctorArgsType,
                CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs,
                CArg<"mlir::DictionaryAttr", "{}">:$annotations)>
   ];

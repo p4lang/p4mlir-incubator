@@ -1837,13 +1837,13 @@ def PackageOp : P4HIR_Op<"package",
     ```
   }];
 
-  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttrOf<CtorType>:$ctorType,
+  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttrOf<CtorArgsType>:$ctorArgsType,
                        OptionalAttr<ArrayAttr>:$type_parameters,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictionaryAttr>:$annotations);
 
   let builders = [
-    OpBuilder<(ins "llvm::StringRef":$name, "CtorType":$type,
+    OpBuilder<(ins "llvm::StringRef":$name, "CtorArgsType":$type,
                CArg<"llvm::ArrayRef<mlir::Type>", "{}">:$type_parameters,
                CArg<"llvm::ArrayRef<mlir::DictionaryAttr>", "{}">:$argAttrs,
                CArg<"mlir::DictionaryAttr", "{}">:$annotations)>
