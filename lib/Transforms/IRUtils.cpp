@@ -4,6 +4,8 @@
 
 #include "p4mlir/Transforms/IRUtils.h"
 
+#include <cctype>
+
 #include "mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Conversion/ConversionPatterns.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
@@ -11,6 +13,63 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 using namespace P4::P4MLIR;
+
+mlir::FailureOr<llvm::SmallVector<mlir::BlockArgument>> IRUtils::cloneFunctionLikeArgs(
+    mlir::FunctionOpInterface obj, llvm::ArrayRef<mlir::BlockArgument> args,
+    llvm::ArrayRef<mlir::Type> newTypes /* = {} */) {
+    assert((newTypes.size() == args.size() || newTypes.empty()) && "Expected same count new types");
+
+    auto argIndices =
+        llvm::map_to_vector(args, [](mlir::BlockArgument arg) { return arg.getArgNumber(); });
+    auto argTypes = llvm::to_vector(newTypes);
+    if (argTypes.empty())
+        argTypes = llvm::map_to_vector(args, [](mlir::BlockArgument arg) { return arg.getType(); });
+    auto argLocs = llvm::map_to_vector(args, [](mlir::BlockArgument arg) { return arg.getLoc(); });
+    auto argAttrs = llvm::map_to_vector(args, [&](mlir::BlockArgument arg) {
+        return mlir::DictionaryAttr::get(obj.getContext(), obj.getArgAttrs(arg.getArgNumber()));
+    });
+
+    if (failed(obj.insertArguments(argIndices, argTypes, argAttrs, argLocs)))
+        return mlir::failure();
+
+    auto newArgs = llvm::map_to_vector(
+        args, [&](mlir::BlockArgument arg) { return obj.getArgument(arg.getArgNumber() - 1); });
+    return newArgs;
+}
+
+mlir::LogicalResult IRUtils::eraseFunctionLikeArgs(mlir::FunctionOpInterface obj,
+                                                   llvm::ArrayRef<mlir::BlockArgument> args) {
+    llvm::BitVector argsToErase(obj.getNumArguments());
+    for (auto arg : args) argsToErase.set(arg.getArgNumber());
+    return obj.eraseArguments(argsToErase);
+}
+
+std::string IRUtils::legalizeName(std::string str) {
+    unsigned e = str.size();
+    unsigned i1 = 0;
+    unsigned i2 = 0;
+    while (i1 < e) {
+        char c = str[i1++];
+
+        if (std::isalnum(c)) {
+            str[i2++] = c;
+        } else {
+            str[i2++] = '_';
+            while (i1 < e && !std::isalnum(str[i1])) i1++;
+        }
+    }
+    str.resize(i2);
+    return str;
+}
+
+P4HIR::StructType IRUtils::createStructType(mlir::MLIRContext *ctx, const llvm::Twine &name,
+                                            const llvm::SmallVectorImpl<P4HIR::FieldPath> &paths) {
+    auto fields = llvm::map_to_vector(paths, [&](P4HIR::FieldPath path) {
+        auto name = mlir::StringAttr::get(ctx, IRUtils::legalizeName(path.str()));
+        return P4HIR::FieldInfo(name, path.getType());
+    });
+    return P4HIR::StructType::get(ctx, name.str(), fields);
+}
 
 mlir::Value IRUtils::getAccessibleValue(mlir::RewriterBase &rewriter, mlir::Operation *op,
                                         mlir::Value val) {
@@ -454,4 +513,190 @@ mlir::LogicalResult IRUtils::PathRewriter::transform(bool eraseDead /* = false *
     }
 
     return mlir::success();
+}
+
+std::optional<IRUtils::LocationMapping::SplitFieldLocation> IRUtils::LocationMapping::remap(
+    FieldLocation from) const {
+    assert((from.first < fromCount()) && "'from' index out of bounds");
+    auto [fromIndex, fromPath] = from;
+    auto prefixes = llvm::to_vector(fromPath.paths());
+
+    while (!prefixes.empty()) {
+        auto fromPrefix = prefixes.pop_back_val();
+        if (auto *toLocation = lookup(FieldLocation(fromIndex, fromPrefix))) {
+            auto fromSuffix = P4HIR::FieldPath::subtract(fromPath, fromPrefix);
+            auto [toIndex, toPath] = *toLocation;
+            return SplitFieldLocation(toIndex, toPath, fromSuffix);
+        }
+    }
+
+    return std::nullopt;
+}
+
+bool IRUtils::LocationMapping::addMapping(FieldLocation from, FieldLocation to) {
+    assert((from.first < fromCount()) && "'from' index out of bounds");
+    assert((to.first < toCount()) && "'to' index out of bounds");
+    assert((from.second.getRootType() == fromTypes[from.first]) && "'from' type mismatch");
+    assert((!to.second || to.second.getRootType() == toTypes[to.first]) && "'to' type mismatch");
+    auto [it, ins] = mapping.insert({from, FieldLocation(0, P4HIR::FieldPath())});
+    it->second = to;
+    return ins;
+}
+
+bool IRUtils::LocationMapping::verify() const {
+    for (auto fromType : fromTypes)
+        if (!fromType) return false;
+
+    for (auto toType : toTypes)
+        if (!toType) return false;
+
+    for (auto [from, to] : mapping) {
+        auto [fromIndex, fromPath] = from;
+        auto [toIndex, toPath] = to;
+        if (fromPath.getRootType() != fromTypes[fromIndex]) return false;
+        if (toPath.getRootType() != toTypes[toIndex]) return false;
+    }
+
+    return true;
+}
+
+void IRUtils::LocationMapping::getUnmappedImpl(unsigned index, P4HIR::FieldPath path,
+                                               llvm::SmallVector<FieldLocation> &result) const {
+    bool hasMapping = lookup(FieldLocation(index, path));
+    if (hasMapping) return;
+
+    auto origSize = result.size();
+    bool merge = true;
+    for (auto childPath : path.children()) {
+        auto lastSize = result.size();
+        getUnmappedImpl(index, childPath, result);
+
+        auto newCount = result.size() - lastSize;
+        if (newCount != 1 || result.back().second != childPath) merge = false;
+    }
+
+    // If there's no mapped field within this path's children, then instead of adding all
+    // children just add this path to minimize the output. Also handles the no-children case.
+    if (merge) {
+        result.resize(origSize);
+        result.emplace_back(index, path);
+    }
+}
+
+bool IRUtils::LocationMapping::isUniqueImpl(unsigned index, P4HIR::FieldPath path,
+                                            bool hasLocation) const {
+    bool hasMapping = lookup(FieldLocation(index, path));
+    if (hasMapping && hasLocation) return false;
+
+    for (auto childPath : path.children())
+        if (!isUniqueImpl(index, childPath, hasMapping || hasLocation)) return false;
+
+    return true;
+}
+
+mlir::Value IRUtils::LocationRewriter::getRef(mlir::Location loc, FieldLocation from) {
+    auto to = mapping.remap(from);
+    if (!to) return mlir::Value();
+
+    auto [toIndex, toPath, toField] = *to;
+    if (!mlir::isa<P4HIR::ReferenceType>(toValues[toIndex].getType())) return mlir::Value();
+
+    IRUtils::PathRewriter pathRewriter(rewriter, toValues[toIndex]);
+    auto fullPath = P4HIR::FieldPath::concat(toPath, toField);
+    return pathRewriter.getFromPath(loc, toValues[toIndex], fullPath);
+}
+
+mlir::Value IRUtils::LocationRewriter::getVal(mlir::Location loc, FieldLocation from,
+                                              bool allowSplit /* = true */) {
+    if (auto to = mapping.remap(from)) {
+        auto [toIndex, toPath, toField] = *to;
+        IRUtils::PathRewriter pathRewriter(rewriter, toValues[toIndex]);
+        auto fullPath = P4HIR::FieldPath::concat(toPath, toField);
+        mlir::Value res = pathRewriter.getFromPath(loc, toValues[toIndex], fullPath);
+        if (mlir::isa<P4HIR::ReferenceType>(res.getType()))
+            res = P4HIR::ReadOp::create(rewriter, loc, res);
+        return res;
+    } else {
+        if (!allowSplit) return mlir::Value();
+
+        auto [index, path] = from;
+
+        // Build the read value by combining individual values for its fields.
+        if (auto structType = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(path.getType())) {
+            auto fields = llvm::map_to_vector(path.children(), [&](auto childPath) {
+                return getVal(loc, FieldLocation(index, childPath), allowSplit);
+            });
+            return P4HIR::StructOp::create(rewriter, loc, structType, fields);
+        }
+
+        return mlir::Value();
+    }
+}
+
+bool IRUtils::LocationRewriter::setVal(mlir::Location loc, FieldLocation from, mlir::Value val,
+                                       bool allowSplit /* = true */) {
+    if (auto to = mapping.remap(from)) {
+        auto [toIndex, toPath, toField] = *to;
+        if (!mlir::isa<P4HIR::ReferenceType>(toValues[toIndex].getType())) return false;
+
+        IRUtils::PathRewriter pathRewriter(rewriter, toValues[toIndex]);
+        auto fullPath = P4HIR::FieldPath::concat(toPath, toField);
+        mlir::Value res = pathRewriter.getFromPath(loc, toValues[toIndex], fullPath);
+        P4HIR::AssignOp::create(rewriter, loc, val, res);
+        return true;
+    } else {
+        if (!allowSplit) return false;
+
+        auto [index, path] = from;
+
+        // Break down the assignment to the individual parts.
+        if (auto structType = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(path.getType())) {
+            for (auto field : structType.getFields()) {
+                mlir::Value fieldVal = P4HIR::StructExtractOp::create(rewriter, loc, val, field);
+                setVal(loc, FieldLocation(index, path[field]), fieldVal, allowSplit);
+            }
+            return true;
+        }
+
+        return false;
+    }
+}
+
+mlir::LogicalResult IRUtils::LocationRewriter::ValueRewriter::replaceUsesIn(mlir::Operation *op) {
+    if (auto readOp = mlir::dyn_cast<P4HIR::ReadOp>(op)) {
+        auto path = getOperandWithPath(op).second;
+        auto newVal = parent.getVal(op->getLoc(), FieldLocation(index, path));
+        if (!newVal) return op->emitError("Cannot replace read of ") << path.str();
+        rewriter.replaceOp(op, newVal);
+        return mlir::success();
+    } else if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(op)) {
+        auto path = getOperandWithPath(op).second;
+        bool success = parent.setVal(op->getLoc(), FieldLocation(index, path), assignOp.getValue());
+        if (!success) return op->emitError("Cannot replace write to ") << path.str();
+        rewriter.eraseOp(op);
+        return mlir::success();
+    } else if (mlir::isa<P4HIR::ControlLocalOp>(op)) {
+        rewriter.eraseOp(op);
+        return mlir::success();
+    } else {
+        bool success = true;
+        rewriter.modifyOpInPlace(op, [&]() {
+            for (mlir::OpOperand &operand : op->getOpOperands()) {
+                auto val = operand.get();
+                if (auto path = getPath(val); !path.isEmpty()) {
+                    FieldLocation from(index, path);
+                    bool isRef = mlir::isa<P4HIR::ReferenceType>(val.getType());
+                    auto newVal = isRef ? parent.getRef(val.getLoc(), from)
+                                        : parent.getVal(val.getLoc(), from);
+                    if (!newVal) {
+                        op->emitError("Cannot replace access of ") << path.str();
+                        success = false;
+                        break;
+                    }
+                    operand.set(newVal);
+                }
+            }
+        });
+        return success ? mlir::success() : mlir::failure();
+    }
 }

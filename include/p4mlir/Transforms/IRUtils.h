@@ -18,6 +18,25 @@
 
 namespace P4::P4MLIR::IRUtils {
 
+/// Assuming that `args` are existing arguments of `obj` then add one each new argument to `obj` for
+/// each of `args`. Each new argument is placed just before the original and has the same attributes
+/// and location. If `newTypes` is non-empty then these types are used for the new arguments,
+/// otherwise the same types as `args` are used.
+mlir::FailureOr<llvm::SmallVector<mlir::BlockArgument>> cloneFunctionLikeArgs(
+    mlir::FunctionOpInterface obj, llvm::ArrayRef<mlir::BlockArgument> args,
+    llvm::ArrayRef<mlir::Type> newTypes = {});
+
+/// Assuming that `args` are existing arguments of `obj` then erase all these arguments from `obj`.
+mlir::LogicalResult eraseFunctionLikeArgs(mlir::FunctionOpInterface obj,
+                                          llvm::ArrayRef<mlir::BlockArgument> args);
+
+/// Legalize `str` to a name that only contains alphanumeric characters and underscores.
+std::string legalizeName(std::string str);
+
+/// Create a struct type named `name` and with fields based on `paths`.
+P4HIR::StructType createStructType(mlir::MLIRContext *ctx, const llvm::Twine &name,
+                                   const llvm::SmallVectorImpl<P4HIR::FieldPath> &paths);
+
 /// Make `val` accessible to `op` regardless of wherher `op` is inside an action.
 mlir::Value getAccessibleValue(mlir::RewriterBase &rewriter, mlir::Operation *op, mlir::Value val);
 
@@ -289,6 +308,212 @@ class PathRewriter {
     /// Optional mapping of indirect value uses. An indirect use is when a value is accessed in a
     /// way other than normal SSA def-use chains (e.g. through symbols).
     const IndirectUsesMap *indirectUses = nullptr;
+};
+
+/// A helper class to store remapped "locations" between a source and a target collections of types.
+struct LocationMapping {
+    /// Represents a FieldPath in the I-th object of a collection.
+    using FieldLocation = std::pair<unsigned, P4HIR::FieldPath>;
+
+    /// Represents a FieldPath in the I-th object of a collection, where the path is split in two
+    /// parts.
+    using SplitFieldLocation = std::tuple<unsigned, P4HIR::FieldPath, P4HIR::FieldPath>;
+
+    /// Constructor for when both the source and target collection types are known in advance.
+    LocationMapping(llvm::SmallVector<mlir::Type> from, llvm::SmallVector<mlir::Type> to)
+        : fromTypes(std::move(from)), toTypes(std::move(to)) {}
+
+    /// Constructor for when the target collection types will be computed later.
+    LocationMapping(llvm::SmallVector<mlir::Type> from, unsigned toCount)
+        : fromTypes(std::move(from)), toTypes(toCount, mlir::Type()) {}
+
+    /// Set or change the target collection types to `to`.
+    void setToTypes(llvm::SmallVector<mlir::Type> to) {
+        assert((to.size() == toCount()) && "Unexpected 'to' collection size");
+        toTypes = std::move(to);
+    }
+
+    /// Set or change the target collection type at `index` to `to`.
+    void setToType(unsigned index, mlir::Type to) { toTypes[index] = to; }
+
+    /// Get the types of the source collection.
+    const llvm::SmallVector<mlir::Type> &getFromTypes() const { return fromTypes; }
+
+    /// Get the types of the target collection.
+    const llvm::SmallVector<mlir::Type> &getToTypes() const { return toTypes; }
+
+    /// Get the size of the source collection.
+    unsigned fromCount() const { return fromTypes.size(); }
+
+    /// Get the size of the target collection.
+    unsigned toCount() const { return toTypes.size(); }
+
+    /// Return a mapping entry if it exists for `from`, nullptr otherwise.
+    const FieldLocation *lookup(FieldLocation from) const {
+        auto it = mapping.find(from);
+        return (it != mapping.end()) ? &(it->second) : nullptr;
+    }
+
+    /// Return a mapping entry if it exists for `from`, nullptr otherwise.
+    FieldLocation *lookup(FieldLocation from) {
+        auto it = mapping.find(from);
+        return (it != mapping.end()) ? &(it->second) : nullptr;
+    }
+
+    /// If `from` is a field from the source collection that exists as a whole in another place,
+    /// return a split location to access it in the target collection. If different subfields of
+    /// `from` are located in different places then a single target location does not exist and
+    /// std::nullopt is returned.
+    std::optional<SplitFieldLocation> remap(FieldLocation from) const;
+
+    /// Record that `from` in the source collection should be remapped to `to` in the target
+    /// collection.
+    bool addMapping(FieldLocation from, FieldLocation to);
+
+    /// Record that `from` in the source collection should be remapped to the `to`-ith target
+    /// collection without yet specifying the exact mapping.
+    bool markForMapping(FieldLocation from, unsigned to) {
+        return addMapping(from, FieldLocation(to, P4HIR::FieldPath()));
+    }
+
+    /// Record that the locations defined by `fromIndex` and `fromPaths` in the source collection
+    /// should be remapped to the locations defined by `toIndex` and `toPaths` in the target
+    /// collection.
+    void addMapping(unsigned fromIndex, llvm::SmallVectorImpl<P4HIR::FieldPath> &fromPaths,
+                    unsigned toIndex, llvm::SmallVectorImpl<P4HIR::FieldPath> &toPaths) {
+        assert((fromPaths.size() == toPaths.size()) && "Expected same-size path collections");
+        for (auto [fromPath, toPath] : llvm::zip_equal(fromPaths, toPaths))
+            addMapping(FieldLocation(fromIndex, fromPath), FieldLocation(toIndex, toPath));
+    }
+
+    /// Get a range for all paths in the `index`-th object in the source collection.
+    auto getFromPaths(unsigned index) const {
+        auto filteredKeys = llvm::make_filter_range(
+            mapping.keys(), [index](const auto &k) { return k.first == index; });
+        return llvm::map_range(filteredKeys, [](const auto &k) { return k.second; });
+    }
+
+    /// Get a range for all mapping entries.
+    auto getMapping() const { return llvm::make_range(mapping.begin(), mapping.end()); }
+
+    /// Get a range for all mapping entries regarding the `index`-th object in the source
+    /// collection.
+    auto getMapping(unsigned index) const {
+        return llvm::make_filter_range(
+            getMapping(), [index](const auto &e) { return e.getFirst().first == index; });
+    }
+
+    /// Returns a minimal vector of all FieldLocations that need to be mapped to create a complete
+    /// mapping.
+    llvm::SmallVector<FieldLocation> getUnmapped() const {
+        llvm::SmallVector<FieldLocation> result;
+        for (auto [index, type] : llvm::enumerate(fromTypes))
+            getUnmappedImpl(index, P4HIR::FieldPath(type), result);
+
+        return result;
+    }
+
+    /// Returns a minimal vector of all FieldLocations that need to be mapped to create a complete
+    /// mapping of the `index`-th source object.
+    llvm::SmallVector<FieldLocation> getUnmapped(unsigned index) const {
+        llvm::SmallVector<FieldLocation> result;
+        getUnmappedImpl(index, P4HIR::FieldPath(fromTypes[index]), result);
+        return result;
+    }
+
+    /// Return true iff this mapping is complete. A complete mapping is one where all source leaf
+    /// fields can be remapped in the target location.
+    bool isComplete() const { return getUnmapped().empty(); }
+
+    /// Return true iff this mapping is unique. A unique mapping is one where each source field has
+    /// only one target location to be remapped at.
+    bool isUnique() const {
+        for (auto [index, type] : llvm::enumerate(fromTypes))
+            if (!isUniqueImpl(index, P4HIR::FieldPath(type), false)) return false;
+
+        return true;
+    }
+
+    /// Check that the source and target types and paths are valid.
+    bool verify() const;
+
+ protected:
+    void getUnmappedImpl(unsigned index, P4HIR::FieldPath path,
+                         llvm::SmallVector<FieldLocation> &result) const;
+
+    bool isUniqueImpl(unsigned index, P4HIR::FieldPath path, bool hasLocation) const;
+
+    /// Represents a location mapping between the source and the target collections.
+    llvm::DenseMap<FieldLocation, FieldLocation> mapping;
+
+    llvm::SmallVector<mlir::Type> fromTypes;
+    llvm::SmallVector<mlir::Type> toTypes;
+};
+
+/// A helper class to replace uses of a source collection to ones in a target collections of values
+/// using a corresponding `LocationMapping`.
+struct LocationRewriter {
+    using FieldLocation = LocationMapping::FieldLocation;
+
+    LocationRewriter(mlir::RewriterBase &rewriter, LocationMapping &mapping,
+                     llvm::SmallVector<mlir::Value> from, llvm::SmallVector<mlir::Value> to)
+        : rewriter(rewriter),
+          mapping(mapping),
+          fromValues(std::move(from)),
+          toValues(std::move(to)) {
+        assert((fromValues.size() == mapping.fromCount()) &&
+               "Value and type size mismatch for the source collection");
+        assert((toValues.size() == mapping.toCount()) &&
+               "Value and type size mismatch for the target collection");
+        for (auto [value, type] : llvm::zip_equal(fromValues, mapping.getFromTypes()))
+            assert((P4HIR::maybeUnref(value.getType()) == type) &&
+                   "Value and type mismatch in the source collection");
+        for (auto [value, type] : llvm::zip_equal(toValues, mapping.getToTypes()))
+            assert((P4HIR::maybeUnref(value.getType()) == type) &&
+                   "Value and type mismatch in the target collection");
+    }
+
+    virtual ~LocationRewriter() {}
+
+    /// Return a remapped reference for `from` if possible, otherwise return an empty value.
+    virtual mlir::Value getRef(mlir::Location loc, FieldLocation from);
+
+    /// Return a remapped value for `from` if possible, otherwise return an empty value.
+    /// If `allowSplit` is true then multiple values from different places in the target
+    /// collection may be combined to do so.
+    virtual mlir::Value getVal(mlir::Location loc, FieldLocation from, bool allowSplit = true);
+
+    /// Perform a remapped assignment for `from` if possible and return true, otherwise return
+    /// false. If `allowSplit` is true then the assignment may be broken into multiple assignments
+    /// in the target collection to do so.
+    virtual bool setVal(mlir::Location loc, FieldLocation from, mlir::Value val,
+                        bool allowSplit = true);
+
+    /// Replace all uses of the source collection with ones from the target collection.
+    mlir::LogicalResult transform() {
+        for (unsigned index = 0, e = fromValues.size(); index < e; index++)
+            if (failed(ValueRewriter(*this, index).transform(true))) return mlir::failure();
+
+        return mlir::success();
+    }
+
+ protected:
+    struct ValueRewriter : public IRUtils::PathRewriter {
+        ValueRewriter(LocationRewriter &parent, unsigned index)
+            : PathRewriter(parent.rewriter, parent.fromValues[index]),
+              parent(parent),
+              index(index) {}
+
+        virtual mlir::LogicalResult replaceUsesIn(mlir::Operation *op) override;
+
+        LocationRewriter &parent;
+        unsigned index;
+    };
+
+    mlir::RewriterBase &rewriter;
+    LocationMapping &mapping;
+    llvm::SmallVector<mlir::Value> fromValues;
+    llvm::SmallVector<mlir::Value> toValues;
 };
 
 }  // namespace P4::P4MLIR::IRUtils
