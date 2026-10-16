@@ -1044,11 +1044,12 @@ void P4HIR::VariableOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 
 LogicalResult P4HIR::VariableOp::canonicalize(P4HIR::VariableOp op, PatternRewriter &rewriter) {
     auto users = op->getUsers();
-    auto firstNonAssignOp =
-        llvm::find_if(users, [](auto *user) { return !mlir::isa<P4HIR::AssignOp>(user); });
+    auto firstNonAssignOp = llvm::find_if(users, [](auto *user) {
+        return !mlir::isa<P4HIR::AssignOp, P4HIR::LifetimeStartOp, P4HIR::LifetimeEndOp>(user);
+    });
 
     if (firstNonAssignOp == users.end()) {
-        // Completely remove variable if it is only written to.
+        // Completely remove variable if it is only written to. Lifetime markers count as writes.
         for (auto *user : llvm::make_early_inc_range(users)) rewriter.eraseOp(user);
         rewriter.eraseOp(op);
         return success();
@@ -2392,6 +2393,20 @@ bool P4HIR::AssignSliceOp::coversWholeObject() {
         llvm::cast<P4HIR::ReferenceType>(getRef().getType()).getObjectType());
     return getLowBit() == 0 && getHighBit() + 1 == objectType.getWidth();
 }
+
+//===----------------------------------------------------------------------===//
+// LifetimeStartOp & LifetimeEndOp
+//===----------------------------------------------------------------------===//
+
+// TODO: Verify that a variable with lifetime markers is only accessed within its lifetime.
+static LogicalResult verifyLifetimeMarker(Operation *op, Value ref) {
+    if (!ref.getDefiningOp<P4HIR::VariableOp>()) return op->emitOpError() << "expects a variable";
+    return success();
+}
+
+LogicalResult P4HIR::LifetimeStartOp::verify() { return verifyLifetimeMarker(*this, getRef()); }
+
+LogicalResult P4HIR::LifetimeEndOp::verify() { return verifyLifetimeMarker(*this, getRef()); }
 
 //===----------------------------------------------------------------------===//
 // ParserOp
