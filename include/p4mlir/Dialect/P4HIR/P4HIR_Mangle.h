@@ -27,7 +27,7 @@ class Mangler {
     [[nodiscard]] mlir::StringAttr getFunctionName(
         P4HIR::FuncType type, llvm::ArrayRef<mlir::DictionaryAttr> paramAttrs) const;
     [[nodiscard]] mlir::StringAttr getFunctionName(P4HIR::FuncOp op) const;
-    [[nodiscard]] mlir::StringAttr getPackageName(P4HIR::CtorType type) const;
+    [[nodiscard]] mlir::StringAttr getPackageName(P4HIR::CtorArgsType type) const;
     [[nodiscard]] mlir::StringAttr getPackageName(P4HIR::PackageOp op) const;
     // Provide mangled name for extern instantiation
     [[nodiscard]] mlir::StringAttr getExternName(P4HIR::ExternType type,

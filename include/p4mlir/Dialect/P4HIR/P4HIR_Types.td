@@ -351,24 +351,15 @@ def ControlType : P4HIR_Type<"Control", "control", [AnnotatedType]> {
 
 
 //===----------------------------------------------------------------------===//
-// CtorType
+// CtorArgsType
 //===----------------------------------------------------------------------===//
 // We keep parameter names to simplify matching for ctor arguments during
 // instantiation and specialization.
-def CtorType : P4HIR_Type<"Ctor", "ctor"> {
-  let parameters = (ins ArrayRefParameter<"std::pair<mlir::StringAttr, mlir::Type>">:$inputs,
-                        "mlir::Type":$returnType);
-
-  let builders = [
-    // Construct with an actual return type
-    TypeBuilderWithInferredContext<(ins
-      "llvm::ArrayRef<std::pair<mlir::StringAttr, mlir::Type>>":$inputs, "mlir::Type":$returnType), [{
-      return $_get(returnType.getContext(), inputs, returnType);
-    }]>
-  ];
+def CtorArgsType : P4HIR_Type<"CtorArgs", "ctor_Args"> {
+  let parameters = (ins ArrayRefParameter<"std::pair<mlir::StringAttr, mlir::Type>">:$inputs);
 
   let assemblyFormat = [{
-    `<` custom<CtorType>($inputs, $returnType) `>`
+    `<` custom<CtorArgsType>($inputs) `>`
   }];
 
   let extraClassDeclaration = [{

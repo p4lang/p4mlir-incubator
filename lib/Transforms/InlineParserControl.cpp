@@ -134,7 +134,7 @@ struct InstantiateOpInlineHelper {
         if (ctorParam.getParent().getLeafReference() != callee.getSymName()) return nullptr;
 
         // Find the constant that corresponds to this ctor param from `instOp`.
-        auto ctorInputs = callee.getCtorType().getInputs();
+        auto ctorInputs = callee.getCtorArgsType().getInputs();
         auto it = llvm::find_if(ctorInputs, [&](const auto &input) {
             const auto &[paramName, paramType] = input;
             assert((paramName != ctorParam.getName() || paramType == ctorParam.getType()) &&
