@@ -185,22 +185,20 @@ class PathWalker {
     const IndirectUsesMap *indirectUses;
 };
 
-/// A helper class to replace indexable-typed values with new values that may have entirely
+/// A helper class to replace uses of indexable-typed values with new values that may have
 /// different layouts, using P4HIR::FieldPath. Users of an indexable-typed value may be
 /// field-access operations, which produce new FieldPaths based on their operands, or leaf
-/// operations which consume values. A successful transformation using this class should make
-/// the original value transitively dead: it may only have other field-access operations as
-/// users, which themselves are transitively dead.
+/// operations which consume values.
 /// The root value may either be a reference or a value of an indexable-type and the values to
 /// replace are references or values accordingly.
 class PathRewriter {
  public:
     using IndirectUsesMap = llvm::DenseMap<mlir::Value, llvm::SmallVector<mlir::Value>>;
 
+    /// Full constructor.
     PathRewriter(mlir::RewriterBase &rewriter, mlir::Value root, mlir::Type type,
                  mlir::Value newRoot, mlir::Type newType)
         : rewriter(rewriter), root(root), newRoot(newRoot) {
-        isRef = mlir::isa<P4HIR::ReferenceType>(type);
         rootType = P4HIR::maybeUnref(type);
         if (newType) newRootType = P4HIR::maybeUnref(newType);
     }
@@ -239,15 +237,15 @@ class PathRewriter {
         return val;
     }
 
-    /// `op` is an operation that has some operands accessing root value's fields. If it is possible
-    /// to make `op` not use these operands then this should be done and then mlir::success() must
-    /// be returned. Otherwise mlir::failure() must be returned. These operands and their paths can
-    /// be found by using `getPath` on `op`'s arguments.
-    virtual mlir::LogicalResult replaceUsesIn(mlir::Operation *op) { return mlir::failure(); }
+    /// `op` is an operation that has at least one operand accessing root value's fields. These
+    /// operands and their paths can be found by using `getPath` on `op`'s arguments. If it is
+    /// desirable to transform `op` then this should be done here. Return mlir::success() to
+    /// continue the rewriting or mlir::failure() to interrupt it.
+    virtual mlir::LogicalResult replaceUsesIn(mlir::Operation *op) { return mlir::success(); }
 
     /// `value` is a value used to access the root value's field that corresponds `path`. If it is
-    /// possible to replace `value` with a new equivalent that doesn't depend on the root value,
-    /// then this new value should be returned. Otherwise mlir::Value() should be returned.
+    /// desirable to replace `value` with a new equivalent, then this new value should be returned.
+    /// If nothing should be changed then mlir::Value() should be returned.
     virtual mlir::Value replaceValue(mlir::Value value, P4HIR::FieldPath path) {
         return mlir::Value();
     }
@@ -263,10 +261,10 @@ class PathRewriter {
     /// that operand and path.
     std::pair<mlir::OpOperand *, P4HIR::FieldPath> getOperandWithPath(mlir::Operation *op);
 
-    /// Make `root` transitively unused by transitively replacing or making users dead.
-    /// If `erase` is true, then also erase all intermediate field access operations after
-    /// replacing.
-    mlir::LogicalResult replace(bool erase = false);
+    /// Walk `root`'s field-access and leaf users and replace values and operations using the
+    /// `replace` functions. If `eraseDead` is true, then erase dead intermediate field access
+    /// operations after replacing is done.
+    mlir::LogicalResult transform(bool eraseDead = false);
 
  protected:
     mlir::RewriterBase &rewriter;
@@ -281,8 +279,6 @@ class PathRewriter {
     mlir::Value newRoot;
     /// Optional helper: A plain (without p4hir.ref) new root type for `value` after replacement.
     mlir::Type newRootType;
-    /// True if doing reference replacement, false if doing value replacement.
-    bool isRef;
 
     /// Maintains a mapping from values that are used in leaf operations to field paths.
     llvm::DenseMap<mlir::Value, P4HIR::FieldPath> valueToPath;
