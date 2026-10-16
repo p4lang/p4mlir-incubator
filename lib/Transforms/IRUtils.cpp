@@ -405,14 +405,14 @@ std::pair<mlir::OpOperand *, P4HIR::FieldPath> IRUtils::PathRewriter::getOperand
     return {resOperand, resPath};
 }
 
-mlir::LogicalResult IRUtils::PathRewriter::replace(bool erase /* = false */) {
+mlir::LogicalResult IRUtils::PathRewriter::transform(bool eraseDead /* = false */) {
     /// Use a vector and deduplicate with a set so we get deterministic order.
     llvm::SmallVector<mlir::Operation *> leafOps;
     mlir::DenseSet<mlir::Operation *> seenLeafOps;
 
     auto nodeCb = [&](mlir::Value value, P4HIR::FieldPath path) {
         mlir::Operation *def = value.getDefiningOp();
-        if (erase && def) opsToRemove.push_back(def);
+        if (eraseDead && def) opsToRemove.push_back(def);
 
         rewriter.setInsertionPointAfterValue(value);
         mlir::Value valReplacement = replaceValue(value, path);
@@ -445,11 +445,11 @@ mlir::LogicalResult IRUtils::PathRewriter::replace(bool erase /* = false */) {
         if (failed(replaceUsesIn(op))) return mlir::failure();
     }
 
-    if (erase) {
+    if (eraseDead) {
         // `opsToRemove` is in DFS preorder, so we need to erase them from back to front.
         while (!opsToRemove.empty()) {
             mlir::Operation *op = opsToRemove.pop_back_val();
-            rewriter.eraseOp(op);
+            if (op->use_empty()) rewriter.eraseOp(op);
         }
     }
 
