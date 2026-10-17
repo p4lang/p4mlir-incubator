@@ -37,6 +37,17 @@ Install common LLVM/MLIR requirements following the [instructions](https://mlir.
 ./build_tools/ubuntu_install_mlir_requirements.sh
 ```
 
+Alternatively, if you use [Nix](https://nixos.org/), enter a shell that provides
+the same requirements, pinned by `flake.lock`, on both Linux and macOS:
+
+```shell
+nix develop
+```
+
+[direnv](https://direnv.net/) users can add a `.envrc` containing `use flake` to
+enter it automatically. The shell also carries `clang-format`, `clang-tidy`, `clangd`,
+`cpplint` and `reuse`. All the commands below work unchanged inside it.
+
 Then build MLIR from source and install it:
 
 ```shell
