@@ -6,6 +6,7 @@ add_mlir_dialect_library(P4MLIRTransforms
   EnumElimination.cpp
   FlattenCFG.cpp
   HoistVariables.cpp
+  LocalizeArgument.cpp
   InlineParserControl.cpp
   MakeHeadersToplevel.cpp
   PrintParsersGraph.cpp
