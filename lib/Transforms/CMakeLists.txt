@@ -6,8 +6,8 @@ add_mlir_dialect_library(P4MLIRTransforms
   EnumElimination.cpp
   FlattenCFG.cpp
   HoistVariables.cpp
-  IRUtils.cpp
   InlineParserControl.cpp
+  MakeHeadersToplevel.cpp
   PrintParsersGraph.cpp
   RemoveAliases.cpp
   RemoveSoftCF.cpp
@@ -28,6 +28,7 @@ add_mlir_dialect_library(P4MLIRTransforms
 
   LINK_LIBS PUBLIC
   P4MLIRConversion
+  P4MLIR_P4HIR
   MLIRIR
   MLIRSupport
   MLIRTransforms
