@@ -553,4 +553,22 @@ def MakeHeadersToplevel : InterfacePass<"p4hir-make-headers-toplevel", "mlir::Fu
   let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
 }
 
+//===----------------------------------------------------------------------===//
+// LocalizeArgument
+//===----------------------------------------------------------------------===//
+
+def LocalizeArgument : Pass<"p4hir-localize-argument", "mlir::ModuleOp"> {
+  let summary = "Localize fields of an argument that are not shared between objects";
+
+  let options = [
+    Option<"parserArgIdx", "parser-arg-idx", "unsigned", /*default=*/"0",
+           "The index for the parser argument to localize">,
+    Option<"controlArgIdx", "control-arg-idx", "unsigned", /*default=*/"0",
+           "The index for the control argument to localize">,
+  ];
+
+  let constructor = "P4MLIR::createLocalizeArgumentPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
 #endif // P4MLIR_TRANSFORMS_PASSES_TD

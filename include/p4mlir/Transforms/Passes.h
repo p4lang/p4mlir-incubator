@@ -13,6 +13,7 @@
 
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "p4mlir/Dialect/P4HIR/FieldPath.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 
@@ -34,6 +35,7 @@ namespace P4::P4MLIR {
 #define GEN_PASS_DECL_EXPANDSLICEREADASSIGN
 #define GEN_PASS_DECL_SYMBOLDCE
 #define GEN_PASS_DECL_MAKEHEADERSTOPLEVEL
+#define GEN_PASS_DECL_LOCALIZEARGUMENT
 #include "p4mlir/Transforms/Passes.h.inc"
 
 std::unique_ptr<mlir::Pass> createPrintParsersGraphPass();
@@ -53,6 +55,7 @@ std::unique_ptr<mlir::Pass> createExpandEmitPass();
 std::unique_ptr<mlir::Pass> createExpandSliceReadAssignPass();
 std::unique_ptr<mlir::Pass> createSymbolDCEPass();
 std::unique_ptr<mlir::Pass> createMakeHeadersToplevelPass();
+std::unique_ptr<mlir::Pass> createLocalizeArgumentPass();
 
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"
