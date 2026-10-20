@@ -88,9 +88,10 @@ class PathRewriter {
         llvm::SmallVector<mlir::Operation *> leafOps;
         mlir::DenseSet<mlir::Operation *> seenLeafOps;
 
-        auto nodeCb = [&](mlir::Value value, P4HIR::FieldPath path) {
-            mlir::Operation *def = value.getDefiningOp();
+        auto nodeCb = [&](mlir::Operation *def, mlir::Value value, P4HIR::FieldPath path) {
             if (eraseDead && def) opsToRemove.push_back(def);
+
+            if (!value) return mlir::WalkResult::advance();
 
             rewriter.setInsertionPointAfterValue(value);
             mlir::Value valReplacement = replaceValue(value, path);
