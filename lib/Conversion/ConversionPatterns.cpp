@@ -145,6 +145,8 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
 
 static FailureOr<mlir::Attribute> convertAttribute(mlir::Attribute attr,
                                                    const TypeConverter *typeConverter) {
+    if (!attr) return attr;
+
     return llvm::TypeSwitch<mlir::Attribute, FailureOr<mlir::Attribute>>(attr)
         .Case<mlir::TypeAttr>([&](auto typeAttr) -> FailureOr<mlir::Attribute> {
             auto newType = typeConverter->convertType(typeAttr.getValue());
