@@ -339,28 +339,6 @@ void IRUtils::SplitStateRewriter::finalize() {
     step = FINALIZED;
 }
 
-IRUtils::IndirectUses::MapType *IRUtils::IndirectUses::getMapImpl(mlir::Operation *owner) {
-    auto it = mappings.find(owner);
-    if (it != mappings.end()) return it->second.get();
-
-    auto mapping = std::make_unique<MapType>();
-    auto *ptr = mapping.get();
-    populateControlLocalIndirectUses(owner, *ptr);
-
-    mappings[owner] = std::move(mapping);
-    return ptr;
-}
-
-void IRUtils::IndirectUses::populateControlLocalIndirectUses(mlir::Operation *owner,
-                                                             MapType &mapping) {
-    owner->walk([&](P4HIR::SymToValueOp symbolRef) {
-        if (auto referencedControlLocal = symbolRef.getDeclOp<P4HIR::ControlLocalOp>()) {
-            auto [it, ins] = mapping.insert({referencedControlLocal.getVal(), {}});
-            it->second.push_back(symbolRef.getResult());
-        }
-    });
-}
-
 std::pair<mlir::Value, P4HIR::FieldPath> IRUtils::P4HIRFieldPathOps::getAccessedFieldStruct(
     mlir::Operation *op, const mlir::OpOperand &operand, P4HIR::FieldPath path) {
     return llvm::TypeSwitch<mlir::Operation *, std::pair<mlir::Value, P4HIR::FieldPath>>(op)

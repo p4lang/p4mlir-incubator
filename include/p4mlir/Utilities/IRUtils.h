@@ -129,40 +129,6 @@ class SplitStateRewriter {
     mlir::Operation *stateCreationPoint;
 };
 
-/// Helper class that efficiently provides additional indirect uses for values. Indirect uses are
-/// uses that are made by means other than SSA def-use chains (e.g. symbol-based access).
-class IndirectUses {
- public:
-    using MapType = llvm::DenseMap<mlir::Value, llvm::SmallVector<mlir::Value>>;
-
-    /// Returns indirect uses of `val`.
-    llvm::ArrayRef<mlir::Value> getIndirectUses(mlir::Value val) {
-        mlir::Operation *owner;
-        if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(val))
-            owner = blockArg.getOwner()->getParentOp();
-        else
-            owner = val.getDefiningOp();
-
-        if (!owner) return {};
-
-        auto *mapping = getMapImpl(owner);
-        if (!mapping) return {};
-
-        auto it = mapping->find(val);
-        if (it == mapping->end()) return {};
-
-        return it->second;
-    }
-
- protected:
-    /// Populate `mapping` to acount for `control_local` and `symbol_ref`-based accesses in `owner`.
-    static void populateControlLocalIndirectUses(mlir::Operation *owner, MapType &mapping);
-
-    MapType *getMapImpl(mlir::Operation *owner);
-
-    llvm::DenseMap<mlir::Operation *, std::unique_ptr<MapType>> mappings;
-};
-
 /// Helper class containing common FieldPath related functions that are used in other
 /// transformations and utilities.
 class P4HIRFieldPathOps {

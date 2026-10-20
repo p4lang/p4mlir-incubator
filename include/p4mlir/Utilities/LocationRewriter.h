@@ -186,8 +186,9 @@ struct LocationRewriter {
 
     virtual ~LocationRewriter() {}
 
-    /// Return a remapped reference for `from` if possible, otherwise return an empty value.
-    mlir::Value getRef(mlir::Location loc, FieldLocation from) {
+    /// Return a remapped reference to access `from` at `where` if possible, otherwise return an
+    /// empty value.
+    mlir::Value getRef(mlir::Operation *where, mlir::Location loc, FieldLocation from) {
         auto to = mapping.remap(from);
         if (!to) return mlir::Value();
 
@@ -195,18 +196,18 @@ struct LocationRewriter {
         if (!mlir::isa<P4HIR::ReferenceType>(toValues[toIndex].getType())) return mlir::Value();
 
         auto fullPath = P4HIR::FieldPath::concat(toPath, toField);
-        return FieldPathOpsT::buildPathAccess(rewriter, loc, toValues[toIndex], fullPath);
+        return buildPathAccess(where, loc, toIndex, fullPath);
     }
 
-    /// Return a remapped value for `from` if possible, otherwise return an empty value.
-    /// If `allowSplit` is true then multiple values from different places in the target
+    /// Return a remapped value to access `from` at `where` if possible, otherwise return an empty
+    /// value. If `allowSplit` is true then multiple values from different places in the target
     /// collection may be combined to do so.
-    mlir::Value getVal(mlir::Location loc, FieldLocation from, bool allowSplit = true) {
+    mlir::Value getVal(mlir::Operation *where, mlir::Location loc, FieldLocation from,
+                       bool allowSplit = true) {
         if (auto to = mapping.remap(from)) {
             auto [toIndex, toPath, toField] = *to;
             auto fullPath = P4HIR::FieldPath::concat(toPath, toField);
-            mlir::Value res =
-                FieldPathOpsT::buildPathAccess(rewriter, loc, toValues[toIndex], fullPath);
+            mlir::Value res = buildPathAccess(where, loc, toIndex, fullPath);
             if (mlir::isa<P4HIR::ReferenceType>(res.getType()))
                 res = P4HIR::ReadOp::create(rewriter, loc, res);
             return res;
@@ -219,7 +220,7 @@ struct LocationRewriter {
             // Build the read value by combining individual values for its fields.
             if (auto structType = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(path.getType())) {
                 auto fields = llvm::map_to_vector(path.children(), [&](auto childPath) {
-                    return getVal(loc, FieldLocation(index, childPath), allowSplit);
+                    return getVal(where, loc, FieldLocation(index, childPath), allowSplit);
                 });
                 return P4HIR::StructOp::create(rewriter, loc, structType, fields);
             }
@@ -228,17 +229,17 @@ struct LocationRewriter {
         }
     }
 
-    /// Perform a remapped assignment for `from` if possible and return true, otherwise return
-    /// false. If `allowSplit` is true then the assignment may be broken into multiple assignments
-    /// in the target collection to do so.
-    bool setVal(mlir::Location loc, FieldLocation from, mlir::Value val, bool allowSplit = true) {
+    /// Perform a remapped assignment to `from` at `where` if possible and return true, otherwise
+    /// return false. If `allowSplit` is true then the assignment may be broken into multiple
+    /// assignments in the target collection to do so.
+    bool setVal(mlir::Operation *where, mlir::Location loc, FieldLocation from, mlir::Value val,
+                bool allowSplit = true) {
         if (auto to = mapping.remap(from)) {
             auto [toIndex, toPath, toField] = *to;
             if (!mlir::isa<P4HIR::ReferenceType>(toValues[toIndex].getType())) return false;
 
             auto fullPath = P4HIR::FieldPath::concat(toPath, toField);
-            mlir::Value res =
-                FieldPathOpsT::buildPathAccess(rewriter, loc, toValues[toIndex], fullPath);
+            mlir::Value res = buildPathAccess(where, loc, toIndex, fullPath);
             P4HIR::AssignOp::create(rewriter, loc, val, res);
             return true;
         } else {
@@ -251,7 +252,7 @@ struct LocationRewriter {
                 for (auto field : structType.getFields()) {
                     mlir::Value fieldVal =
                         P4HIR::StructExtractOp::create(rewriter, loc, val, field);
-                    setVal(loc, FieldLocation(index, path[field]), fieldVal, allowSplit);
+                    setVal(where, loc, FieldLocation(index, path[field]), fieldVal, allowSplit);
                 }
                 return true;
             }
@@ -270,6 +271,14 @@ struct LocationRewriter {
 
  protected:
     using PathRewriterT = PathRewriter<FieldPathOpsT>;
+
+    /// Return an accessible value to access `path` in the `index`-th target value at `where`.
+    mlir::Value buildPathAccess(mlir::Operation *where, mlir::Location loc, unsigned index,
+                                P4HIR::FieldPath path) {
+        mlir::Value val = getAccessibleValue(rewriter, where, toValues[index]);
+        return FieldPathOpsT::buildPathAccess(rewriter, loc, val, path);
+    }
+
     struct ValueRewriter : public PathRewriterT {
         ValueRewriter(LocationRewriter &parent, unsigned index)
             : PathRewriterT(parent.rewriter, parent.fromValues[index]),
@@ -279,18 +288,15 @@ struct LocationRewriter {
         virtual mlir::LogicalResult replaceUsesIn(mlir::Operation *op) override {
             if (auto readOp = mlir::dyn_cast<P4HIR::ReadOp>(op)) {
                 auto path = this->getOperandWithPath(op).second;
-                auto newVal = parent.getVal(op->getLoc(), FieldLocation(index, path));
+                auto newVal = parent.getVal(op, op->getLoc(), FieldLocation(index, path));
                 if (!newVal) return op->emitError("Cannot replace read of ") << path.str();
                 this->rewriter.replaceOp(op, newVal);
                 return mlir::success();
             } else if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(op)) {
                 auto path = this->getOperandWithPath(op).second;
-                bool success =
-                    parent.setVal(op->getLoc(), FieldLocation(index, path), assignOp.getValue());
+                bool success = parent.setVal(op, op->getLoc(), FieldLocation(index, path),
+                                             assignOp.getValue());
                 if (!success) return op->emitError("Cannot replace write to ") << path.str();
-                this->rewriter.eraseOp(op);
-                return mlir::success();
-            } else if (mlir::isa<P4HIR::ControlLocalOp>(op)) {
                 this->rewriter.eraseOp(op);
                 return mlir::success();
             } else {
@@ -301,8 +307,8 @@ struct LocationRewriter {
                         if (auto path = this->getPath(val); !path.isEmpty()) {
                             FieldLocation from(index, path);
                             bool isRef = mlir::isa<P4HIR::ReferenceType>(val.getType());
-                            auto newVal = isRef ? parent.getRef(val.getLoc(), from)
-                                                : parent.getVal(val.getLoc(), from);
+                            auto newVal = isRef ? parent.getRef(op, val.getLoc(), from)
+                                                : parent.getVal(op, val.getLoc(), from);
                             if (!newVal) {
                                 op->emitError("Cannot replace access of ") << path.str();
                                 success = false;
