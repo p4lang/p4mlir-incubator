@@ -145,6 +145,7 @@ P4HIRTypeConverter::P4HIRTypeConverter() {
 
 static FailureOr<mlir::Attribute> convertAttribute(mlir::Attribute attr,
                                                    const TypeConverter *typeConverter) {
+    // converted op might have `UnitAttr` and its absence is just nullptr. `TypeSwitch` below will fail for such corner case
     if (!attr) return attr;
 
     return llvm::TypeSwitch<mlir::Attribute, FailureOr<mlir::Attribute>>(attr)
