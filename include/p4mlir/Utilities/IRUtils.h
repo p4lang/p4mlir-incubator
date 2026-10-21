@@ -152,13 +152,6 @@ class P4HIRFieldPathOps {
     /// Builds operations to access the field that corresponds to `field` from `value`.
     static mlir::Value buildFieldAccess(mlir::RewriterBase &rewriter, mlir::Location loc,
                                         mlir::Value val, P4HIR::IndexedField field);
-
-    /// Builds operations to access the field that corresponds to `path` from `value`.
-    static mlir::Value buildPathAccess(mlir::RewriterBase &rewriter, mlir::Location loc,
-                                       mlir::Value val, P4HIR::FieldPath path) {
-        for (auto field : path.fields()) val = buildFieldAccess(rewriter, loc, val, field);
-        return val;
-    }
 };
 
 }  // namespace P4::P4MLIR::IRUtils

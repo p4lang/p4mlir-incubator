@@ -196,7 +196,7 @@ struct LocationRewriter {
         if (!mlir::isa<P4HIR::ReferenceType>(toValues[toIndex].getType())) return mlir::Value();
 
         auto fullPath = P4HIR::FieldPath::concat(toPath, toField);
-        return buildPathAccess(where, loc, toIndex, fullPath);
+        return PathRewriterT::buildPathAccess(rewriter, where, loc, toValues[toIndex], fullPath);
     }
 
     /// Return a remapped value to access `from` at `where` if possible, otherwise return an empty
@@ -207,7 +207,8 @@ struct LocationRewriter {
         if (auto to = mapping.remap(from)) {
             auto [toIndex, toPath, toField] = *to;
             auto fullPath = P4HIR::FieldPath::concat(toPath, toField);
-            mlir::Value res = buildPathAccess(where, loc, toIndex, fullPath);
+            mlir::Value res =
+                PathRewriterT::buildPathAccess(rewriter, where, loc, toValues[toIndex], fullPath);
             if (mlir::isa<P4HIR::ReferenceType>(res.getType()))
                 res = P4HIR::ReadOp::create(rewriter, loc, res);
             return res;
@@ -239,7 +240,8 @@ struct LocationRewriter {
             if (!mlir::isa<P4HIR::ReferenceType>(toValues[toIndex].getType())) return false;
 
             auto fullPath = P4HIR::FieldPath::concat(toPath, toField);
-            mlir::Value res = buildPathAccess(where, loc, toIndex, fullPath);
+            mlir::Value res =
+                PathRewriterT::buildPathAccess(rewriter, where, loc, toValues[toIndex], fullPath);
             P4HIR::AssignOp::create(rewriter, loc, val, res);
             return true;
         } else {
@@ -271,13 +273,6 @@ struct LocationRewriter {
 
  protected:
     using PathRewriterT = PathRewriter<FieldPathOpsT>;
-
-    /// Return an accessible value to access `path` in the `index`-th target value at `where`.
-    mlir::Value buildPathAccess(mlir::Operation *where, mlir::Location loc, unsigned index,
-                                P4HIR::FieldPath path) {
-        mlir::Value val = getAccessibleValue(rewriter, where, toValues[index]);
-        return FieldPathOpsT::buildPathAccess(rewriter, loc, val, path);
-    }
 
     struct ValueRewriter : public PathRewriterT {
         ValueRewriter(LocationRewriter &parent, unsigned index)
