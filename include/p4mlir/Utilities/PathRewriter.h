@@ -44,6 +44,16 @@ class PathRewriter {
     PathRewriter &operator=(const PathRewriter &) = delete;
     virtual ~PathRewriter() {}
 
+    /// Return an accessible value to access `path` from the `value` at `where`.
+    static mlir::Value buildPathAccess(mlir::RewriterBase &rewriter, mlir::Operation *where,
+                                       mlir::Location loc, mlir::Value value,
+                                       P4HIR::FieldPath path) {
+        mlir::Value val = getAccessibleValue(rewriter, where, value);
+        for (auto field : path.fields())
+            val = FieldPathOpsT::buildFieldAccess(rewriter, loc, val, field);
+        return val;
+    }
+
     /// `op` is an operation that has at least one operand accessing root value's fields. These
     /// operands and their paths can be found by using `getPath` on `op`'s arguments. If it is
     /// desirable to transform `op` then this should be done here. Return mlir::success() to
