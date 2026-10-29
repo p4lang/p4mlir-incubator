@@ -200,6 +200,8 @@ def ReadOp : P4HIR_Op<"read", [
     $ref `:` type($ref) attr-dict
   }];
 
+  let hasFolder = 1;
+
   // FIXME: add verifier.
 }
 

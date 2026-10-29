@@ -51,6 +51,13 @@ inline TypeT unref(mlir::Type type) {
     return mlir::dyn_cast<TypeT>(refType.getObjectType());
 }
 
+// Return whether `type` is bit<0>, whose only value is 0. Other empty types, such as varbit<0> or
+// tuple<>, are not covered.
+inline bool isZeroWidth(mlir::Type type) {
+    auto bitsType = mlir::dyn_cast<P4::P4MLIR::P4HIR::BitsType>(type);
+    return bitsType && bitsType.getWidth() == 0;
+}
+
 }  // namespace P4::P4MLIR::P4HIR
 
 #endif  // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_H
