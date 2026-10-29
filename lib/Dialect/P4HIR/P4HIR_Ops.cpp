@@ -274,6 +274,13 @@ OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
     // cast(%a) : A -> A ==> %a
     if (getOperand().getType() == getType()) return getOperand();
 
+    // Fixed-width integer casts to or from bit<0> produce 0.
+    // cast(%a) : A -> bit<0> ==> 0
+    // cast(%a) : bit<0> -> bit<W> ==> 0
+    if (mlir::isa<P4HIR::BitsType>(getType()) &&
+        (P4HIR::isZeroWidth(getType()) || P4HIR::isZeroWidth(getOperand().getType())))
+        return getIntegerAttr(getType(), 0);
+
     // Casts of integer constants
     if (auto inputConst = mlir::dyn_cast_if_present<ConstOp>(getOperand().getDefiningOp()))
         if (auto castResult = P4HIR::foldConstantCast(getType(), inputConst.getValue()))
@@ -363,6 +370,13 @@ void P4HIR::ReadOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
     setNameFn(getResult(), "val");
 }
 
+OpFoldResult P4HIR::ReadOp::fold(FoldAdaptor) {
+    // read(%r) : bit<0> -> 0
+    if (P4HIR::isZeroWidth(getType())) return getIntegerAttr(getType(), 0);
+
+    return {};
+}
+
 //===----------------------------------------------------------------------===//
 // UnaryOp
 //===----------------------------------------------------------------------===//
@@ -409,6 +423,9 @@ void P4HIR::UnaryOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 
 OpFoldResult P4HIR::UnaryOp::fold(FoldAdaptor adaptor) {
     P4HIR::UnaryOpKind kind = getKind();
+
+    // OP(x : bit<0>) -> 0
+    if (P4HIR::isZeroWidth(getType())) return getIntegerAttr(getType(), 0);
 
     // Identity.
     // plus(x) -> x
@@ -526,7 +543,14 @@ void P4HIR::BinOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 }
 
 LogicalResult P4HIR::BinOp::verify() {
-    if (mlir::isa<P4HIR::BitsType>(getType())) return success();
+    if (mlir::isa<P4HIR::BitsType>(getType())) {
+        // P4 requires a nonzero denominator, but the only bit<0> value is 0.
+        if (P4HIR::isZeroWidth(getType()) &&
+            (getKind() == BinOpKind::Div || getKind() == BinOpKind::Mod))
+            return emitOpError() << (getKind() == BinOpKind::Div ? "division" : "modulo")
+                                 << " by zero: the only value of " << getType() << " is 0";
+        return success();
+    }
 
     if (mlir::isa<P4HIR::InfIntType>(getType())) {
         switch (getKind()) {
@@ -555,6 +579,9 @@ LogicalResult P4HIR::BinOp::verify() {
 
 OpFoldResult P4HIR::BinOp::fold(FoldAdaptor adaptor) {
     P4HIR::BinOpKind kind = getKind();
+
+    // OP(a : bit<0>, b : bit<0>) -> 0
+    if (P4HIR::isZeroWidth(getType())) return getIntegerAttr(getType(), 0);
 
     if (isCommutative()) sortCommutativeArgs(getOperation(), adaptor.getOperands());
 
@@ -739,6 +766,16 @@ LogicalResult P4HIR::ConcatOp::verify() {
 }
 
 OpFoldResult P4HIR::ConcatOp::fold(FoldAdaptor adaptor) {
+    // concat(a : bit<0>, b : bit<0>) -> 0
+    if (P4HIR::isZeroWidth(getType())) return getIntegerAttr(getType(), 0);
+
+    // concat(a, b : bit<0>) -> a
+    if (P4HIR::isZeroWidth(getRhs().getType())) return getLhs();
+
+    // concat(a : bit<0>, b : bit<W>) -> b
+    // A signed RHS requires a cast to the unsigned result type; see canonicalize().
+    if (P4HIR::isZeroWidth(getLhs().getType()) && getRhs().getType() == getType()) return getRhs();
+
     if (adaptor.getLhs() && adaptor.getRhs()) {
         auto lhs = P4HIR::getConstantInt(adaptor.getLhs()).value();
         auto rhs = P4HIR::getConstantInt(adaptor.getRhs()).value();
@@ -749,6 +786,13 @@ OpFoldResult P4HIR::ConcatOp::fold(FoldAdaptor adaptor) {
 }
 
 LogicalResult P4HIR::ConcatOp::canonicalize(P4HIR::ConcatOp op, PatternRewriter &rewriter) {
+    // Canonicalize (A : bit<0>) ++ (B : int<W>) to (bit<W>)B.
+    // A contributes no bits but determines the result's unsigned type.
+    if (P4HIR::isZeroWidth(op.getLhs().getType())) {
+        rewriter.replaceOpWithNewOp<P4HIR::CastOp>(op, op.getType(), op.getRhs());
+        return success();
+    }
+
     // Canonicalize (A[H2:L2] ++ A[H1:L1]) to A[H2:L1] if H1 == L2.
     auto *ctx = rewriter.getContext();
     mlir::Value lhs = op.getLhs();
@@ -899,7 +943,8 @@ OpFoldResult P4HIR::CmpOp::fold(FoldAdaptor adaptor) {
     P4HIR::CmpOpKind kind = getKind();
 
     // cmp(kind, x, x)
-    if (getLhs() == getRhs()) {
+    // All bit<0> values are equal to 0.
+    if (getLhs() == getRhs() || P4HIR::isZeroWidth(getLhs().getType())) {
         switch (kind) {
             case P4HIR::CmpOpKind::Lt:
             case P4HIR::CmpOpKind::Gt:
@@ -2078,6 +2123,9 @@ void P4HIR::StructExtractOp::getAsmResultNames(function_ref<void(Value, StringRe
 }
 
 OpFoldResult P4HIR::StructExtractOp::fold(FoldAdaptor adaptor) {
+    // Fold extraction of a bit<0> field to 0.
+    if (P4HIR::isZeroWidth(getType())) return getIntegerAttr(getType(), 0);
+
     // Fold extract from aggregate constant
     if (auto aggAttr = adaptor.getInput()) {
         return mlir::cast<P4HIR::AggAttr>(aggAttr).getFields()[getFieldIndex()];
@@ -2274,6 +2322,9 @@ void P4HIR::TupleExtractOp::build(OpBuilder &builder, OperationState &odsState, 
 }
 
 OpFoldResult P4HIR::TupleExtractOp::fold(FoldAdaptor adaptor) {
+    // Fold extraction of a bit<0> element to 0.
+    if (P4HIR::isZeroWidth(getType())) return getIntegerAttr(getType(), 0);
+
     // Fold extract from aggregate constant
     if (auto aggAttr = adaptor.getInput()) {
         return mlir::cast<P4HIR::AggAttr>(aggAttr).getFields()[getFieldIndex()];
@@ -4363,6 +4414,9 @@ void P4HIR::ArrayOp::getAsmResultNames(function_ref<void(Value, StringRef)> setN
 }
 
 OpFoldResult P4HIR::ArrayGetOp::fold(FoldAdaptor adaptor) {
+    // Fold access to a bit<0> element to 0, regardless of the index.
+    if (P4HIR::isZeroWidth(getType())) return getIntegerAttr(getType(), 0);
+
     // We can only fold constant indices
     auto idxAttr = mlir::dyn_cast_if_present<P4HIR::IntAttr>(adaptor.getIndex());
     if (!idxAttr) return {};
