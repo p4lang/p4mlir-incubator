@@ -8,6 +8,7 @@ set(LIBS
   P4MLIR_BMv2IR
   P4MLIRConversion
   P4MLIRTransforms
+  P4MLIRUtilities
   P4HIRToBMv2IR
   P4HIRToLLVM
   P4Pipelines
