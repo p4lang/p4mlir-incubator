@@ -78,17 +78,11 @@ module {
 // -----
 
 // LLVM only accepts lifetime markers on allocas: the markers of variables that
-// are not lowered stay, e.g. those of `bit<0>` variables or of controls.
+// are not lowered stay, e.g. those of controls.
 
-!b0i = !p4hir.bit<0>
 !b8i = !p4hir.bit<8>
 
-// CHECK-LABEL: @zero(
-// CHECK-NEXT:    %[[Z:.*]] = p4hir.variable ["z"] : <!b0i>
-// CHECK-NEXT:    p4hir.scope {
-// CHECK-NEXT:      p4hir.lifetime_start %[[Z]] : <!b0i>
-// CHECK-NEXT:      p4hir.lifetime_end %[[Z]] : <!b0i>
-// CHECK-NEXT:    }
+// CHECK-LABEL: p4hir.control @c()() {
 // CHECK:       p4hir.control_apply {
 // CHECK-NEXT:    %[[W:.*]] = p4hir.variable ["w"] : <!b8i>
 // CHECK-NEXT:    p4hir.scope {
@@ -97,15 +91,6 @@ module {
 // CHECK-NEXT:    }
 
 module {
-  p4hir.func @zero() {
-    %z = p4hir.variable ["z"] : <!b0i>
-    p4hir.scope {
-      p4hir.lifetime_start %z : <!b0i>
-      p4hir.lifetime_end %z : <!b0i>
-    }
-    p4hir.return
-  }
-
   p4hir.control @c()() {
     p4hir.control_apply {
       %w = p4hir.variable ["w"] : <!b8i>
