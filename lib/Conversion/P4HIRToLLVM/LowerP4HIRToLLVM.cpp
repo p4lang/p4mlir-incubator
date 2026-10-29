@@ -36,6 +36,13 @@ struct ConstOpConversion : public ConvertOpToLLVMPattern<P4HIR::ConstOp> {
 
     LogicalResult matchAndRewrite(P4HIR::ConstOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
+        // Materialize the empty struct representing bit<0> with llvm.mlir.zero.
+        if (P4HIR::isZeroWidth(op.getType())) {
+            rewriter.replaceOpWithNewOp<LLVM::ZeroOp>(
+                op, getTypeConverter()->convertType(op.getType()));
+            return success();
+        }
+
         auto value = adaptor.getValue();
         // Passing the interface handle by its base type drops a cached concept pointer, which
         // is exactly what `convertTypeAttribute` takes.
@@ -94,6 +101,9 @@ struct BinOpConversion : public ConvertOpToLLVMPattern<P4HIR::BinOp> {
 
     LogicalResult matchAndRewrite(P4HIR::BinOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
+        if (P4HIR::isZeroWidth(op.getType()))
+            return rewriter.notifyMatchFailure(op, "expected bit<0> operation to be folded");
+
         switch (op.getKind()) {
             case P4HIR::BinOpKind::Add:
                 return lowerToOp<LLVM::AddOp>(op, adaptor, rewriter);
@@ -127,6 +137,9 @@ struct UnaryOpConversion : public ConvertOpToLLVMPattern<P4HIR::UnaryOp> {
 
     LogicalResult matchAndRewrite(P4HIR::UnaryOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
+        if (P4HIR::isZeroWidth(op.getType()))
+            return rewriter.notifyMatchFailure(op, "expected bit<0> operation to be folded");
+
         auto input = adaptor.getInput();
         auto intType = cast<IntegerType>(input.getType());
         auto width = intType.getWidth();
@@ -162,6 +175,8 @@ struct CmpOpConversion : public ConvertOpToLLVMPattern<P4HIR::CmpOp> {
         if (!isa<P4HIR::BitsType, P4HIR::BoolType>(lhsType)) {
             return rewriter.notifyMatchFailure(op, "unsupported cmp operand type");
         }
+        if (P4HIR::isZeroWidth(lhsType))
+            return rewriter.notifyMatchFailure(op, "expected bit<0> operation to be folded");
 
         bool isSigned = false;  // BoolType lowers to i1 and is always compared as unsigned.
         if (auto bitsType = dyn_cast<P4HIR::BitsType>(lhsType)) isSigned = bitsType.isSigned();
@@ -264,6 +279,9 @@ struct ConcatOpConversion : public ConvertOpToLLVMPattern<P4HIR::ConcatOp> {
 
     LogicalResult matchAndRewrite(P4HIR::ConcatOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter &rewriter) const override {
+        if (P4HIR::isZeroWidth(op.getLhs().getType()) || P4HIR::isZeroWidth(op.getRhs().getType()))
+            return rewriter.notifyMatchFailure(op, "expected bit<0> operation to be folded");
+
         auto highType = cast<IntegerType>(adaptor.getLhs().getType());
         auto lowType = cast<IntegerType>(adaptor.getRhs().getType());
 
@@ -360,9 +378,10 @@ struct VariableOpConversion : public ConvertOpToLLVMPattern<P4HIR::VariableOp> {
         if (!objectType) return rewriter.notifyMatchFailure(op, "unsupported object type");
 
         // A variable with `init` is initialized by its first use. One with a marked lifetime
-        // takes its default value where its lifetime starts.
+        // takes its default value where its lifetime starts. The empty struct representing
+        // bit<0> holds the only bit<0> value without being stored.
         TypedAttr defaultValue;
-        if (initializeVariables && !op.getInit() &&
+        if (initializeVariables && !op.getInit() && !P4HIR::isZeroWidth(op.getObjectType()) &&
             llvm::none_of(op->getUsers(), llvm::IsaPred<P4HIR::LifetimeStartOp>)) {
             defaultValue = getDefaultValueAttr(op.getObjectType(), *getTypeConverter());
             if (!defaultValue) return rewriter.notifyMatchFailure(op, "no default value");
@@ -400,11 +419,13 @@ struct LifetimeStartOpConversion : public ConvertOpToLLVMPattern<P4HIR::Lifetime
         auto alloca = getLoweredVariable(op, adaptor.getRef(), rewriter);
         if (failed(alloca)) return failure();
 
-        // A variable with `init` is initialized by its first use.
+        // A variable with `init` is initialized by its first use. The empty struct representing
+        // bit<0> holds the only bit<0> value without being stored.
         auto variable = op.getRef().getDefiningOp<P4HIR::VariableOp>();
+        auto objectType = cast<P4HIR::ReferenceType>(op.getRef().getType()).getObjectType();
         TypedAttr defaultValue;
-        if (initializeVariables && (!variable || !variable.getInit())) {
-            auto objectType = cast<P4HIR::ReferenceType>(op.getRef().getType()).getObjectType();
+        if (initializeVariables && (!variable || !variable.getInit()) &&
+            !P4HIR::isZeroWidth(objectType)) {
             defaultValue = getDefaultValueAttr(objectType, *getTypeConverter());
             if (!defaultValue) return rewriter.notifyMatchFailure(op, "no default value");
         }
@@ -487,9 +508,12 @@ struct LowerP4HIRToLLVMPass : public P4::P4MLIR::impl::LowerP4HIRToLLVMBase<Lowe
 }  // namespace
 
 void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter) {
-    converter.addConversion([](P4HIR::BitsType bitsType) -> std::optional<Type> {
-        // P4 allows `bit<0>`, LLVM has no `i0`: leave such values unconverted.
-        if (bitsType.getWidth() == 0) return std::nullopt;
+    converter.addConversion([](P4HIR::BitsType bitsType) -> Type {
+        // LLVM has no `i0`. Like `bit<0>`, the empty struct `{}` has no bits and a single value.
+        // Operations on `bit<0>` are expected to be folded before lowering, leaving only
+        // constants, storage and control flow of this type.
+        if (bitsType.getWidth() == 0)
+            return LLVM::LLVMStructType::getLiteral(bitsType.getContext(), {});
         return IntegerType::get(bitsType.getContext(), bitsType.getWidth());
     });
 
@@ -506,8 +530,8 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
     converter.addTypeAttributeConversion(
         [&converter](P4HIR::BitsType bitsType,
                      P4HIR::IntAttr attr) -> LLVMTypeConverter::AttributeConversionResult {
-            // Types without an LLVM counterpart (e.g. `bit<0>`) have no attribute either.
-            if (auto convertedType = converter.convertType(bitsType)) {
+            // bit<0> lowers to an empty struct, so it cannot use an IntegerAttr.
+            if (auto convertedType = dyn_cast<IntegerType>(converter.convertType(bitsType))) {
                 return IntegerAttr::get(convertedType, attr.getValue());
             }
             return LLVMTypeConverter::AttributeConversionResult::na();

@@ -120,29 +120,6 @@ module {
 
 // -----
 
-// A reference to an object without an LLVM counterpart, e.g. `bit<0>`, has no
-// LLVM counterpart either: neither the variable nor its accesses are lowered.
-
-!b0i = !p4hir.bit<0>
-
-// CHECK-LABEL: @zero_var(
-// CHECK-NEXT:    %[[ZERO:.*]] = p4hir.const
-// CHECK-NEXT:    %[[VAR:.*]] = p4hir.variable ["var", init] : <!b0i>
-// CHECK-NEXT:    p4hir.assign %[[ZERO]], %[[VAR]] : <!b0i>
-// CHECK-NEXT:    %{{.*}} = p4hir.read %[[VAR]] : <!b0i>
-
-module {
-  p4hir.func @zero_var() {
-    %zero = p4hir.const #p4hir.int<0> : !b0i
-    %var = p4hir.variable ["var", init] : <!b0i>
-    p4hir.assign %zero, %var : <!b0i>
-    %val = p4hir.read %var : <!b0i>
-    p4hir.return
-  }
-}
-
-// -----
-
 // Only variables of functions are stack slots, including those of control-local
 // actions. Variables of controls and parsers are left to the lowering of their
 // parents.
