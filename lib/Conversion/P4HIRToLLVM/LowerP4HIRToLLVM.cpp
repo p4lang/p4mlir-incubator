@@ -527,6 +527,25 @@ void P4::P4MLIR::populateP4HIRToLLVMTypeConversion(LLVMTypeConverter &converter)
         return LLVM::LLVMPointerType::get(refType.getContext());
     });
 
+    // Structs lower to literal packed LLVM structs with the fields in the same order, so that
+    // field indices carry over, and without padding between fields.
+    converter.addConversion([&converter](P4HIR::StructType structType) -> std::optional<Type> {
+        SmallVector<Type> fieldTypes;
+        for (const auto &field : structType.getElements()) {
+            auto fieldType = converter.convertType(field.type);
+            if (!fieldType) return std::nullopt;
+            fieldTypes.push_back(fieldType);
+        }
+        return LLVM::LLVMStructType::getLiteral(structType.getContext(), fieldTypes,
+                                                /*isPacked=*/true);
+    });
+
+    converter.addConversion([&converter](P4HIR::ArrayType arrayType) -> std::optional<Type> {
+        auto elementType = converter.convertType(arrayType.getElementType());
+        if (!elementType) return std::nullopt;
+        return LLVM::LLVMArrayType::get(elementType, arrayType.getSize());
+    });
+
     converter.addTypeAttributeConversion(
         [&converter](P4HIR::BitsType bitsType,
                      P4HIR::IntAttr attr) -> LLVMTypeConverter::AttributeConversionResult {
