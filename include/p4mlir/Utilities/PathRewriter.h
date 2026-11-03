@@ -20,6 +20,7 @@ template <class FieldPathOpsT>
 class PathRewriter {
  public:
     using PathWalkerT = PathWalker<FieldPathOpsT>;
+    using OperandWithPathT = std::pair<mlir::OpOperand *, P4HIR::FieldPath>;
 
     /// Full constructor.
     PathRewriter(mlir::RewriterBase &rewriter, mlir::Value root, mlir::Type type,
@@ -61,10 +62,13 @@ class PathRewriter {
     }
 
     /// `op` is an operation that has at least one operand accessing root value's fields. These
-    /// operands and their paths can be found by using `getPath` on `op`'s arguments. If it is
-    /// desirable to transform `op` then this should be done here. Return mlir::success() to
-    /// continue the rewriting or mlir::failure() to interrupt it.
-    virtual mlir::LogicalResult replaceUsesIn(mlir::Operation *op) { return mlir::success(); }
+    /// operands and their paths are provided in `operands`. If it is desirable to transform `op`
+    /// then this should be done here. Return mlir::success() to continue the rewriting or
+    /// mlir::failure() to interrupt it.
+    virtual mlir::LogicalResult replaceUsesIn(mlir::Operation *op,
+                                              llvm::SmallVector<OperandWithPathT> operands) {
+        return mlir::success();
+    }
 
     /// `value` is a value used to access the root value's field that corresponds `path`. If it is
     /// desirable to replace `value` with a new equivalent, then this new value should be returned.
@@ -80,20 +84,13 @@ class PathRewriter {
         return it != valueToPath.end() ? it->second : P4HIR::FieldPath();
     }
 
-    /// Assuming that `op` can only have a single operand with a corresponding field path, return
-    /// that operand and path.
-    std::pair<mlir::OpOperand *, P4HIR::FieldPath> getOperandWithPath(mlir::Operation *op) {
-        P4HIR::FieldPath resPath;
-        mlir::OpOperand *resOperand = nullptr;
-        for (mlir::OpOperand &operand : op->getOpOperands()) {
-            if (auto path = getPath(operand.get()); !path.isEmpty()) {
-                assert(!resOperand && "Unexpected operation with multiple used paths");
-                resPath = path;
-                resOperand = &operand;
-            }
-        }
-        assert(resOperand && "A path must exist for leaf operations");
-        return {resOperand, resPath};
+    /// Return a vector of operands in `op` that access a root value's field, coupled with the
+    /// corresponding path.
+    llvm::SmallVector<OperandWithPathT> getOperandsWithPaths(mlir::Operation *op) {
+        llvm::SmallVector<OperandWithPathT> result;
+        for (mlir::OpOperand &operand : op->getOpOperands())
+            if (auto path = getPath(operand.get())) result.emplace_back(&operand, path);
+        return result;
     }
 
     /// Walk `root`'s field-access and leaf users and replace values and operations using the
@@ -137,7 +134,7 @@ class PathRewriter {
 
         for (mlir::Operation *op : leafOps) {
             rewriter.setInsertionPoint(op);
-            if (failed(replaceUsesIn(op))) return mlir::failure();
+            if (failed(replaceUsesIn(op, getOperandsWithPaths(op)))) return mlir::failure();
         }
 
         if (eraseDead) {

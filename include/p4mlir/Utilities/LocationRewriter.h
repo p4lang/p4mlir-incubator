@@ -165,6 +165,7 @@ struct LocationMapping {
 template <class FieldPathOpsT>
 struct LocationRewriter {
     using FieldLocation = LocationMapping::FieldLocation;
+    using OperandWithLocationT = std::pair<mlir::OpOperand *, FieldLocation>;
 
     LocationRewriter(mlir::RewriterBase &rewriter, LocationMapping &mapping,
                      llvm::SmallVector<mlir::Value> from, llvm::SmallVector<mlir::Value> to)
@@ -263,6 +264,46 @@ struct LocationRewriter {
         }
     }
 
+    /// `op` is an operation that has at least one operand accessing fields of a source collection
+    /// object. These operands and the accessed locations are provided in `operands`. If it is
+    /// desirable to transform `op` then this should be done here. Return mlir::success() to
+    /// continue the rewriting or mlir::failure() to interrupt it.
+    virtual mlir::LogicalResult replaceUsesIn(mlir::Operation *op,
+                                              llvm::SmallVector<OperandWithLocationT> operands) {
+        if (auto readOp = mlir::dyn_cast<P4HIR::ReadOp>(op)) {
+            assert((operands.size() == 1) && "Expected single argument replacement");
+            auto [operand, from] = operands.front();
+            auto newVal = getVal(op, op->getLoc(), from);
+            if (!newVal) return op->emitError("Cannot replace read of ") << from.second.str();
+            this->rewriter.replaceOp(op, newVal);
+            return mlir::success();
+        } else if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(op)) {
+            assert((operands.size() == 1) && "Expected single argument replacement");
+            auto [operand, from] = operands.front();
+            bool success = setVal(op, op->getLoc(), from, assignOp.getValue());
+            if (!success) return op->emitError("Cannot replace write to ") << from.second.str();
+            this->rewriter.eraseOp(op);
+            return mlir::success();
+        } else {
+            bool success = true;
+            this->rewriter.modifyOpInPlace(op, [&]() {
+                for (auto [operand, from] : operands) {
+                    auto val = operand->get();
+                    bool isRef = mlir::isa<P4HIR::ReferenceType>(val.getType());
+                    auto newVal =
+                        isRef ? getRef(op, val.getLoc(), from) : getVal(op, val.getLoc(), from);
+                    if (!newVal) {
+                        op->emitError("Cannot replace access of ") << from.second.str();
+                        success = false;
+                        break;
+                    }
+                    operand->set(newVal);
+                }
+            });
+            return success ? mlir::success() : mlir::failure();
+        }
+    }
+
     /// Replace all uses of the source collection with ones from the target collection.
     mlir::LogicalResult transform() {
         for (unsigned index = 0, e = fromValues.size(); index < e; index++)
@@ -275,46 +316,20 @@ struct LocationRewriter {
     using PathRewriterT = PathRewriter<FieldPathOpsT>;
 
     struct ValueRewriter : public PathRewriterT {
+        using OperandWithPathT = typename PathRewriterT::OperandWithPathT;
+
         ValueRewriter(LocationRewriter &parent, unsigned index)
             : PathRewriterT(parent.rewriter, parent.fromValues[index]),
               parent(parent),
               index(index) {}
 
-        virtual mlir::LogicalResult replaceUsesIn(mlir::Operation *op) override {
-            if (auto readOp = mlir::dyn_cast<P4HIR::ReadOp>(op)) {
-                auto path = this->getOperandWithPath(op).second;
-                auto newVal = parent.getVal(op, op->getLoc(), FieldLocation(index, path));
-                if (!newVal) return op->emitError("Cannot replace read of ") << path.str();
-                this->rewriter.replaceOp(op, newVal);
-                return mlir::success();
-            } else if (auto assignOp = mlir::dyn_cast<P4HIR::AssignOp>(op)) {
-                auto path = this->getOperandWithPath(op).second;
-                bool success = parent.setVal(op, op->getLoc(), FieldLocation(index, path),
-                                             assignOp.getValue());
-                if (!success) return op->emitError("Cannot replace write to ") << path.str();
-                this->rewriter.eraseOp(op);
-                return mlir::success();
-            } else {
-                bool success = true;
-                this->rewriter.modifyOpInPlace(op, [&]() {
-                    for (mlir::OpOperand &operand : op->getOpOperands()) {
-                        auto val = operand.get();
-                        if (auto path = this->getPath(val); !path.isEmpty()) {
-                            FieldLocation from(index, path);
-                            bool isRef = mlir::isa<P4HIR::ReferenceType>(val.getType());
-                            auto newVal = isRef ? parent.getRef(op, val.getLoc(), from)
-                                                : parent.getVal(op, val.getLoc(), from);
-                            if (!newVal) {
-                                op->emitError("Cannot replace access of ") << path.str();
-                                success = false;
-                                break;
-                            }
-                            operand.set(newVal);
-                        }
-                    }
-                });
-                return success ? mlir::success() : mlir::failure();
-            }
+        virtual mlir::LogicalResult replaceUsesIn(
+            mlir::Operation *op, llvm::SmallVector<OperandWithPathT> operands) override {
+            auto operandsWithLocations = llvm::map_to_vector(operands, [&](auto p) {
+                auto [operand, path] = p;
+                return OperandWithLocationT(operand, FieldLocation(index, path));
+            });
+            return parent.replaceUsesIn(op, operandsWithLocations);
         }
 
         LocationRewriter &parent;
