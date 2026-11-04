@@ -1761,8 +1761,6 @@ def CallMethodOp : P4HIR_Op<"call_method",
                        Variadic<AnyType>:$arg_operands,
                        OptionalAttr<ArrayAttr>:$arg_attrs);
 
-  // let hasCustomAssemblyFormat = 1;
-
   let assemblyFormat = [{
      $method  (`<` $type_operands^ `>`)? `(` $arg_operands `)` `of` ($obj^ `:` type($obj))? ($instantiation^)? `:` functional-type($arg_operands, results) attr-dict
   }];
