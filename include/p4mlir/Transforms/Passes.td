@@ -493,4 +493,64 @@ def SymbolDCE : Pass<"p4hir-symbol-dce"> {
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// MakeHeadersToplevel
+//===----------------------------------------------------------------------===//
+
+def MakeHeadersToplevel : InterfacePass<"p4hir-make-headers-toplevel", "mlir::FunctionOpInterface"> {
+  let summary = "Canonicalize headers and metadata location between arguments";
+  let description = [{
+    For a given top-level object and some designated arguments that correspond to an argument which may
+    contain headers and an argument for user metadata, canonicalize the placement of fields as follows:
+      - All header fields (headers, header unions, header stacks), are made toplevel fields in the new headers argument.
+      - All fields that are outside of headers are considered metadata and moved as toplevel fields in a new struct nested
+        within the original metadata argument.
+
+    E.g. for arguments with original types like below:
+    ```
+    struct nested_t {
+      header_t h1;
+      header_t h2;
+    }
+    struct headers_t {
+      nested_t wrap;
+      meta_t meta1;
+    }
+
+    struct metadata_t {
+      bit<8> meta2;
+    }
+    ```
+
+    After transformation the corresponding new arguments will use the following types instead:
+    ```
+    struct headers_t {
+      header_t wrap_h1;
+      header_t wrap_h2;
+    }
+
+    struct headers_metadata_t {
+      meta_t meta1;
+    }
+    struct metadata_t {
+      bit<8> meta2;
+      headers_metadata_t hdr_meta;
+    }
+    ```
+
+    All references/accesses on the original arguments are replaced with new equivalents. In cases where that may not
+    be possible (e.g. a reference to a field that doesn't exist due to flattening) an error is raised.
+  }];
+
+  let options = [
+    Option<"hdrsArgIdx", "headers-arg-idx", "unsigned", /*default=*/"0",
+           "The index for the argument that may contain headers">,
+    Option<"metaArgIdx", "metadata-arg-idx", "unsigned", /*default=*/"1",
+           "The index for the argument that corresponds to user metadata">,
+  ];
+
+  let constructor = "P4MLIR::createMakeHeadersToplevelPass()";
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
 #endif // P4MLIR_TRANSFORMS_PASSES_TD
