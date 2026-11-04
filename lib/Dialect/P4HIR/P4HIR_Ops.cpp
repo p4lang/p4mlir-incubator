@@ -2026,20 +2026,35 @@ LogicalResult P4HIR::StructExtractOp::verify() {
         *this, mlir::cast<StructLikeTypeInterface>(getInput().getType()), getType());
 }
 
-static ParseResult parseExtractOp(OpAsmParser &parser, OperationState &result) {
+static ParseResult parseExtractOp(OpAsmParser &parser, OperationState &result, bool isRef) {
     OpAsmParser::UnresolvedOperand operand;
     StringAttr fieldName;
     mlir::Type declType;
 
     if (parser.parseOperand(operand) || parser.parseLSquare() || parser.parseAttribute(fieldName) ||
         parser.parseRSquare() || parser.parseOptionalAttrDict(result.attributes) ||
-        parser.parseColon() || parser.parseCustomTypeWithFallback(declType))
+        parser.parseColon())
         return failure();
 
-    auto aggType = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(declType);
-    if (!aggType) {
-        parser.emitError(parser.getNameLoc(), "expected reference to aggregate type");
-        return failure();
+    P4HIR::StructLikeTypeInterface aggType;
+    if (isRef) {
+        P4HIR::ReferenceType refDeclType;
+        if (parser.parseCustomTypeWithFallback<P4HIR::ReferenceType>(refDeclType)) return failure();
+
+        declType = refDeclType;
+        aggType = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(refDeclType.getObjectType());
+        if (!aggType) {
+            parser.emitError(parser.getNameLoc(), "expected reference to aggregate type");
+            return failure();
+        }
+    } else {
+        if (parser.parseCustomTypeWithFallback(declType)) return failure();
+
+        aggType = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(declType);
+        if (!aggType) {
+            parser.emitError(parser.getNameLoc(), "expected aggregate type");
+            return failure();
+        }
     }
 
     auto field = aggType.getFieldByName(fieldName);
@@ -2051,37 +2066,7 @@ static ParseResult parseExtractOp(OpAsmParser &parser, OperationState &result) {
 
     auto indexAttr = IntegerAttr::get(IntegerType::get(parser.getContext(), 32), field->getIndex());
     result.addAttribute("fieldIndex", indexAttr);
-    result.addTypes(field->getType());
-
-    if (parser.resolveOperand(operand, declType, result.operands)) return failure();
-    return success();
-}
-
-static ParseResult parseExtractRefOp(OpAsmParser &parser, OperationState &result) {
-    OpAsmParser::UnresolvedOperand operand;
-    StringAttr fieldName;
-    P4HIR::ReferenceType declType;
-
-    if (parser.parseOperand(operand) || parser.parseLSquare() || parser.parseAttribute(fieldName) ||
-        parser.parseRSquare() || parser.parseOptionalAttrDict(result.attributes) ||
-        parser.parseColon() || parser.parseCustomTypeWithFallback<P4HIR::ReferenceType>(declType))
-        return failure();
-
-    auto aggType = mlir::dyn_cast<P4HIR::StructLikeTypeInterface>(declType.getObjectType());
-    if (!aggType) {
-        parser.emitError(parser.getNameLoc(), "expected reference to aggregate type");
-        return failure();
-    }
-    auto field = aggType.getFieldByName(fieldName);
-    if (!field) {
-        parser.emitError(parser.getNameLoc(),
-                         "field name '" + fieldName.getValue() + "' not found in aggregate type");
-        return failure();
-    }
-
-    auto indexAttr = IntegerAttr::get(IntegerType::get(parser.getContext(), 32), field->getIndex());
-    result.addAttribute("fieldIndex", indexAttr);
-    Type resultType = P4HIR::ReferenceType::get(field->getType());
+    Type resultType = isRef ? P4HIR::ReferenceType::get(field->getType()) : field->getType();
     result.addTypes(resultType);
 
     if (parser.resolveOperand(operand, declType, result.operands)) return failure();
@@ -2106,7 +2091,7 @@ static void printExtractOp(OpAsmPrinter &printer, AggType op) {
 }
 
 ParseResult P4HIR::StructExtractOp::parse(OpAsmParser &parser, OperationState &result) {
-    return parseExtractOp(parser, result);
+    return parseExtractOp(parser, result, false);
 }
 
 void P4HIR::StructExtractOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
@@ -2189,7 +2174,7 @@ void P4HIR::StructFieldRefOp::getAsmResultNames(function_ref<void(Value, StringR
 }
 
 ParseResult P4HIR::StructFieldRefOp::parse(OpAsmParser &parser, OperationState &result) {
-    return parseExtractRefOp(parser, result);
+    return parseExtractOp(parser, result, true);
 }
 
 void P4HIR::StructFieldRefOp::print(OpAsmPrinter &printer) { printExtractOp(printer, *this); }
