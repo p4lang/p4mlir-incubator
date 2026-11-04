@@ -682,7 +682,7 @@ def ScopeOp : P4HIR_Op<"scope", [
   }];
 
   let arguments = (ins OptionalAttr<DictionaryAttr>:$annotations);
-  let results = (outs Optional<AnyP4Type>:$results);
+  let results = (outs Optional<AnyType>:$results);
   let regions = (region AnyRegion:$scopeRegion);
 
   let hasVerifier = 1;
@@ -814,7 +814,7 @@ def IfOp : P4HIR_Op<"if",
   let arguments = (ins BooleanType:$condition,
                        OptionalAttr<DictionaryAttr>:$thenAnnotations,
                        OptionalAttr<DictionaryAttr>:$elseAnnotations);
-  let results = (outs Optional<AnyP4Type>:$result);
+  let results = (outs Optional<AnyType>:$result);
   let regions = (region MaxSizedRegion<1>:$thenRegion, MaxSizedRegion<1>:$elseRegion);
 
   let hasCustomAssemblyFormat = 1;
@@ -879,7 +879,7 @@ def ReturnOp : P4HIR_Op<"return", [ParentOneOf<["ScopeOp", "IfOp",
 
   // The return operation takes an optional input operand to return. This
   // value must match the return type of the enclosing function.
-  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let arguments = (ins Variadic<AnyType>:$input);
 
   // The return operation only emits the input in the format if it is present.
   let assemblyFormat = "($input^ `:` type($input))? attr-dict ";
@@ -906,7 +906,7 @@ def SoftReturnOp : P4HIR_Op<"soft_return", [ParentOneOf<["ScopeOp", "IfOp",
     Similar to p4hir.return but without being a terminator.
   }];
 
-  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let arguments = (ins Variadic<AnyType>:$input);
   let assemblyFormat = "($input^ `:` type($input))? attr-dict ";
 
   let builders = [
@@ -1302,26 +1302,21 @@ def StructFieldRefOp : P4HIR_Op<"struct_field_ref",
 }
 
 def TupleOp : P4HIR_Op<"tuple",
-  [Pure,
+  [Pure, InferTypeOpAdaptor,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Create a tuple from constituent parts.";
   // FIXME: Better constraint type
   let arguments = (ins Variadic<AnyP4Type>:$input);
   let results = (outs Builtin_Tuple:$result);
-  let hasCustomAssemblyFormat = 1;
-  // FIXME: use declarative format
-  // let assemblyFormat = [{
-  //   `(` $input `)` attr-dict `:` type($result)
-  // }];
+  let assemblyFormat = "`(` $input `)` attr-dict `:` `tuple` `<` type($input) `>`";
 
   let hasVerifier = 1;
   let hasFolder = 1;
 }
 
 def TupleExtractOp : P4HIR_Op<"tuple_extract",
-    [Pure,
-     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
-  ]> {
+    [Pure, InferTypeOpAdaptor,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Extract a field from a tuple.";
   let description = [{
     ```
@@ -1334,20 +1329,15 @@ def TupleExtractOp : P4HIR_Op<"tuple_extract",
   let arguments = (ins Builtin_Tuple:$input, I32Attr:$fieldIndex);
   // FIXME: Better constraint type
   let results = (outs AnyP4Type:$result);
+  let assemblyFormat = "$input `[` $fieldIndex `]` attr-dict `:` type($input)";
 
   let builders = [
-    OpBuilder<(ins "mlir::Value":$input, "unsigned":$fieldIndex)>,
     OpBuilder<(ins "mlir::Value":$input, "P4HIR::IntAttr":$fieldIndex), [{
       build($_builder, $_state, input, fieldIndex.getUInt());
     }]>
   ];
 
-  // FIXME: use declarative format
-  // let assemblyFormat = [{
-  //   $input `[` $fieldIndex `]` attr-dict `:` type($result)
-  // }];
   let hasFolder = 1;
-  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
 

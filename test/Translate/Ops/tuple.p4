@@ -25,7 +25,7 @@ action test(out bit<16> r) {
   // CHECK: %[[f:.*]] = p4hir.const ["f"] #int0_b32i
   // CHECK: %[[c12_b16i:.*]] = p4hir.const #int12_b16i
   tuple<bit<32>, bit<32>> tt = t;
-  // CHECK: %[[tuple:.*]] = p4hir.tuple (%[[f]], %[[c12_b16i]]) : tuple<!b32i, !b16i>
+  // CHECK: %[[tuple:.*]] = p4hir.tuple(%[[f]], %[[c12_b16i]]) : tuple<!b32i, !b16i>
   tuple<bit<32>, bit<16>> x = { f, 12 };
   // CHECK: %[[x_0:.*]] = p4hir.variable ["x", init] : <tuple<!b32i, !b16i>>
   // CHECK: p4hir.if
