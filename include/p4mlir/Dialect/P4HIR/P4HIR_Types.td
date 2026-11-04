@@ -142,7 +142,7 @@ def BooleanType : P4HIR_Type<"Bool", "bool", [HasDefaultValue, DataLayoutTypeInt
     `p4hir.bool` represents a P4 `bool` type.
   }];
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "";
   let extraClassDeclaration = [{
     llvm::StringRef getAlias() const { return "bool"; };
     mlir::TypedAttr getDefaultValue();
@@ -489,7 +489,7 @@ def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit", [HasDefaultValue]> {
     `p4hir.valid.bit` represents valid bit in headers.
   }];
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "";
   let extraClassDeclaration = [{
     llvm::StringRef getAlias() const { return "validity_bit"; };
     mlir::TypedAttr getDefaultValue();
@@ -940,7 +940,6 @@ class SpecificRefType<Type type> : ConfinedType<ReferenceType,
   Type objectType = type;
 }
 
-def StructRefType : SpecificRefType<StructType>;
 def StructLikeRefType : SpecificRefType<StructLikeTypeInterface>;
 def BitsRefType : SpecificRefType<BitsType>;
 def HeaderRefType : SpecificRefType<HeaderType>;
