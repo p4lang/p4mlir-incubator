@@ -58,8 +58,8 @@ def ConstOp : P4HIR_Op<"const",
     let arguments = (ins TypedAttrInterface:$value, OptionalAttr<StrAttr>:$name,
                          OptionalAttr<DictionaryAttr>:$annotations);
 
-    // The constant operation returns a single value of AnyP4Type.
-    let results = (outs AnyP4Type:$res);
+    // The constant operation returns a single value of AnyType.
+    let results = (outs AnyType:$res);
 
     let assemblyFormat = [{
         (` ` `[` $name^ `]`)? $value (`annotations` $annotations^)? attr-dict
@@ -194,7 +194,7 @@ def ReadOp : P4HIR_Op<"read", [
   let arguments = (ins Arg<ReferenceType, "the reference to load from",
                            [FullMemRead]>:$ref);
   // FIXME: Constraint result type
-  let results = (outs LoadableP4Type:$result);
+  let results = (outs AnyType:$result);
 
   let assemblyFormat = [{
     $ref `:` type($ref) attr-dict
@@ -225,7 +225,7 @@ def AssignOp : P4HIR_Op<"assign", [
     ```
   }];
 
-  let arguments = (ins LoadableP4Type:$value,
+  let arguments = (ins AnyType:$value,
                        Arg<ReferenceType, "the object to store the value",
                            [FullMemWrite]>:$ref);
 
@@ -336,8 +336,8 @@ def CastOp : P4HIR_Op<"cast",
     ```
   }];
 
-  let arguments = (ins AnyP4Type:$src);
-  let results = (outs AnyP4Type:$result);
+  let arguments = (ins AnyType:$src);
+  let results = (outs AnyType:$result);
 
   let assemblyFormat = [{
     `(` $src `:` type($src) `)`
@@ -416,10 +416,10 @@ def UnaryOp : P4HIR_Op<"unary",
     ```
   }];
 
-  let results = (outs AnyP4Type:$result);
+  let results = (outs AnyType:$result);
   // FIXME: constraint types for unary operations
   // FIXME: check type for lnot
-  let arguments = (ins Arg<UnaryOpKind, "unary op kind">:$kind, Arg<AnyP4Type>:$input);
+  let arguments = (ins Arg<UnaryOpKind, "unary op kind">:$kind, Arg<AnyType>:$input);
 
   let assemblyFormat = [{
       `(` $kind `,` $input `)` `:` type($input) attr-dict
@@ -642,7 +642,7 @@ def CmpOp : P4HIR_Op<"cmp",
 
   let results = (outs BooleanType:$result);
   let arguments = (ins Arg<CmpOpKind, "cmp kind">:$kind,
-                       AnyP4Type:$lhs, AnyP4Type:$rhs);
+                       AnyType:$lhs, AnyType:$rhs);
 
   let assemblyFormat = [{
     `(` $kind `,` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)` attr-dict
@@ -1115,7 +1115,7 @@ def CallOp : P4HIR_Op<"call",
   }];
 
   // TODO: Refine result types, refine parameter type
-  let results = (outs Optional<CallResultP4Type>:$result);
+  let results = (outs Optional<AnyType>:$result);
   let arguments = (ins SymbolRefAttr:$callee,
                        OptionalAttr<TypeArrayAttr>:$type_operands,
                        Variadic<AnyType>:$arg_operands,
@@ -1192,7 +1192,7 @@ def StructOp : P4HIR_Op<"struct",
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Create a struct from constituent parts.";
   // FIXME: Better constraint type
-  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let arguments = (ins Variadic<AnyType>:$input);
   let results = (outs StructLikeTypeInterface:$result);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
@@ -1215,7 +1215,7 @@ def StructExtractOp : P4HIR_Op<"struct_extract",
 
   let arguments = (ins StructLikeTypeInterface:$input, I32Attr:$fieldIndex);
   // FIXME: Better constraint type
-  let results = (outs AnyP4Type:$result);
+  let results = (outs AnyType:$result);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let hasFolder = 1;
@@ -1306,7 +1306,7 @@ def TupleOp : P4HIR_Op<"tuple",
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Create a tuple from constituent parts.";
   // FIXME: Better constraint type
-  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let arguments = (ins Variadic<AnyType>:$input);
   let results = (outs Builtin_Tuple:$result);
   let assemblyFormat = "`(` $input `)` attr-dict `:` `tuple` `<` type($input) `>`";
 
@@ -1328,7 +1328,7 @@ def TupleExtractOp : P4HIR_Op<"tuple_extract",
   // TODO: find a way to use fieldid inteerface on tuples...
   let arguments = (ins Builtin_Tuple:$input, I32Attr:$fieldIndex);
   // FIXME: Better constraint type
-  let results = (outs AnyP4Type:$result);
+  let results = (outs AnyType:$result);
   let assemblyFormat = "$input `[` $fieldIndex `]` attr-dict `:` type($input)";
 
   let builders = [
@@ -1496,7 +1496,7 @@ def ConstructOp : P4HIR_Op<"construct",
   }];
 
   // TODO: Refine result types, refine parameter type (must be constants!)
-  let results = (outs P4ObjectType:$result);
+  let results = (outs AnyType:$result);
   let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$arg_operands,
                        OptionalAttr<ArrayAttr>:$type_parameters,
                        OptionalAttr<ArrayAttr>:$arg_attrs);
@@ -1753,10 +1753,10 @@ def CallMethodOp : P4HIR_Op<"call_method",
   }];
 
   // TODO: Refine result types, refine parameter type
-  let results = (outs Optional<CallResultP4Type>:$result);
+  let results = (outs Optional<AnyType>:$result);
   let arguments = (ins SymbolRefAttr:$method,
                        OptionalAttr<SymbolRefAttr>:$instantiation,
-                       Optional<P4ObjectType>:$obj,
+                       Optional<AnyType>:$obj,
                        OptionalAttr<TypeArrayAttr>:$type_operands,
                        Variadic<AnyType>:$arg_operands,
                        OptionalAttr<ArrayAttr>:$arg_attrs);
@@ -1957,7 +1957,7 @@ def SwitchOp : P4HIR_Op<"switch",
     ```
   }];
 
-  let arguments = (ins SwitchCondType:$condition);
+  let arguments = (ins AnyType:$condition);
 
   let regions = (region SizedRegion<1>:$body);
 
@@ -2117,7 +2117,7 @@ def ArrayOp : P4HIR_Op<"array",
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Create an array from values.";
   // FIXME: Better constraint type
-  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let arguments = (ins Variadic<AnyType>:$input);
   let results = (outs ArrayType:$result);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
@@ -2147,7 +2147,7 @@ def ArrayGetOp : P4HIR_Op<"array_get",
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Get the value in an array at the specified index";
   let arguments = (ins ArrayType:$input, AnyIntP4Type:$index);
-  let results = (outs AnyP4Type:$result);
+  let results = (outs AnyType:$result);
 
   let hasFolder = 1;
   let hasCanonicalizeMethod = 1;
@@ -2202,7 +2202,7 @@ def BrOp : P4HIR_Op<"br",
     }]>
   ];
 
-  let arguments = (ins Variadic<AnyP4Type>:$destOperands);
+  let arguments = (ins Variadic<AnyType>:$destOperands);
   let successors = (successor AnySuccessor:$dest);
   let assemblyFormat = [{
     $dest (`(` $destOperands^ `:` type($destOperands) `)`)? attr-dict
@@ -2240,8 +2240,8 @@ def CondBrOp : P4HIR_Op<"cond_br",
   ];
 
   let arguments = (ins BooleanType:$cond,
-                       Variadic<AnyP4Type>:$destOperandsTrue,
-                       Variadic<AnyP4Type>:$destOperandsFalse);
+                       Variadic<AnyType>:$destOperandsTrue,
+                       Variadic<AnyType>:$destOperandsFalse);
   let successors = (successor AnySuccessor:$destTrue, AnySuccessor:$destFalse);
   let assemblyFormat = [{
     $cond
@@ -2354,7 +2354,7 @@ def InlineAsmOp : P4HIR_Op<"asm", [RecursiveMemoryEffects]> {
     ```
   }];
 
-  let results = (outs Optional<AnyP4Type>:$res);
+  let results = (outs Optional<AnyType>:$res);
 
   let arguments = (
     ins VariadicOfVariadic<AnyType, "operands_segments">:$asm_operands,
