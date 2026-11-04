@@ -290,7 +290,7 @@ def TableKeyEntryOp : P4HIR_Op<"match_key", [Annotated]> {
 
   }];
 
-  let arguments = (ins P4HIR_MatchKindAttr:$match_kind, AnyP4Type:$value,
+  let arguments = (ins P4HIR_MatchKindAttr:$match_kind, AnyType:$value,
                        OptionalAttr<DictionaryAttr>:$annotations);
 
   // TODO: Check

@@ -142,7 +142,7 @@ def BooleanType : P4HIR_Type<"Bool", "bool", [HasDefaultValue, DataLayoutTypeInt
     `p4hir.bool` represents a P4 `bool` type.
   }];
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "";
   let extraClassDeclaration = [{
     llvm::StringRef getAlias() const { return "bool"; };
     mlir::TypedAttr getDefaultValue();
@@ -489,7 +489,7 @@ def ValidBitType : P4HIR_Type<"ValidBit", "validity.bit", [HasDefaultValue]> {
     `p4hir.valid.bit` represents valid bit in headers.
   }];
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "";
   let extraClassDeclaration = [{
     llvm::StringRef getAlias() const { return "validity_bit"; };
     mlir::TypedAttr getDefaultValue();
@@ -911,25 +911,8 @@ def ArrayType : P4HIR_Type<"Array", "array", [
 // P4HIR type constraints.
 //===----------------------------------------------------------------------===//
 
-def AnyP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType, StringType,
-                           StructLikeTypeInterface, Builtin_Tuple,
-                           EnumType, SerEnumType,
-                           ValidBitType,
-                           DontcareType, ErrorType, UnknownType, AliasType,
-                           SetType, ArrayType]> {}
 def AnyIntP4Type : AnyTypeOf<[BitsType, InfIntType]> {}
-def CallResultP4Type : AnyTypeOf<[BitsType, BooleanType, InfIntType, VoidType,
-                                  StructLikeTypeInterface, Builtin_Tuple,
-                                  EnumType, SerEnumType, AliasType,
-                                  ExternType, ArrayType]> {}
-def LoadableP4Type : AnyTypeOf<[BitsType, VarBitsType, BooleanType, InfIntType,
-                                StructLikeTypeInterface, Builtin_Tuple,
-                                EnumType, SerEnumType, ErrorType,
-                                ValidBitType, AliasType, ArrayType]> {}
-def AnyEnumType : AnyTypeOf<[EnumType, SerEnumType]>;
 def AnyCollectionType : AnyTypeOf<[HeaderStackType, SetType, ArrayType]> {}
-def SwitchCondType : AnyTypeOf<[AnyIntP4Type, AnyEnumType, ErrorType]>;
-def P4ObjectType : AnyTypeOf<[ParserType, ControlType, ExternType, PackageType]>;
 
 /// A ref type with the specified constraints on the nested type.
 class SpecificRefType<Type type> : ConfinedType<ReferenceType,
@@ -940,7 +923,6 @@ class SpecificRefType<Type type> : ConfinedType<ReferenceType,
   Type objectType = type;
 }
 
-def StructRefType : SpecificRefType<StructType>;
 def StructLikeRefType : SpecificRefType<StructLikeTypeInterface>;
 def BitsRefType : SpecificRefType<BitsType>;
 def HeaderRefType : SpecificRefType<HeaderType>;

@@ -19,7 +19,7 @@ module {
   p4hir.func action @test(%arg0: !p4hir.ref<!b16i> {p4hir.dir = #p4hir<dir out>}) {
     %c10_b32i = p4hir.const #int10_b32i
     %c12_b16i = p4hir.const #int12_b16i
-    %tuple = p4hir.tuple (%c10_b32i, %c12_b16i) : tuple<!b32i, !b16i>
+    %tuple = p4hir.tuple(%c10_b32i, %c12_b16i) : tuple<!b32i, !b16i>
     %x_0 = p4hir.variable ["x", init] : <tuple<!b32i, !b16i>>
     p4hir.assign %tuple, %x_0 : <tuple<!b32i, !b16i>>
     %val_4 = p4hir.read %x_0 : <tuple<!b32i, !b16i>>
@@ -32,7 +32,7 @@ module {
   p4hir.func action @test2() {
     %c10_b32i = p4hir.const #int10_b32i
     %false = p4hir.const #false
-    %tuple = p4hir.tuple (%c10_b32i, %false) : tuple<!b32i, !p4hir.bool>
+    %tuple = p4hir.tuple(%c10_b32i, %false) : tuple<!b32i, !p4hir.bool>
     %x_0 = p4hir.variable ["x", init] : <tuple<!b32i, !p4hir.bool>>
     p4hir.assign %tuple, %x_0 : <tuple<!b32i, !p4hir.bool>>
     %y = p4hir.variable ["y"] : <tuple<!b32i, !p4hir.bool>>

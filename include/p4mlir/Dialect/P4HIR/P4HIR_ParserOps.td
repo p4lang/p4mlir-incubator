@@ -160,7 +160,7 @@ def ParserTransitionSelectOp : P4HIR_Op<"transition_select",
    [Terminator, NoTerminator,
     ParentOneOf<["ParserStateOp"]>]> {
   // FIXME: constraint argument better. Should be tuple or "normal" type.
-  let arguments = (ins Variadic<AnyP4Type>:$args);
+  let arguments = (ins Variadic<AnyType>:$args);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
     $args `:` type($args) $body attr-dict
@@ -224,7 +224,7 @@ def SetOp : P4HIR_Op<"set",
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Create a set from constituent parts.";
   // FIXME: Better constraint type
-  let arguments = (ins Variadic<AnyP4Type>:$input);
+  let arguments = (ins Variadic<AnyType>:$input);
   let results = (outs SetType:$result);
   let hasCustomAssemblyFormat = 1;
   // FIXME: use declarative format

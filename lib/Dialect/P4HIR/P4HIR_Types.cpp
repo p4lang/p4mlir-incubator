@@ -96,10 +96,6 @@ mlir::TypedAttr VarBitsType::getDefaultValue() {
     return P4HIR::IntAttr::get(*this, APInt::getZero(getMaxWidth()));
 }
 
-Type BoolType::parse(mlir::AsmParser &parser) { return get(parser.getContext()); }
-
-void BoolType::print(mlir::AsmPrinter &printer) const {}
-
 mlir::TypedAttr BoolType::getDefaultValue() { return P4HIR::BoolAttr::get(getContext(), false); }
 
 Type P4HIRDialect::parseType(mlir::DialectAsmParser &parser) const {
@@ -788,10 +784,6 @@ mlir::TypedAttr SerEnumType::getDefaultValue() {
 
     return nullptr;
 }
-
-Type ValidBitType::parse(mlir::AsmParser &parser) { return get(parser.getContext()); }
-
-void ValidBitType::print(mlir::AsmPrinter &printer) const {}
 
 static mlir::ParseResult parseArray(mlir::AsmParser &p, size_t &size, mlir::Type &elementType) {
     if (p.parseInteger(size) || p.parseXInDimensionList() || p.parseType(elementType))
