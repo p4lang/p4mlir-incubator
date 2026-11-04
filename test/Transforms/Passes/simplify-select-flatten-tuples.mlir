@@ -74,35 +74,35 @@ module {
     // CHECK-NEXT: }
 
     p4hir.state @start {
-      %tuple = p4hir.tuple (%arg1) : tuple<!p4hir.bool>
-      %tuple_3 = p4hir.tuple (%tuple) : tuple<tuple<!p4hir.bool>>
-      %tuple_4 = p4hir.tuple (%arg1) : tuple<!p4hir.bool>
+      %tuple = p4hir.tuple(%arg1) : tuple<!p4hir.bool>
+      %tuple_3 = p4hir.tuple(%tuple) : tuple<tuple<!p4hir.bool>>
+      %tuple_4 = p4hir.tuple(%arg1) : tuple<!p4hir.bool>
       %add = p4hir.binop(add, %arg0, %c1_b8i) : !b8i
       %not = p4hir.unary(not, %arg1) : !p4hir.bool
-      %tuple_5 = p4hir.tuple (%add, %not) : tuple<!b8i, !p4hir.bool>
+      %tuple_5 = p4hir.tuple(%add, %not) : tuple<!b8i, !p4hir.bool>
       p4hir.transition_select %arg0, %tuple_3, %tuple_4, %arg1, %tuple_5 : !b8i, tuple<tuple<!p4hir.bool>>, tuple<!p4hir.bool>, !p4hir.bool, tuple<!b8i, !p4hir.bool> {
         p4hir.select_case {
-          %tuple_6 = p4hir.tuple (%false) : tuple<!p4hir.bool>
-          %tuple_7 = p4hir.tuple (%tuple_6) : tuple<tuple<!p4hir.bool>>
+          %tuple_6 = p4hir.tuple(%false) : tuple<!p4hir.bool>
+          %tuple_7 = p4hir.tuple(%tuple_6) : tuple<tuple<!p4hir.bool>>
           %set_8 = p4hir.set (%tuple_7) : !p4hir.set<tuple<tuple<!p4hir.bool>>>
-          %tuple_9 = p4hir.tuple (%true) : tuple<!p4hir.bool>
+          %tuple_9 = p4hir.tuple(%true) : tuple<!p4hir.bool>
           %set_10 = p4hir.set (%tuple_9) : !p4hir.set<tuple<!p4hir.bool>>
           %val = p4hir.read %w : <!p4hir.bool>
           %set_11 = p4hir.set (%val) : !p4hir.set<!p4hir.bool>
-          %tuple_12 = p4hir.tuple (%c1_b8i, %false) : tuple<!b8i, !p4hir.bool>
+          %tuple_12 = p4hir.tuple(%c1_b8i, %false) : tuple<!b8i, !p4hir.bool>
           %set_13 = p4hir.set (%tuple_12) : !p4hir.set<tuple<!b8i, !p4hir.bool>>
           p4hir.yield %set_2, %set_8, %set_10, %set_11, %set_13 : !p4hir.set<!b8i>, !p4hir.set<tuple<tuple<!p4hir.bool>>>, !p4hir.set<tuple<!p4hir.bool>>, !p4hir.set<!p4hir.bool>, !p4hir.set<tuple<!b8i, !p4hir.bool>>
         } to @accept
         p4hir.select_case {
-          %tuple_6 = p4hir.tuple (%true) : tuple<!p4hir.bool>
+          %tuple_6 = p4hir.tuple(%true) : tuple<!p4hir.bool>
           %set_7 = p4hir.set (%tuple_6) : !p4hir.set<tuple<!p4hir.bool>>
           p4hir.yield %set_1, %everything, %set_7, %set_0, %everything : !p4hir.set<!b8i>, !p4hir.set<!p4hir.dontcare>, !p4hir.set<tuple<!p4hir.bool>>, !p4hir.set<!p4hir.bool>, !p4hir.set<!p4hir.dontcare>
         } to @reject
         p4hir.select_case {
-          %tuple_6 = p4hir.tuple (%true) : tuple<!p4hir.bool>
-          %tuple_7 = p4hir.tuple (%tuple_6) : tuple<tuple<!p4hir.bool>>
+          %tuple_6 = p4hir.tuple(%true) : tuple<!p4hir.bool>
+          %tuple_7 = p4hir.tuple(%tuple_6) : tuple<tuple<!p4hir.bool>>
           %set_8 = p4hir.set (%tuple_7) : !p4hir.set<tuple<tuple<!p4hir.bool>>>
-          %tuple_9 = p4hir.tuple (%c34_b8i, %true) : tuple<!b8i, !p4hir.bool>
+          %tuple_9 = p4hir.tuple(%c34_b8i, %true) : tuple<!b8i, !p4hir.bool>
           %set_10 = p4hir.set (%tuple_9) : !p4hir.set<tuple<!b8i, !p4hir.bool>>
           p4hir.yield %set, %set_8, %everything, %set_0, %set_10 : !p4hir.set<!b8i>, !p4hir.set<tuple<tuple<!p4hir.bool>>>, !p4hir.set<!p4hir.dontcare>, !p4hir.set<!p4hir.bool>, !p4hir.set<tuple<!b8i, !p4hir.bool>>
         } to @accept
@@ -141,7 +141,7 @@ module {
     // CHECK-NEXT: }
 
     p4hir.state @start {
-      %tuple = p4hir.tuple (%arg0, %arg1) : tuple<!b8i, !b8i>
+      %tuple = p4hir.tuple(%arg0, %arg1) : tuple<!b8i, !b8i>
       p4hir.transition_select %tuple : tuple<!b8i, !b8i> {
         p4hir.select_case {
           %set = p4hir.set (%arg2) : !p4hir.set<tuple<!b8i, !b8i>>
@@ -184,7 +184,7 @@ module {
     p4hir.state @start {
       p4hir.transition_select %arg2 : tuple<!b8i, !b8i> {
         p4hir.select_case {
-          %tuple = p4hir.tuple (%arg0, %arg1) : tuple<!b8i, !b8i>
+          %tuple = p4hir.tuple(%arg0, %arg1) : tuple<!b8i, !b8i>
           %set = p4hir.set (%tuple) : !p4hir.set<tuple<!b8i, !b8i>>
           p4hir.yield %set : !p4hir.set<tuple<!b8i, !b8i>>
         } to @reject
@@ -228,11 +228,11 @@ module {
     // CHECK-NEXT: }
 
     p4hir.state @start {
-      %tuple = p4hir.tuple (%arg0) : tuple<!i32i>
-      %tuple_1 = p4hir.tuple (%arg1, %arg1, %arg1) : tuple<!i32i, !i32i, !i32i>
+      %tuple = p4hir.tuple(%arg0) : tuple<!i32i>
+      %tuple_1 = p4hir.tuple(%arg1, %arg1, %arg1) : tuple<!i32i, !i32i, !i32i>
       p4hir.transition_select %tuple, %tuple_1 : tuple<!i32i>, tuple<!i32i, !i32i, !i32i> {
         p4hir.select_case {
-          %tuple_2 = p4hir.tuple (%arg0) : tuple<!i32i>
+          %tuple_2 = p4hir.tuple(%arg0) : tuple<!i32i>
           %set_3 = p4hir.set (%tuple_2) : !p4hir.set<tuple<!i32i>>
           p4hir.yield %set_3, %set_0 : !p4hir.set<tuple<!i32i>>, !p4hir.set<tuple<!i32i, !i32i, !i32i>>
         } to @foo1
