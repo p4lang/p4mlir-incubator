@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "p4mlir/Transforms/IRUtils.h"
+#include "p4mlir/Utilities/IRUtils.h"
+
+#include <cctype>
 
 #include "mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Conversion/ConversionPatterns.h"
@@ -11,6 +13,64 @@
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
 
 using namespace P4::P4MLIR;
+
+mlir::FailureOr<llvm::SmallVector<mlir::BlockArgument>> IRUtils::duplicateFunctionLikeArgs(
+    mlir::FunctionOpInterface obj, llvm::ArrayRef<mlir::BlockArgument> args,
+    llvm::ArrayRef<mlir::Type> newTypes /* = {} */) {
+    assert((newTypes.size() == args.size() || newTypes.empty()) && "Expected same count new types");
+
+    auto argIndices =
+        llvm::map_to_vector(args, [](mlir::BlockArgument arg) { return arg.getArgNumber(); });
+    auto argTypes = llvm::to_vector(newTypes);
+    if (argTypes.empty())
+        argTypes = llvm::map_to_vector(args, [](mlir::BlockArgument arg) { return arg.getType(); });
+    auto argLocs = llvm::map_to_vector(args, [](mlir::BlockArgument arg) { return arg.getLoc(); });
+    auto argAttrs = llvm::map_to_vector(args, [&](mlir::BlockArgument arg) {
+        return mlir::DictionaryAttr::get(obj.getContext(), obj.getArgAttrs(arg.getArgNumber()));
+    });
+
+    if (failed(obj.insertArguments(argIndices, argTypes, argAttrs, argLocs)))
+        return mlir::failure();
+
+    auto newArgs = llvm::map_to_vector(
+        args, [&](mlir::BlockArgument arg) { return obj.getArgument(arg.getArgNumber() - 1); });
+    return newArgs;
+}
+
+mlir::LogicalResult IRUtils::eraseFunctionLikeArgs(mlir::FunctionOpInterface obj,
+                                                   llvm::ArrayRef<mlir::BlockArgument> args) {
+    llvm::BitVector argsToErase(obj.getNumArguments());
+    for (auto arg : args) argsToErase.set(arg.getArgNumber());
+    return obj.eraseArguments(argsToErase);
+}
+
+std::string IRUtils::legalizeName(std::string str) {
+    unsigned e = str.size();
+    unsigned i1 = 0;
+    unsigned i2 = 0;
+    while (i1 < e) {
+        char c = str[i1++];
+
+        if (std::isalnum(c)) {
+            str[i2++] = c;
+        } else {
+            str[i2++] = '_';
+            while (i1 < e && !std::isalnum(str[i1])) i1++;
+        }
+    }
+    str.resize(i2);
+    return str;
+}
+
+P4HIR::StructType IRUtils::createStructType(mlir::MLIRContext *ctx, const llvm::Twine &name,
+                                            const llvm::SmallVectorImpl<P4HIR::FieldPath> &paths,
+                                            mlir::DictionaryAttr annotations /* = {} */) {
+    auto fields = llvm::map_to_vector(paths, [&](P4HIR::FieldPath path) {
+        auto name = mlir::StringAttr::get(ctx, IRUtils::legalizeName(path.str()));
+        return P4HIR::FieldInfo(name, path.getType());
+    });
+    return P4HIR::StructType::get(ctx, name.str(), fields, annotations);
+}
 
 mlir::Value IRUtils::getAccessibleValue(mlir::RewriterBase &rewriter, mlir::Operation *op,
                                         mlir::Value val) {
@@ -279,22 +339,7 @@ void IRUtils::SplitStateRewriter::finalize() {
     step = FINALIZED;
 }
 
-/// Return an indirect use mapping for P4HIR `control_local` and `symbol_ref`-based
-/// accesses.
-IRUtils::PathWalker::IndirectUsesMap IRUtils::PathWalker::getIndirectSymbolUses(
-    P4HIR::ControlOp control) {
-    IndirectUsesMap result;
-    control.walk([&](P4HIR::SymToValueOp symbolRef) {
-        if (auto referencedControlLocal = symbolRef.getDeclOp<P4HIR::ControlLocalOp>()) {
-            auto [it, ins] = result.insert({referencedControlLocal.getVal(), {}});
-            it->second.push_back(symbolRef.getResult());
-        }
-    });
-    return result;
-}
-
-/// Helper to look through a P4HIR `struct_extract` or `struct_field_ref` operation.
-std::pair<mlir::Value, P4HIR::FieldPath> IRUtils::PathWalker::lookThroughStructAccess(
+std::pair<mlir::Value, P4HIR::FieldPath> IRUtils::P4HIRFieldPathOps::getAccessedFieldStruct(
     mlir::Operation *op, const mlir::OpOperand &operand, P4HIR::FieldPath path) {
     return llvm::TypeSwitch<mlir::Operation *, std::pair<mlir::Value, P4HIR::FieldPath>>(op)
         .Case<P4HIR::StructExtractOp, P4HIR::StructFieldRefOp>([&](auto structAccessOp) {
@@ -304,8 +349,7 @@ std::pair<mlir::Value, P4HIR::FieldPath> IRUtils::PathWalker::lookThroughStructA
         .Default([](mlir::Operation *) { return std::pair{mlir::Value(), P4HIR::FieldPath()}; });
 }
 
-/// Helper to look through a P4HIR `array_get` or `array_element_ref` operation.
-std::pair<mlir::Value, P4HIR::FieldPath> IRUtils::PathWalker::lookThroughArrayAccess(
+std::pair<mlir::Value, P4HIR::FieldPath> IRUtils::P4HIRFieldPathOps::getAccessedFieldArray(
     mlir::Operation *op, const mlir::OpOperand &operand, P4HIR::FieldPath path) {
     return llvm::TypeSwitch<mlir::Operation *, std::pair<mlir::Value, P4HIR::FieldPath>>(op)
         .Case<P4HIR::ArrayGetOp, P4HIR::ArrayElementRefOp>(
@@ -321,55 +365,22 @@ std::pair<mlir::Value, P4HIR::FieldPath> IRUtils::PathWalker::lookThroughArrayAc
         .Default([](mlir::Operation *) { return std::pair{mlir::Value(), P4HIR::FieldPath()}; });
 }
 
-/// `operand` is an operand in `op` that is used to access the root value's field that
-/// corresponds to `path`. If `op` is a field access operation and the resulting path can be
-/// determined based on `path`, then this function should return the resulting new value and
-/// path. Otherwise an empty value must be returned.
-std::pair<mlir::Value, P4HIR::FieldPath> IRUtils::PathWalker::lookThroughUser(
+std::pair<mlir::Value, P4HIR::FieldPath> IRUtils::P4HIRFieldPathOps::getAccessedField(
     mlir::Operation *op, const mlir::OpOperand &operand, P4HIR::FieldPath path) {
     // Default implementation to handle P4HIR operations. Users should override this to also
     // support operations from other dialects.
-    auto lookThroughStruct = lookThroughStructAccess(op, operand, path);
+    auto lookThroughStruct = getAccessedFieldStruct(op, operand, path);
     if (lookThroughStruct.first) return lookThroughStruct;
 
-    auto lookThroughArray = lookThroughArrayAccess(op, operand, path);
+    auto lookThroughArray = getAccessedFieldArray(op, operand, path);
     if (lookThroughArray.first) return lookThroughArray;
 
     return {mlir::Value(), P4HIR::FieldPath()};
 }
 
-mlir::WalkResult IRUtils::PathWalker::walkImpl(mlir::Value value, P4HIR::FieldPath path) {
-    auto status = nodeCb ? nodeCb(value, path) : mlir::WalkResult::advance();
-    if (status.wasSkipped()) return mlir::WalkResult::advance();
-    if (status.wasInterrupted()) return mlir::WalkResult::interrupt();
-
-    for (auto &use : value.getUses()) {
-        mlir::Operation *user = use.getOwner();
-
-        auto [resValue, resPath] = lookThroughUser(user, use, path);
-        if (resValue) {
-            if (walkImpl(resValue, resPath).wasInterrupted()) return mlir::WalkResult::interrupt();
-        } else {
-            auto status = leafCb ? leafCb(user, use, path) : mlir::WalkResult::advance();
-            if (status.wasInterrupted()) return mlir::WalkResult::interrupt();
-        }
-    }
-
-    if (indirectUses) {
-        auto it = indirectUses->find(value);
-        if (it != indirectUses->end()) {
-            for (mlir::Value alias : it->second)
-                if (walkImpl(alias, path).wasInterrupted()) return mlir::WalkResult::interrupt();
-        }
-    }
-
-    return mlir::WalkResult::advance();
-}
-
-mlir::Value IRUtils::PathRewriter::getFromField(mlir::Location loc, mlir::Value val,
-                                                P4HIR::IndexedField field) {
-    // Default implementation to handle P4HIR operations. Users should override this to also
-    // support operations from other dialects.
+mlir::Value IRUtils::P4HIRFieldPathOps::buildFieldAccess(mlir::RewriterBase &rewriter,
+                                                         mlir::Location loc, mlir::Value val,
+                                                         P4HIR::IndexedField field) {
     bool isRef = mlir::isa<P4HIR::ReferenceType>(val.getType());
     if (mlir::isa<P4HIR::StructLikeTypeInterface>(field.getParentType())) {
         if (isRef)
@@ -388,70 +399,4 @@ mlir::Value IRUtils::PathRewriter::getFromField(mlir::Location loc, mlir::Value 
         llvm_unreachable("Unexpected type");
         return mlir::Value();
     }
-}
-
-std::pair<mlir::OpOperand *, P4HIR::FieldPath> IRUtils::PathRewriter::getOperandWithPath(
-    mlir::Operation *op) {
-    P4HIR::FieldPath resPath;
-    mlir::OpOperand *resOperand = nullptr;
-    for (mlir::OpOperand &operand : op->getOpOperands()) {
-        if (auto path = getPath(operand.get()); !path.isEmpty()) {
-            assert(!resOperand && "Unexpected operation with multiple used paths");
-            resPath = path;
-            resOperand = &operand;
-        }
-    }
-    assert(resOperand && "A path must exist for leaf operations");
-    return {resOperand, resPath};
-}
-
-mlir::LogicalResult IRUtils::PathRewriter::transform(bool eraseDead /* = false */) {
-    /// Use a vector and deduplicate with a set so we get deterministic order.
-    llvm::SmallVector<mlir::Operation *> leafOps;
-    mlir::DenseSet<mlir::Operation *> seenLeafOps;
-
-    auto nodeCb = [&](mlir::Value value, P4HIR::FieldPath path) {
-        mlir::Operation *def = value.getDefiningOp();
-        if (eraseDead && def) opsToRemove.push_back(def);
-
-        rewriter.setInsertionPointAfterValue(value);
-        mlir::Value valReplacement = replaceValue(value, path);
-
-        if (valReplacement) {
-            // Stop early: replace `value` with a new one that doesn't depend on the root.
-            rewriter.replaceAllUsesWith(value, valReplacement);
-            return mlir::WalkResult::skip();
-        }
-
-        valueToPath.insert({value, path});
-
-        return mlir::WalkResult::advance();
-    };
-
-    auto leafCb = [&](mlir::Operation *user, const mlir::OpOperand &operand,
-                      P4HIR::FieldPath path) {
-        // It is reasonable to expect that leaf operations may have multiple uses of
-        // root fields, so we don't directly ask for their replacement. Store `user` and
-        // process once we have discovered all leaf paths.
-        if (seenLeafOps.insert(user).second) leafOps.push_back(user);
-        return mlir::WalkResult::advance();
-    };
-
-    [[maybe_unused]] auto status = PathWalker(nodeCb, leafCb, indirectUses).walk(root, rootType);
-    assert(!status.wasInterrupted() && "Unexpected state");
-
-    for (mlir::Operation *op : leafOps) {
-        rewriter.setInsertionPoint(op);
-        if (failed(replaceUsesIn(op))) return mlir::failure();
-    }
-
-    if (eraseDead) {
-        // `opsToRemove` is in DFS preorder, so we need to erase them from back to front.
-        while (!opsToRemove.empty()) {
-            mlir::Operation *op = opsToRemove.pop_back_val();
-            if (op->use_empty()) rewriter.eraseOp(op);
-        }
-    }
-
-    return mlir::success();
 }
