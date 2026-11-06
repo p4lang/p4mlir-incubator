@@ -119,8 +119,6 @@ struct StackFields {
     mlir::Type nextIndexType;
 };
 
-class IndexMap;
-
 class StackNumbering {
  public:
     unsigned forValue(mlir::Value base) {
@@ -137,8 +135,8 @@ class StackNumbering {
     mlir::FailureOr<llvm::APSInt> foldToConstInt(mlir::Value value, const ValueMap &valueMap);
 
     ValueMap interpretState(P4HIR::ParserStateOp state, ValueMap valueMap,
-                            const IndexMap &indexMap,
                             llvm::function_ref<void(mlir::Operation *, const ValueMap &)> onAccess);
+    ValueMap initialValueMap() const;
 
     void collectVarsInIndex(mlir::Value value, llvm::DenseSet<StackId> &out);
     llvm::DenseSet<StackId> collectIndexVars(P4HIR::ParserOp parser);
@@ -148,6 +146,7 @@ class StackNumbering {
     mlir::FailureOr<llvm::SmallVector<StackAccess>> computeStackAccesses(
         P4HIR::ParserStateOp state);
 
+    StackId getNextIndexKey(StackId stackKey) const;
     mlir::FailureOr<StackId> getNextIndexKey(P4HIR::HeaderStackExtractNextOp extractNext);
     bool isNextIndexValue(mlir::Value value);
     bool isOutOfBounds(mlir::Operation *accessOp, const ValueMap &valueMap);
@@ -162,28 +161,15 @@ class StackNumbering {
 
 using AccessMap = llvm::DenseMap<P4HIR::ParserStateOp, llvm::SmallVector<StackAccess>>;
 
-class IndexMap {
- public:
-    bool isOOBFor(const StackAccess &access) const;
-    bool isOOBForAny(llvm::ArrayRef<StackAccess> accesses) const;
-    IndexMap advanced(llvm::ArrayRef<StackAccess> accesses) const;
-    IndexMap restrictTo(llvm::ArrayRef<StackAccess> relevant) const;
-    unsigned indexOf(StackId key) const;
-    mlir::ArrayAttr encode(mlir::MLIRContext *context) const;
-
- private:
-    llvm::DenseMap<StackId, unsigned> data;
-};
-
 using VisitedKey = std::pair<P4HIR::ParserStateOp, mlir::ArrayAttr>;
 
 struct SymbolicState {
     P4HIR::ParserStateOp state;
     unsigned callIndex;
-    IndexMap indexMap;
     ValueMap entryValueMap;
     P4HIR::ParserStateOp cloneOp;
     llvm::DenseSet<P4HIR::ParserStateOp> prunedSuccessors;
+    llvm::SmallVector<VisitedKey> successorKeys;
 };
 
 struct SymbolicResult {
@@ -191,30 +177,21 @@ struct SymbolicResult {
     llvm::DenseMap<VisitedKey, std::optional<unsigned>> visitedMap;
     llvm::SmallVector<SymbolicState> outOfBoundStates;
     llvm::DenseMap<VisitedKey, unsigned> outOfBoundIndex;
-    AccessMap accesses;
-    llvm::DenseSet<StackId> indexVars;
     // States entered from a loop that is not unrolled; their original op stays generic.
     llvm::DenseSet<P4HIR::ParserStateOp> genericStates;
 
     static VisitedKey makeVisitedKey(mlir::MLIRContext *context, P4HIR::ParserStateOp state,
-                                     const IndexMap &indexMap, const ValueMap &valueMap);
-
-    mlir::FailureOr<std::optional<unsigned>> lookupSuccessor(
-        P4HIR::ParserStateOp state, const IndexMap &indexMap,
-        const ValueMap &valueMap) const;
+                                     const ValueMap &valueMap);
 };
 
-using RelevantStacksProvider =
-    llvm::function_ref<llvm::ArrayRef<StackAccess>(P4HIR::ParserStateOp)>;
+using RelevantKeysProvider =
+    llvm::function_ref<const llvm::DenseSet<StackId> &(P4HIR::ParserStateOp)>;
 
 class SymbolicExecution {
  public:
-    SymbolicExecution(P4HIR::ParserOp parser, AccessMap stateAccesses,
-                      StackNumbering &numbering,
-                      RelevantStacksProvider getRelevantStacks,
-                      unsigned limit,
-                      const llvm::DenseSet<P4HIR::ParserStateOp> &skipStates = {},
-                      const llvm::DenseSet<StackId> &extraIndexVars = {});
+    SymbolicExecution(P4HIR::ParserOp parser, StackNumbering &numbering,
+                      RelevantKeysProvider getRelevantKeys, unsigned limit,
+                      const llvm::DenseSet<P4HIR::ParserStateOp> &skipStates = {});
     SymbolicResult run();
 
  private:
@@ -222,12 +199,10 @@ class SymbolicExecution {
         P4HIR::ParserStateOp state, const ValueMap &valueMap);
 
     P4HIR::ParserOp parser;
-    AccessMap stateAccesses;
     StackNumbering &numbering;
-    RelevantStacksProvider getRelevantStacks;
+    RelevantKeysProvider getRelevantKeys;
     unsigned limit;
     llvm::DenseSet<P4HIR::ParserStateOp> skipStates;
-    llvm::DenseSet<StackId> extraIndexVars;
 };
 
 }  // namespace P4::P4MLIR

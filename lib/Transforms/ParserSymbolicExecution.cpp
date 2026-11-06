@@ -103,69 +103,10 @@ mlir::ArrayAttr ValueMap::encode(mlir::MLIRContext *context) const {
     return mlir::ArrayAttr::get(context, encoded);
 }
 
-bool IndexMap::isOOBFor(const StackAccess &access) const {
-    auto it = data.find(access.key);
-    return it != data.end() && it->second + access.count > access.size;
-}
-
-bool IndexMap::isOOBForAny(llvm::ArrayRef<StackAccess> accesses) const {
-    for (auto &access : accesses)
-        if (isOOBFor(access)) return true;
-    return false;
-}
-
-// Increase all the stack indices by corresponding count. Used to
-// increment the map while moving through i.e. through loop clones.
-IndexMap IndexMap::advanced(llvm::ArrayRef<StackAccess> accesses) const {
-    IndexMap result = *this;
-    for (auto &access : accesses)
-        if (access.count) result.data[access.key] += access.count;
-    return result;
-}
-
-// Filter out IndexMap used for particular stacks. Used to filter out
-// relevant data for particular SCC.
-IndexMap IndexMap::restrictTo(llvm::ArrayRef<StackAccess> relevant) const {
-    IndexMap result;
-    for (auto &access : relevant) {
-        auto it = data.find(access.key);
-        if (it != data.end()) result.data[access.key] = it->second;
-    }
-    return result;
-}
-
-unsigned IndexMap::indexOf(StackId key) const {
-    auto it = data.find(key);
-    return it == data.end() ? 0 : it->second;
-}
-
-// Serializes and sorts the data_.
-mlir::ArrayAttr IndexMap::encode(mlir::MLIRContext *context) const {
-    auto entries = llvm::to_vector(data);
-    llvm::sort(entries, llvm::less_first());
-    llvm::SmallVector<mlir::Attribute> encoded;
-    for (auto &entry : entries)
-        encoded.push_back(mlir::ArrayAttr::get(
-            context,
-            {entry.first.asAttribute(),
-             mlir::IntegerAttr::get(mlir::IndexType::get(context), entry.second)}));
-    return mlir::ArrayAttr::get(context, encoded);
-}
-
 VisitedKey SymbolicResult::makeVisitedKey(mlir::MLIRContext *context,
                                           P4HIR::ParserStateOp state,
-                                          const IndexMap &indexMap,
                                           const ValueMap &valueMap) {
-    return {state,
-            mlir::ArrayAttr::get(context,
-                                 {indexMap.encode(context), valueMap.encode(context)})};
-}
-
-mlir::FailureOr<std::optional<unsigned>> SymbolicResult::lookupSuccessor(
-    P4HIR::ParserStateOp state, const IndexMap &indexMap, const ValueMap &valueMap) const {
-    auto it = visitedMap.find(makeVisitedKey(state.getContext(), state, indexMap, valueMap));
-    if (it == visitedMap.end()) return mlir::failure();
-    return it->second;
+    return {state, valueMap.encode(context)};
 }
 
 void StackNumbering::copyNumbering(mlir::Value original, mlir::Value cloned) {
@@ -373,17 +314,19 @@ static void interpretBlock(
     }
 }
 
-// Symbolically interpret a state's body, updating the value map. nextIndex of
-// every known stack is visible during interpretation but is not kept in the result.
+// Symbolically interpret a state's body, updating the value map.
 ValueMap StackNumbering::interpretState(
-    P4HIR::ParserStateOp state, ValueMap valueMap, const IndexMap &indexMap,
+    P4HIR::ParserStateOp state, ValueMap valueMap,
     llvm::function_ref<void(mlir::Operation *, const ValueMap &)> onAccess) {
     valueMap.clearSnapshots();
-    for (auto &fields : stacks)
-        valueMap[fields.nextIndexKey] = P4HIR::IntAttr::get(
-            fields.nextIndexType, static_cast<int64_t>(indexMap.indexOf(fields.stackKey)));
     interpretBlock(*state.getBlock(), valueMap, onAccess, *this);
-    for (auto &fields : stacks) valueMap.erase(fields.nextIndexKey);
+    return valueMap;
+}
+
+ValueMap StackNumbering::initialValueMap() const {
+    ValueMap valueMap;
+    for (auto &fields : stacks)
+        valueMap[fields.nextIndexKey] = P4HIR::IntAttr::get(fields.nextIndexType, int64_t{0});
     return valueMap;
 }
 
@@ -402,7 +345,7 @@ void StackNumbering::collectVarsInIndex(mlir::Value value, llvm::DenseSet<StackI
         collectVarsInIndex(operand, out);
 }
 
-// Collect all index variables used across the parser.
+// Collect variables used in indices and transition_select args across the parser.
 llvm::DenseSet<StackId> StackNumbering::collectIndexVars(P4HIR::ParserOp parser) {
     llvm::DenseSet<StackId> out;
     std::function<void(mlir::Block &)> visitBlock = [&](mlir::Block &block) {
@@ -414,8 +357,17 @@ llvm::DenseSet<StackId> StackNumbering::collectIndexVars(P4HIR::ParserOp parser)
                     visitBlock(scopeBlock);
         }
     };
-    for (auto stateOp : parser.states())
+    for (auto stateOp : parser.states()) {
         visitBlock(*stateOp.getBlock());
+        if (auto selectOp =
+                mlir::dyn_cast<P4HIR::ParserTransitionSelectOp>(stateOp.getNextTransition()))
+            for (mlir::Value arg : selectOp.getArgs()) collectVarsInIndex(arg, out);
+    }
+    for (StackId key : llvm::to_vector(out))
+        if (llvm::any_of(stacks, [&](const StackFields &fields) {
+                return key.overlaps(fields.nextIndexKey);
+            }))
+            out.erase(key);
     return out;
 }
 
@@ -435,7 +387,7 @@ void StackNumbering::canonicalizeParserVariables(P4HIR::ParserOp parser) {
 }
 
 // Finds header stacks a state depends on: accessed with a non-constant index or
-// whose nextIndex is read. Only data[nextIndex] accesses advance the stack.
+// whose nextIndex is read. Only header_stack_extract_next advances the stack.
 // Returns failure if any stack identity can't be resolved to prevent incorrect unrolling.
 mlir::FailureOr<llvm::SmallVector<StackAccess>> StackNumbering::computeStackAccesses(
     P4HIR::ParserStateOp state) {
@@ -520,12 +472,17 @@ StackFields StackNumbering::registerStack(StackId stackKey, P4HIR::HeaderStackTy
     return fields;
 }
 
+StackId StackNumbering::getNextIndexKey(StackId stackKey) const {
+    for (auto &fields : stacks)
+        if (fields.stackKey == stackKey) return fields.nextIndexKey;
+    return {};
+}
+
 mlir::FailureOr<StackId> StackNumbering::getNextIndexKey(
     P4HIR::HeaderStackExtractNextOp extractNext) {
     auto stackKey = getStackId(extractNext.getStack());
     if (failed(stackKey)) return mlir::failure();
-    for (auto &fields : stacks)
-        if (fields.stackKey == *stackKey) return fields.nextIndexKey;
+    if (auto nextIndexKey = getNextIndexKey(*stackKey)) return nextIndexKey;
     return mlir::failure();
 }
 
@@ -595,15 +552,10 @@ static std::optional<bool> setContains(mlir::Attribute setAttr, mlir::Attribute 
 }
 
 SymbolicExecution::SymbolicExecution(
-    P4HIR::ParserOp parser, AccessMap stateAccesses,
-    StackNumbering &numbering,
-    RelevantStacksProvider getRelevantStacks,
-    unsigned limit,
-    const llvm::DenseSet<P4HIR::ParserStateOp> &skipStates,
-    const llvm::DenseSet<StackId> &extraIndexVars)
-    : parser(parser), stateAccesses(std::move(stateAccesses)),
-      numbering(numbering), getRelevantStacks(getRelevantStacks),
-      limit(limit), skipStates(skipStates), extraIndexVars(extraIndexVars) {}
+    P4HIR::ParserOp parser, StackNumbering &numbering, RelevantKeysProvider getRelevantKeys,
+    unsigned limit, const llvm::DenseSet<P4HIR::ParserStateOp> &skipStates)
+    : parser(parser), numbering(numbering), getRelevantKeys(getRelevantKeys), limit(limit),
+      skipStates(skipStates) {}
 
 // Tries to fold transitionSelects, returns all successors if it doesn't succeed.
 llvm::SmallVector<P4HIR::ParserStateOp> SymbolicExecution::resolveSuccessors(
@@ -648,29 +600,30 @@ llvm::SmallVector<P4HIR::ParserStateOp> SymbolicExecution::resolveSuccessors(
 // Traverse through states calculating correct indices for each loop iteration.
 SymbolicResult SymbolicExecution::run() {
     SymbolicResult result;
-    result.accesses = std::move(stateAccesses);
-    result.indexVars = numbering.collectIndexVars(parser);
-    result.indexVars.insert(extraIndexVars.begin(), extraIndexVars.end());
 
     auto startState = parser.getStartState();
     if (!startState) return result;
 
     struct WorkItem {
         P4HIR::ParserStateOp state;
-        IndexMap indexMap;
         ValueMap valueMap;
         bool generic = false;
+    };
+
+    auto keyOf = [&](P4HIR::ParserStateOp state, const ValueMap &valueMap) {
+        return SymbolicResult::makeVisitedKey(parser.getContext(), state,
+                                              valueMap.restrictTo(getRelevantKeys(state)));
     };
 
     llvm::DenseMap<P4HIR::ParserStateOp, unsigned> callsCount;
 
     std::deque<WorkItem> worklist;
-    worklist.push_back({startState, IndexMap(), ValueMap()});
+    worklist.push_back({startState, numbering.initialValueMap()});
 
     unsigned instanceCount = 0;
 
     while (!worklist.empty()) {
-        auto [state, indexMap, valueMap, generic] = std::move(worklist.front());
+        auto [state, valueMap, generic] = std::move(worklist.front());
         worklist.pop_front();
 
         if (state.isTerminal()) continue;
@@ -679,33 +632,23 @@ SymbolicResult SymbolicExecution::run() {
         if (generic || skipStates.contains(state)) {
             if (!result.genericStates.insert(state).second) continue;
             for (auto successor : state.getNextStates())
-                worklist.push_back({successor, IndexMap(), ValueMap(), true});
+                worklist.push_back({successor, ValueMap(), true});
             continue;
         }
 
-        llvm::ArrayRef<StackAccess> relevant = getRelevantStacks(state);
-        IndexMap restrictedIndexMap = indexMap.restrictTo(relevant);
-        ValueMap restrictedValueMap = valueMap.restrictTo(result.indexVars);
-        VisitedKey key = SymbolicResult::makeVisitedKey(parser.getContext(), state,
-                                                        restrictedIndexMap, restrictedValueMap);
+        VisitedKey key = keyOf(state, valueMap);
         if (result.visitedMap.contains(key)) continue;
 
-        auto accessesIt = result.accesses.find(state);
-        assert(accessesIt != result.accesses.end() && "state missing from accesses map");
-        bool oob = indexMap.isOOBForAny(accessesIt->second);
-
-        ValueMap valueMapAfter;
-        if (!oob)
-            valueMapAfter = numbering.interpretState(
-                state, valueMap, indexMap,
-                [&](mlir::Operation *accessOp, const ValueMap &accessValueMap) {
-                    if (numbering.isOutOfBounds(accessOp, accessValueMap)) oob = true;
-                });
+        bool oob = false;
+        ValueMap valueMapAfter = numbering.interpretState(
+            state, valueMap, [&](mlir::Operation *accessOp, const ValueMap &accessValueMap) {
+                if (numbering.isOutOfBounds(accessOp, accessValueMap)) oob = true;
+            });
 
         if (oob) {
             result.visitedMap.try_emplace(key, std::nullopt);
             result.outOfBoundIndex.try_emplace(key, result.outOfBoundStates.size());
-            result.outOfBoundStates.push_back({state, 0, indexMap, valueMap, {}, {}});
+            result.outOfBoundStates.push_back({state, 0, valueMap});
             continue;
         }
 
@@ -725,21 +668,22 @@ SymbolicResult SymbolicExecution::run() {
         result.visitedMap.try_emplace(key, countRef);
         unsigned callIndex = countRef++;
 
-        result.states.push_back({state, callIndex, indexMap, valueMap, {}, {}});
+        result.states.push_back({state, callIndex, valueMap});
         LLVM_DEBUG(llvm::dbgs() << "  visit " << state.getSymName() << " idx=" << callIndex
                                 << "\n");
 
-        IndexMap indexMapAfter = indexMap.advanced(accessesIt->second);
         auto resolved = resolveSuccessors(state, valueMapAfter);
         valueMapAfter.clearSnapshots();
         llvm::DenseSet<P4HIR::ParserStateOp> resolvedSet(resolved.begin(), resolved.end());
 
         for (auto successor : state.getNextStates()) {
             if (successor.isTerminal()) continue;
-            if (resolvedSet.contains(successor))
-                worklist.push_back({successor, indexMapAfter, valueMapAfter});
-            else
+            if (!resolvedSet.contains(successor)) {
                 result.states.back().prunedSuccessors.insert(successor);
+                continue;
+            }
+            result.states.back().successorKeys.push_back(keyOf(successor, valueMapAfter));
+            worklist.push_back({successor, valueMapAfter});
         }
     }
 
