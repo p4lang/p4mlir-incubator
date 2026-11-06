@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-wrap-extract-next -p4hir-parser-unroll | FileCheck %s
 // Same as parser-unroll-explicit-index.p4, but i starts at 2: only hs[2] and
 // hs[3] are in bounds, so the loop-back from @parse_loop_1 must reject with
 // StackOutOfBounds instead of producing constant indices 4 and 5.

@@ -27,10 +27,7 @@ module @test_unrecognized_stack_source {
             %arr = p4hir.variable ["arr"] : <!arr_of_hs>
             %c0 = p4hir.const #int0_b32
             %hs_ref = p4hir.array_element_ref %arr[%c0] : !p4hir.ref<!arr_of_hs>, !b32
-            %nextIdx_ref = p4hir.struct_field_ref %hs_ref["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %hs_ref["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xhdr>, !b32
+            p4hir.header_stack_extract_next %hs_ref : !p4hir.ref<!hs4>
             p4hir.transition to @loop
         }
         p4hir.state @accept {

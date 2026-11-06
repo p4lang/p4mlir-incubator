@@ -46,10 +46,7 @@ module @test_disjoint_cycles {
         }
         p4hir.state @B {
             %stack = p4hir.variable ["hs1"] : <!hs2>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs2>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs2>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_2xhdr>, !b32
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs2>
             p4hir.transition to @A
         }
         p4hir.state @C {
@@ -68,8 +65,7 @@ module @test_disjoint_cycles {
 
     // CHECK-LABEL: p4hir.state @A_1
     // CHECK-LABEL: p4hir.state @B_1
-    // CHECK:        %[[B1:.*]] = p4hir.const #int1_b32i
-    // CHECK:        p4hir.array_element_ref {{.*}}[%[[B1]]]
+    // CHECK:        p4hir.header_stack_extract_next
     // CHECK-LABEL: p4hir.state @C_1
     // CHECK-LABEL: p4hir.state @A_2 {
     // CHECK:        } to @start_outOfBound_0

@@ -2184,6 +2184,17 @@ def ArrayElementRefOp : P4HIR_Op<"array_element_ref",
   }];
 }
 
+def HeaderStackExtractNextOp : P4HIR_Op<"header_stack_extract_next",
+    [NoRegionArguments, NoTerminator]> {
+  let summary = "Extract into data[nextIndex] of a header stack, incrementing nextIndex";
+  let arguments = (ins HeaderStackRefType:$stack);
+  let regions = (region MaxSizedRegion<1>:$body);
+
+  let assemblyFormat = [{
+    $stack attr-dict `:` qualified(type($stack)) ($body^)?
+  }];
+}
+
 include "p4mlir/Dialect/P4HIR/P4HIR_ParserOps.td"
 include "p4mlir/Dialect/P4HIR/P4HIR_ControlOps.td"
 

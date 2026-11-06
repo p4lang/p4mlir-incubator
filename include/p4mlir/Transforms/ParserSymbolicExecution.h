@@ -148,9 +148,9 @@ class StackNumbering {
     mlir::FailureOr<llvm::SmallVector<StackAccess>> computeStackAccesses(
         P4HIR::ParserStateOp state);
 
-    mlir::FailureOr<StackId> getNextIndexKey(P4HIR::ArrayElementRefOp elementRef);
+    mlir::FailureOr<StackId> getNextIndexKey(P4HIR::HeaderStackExtractNextOp extractNext);
     bool isNextIndexValue(mlir::Value value);
-    bool isOutOfBounds(P4HIR::ArrayElementRefOp elementRef, const ValueMap &valueMap);
+    bool isOutOfBounds(mlir::Operation *accessOp, const ValueMap &valueMap);
 
  private:
     StackFields registerStack(StackId stackKey, P4HIR::HeaderStackType stackType);

@@ -36,32 +36,23 @@ module @test_loopless_merge {
             }
         }
         // CHECK: p4hir.state @a {
-        // CHECK:   %[[CA:.*]] = p4hir.const #int0_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[CA]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @mid_1
         p4hir.state @a {
             %stack = p4hir.variable ["stack"] : <!hs4>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xhdr>, !b32
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs4>
             p4hir.transition to @mid
         }
         // CHECK: p4hir.state @mid {
-        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @accept
         p4hir.state @mid {
             %stack = p4hir.variable ["stack"] : <!hs4>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xhdr>, !b32
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs4>
             p4hir.transition to @accept
         }
         // CHECK: p4hir.state @mid_1 {
-        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @accept
         p4hir.state @accept {
             p4hir.parser_accept

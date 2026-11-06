@@ -2,13 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-wrap-extract-next -p4hir-parser-unroll | FileCheck %s
 // p4c parser-unroll-test6: a single .next extract folds to index 0; no clones.
 
 // CHECK: p4hir.parser @p
 // CHECK: p4hir.state @start {
-// CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   p4hir.transition to @accept
 // CHECK-NOT: @start_1
 

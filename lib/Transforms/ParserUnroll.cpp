@@ -518,6 +518,7 @@ static void materializeNextIndexUses(mlir::Value value, mlir::TypedAttr attribut
     if (auto *definingOp = value.getDefiningOp()) deadCandidates.insert(definingOp);
     llvm::SetVector<mlir::Operation *> users(value.getUsers().begin(), value.getUsers().end());
     for (auto *user : users) {
+        if (user->getParentOfType<P4HIR::HeaderStackExtractNextOp>()) continue;
         if (user->getNumResults() == 1 && mlir::isPure(user)) {
             if (auto userAttribute = numbering.foldToConstAttr(user->getResult(0), valueMap)) {
                 materializeNextIndexUses(user->getResult(0), userAttribute, valueMap, numbering,
@@ -553,6 +554,7 @@ static void substituteFoldedIndices(P4HIR::ParserOp parser, SymbolicResult &symb
         ValueMap valueMapAfter = numbering.interpretState(
             symbolicState.cloneOp, symbolicState.entryValueMap, symbolicState.indexMap,
             [&](mlir::Operation *op, const ValueMap &valueMap) {
+                if (op->getParentOfType<P4HIR::HeaderStackExtractNextOp>()) return;
                 mlir::Value index;
                 if (auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(op))
                     index = elementRef.getIndex();
@@ -630,9 +632,7 @@ static void createOutOfBoundClones(P4HIR::ParserOp parser, SymbolicResult &symbo
         numbering.interpretState(
             clone, symbolicState.entryValueMap, symbolicState.indexMap,
             [&](mlir::Operation *accessOp, const ValueMap &accessValueMap) {
-                auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(accessOp);
-                if (!failingAccess && elementRef &&
-                    numbering.isOutOfBounds(elementRef, accessValueMap))
+                if (!failingAccess && numbering.isOutOfBounds(accessOp, accessValueMap))
                     failingAccess = accessOp;
             });
 

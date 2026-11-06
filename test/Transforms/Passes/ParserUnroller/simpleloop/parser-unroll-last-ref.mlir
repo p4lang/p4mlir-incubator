@@ -22,17 +22,13 @@
 // to 4 iterations with @a at indices 0..3.
 
 // CHECK-LABEL: p4hir.state @a {
-// CHECK:   %[[A0:.*]] = p4hir.const #int0_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[A0]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK-LABEL: p4hir.state @a_1 {
-// CHECK:   %[[A1:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[A1]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK-LABEL: p4hir.state @a_2 {
-// CHECK:   %[[A2:.*]] = p4hir.const #int2_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[A2]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK-LABEL: p4hir.state @a_3 {
-// CHECK:   %[[A3:.*]] = p4hir.const #int3_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[A3]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK-LABEL: p4hir.state @b_3 {
 // CHECK:   } to @accept
 // CHECK:   } to @start_outOfBound_0
@@ -43,10 +39,7 @@ module @test_last_ref {
         }
         p4hir.state @a {
             %stack = p4hir.variable ["stack"] : <!hs4>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32i>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xhdr>, !b32i
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs4>
             p4hir.transition to @b
         }
         p4hir.state @b {

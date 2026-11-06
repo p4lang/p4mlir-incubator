@@ -330,11 +330,13 @@ static void interpretBlock(
     llvm::function_ref<void(mlir::Operation *, const ValueMap &)> onAccess,
     StackNumbering &numbering) {
     for (auto &op : block) {
-        if (auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(&op)) {
-            auto nextIndexKey = numbering.getNextIndexKey(elementRef);
+        if (auto extractNext = mlir::dyn_cast<P4HIR::HeaderStackExtractNextOp>(&op)) {
             onAccess(&op, valueMap);
-            if (succeeded(nextIndexKey)) advanceNextIndex(valueMap, *nextIndexKey);
-        } else if (mlir::isa<P4HIR::ArrayGetOp>(&op)) {
+            for (auto &bodyBlock : extractNext.getBody())
+                interpretBlock(bodyBlock, valueMap, onAccess, numbering);
+            if (auto nextIndexKey = numbering.getNextIndexKey(extractNext); succeeded(nextIndexKey))
+                advanceNextIndex(valueMap, *nextIndexKey);
+        } else if (mlir::isa<P4HIR::ArrayElementRefOp, P4HIR::ArrayGetOp>(&op)) {
             onAccess(&op, valueMap);
         } else if (mlir::isa<P4HIR::ReadOp, P4HIR::StructExtractOp>(&op)) {
             mlir::Value result = op.getResult(0);
@@ -466,11 +468,7 @@ mlir::FailureOr<llvm::SmallVector<StackAccess>> StackNumbering::computeStackAcce
 
         auto dataRef = elementRef.getInput().getDefiningOp<P4HIR::StructFieldRefOp>();
         if (!dataRef) return;
-        auto fields = record(dataRef.getInput());
-        if (!fields) return;
-        if (auto indexKey = getStackId(index);
-            succeeded(indexKey) && *indexKey == fields->nextIndexKey)
-            ++counts[fields->stackKey];
+        record(dataRef.getInput());
     };
 
     auto visitFieldAccess = [&](mlir::Value input, unsigned fieldIndex) {
@@ -484,7 +482,10 @@ mlir::FailureOr<llvm::SmallVector<StackAccess>> StackNumbering::computeStackAcce
         for (auto &op : block) {
             if (auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(&op))
                 visitElementRef(elementRef);
-            else if (auto fieldRef = mlir::dyn_cast<P4HIR::StructFieldRefOp>(&op))
+            else if (auto extractNext = mlir::dyn_cast<P4HIR::HeaderStackExtractNextOp>(&op)) {
+                if (auto fields = record(extractNext.getStack())) ++counts[fields->stackKey];
+                for (auto &bodyBlock : extractNext.getBody()) visitBlock(bodyBlock);
+            } else if (auto fieldRef = mlir::dyn_cast<P4HIR::StructFieldRefOp>(&op))
                 visitFieldAccess(fieldRef.getInput(), fieldRef.getFieldIndex());
             else if (auto structExtract = mlir::dyn_cast<P4HIR::StructExtractOp>(&op))
                 visitFieldAccess(structExtract.getInput(), structExtract.getFieldIndex());
@@ -519,14 +520,12 @@ StackFields StackNumbering::registerStack(StackId stackKey, P4HIR::HeaderStackTy
     return fields;
 }
 
-// nextIndex key of the stack if the access is data[nextIndex], i.e. a .next access.
-mlir::FailureOr<StackId> StackNumbering::getNextIndexKey(P4HIR::ArrayElementRefOp elementRef) {
-    auto dataKey = getStackId(elementRef.getInput());
-    auto indexKey = getStackId(elementRef.getIndex());
-    if (failed(dataKey) || failed(indexKey)) return mlir::failure();
+mlir::FailureOr<StackId> StackNumbering::getNextIndexKey(
+    P4HIR::HeaderStackExtractNextOp extractNext) {
+    auto stackKey = getStackId(extractNext.getStack());
+    if (failed(stackKey)) return mlir::failure();
     for (auto &fields : stacks)
-        if (fields.dataKey == *dataKey && fields.nextIndexKey == *indexKey)
-            return fields.nextIndexKey;
+        if (fields.stackKey == *stackKey) return fields.nextIndexKey;
     return mlir::failure();
 }
 
@@ -538,8 +537,18 @@ bool StackNumbering::isNextIndexValue(mlir::Value value) {
 }
 
 // Header stack element written at an index that folds outside of the stack.
-bool StackNumbering::isOutOfBounds(P4HIR::ArrayElementRefOp elementRef,
-                                   const ValueMap &valueMap) {
+bool StackNumbering::isOutOfBounds(mlir::Operation *accessOp, const ValueMap &valueMap) {
+    if (auto extractNext = mlir::dyn_cast<P4HIR::HeaderStackExtractNextOp>(accessOp)) {
+        auto nextIndexKey = getNextIndexKey(extractNext);
+        if (failed(nextIndexKey)) return false;
+        auto it = valueMap.find(*nextIndexKey);
+        auto nextIndex = it == valueMap.end() ? std::nullopt : P4HIR::getConstantInt(it->second);
+        auto stackType = mlir::cast<P4HIR::HeaderStackType>(
+            extractNext.getStack().getType().getObjectType());
+        return nextIndex && nextIndex->getLimitedValue() >= stackType.getArraySize();
+    }
+    auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(accessOp);
+    if (!elementRef) return false;
     auto dataKey = getStackId(elementRef.getInput());
     if (failed(dataKey) || llvm::none_of(stacks, [&](const StackFields &fields) {
             return fields.dataKey == *dataKey;
@@ -690,9 +699,7 @@ SymbolicResult SymbolicExecution::run() {
             valueMapAfter = numbering.interpretState(
                 state, valueMap, indexMap,
                 [&](mlir::Operation *accessOp, const ValueMap &accessValueMap) {
-                    auto elementRef = mlir::dyn_cast<P4HIR::ArrayElementRefOp>(accessOp);
-                    if (elementRef && numbering.isOutOfBounds(elementRef, accessValueMap))
-                        oob = true;
+                    if (numbering.isOutOfBounds(accessOp, accessValueMap)) oob = true;
                 });
 
         if (oob) {

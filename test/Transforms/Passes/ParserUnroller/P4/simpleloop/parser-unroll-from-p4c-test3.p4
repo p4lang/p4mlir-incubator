@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-wrap-extract-next -p4hir-parser-unroll | FileCheck %s
 // Multi-state loop {parse_srcRouting, callMidle, callLast}, 2 extracts/iter of
 // srcRoutes[4] -> 1 clone of each.  callLast's loop-back to parse_srcRouting is
 // rewired to the clone; the clone's callLast_1 loop-back hits @reject.
@@ -10,22 +10,18 @@
 // CHECK: p4hir.state @start
 // CHECK: p4hir.state @parse_ethernet
 // CHECK: p4hir.state @parse_srcRouting {
-// CHECK:   %[[N0:.*]] = p4hir.const #int0_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[N0]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @callMidle
 // CHECK: p4hir.state @callLast {
-// CHECK:   %[[N1:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[N1]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @parse_srcRouting_1
 // CHECK: p4hir.state @callMidle {
 // CHECK:   p4hir.transition to @callLast
 // CHECK: p4hir.state @parse_srcRouting_1 {
-// CHECK:   %[[N2:.*]] = p4hir.const #int2_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[N2]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @callMidle_1
 // CHECK: p4hir.state @callLast_1 {
-// CHECK:   %[[N3:.*]] = p4hir.const #int3_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[N3]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @start_outOfBound_0
 // CHECK: p4hir.state @callMidle_1 {
 // CHECK:   p4hir.transition to @callLast_1

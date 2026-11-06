@@ -27,24 +27,20 @@ module @test_select_exit_before_oob {
             p4hir.transition to @parse_loop
         }
         // CHECK: p4hir.state @parse_loop {
-        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   } to @parse_loop_1
         // CHECK: p4hir.state @parse_loop_1 {
-        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   } to @parse_loop_2
         // CHECK: p4hir.state @parse_loop_2 {
-        // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   } to @accept
         // CHECK-NOT: @parse_loop_3
         p4hir.state @parse_loop {
             %stack = p4hir.variable ["stack"] : <!hs4>
             %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs4>
             %nextIdx = p4hir.read %nextIdx_ref : <!b32i>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xhdr>, !b32i
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs4>
             p4hir.transition_select %nextIdx : !b32i {
                 p4hir.select_case {
                     %exitVal = p4hir.const #int2_b32i

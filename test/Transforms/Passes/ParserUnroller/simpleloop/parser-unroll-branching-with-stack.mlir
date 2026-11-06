@@ -30,17 +30,13 @@ module @test_branching_with_stack {
             p4hir.transition to @stateA
         }
         // CHECK: p4hir.state @stateA {
-        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition_select
         // CHECK:   } to @stateB
         // CHECK:   } to @stateC
         p4hir.state @stateA {
             %stack = p4hir.variable ["stack"] : <!hs2>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs2>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs2>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_2xhdr>, !b32
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs2>
             p4hir.transition_select %cond : !b1 {
                 p4hir.select_case {
                     %c0 = p4hir.const #int0_b1
@@ -64,8 +60,7 @@ module @test_branching_with_stack {
             p4hir.transition to @stateA
         }
         // CHECK: p4hir.state @stateA_1 {
-        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition_select
         // CHECK:   } to @stateB_1
         // CHECK:   } to @stateC_1

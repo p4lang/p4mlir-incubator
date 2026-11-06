@@ -945,5 +945,6 @@ def StructLikeRefType : SpecificRefType<StructLikeTypeInterface>;
 def BitsRefType : SpecificRefType<BitsType>;
 def HeaderRefType : SpecificRefType<HeaderType>;
 def ArrayRefType : SpecificRefType<ArrayType>;
+def HeaderStackRefType : SpecificRefType<HeaderStackType>;
 
 #endif // P4MLIR_DIALECT_P4HIR_P4HIR_TYPES_TD

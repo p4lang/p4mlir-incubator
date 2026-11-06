@@ -2,22 +2,19 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-wrap-extract-next -p4hir-parser-unroll | FileCheck %s
 // h[3] with two .next extracts per iteration: the second iteration extracts h[2] and then
 // overflows. Its clone keeps the counter update and the h[2] extract that run before the
 // failing access, then goes to @start_outOfBound_0.
 // CHECK: p4hir.parser @p
 // CHECK: p4hir.state @loop {
-// CHECK:   %[[E0:.*]] = p4hir.const #int0_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[E0]]]
-// CHECK:   %[[E1:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[E1]]]
+// CHECK:   p4hir.header_stack_extract_next
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @loop_1{{$}}
 // CHECK: p4hir.state @loop_1 {
 // CHECK:   p4hir.assign {{.*}} : <!b8i>
-// CHECK:   %[[E2:.*]] = p4hir.const #int2_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[E2]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   p4corelib.extract_header
 // CHECK-NOT: p4corelib.extract_header
 // CHECK:   p4hir.transition to @start_outOfBound_0

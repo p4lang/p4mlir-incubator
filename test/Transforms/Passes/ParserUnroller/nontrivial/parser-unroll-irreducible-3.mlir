@@ -47,18 +47,12 @@ module @test_irreducible {
         }
         p4hir.state @B {
             %stack = p4hir.variable ["hs1"] : <!hs2>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs2>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs2>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_2xhdr>, !b32
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs2>
             p4hir.transition to @C
         }
         p4hir.state @C {
             %stack = p4hir.variable ["hs1"] : <!hs2>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs2>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs2>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_2xhdr>, !b32
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs2>
             p4hir.transition to @D
         }
         p4hir.state @D {
@@ -109,12 +103,10 @@ module @test_irreducible {
     // CHECK:         } to @D
     // CHECK:         } to @accept
     // CHECK-LABEL: p4hir.state @B {
-    // CHECK:         %[[I0:.*]] = p4hir.const #int0_b32i
-    // CHECK:         p4hir.array_element_ref {{.*}}[%[[I0]]]
+    // CHECK:         p4hir.header_stack_extract_next
     // CHECK:         p4hir.transition to @C
     // CHECK-LABEL: p4hir.state @C {
-    // CHECK:         %[[I1:.*]] = p4hir.const #int1_b32i
-    // CHECK:         p4hir.array_element_ref {{.*}}[%[[I1]]]
+    // CHECK:         p4hir.header_stack_extract_next
     // CHECK:         p4hir.transition to @D_1
     // CHECK-LABEL: p4hir.state @D {
     // CHECK:         } to @E
@@ -128,12 +120,10 @@ module @test_irreducible {
     // CHECK:         } to @D_1
     // CHECK:         } to @accept
     // CHECK-LABEL: p4hir.state @B_1 {
-    // CHECK:         %[[I2:.*]] = p4hir.const #int1_b32i
-    // CHECK:         p4hir.array_element_ref {{.*}}[%[[I2]]]
+    // CHECK:         p4hir.header_stack_extract_next
     // CHECK:         p4hir.transition to @start_outOfBound_0
     // CHECK-LABEL: p4hir.state @C_1 {
-    // CHECK:         %[[I3:.*]] = p4hir.const #int0_b32i
-    // CHECK:         p4hir.array_element_ref {{.*}}[%[[I3]]]
+    // CHECK:         p4hir.header_stack_extract_next
     // CHECK:         p4hir.transition to @D_2
     // CHECK-LABEL: p4hir.state @D_1 {
     // CHECK:         } to @E_1

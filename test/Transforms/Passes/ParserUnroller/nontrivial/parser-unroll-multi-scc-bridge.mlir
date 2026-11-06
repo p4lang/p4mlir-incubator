@@ -20,26 +20,22 @@
 
 
 // CHECK-LABEL: p4hir.state @A {
-// CHECK:        %[[A0:.*]] = p4hir.const #int0_b32i
-// CHECK:        p4hir.array_element_ref {{.*}}[%[[A0]]]
+// CHECK:        p4hir.header_stack_extract_next
 // CHECK:        } to @bridge
 // CHECK:        } to @A_1
 
 // CHECK-LABEL: p4hir.state @A_1 {
-// CHECK:        %[[A1:.*]] = p4hir.const #int1_b32i
-// CHECK:        p4hir.array_element_ref {{.*}}[%[[A1]]]
+// CHECK:        p4hir.header_stack_extract_next
 // CHECK:        } to @bridge_1
 // CHECK:        } to @A_2
 
 // CHECK-LABEL: p4hir.state @A_2 {
-// CHECK:        %[[A2:.*]] = p4hir.const #int2_b32i
-// CHECK:        p4hir.array_element_ref {{.*}}[%[[A2]]]
+// CHECK:        p4hir.header_stack_extract_next
 // CHECK:        } to @bridge_2
 // CHECK:        } to @A_3
 
 // CHECK-LABEL: p4hir.state @A_3 {
-// CHECK:        %[[A3:.*]] = p4hir.const #int3_b32i
-// CHECK:        p4hir.array_element_ref {{.*}}[%[[A3]]]
+// CHECK:        p4hir.header_stack_extract_next
 // CHECK:        } to @bridge_3
 // CHECK:        } to @start_outOfBound_0
 
@@ -56,20 +52,17 @@
 // CHECK:        p4hir.transition to @start_outOfBound_0
 
 // CHECK-LABEL: p4hir.state @B {
-// CHECK:        %[[B0:.*]] = p4hir.const #int1_b32i
-// CHECK:        p4hir.array_element_ref {{.*}}[%[[B0]]]
+// CHECK:        p4hir.header_stack_extract_next
 // CHECK:        } to @accept
 // CHECK:        } to @B_1
 
 // CHECK-LABEL: p4hir.state @B_1 {
-// CHECK:        %[[B1:.*]] = p4hir.const #int2_b32i
-// CHECK:        p4hir.array_element_ref {{.*}}[%[[B1]]]
+// CHECK:        p4hir.header_stack_extract_next
 // CHECK:        } to @accept
 // CHECK:        } to @B_2
 
 // CHECK-LABEL: p4hir.state @B_2 {
-// CHECK:        %[[B2:.*]] = p4hir.const #int3_b32i
-// CHECK:        p4hir.array_element_ref {{.*}}[%[[B2]]]
+// CHECK:        p4hir.header_stack_extract_next
 // CHECK:        } to @accept
 // CHECK:        } to @start_outOfBound_0
 
@@ -80,10 +73,7 @@ module @test_multi_scc_bridge {
         }
         p4hir.state @A {
             %stack = p4hir.variable ["hs"] : <!hs4>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xhdr>, !b32
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs4>
             p4hir.transition_select %cond : !b1 {
                 p4hir.select_case {
                     %c0 = p4hir.const #int0_b1
@@ -101,10 +91,7 @@ module @test_multi_scc_bridge {
         }
         p4hir.state @B {
             %stack = p4hir.variable ["hs"] : <!hs4>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xhdr>, !b32
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs4>
             p4hir.transition_select %cond : !b1 {
                 p4hir.select_case {
                     %c0 = p4hir.const #int0_b1

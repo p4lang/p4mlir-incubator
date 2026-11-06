@@ -30,30 +30,28 @@ module @test_hs_hs_sum_exit {
             p4hir.transition to @parse_loop
         }
         // CHECK: p4hir.state @parse_loop {
-        // CHECK:   p4hir.array_element_ref
-        // CHECK:   p4hir.array_element_ref
+        // CHECK:   p4hir.header_stack_extract_next
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   } to @parse_loop_1
         // CHECK: p4hir.state @parse_loop_1 {
-        // CHECK:   p4hir.array_element_ref
-        // CHECK:   p4hir.array_element_ref
+        // CHECK:   p4hir.header_stack_extract_next
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   } to @parse_loop_2
         // CHECK: p4hir.state @parse_loop_2 {
-        // CHECK:   p4hir.array_element_ref
-        // CHECK:   p4hir.array_element_ref
+        // CHECK:   p4hir.header_stack_extract_next
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   } to @accept
         // CHECK-NOT: @parse_loop_3
         p4hir.state @parse_loop {
             %stack1 = p4hir.variable ["stack1"] : <!hs4>
             %ni1_ref = p4hir.struct_field_ref %stack1["nextIndex"] : <!hs4>
             %ni1 = p4hir.read %ni1_ref : <!b32i>
-            %d1_ref = p4hir.struct_field_ref %stack1["data"] : <!hs4>
-            %e1_ref = p4hir.array_element_ref %d1_ref[%ni1] : !p4hir.ref<!arr_4xhdr>, !b32i
+            p4hir.header_stack_extract_next %stack1 : !p4hir.ref<!hs4>
 
             %stack2 = p4hir.variable ["stack2"] : <!hs8>
             %ni2_ref = p4hir.struct_field_ref %stack2["nextIndex"] : <!hs8>
             %ni2 = p4hir.read %ni2_ref : <!b32i>
-            %d2_ref = p4hir.struct_field_ref %stack2["data"] : <!hs8>
-            %e2_ref = p4hir.array_element_ref %d2_ref[%ni2] : !p4hir.ref<!arr_8xhdr>, !b32i
+            p4hir.header_stack_extract_next %stack2 : !p4hir.ref<!hs8>
 
             %sum = p4hir.binop(add, %ni1, %ni2) : !b32i
             p4hir.transition_select %sum : !b32i {

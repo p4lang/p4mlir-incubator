@@ -43,10 +43,7 @@ module @test_if_assign {
         p4hir.state @loop {
             %counter = p4hir.variable ["counter"] : <!b32i>
             %stack = p4hir.variable ["stack"] : <!hs4>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32i>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xhdr>, !b32i
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs4>
             p4hir.if %cond {
                 %five = p4hir.const #int5_b32i
                 p4hir.assign %five, %counter : <!b32i>

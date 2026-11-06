@@ -21,7 +21,7 @@
 // CHECK:   } to @s{{$}}
 // CHECK-LABEL: p4hir.state @s {
 // CHECK-NOT:   p4hir.const
-// CHECK:   p4hir.array_element_ref %{{.*}}[%{{.*}}] : !p4hir.ref<!arr_4xhdr>, !b32i
+// CHECK:   p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs_4xhdr>
 // CHECK-NEXT:   p4hir.transition to @accept
 module @test_rejected_loop_exit {
     p4hir.parser @RejectedLoopExit(%cond: !b1)() {
@@ -40,10 +40,7 @@ module @test_rejected_loop_exit {
         }
         p4hir.state @r {
             %stack = p4hir.variable ["stack"] : <!hs4>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32i>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xhdr>, !b32i
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs4>
             p4hir.transition_select %cond : !b1 {
                 p4hir.select_case {
                     %c0 = p4hir.const #int0_b1
@@ -58,10 +55,7 @@ module @test_rejected_loop_exit {
         }
         p4hir.state @s {
             %stack = p4hir.variable ["stack"] : <!hs4>
-            %nextIdx_ref = p4hir.struct_field_ref %stack["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32i>
-            %data_ref = p4hir.struct_field_ref %stack["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xhdr>, !b32i
+            p4hir.header_stack_extract_next %stack : !p4hir.ref<!hs4>
             p4hir.transition to @accept
         }
         p4hir.state @accept {

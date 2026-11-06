@@ -110,6 +110,20 @@ def ParserUnroll : Pass<"p4hir-parser-unroll"> {
 }
 
 //===----------------------------------------------------------------------===//
+// WrapExtractNext
+//===----------------------------------------------------------------------===//
+
+def WrapExtractNext : Pass<"p4hir-wrap-extract-next"> {
+  let summary = "Wrap extracts into header stack next elements";
+  let description = [{
+    Moves the operations implementing `packet.extract(hs.next)` into a
+    `p4hir.header_stack_extract_next` operation, so that `p4hir-parser-unroll`
+    recognizes header stack advances.
+  }];
+  let dependentDialects = ["P4MLIR::P4HIR::P4HIRDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // FlattenCFG
 //===----------------------------------------------------------------------===//
 

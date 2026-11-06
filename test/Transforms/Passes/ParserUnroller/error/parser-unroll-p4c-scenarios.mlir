@@ -33,24 +33,18 @@ module @test1_self_loop_stack3 {
             p4hir.transition to @parse_srcRouting
         }
         // CHECK: p4hir.state @parse_srcRouting {
-        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @parse_srcRouting_1
         // CHECK: p4hir.state @parse_srcRouting_1 {
-        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @parse_srcRouting_2
         // CHECK: p4hir.state @parse_srcRouting_2 {
-        // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @start_outOfBound_0
         // CHECK-NOT: @parse_srcRouting_3
         p4hir.state @parse_srcRouting {
             %srcRoutes = p4hir.variable ["srcRoutes"] : <!hs3>
-            %nextIdx_ref = p4hir.struct_field_ref %srcRoutes["nextIndex"] : <!hs3>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %srcRoutes["data"] : <!hs3>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_3xsrcRoute>, !b32
+            p4hir.header_stack_extract_next %srcRoutes : !p4hir.ref<!hs3>
             p4hir.transition to @parse_srcRouting
         }
         // CHECK: p4hir.state @parse_ipv4
@@ -81,15 +75,11 @@ module @test3_multistate_loop_stack4 {
             p4hir.transition to @parse_srcRouting
         }
         // CHECK: p4hir.state @parse_srcRouting {
-        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @callMidle
         p4hir.state @parse_srcRouting {
             %srcRoutes = p4hir.variable ["srcRoutes"] : <!hs4>
-            %nextIdx_ref = p4hir.struct_field_ref %srcRoutes["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %srcRoutes["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xsrcRoute>, !b32
+            p4hir.header_stack_extract_next %srcRoutes : !p4hir.ref<!hs4>
             p4hir.transition to @callMidle
         }
         // CHECK: p4hir.state @callMidle {
@@ -99,26 +89,20 @@ module @test3_multistate_loop_stack4 {
             p4hir.transition to @callLast
         }
         // CHECK: p4hir.state @callLast {
-        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @parse_srcRouting_1
         // CHECK: p4hir.state @parse_srcRouting_1 {
-        // CHECK:   %[[C2:.*]] = p4hir.const #int2_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C2]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @callMidle_1
         // CHECK: p4hir.state @callMidle_1 {
         // CHECK:   p4hir.transition to @callLast_1
         // CHECK: p4hir.state @callLast_1 {
-        // CHECK:   %[[C3:.*]] = p4hir.const #int3_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C3]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @start_outOfBound_0
         // CHECK-NOT: @parse_srcRouting_2
         p4hir.state @callLast {
             %srcRoutes = p4hir.variable ["srcRoutes"] : <!hs4>
-            %nextIdx_ref = p4hir.struct_field_ref %srcRoutes["nextIndex"] : <!hs4>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %srcRoutes["data"] : <!hs4>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_4xsrcRoute>, !b32
+            p4hir.header_stack_extract_next %srcRoutes : !p4hir.ref<!hs4>
             p4hir.transition to @parse_srcRouting
         }
         // CHECK: p4hir.state @parse_ipv4
@@ -144,20 +128,15 @@ module @test9_finite_loop {
             p4hir.transition to @finite_loop
         }
         // CHECK: p4hir.state @finite_loop {
-        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @finite_loop_1
         // CHECK: p4hir.state @finite_loop_1 {
-        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @start_outOfBound_0
         // CHECK-NOT: @finite_loop_2
         p4hir.state @finite_loop {
             %h = p4hir.variable ["h"] : <!hs2>
-            %nextIdx_ref = p4hir.struct_field_ref %h["nextIndex"] : <!hs2>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %h["data"] : <!hs2>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_2xhstk>, !b32
+            p4hir.header_stack_extract_next %h : !p4hir.ref<!hs2>
             p4hir.transition to @finite_loop
         }
         p4hir.state @accept {
@@ -210,23 +189,18 @@ module @test9_mixed_loops {
             p4hir.transition to @mixed_finite_loop
         }
         // CHECK: p4hir.state @mixed_finite_loop {
-        // CHECK:   %[[C0:.*]] = p4hir.const #int0_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C0]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @start_loops_1
         // CHECK: p4hir.state @start_loops_1 {
         // CHECK:   p4hir.transition to @mixed_finite_loop_1
         // CHECK: p4hir.state @mixed_finite_loop_1 {
-        // CHECK:   %[[C1:.*]] = p4hir.const #int1_b32i
-        // CHECK:   p4hir.array_element_ref {{.*}}[%[[C1]]]
+        // CHECK:   p4hir.header_stack_extract_next
         // CHECK:   p4hir.transition to @start_loops_2
         // CHECK: p4hir.state @start_loops_2 {
         // CHECK:   p4hir.transition to @start_outOfBound_0
         p4hir.state @mixed_finite_loop {
             %h = p4hir.variable ["h"] : <!hs2>
-            %nextIdx_ref = p4hir.struct_field_ref %h["nextIndex"] : <!hs2>
-            %nextIdx = p4hir.read %nextIdx_ref : <!b32>
-            %data_ref = p4hir.struct_field_ref %h["data"] : <!hs2>
-            %elt_ref = p4hir.array_element_ref %data_ref[%nextIdx] : !p4hir.ref<!arr_2xhstk>, !b32
+            p4hir.header_stack_extract_next %h : !p4hir.ref<!hs2>
             p4hir.transition to @start_loops
         }
         // CHECK: p4hir.state @mixed_infinite_loop {

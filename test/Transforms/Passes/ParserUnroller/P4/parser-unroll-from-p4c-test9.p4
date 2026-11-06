@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-parser-unroll 2>&1 | FileCheck %s
+// RUN: p4mlir-translate --typeinference-only %s | sed 's/__corelib = \[\]/corelib/g' | p4mlir-opt -lower-to-p4corelib -p4hir-wrap-extract-next -p4hir-parser-unroll 2>&1 | FileCheck %s
 // CHECK: warning:{{.*}}infinite_loop{{.*}}no header stack operations
 // counter is bit<2>, so mixed_infinite_loop, which exits only at counter == 3,
 // cycles through all four counter values and is unrolled per (counter, h index).
@@ -19,43 +19,35 @@
 // CHECK:   } to @finite_loop{{$}}
 // CHECK:   } to @reject{{$}}
 // CHECK: p4hir.state @finite_loop {
-// CHECK:   %[[FINITELOOPE:.*]] = p4hir.const #int0_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[FINITELOOPE]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @finite_loop_1{{$}}
 // CHECK: p4hir.state @finite_loop_1 {
-// CHECK:   %[[FINITELOOP1E:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[FINITELOOP1E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @finite_loop_7{{$}}
 // CHECK: p4hir.state @finite_loop_2 {
-// CHECK:   %[[FINITELOOP2E:.*]] = p4hir.const #int0_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[FINITELOOP2E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @finite_loop_3{{$}}
 // CHECK: p4hir.state @finite_loop_3 {
-// CHECK:   %[[FINITELOOP3E:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[FINITELOOP3E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @finite_loop_8{{$}}
 // CHECK: p4hir.state @finite_loop_4 {
-// CHECK:   %[[FINITELOOP4E:.*]] = p4hir.const #int0_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[FINITELOOP4E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @finite_loop_5{{$}}
 // CHECK: p4hir.state @finite_loop_5 {
-// CHECK:   %[[FINITELOOP5E:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[FINITELOOP5E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @finite_loop_9{{$}}
 // CHECK: p4hir.state @finite_loop_6 {
-// CHECK:   %[[FINITELOOP6E:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[FINITELOOP6E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @finite_loop_10{{$}}
 // CHECK: p4hir.state @mixed_finite_loop {
-// CHECK:   %[[MIXEDFINITELOOPE:.*]] = p4hir.const #int0_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[MIXEDFINITELOOPE]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @start_loops_1{{$}}
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @reject{{$}}
@@ -69,8 +61,7 @@
 // CHECK:   } to @finite_loop_1{{$}}
 // CHECK:   } to @reject{{$}}
 // CHECK: p4hir.state @mixed_finite_loop_1 {
-// CHECK:   %[[MIXEDFINITELOOP1E:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[MIXEDFINITELOOP1E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @start_loops_3{{$}}
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @reject{{$}}
@@ -84,8 +75,7 @@
 // CHECK:   } to @finite_loop_2{{$}}
 // CHECK:   } to @reject{{$}}
 // CHECK: p4hir.state @mixed_finite_loop_2 {
-// CHECK:   %[[MIXEDFINITELOOP2E:.*]] = p4hir.const #int0_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[MIXEDFINITELOOP2E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @start_loops_4{{$}}
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @reject{{$}}
@@ -99,8 +89,7 @@
 // CHECK:   } to @finite_loop_7{{$}}
 // CHECK:   } to @reject{{$}}
 // CHECK: p4hir.state @mixed_finite_loop_3 {
-// CHECK:   %[[MIXEDFINITELOOP3E:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[MIXEDFINITELOOP3E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @start_loops_6{{$}}
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @reject{{$}}
@@ -113,8 +102,7 @@
 // CHECK:   } to @finite_loop_3{{$}}
 // CHECK:   } to @reject{{$}}
 // CHECK: p4hir.state @mixed_finite_loop_4 {
-// CHECK:   %[[MIXEDFINITELOOP4E:.*]] = p4hir.const #int0_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[MIXEDFINITELOOP4E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @start_loops_7{{$}}
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @reject{{$}}
@@ -127,8 +115,7 @@
 // CHECK:   } to @finite_loop_4{{$}}
 // CHECK:   } to @reject{{$}}
 // CHECK: p4hir.state @mixed_finite_loop_5 {
-// CHECK:   %[[MIXEDFINITELOOP5E:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[MIXEDFINITELOOP5E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @start_loops_8{{$}}
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @reject{{$}}
@@ -141,8 +128,7 @@
 // CHECK:   } to @finite_loop_8{{$}}
 // CHECK:   } to @reject{{$}}
 // CHECK: p4hir.state @mixed_finite_loop_6 {
-// CHECK:   %[[MIXEDFINITELOOP6E:.*]] = p4hir.const #int1_b32i
-// CHECK:   p4hir.array_element_ref {{.*}}[%[[MIXEDFINITELOOP6E]]]
+// CHECK:   p4hir.header_stack_extract_next
 // CHECK:   } to @start_loops_10{{$}}
 // CHECK:   } to @accept{{$}}
 // CHECK:   } to @reject{{$}}
