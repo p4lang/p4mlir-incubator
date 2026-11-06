@@ -9,3 +9,5 @@ install/
 .cursor/
 .idea/
 compile_commands.json
+.direnv/
+.envrc
