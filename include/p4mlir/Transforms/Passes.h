@@ -23,6 +23,8 @@ namespace P4::P4MLIR {
 
 #define GEN_PASS_DECL_SIMPLIFYPARSERS
 #define GEN_PASS_DECL_SELECTFLATTENTUPLES
+#define GEN_PASS_DECL_PARSERUNROLL
+#define GEN_PASS_DECL_WRAPEXTRACTNEXT
 #define GEN_PASS_DECL_SERENUMELIMINATION
 #define GEN_PASS_DECL_REMOVEALIASES
 #define GEN_PASS_DECL_ENUMELIMINATION
@@ -37,6 +39,8 @@ namespace P4::P4MLIR {
 std::unique_ptr<mlir::Pass> createPrintParsersGraphPass();
 std::unique_ptr<mlir::Pass> createSimplifyParsersPass();
 std::unique_ptr<mlir::Pass> createSelectFlattenTuplesPass();
+std::unique_ptr<mlir::Pass> createParserUnrollPass();
+std::unique_ptr<mlir::Pass> createWrapExtractNextPass();
 std::unique_ptr<mlir::Pass> createFlattenCFGPass();
 std::unique_ptr<mlir::Pass> createHoistVariablesPass();
 std::unique_ptr<mlir::Pass> createSerEnumEliminationPass();

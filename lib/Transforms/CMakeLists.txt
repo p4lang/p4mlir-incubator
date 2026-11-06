@@ -8,6 +8,8 @@ add_mlir_dialect_library(P4MLIRTransforms
   HoistVariables.cpp
   IRUtils.cpp
   InlineParserControl.cpp
+  ParserSymbolicExecution.cpp
+  ParserUnroll.cpp
   PrintParsersGraph.cpp
   RemoveAliases.cpp
   RemoveSoftCF.cpp
@@ -19,6 +21,7 @@ add_mlir_dialect_library(P4MLIRTransforms
   ExpandSliceReadAssign.cpp
   SelectFlattenTuples.cpp
   SymbolDCE.cpp
+  WrapExtractNext.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/p4mlir/Transforms
