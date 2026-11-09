@@ -90,3 +90,33 @@ module {
     p4hir.return %a : !b8i
   }
 }
+
+// -----
+
+// Constructor parameters are only known at instantiation, and header constants are
+// not lowered yet.
+
+// CHECK-LABEL: module
+// CHECK:         p4hir.const ["cfg"] #{{.*}}
+// CHECK:         p4hir.const #p4hir.aggregate<[#{{.*}}, #valid]> : !h
+
+!b8i = !p4hir.bit<8>
+!validity_bit = !p4hir.validity.bit
+!s = !p4hir.struct<"s", x: !b8i>
+!h = !p4hir.header<"h", a: !b8i, __valid: !validity_bit>
+!C = !p4hir.control<"C", ()>
+#int1_b8i = #p4hir.int<1> : !b8i
+#valid = #p4hir<validity.bit valid> : !validity_bit
+#C_cfg = #p4hir.ctor_param<@C, "cfg"> : !s
+
+module {
+  p4hir.control @C()(cfg: !s) {
+    %cfg = p4hir.const ["cfg"] #C_cfg
+    p4hir.control_apply {
+    }
+  }
+  p4hir.func @header() {
+    %h = p4hir.const #p4hir.aggregate<[#int1_b8i, #valid]> : !h
+    p4hir.return
+  }
+}

@@ -91,3 +91,29 @@ module {
     p4hir.return %e : !b16i
   }
 }
+
+// -----
+
+// Array constants are built from their elements, unless they are all zeros.
+
+// CHECK-LABEL: @constants(
+// CHECK-NEXT:    %[[ONE:.*]] = llvm.mlir.constant(1 : i8) : i8
+// CHECK-NEXT:    %[[ZERO:.*]] = llvm.mlir.constant(0 : i8) : i8
+// CHECK-NEXT:    %[[P:.*]] = llvm.mlir.poison : !llvm.array<2 x i8>
+// CHECK-NEXT:    %[[A0:.*]] = llvm.insertvalue %[[ONE]], %[[P]][0] : !llvm.array<2 x i8>
+// CHECK-NEXT:    %[[A1:.*]] = llvm.insertvalue %[[ZERO]], %[[A0]][1] : !llvm.array<2 x i8>
+// CHECK-NEXT:    %{{.*}} = llvm.mlir.zero : !llvm.array<2 x i8>
+// CHECK-NEXT:    %{{.*}} = llvm.mlir.zero : !llvm.array<0 x i8>
+
+!b8i = !p4hir.bit<8>
+#int0_b8i = #p4hir.int<0> : !b8i
+#int1_b8i = #p4hir.int<1> : !b8i
+
+module {
+  p4hir.func @constants() {
+    %some = p4hir.const #p4hir.aggregate<[#int1_b8i, #int0_b8i]> : !p4hir.array<2 x !b8i>
+    %zero = p4hir.const #p4hir.aggregate<[#int0_b8i, #int0_b8i]> : !p4hir.array<2 x !b8i>
+    %empty = p4hir.const #p4hir.aggregate<[]> : !p4hir.array<0 x !b8i>
+    p4hir.return
+  }
+}

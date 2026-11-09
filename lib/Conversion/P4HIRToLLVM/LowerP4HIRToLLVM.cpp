@@ -6,6 +6,7 @@
 // order to propagate pragma further on
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
+#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
@@ -31,31 +32,6 @@ namespace P4::P4MLIR {
 using namespace P4::P4MLIR;
 
 namespace {
-
-struct ConstOpConversion : public ConvertOpToLLVMPattern<P4HIR::ConstOp> {
-    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
-
-    LogicalResult matchAndRewrite(P4HIR::ConstOp op, OpAdaptor adaptor,
-                                  ConversionPatternRewriter &rewriter) const override {
-        // Materialize the empty struct representing bit<0> with llvm.mlir.zero.
-        if (P4HIR::isZeroWidth(op.getType())) {
-            rewriter.replaceOpWithNewOp<LLVM::ZeroOp>(
-                op, getTypeConverter()->convertType(op.getType()));
-            return success();
-        }
-
-        auto value = adaptor.getValue();
-        // Passing the interface handle by its base type drops a cached concept pointer, which
-        // is exactly what `convertTypeAttribute` takes.
-        // NOLINTNEXTLINE(cppcoreguidelines-slicing)
-        auto newAttr = getTypeConverter()->convertTypeAttribute(value.getType(), value);
-        if (!newAttr) {
-            return rewriter.notifyMatchFailure(op, "unsupported constant type");
-        }
-        rewriter.replaceOpWithNewOp<LLVM::ConstantOp>(op, cast<TypedAttr>(*newAttr));
-        return success();
-    }
-};
 
 template <typename Op>
 LogicalResult lowerToOp(Operation *op, ValueRange operands, ConversionPatternRewriter &rewriter) {
@@ -375,6 +351,54 @@ struct AggregateOpConversion : public ConvertOpToLLVMPattern<Op> {
         if (!type) return rewriter.notifyMatchFailure(op, "unsupported aggregate type");
 
         rewriter.replaceOp(op, createAggregate(rewriter, op.getLoc(), type, adaptor.getInput()));
+        return success();
+    }
+};
+
+// Returns true if `attr` is zero, false or an aggregate of such constants.
+bool isZeroConstant(Attribute attr) {
+    return llvm::TypeSwitch<Attribute, bool>(attr)
+        .Case<P4HIR::AggAttr>(
+            [](auto aggregate) { return llvm::all_of(aggregate.getFields(), isZeroConstant); })
+        .Case<P4HIR::IntAttr>([](auto integer) { return integer.isNullValue(); })
+        .Case<P4HIR::BoolAttr>([](auto boolean) { return !boolean.getValue(); })
+        .Default(false);
+}
+
+// Materializes a scalar or aggregate constant.
+Value materializeConstant(OpBuilder &builder, Location loc, const TypeConverter &converter,
+                          TypedAttr attr) {
+    if (auto aggregate = dyn_cast<P4HIR::AggAttr>(attr)) {
+        auto type = converter.convertType(attr.getType());
+        if (!type) return {};
+        if (isZeroConstant(aggregate)) return LLVM::ZeroOp::create(builder, loc, type);
+
+        SmallVector<Value> elements;
+        for (auto field : aggregate.getFields().getAsRange<TypedAttr>()) {
+            auto value = materializeConstant(builder, loc, converter, field);
+            if (!value) return {};
+            elements.push_back(value);
+        }
+        return createAggregate(builder, loc, type, elements);
+    }
+
+    if (P4HIR::isZeroWidth(attr.getType()))
+        return LLVM::ZeroOp::create(builder, loc, converter.convertType(attr.getType()));
+
+    auto converted = converter.convertTypeAttribute(attr.getType(), attr);
+    if (!converted) return {};
+    return LLVM::ConstantOp::create(builder, loc, cast<TypedAttr>(*converted));
+}
+
+struct ConstOpConversion : public ConvertOpToLLVMPattern<P4HIR::ConstOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ConstOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto value =
+            materializeConstant(rewriter, op.getLoc(), *getTypeConverter(), adaptor.getValue());
+        if (!value) return rewriter.notifyMatchFailure(op, "unsupported constant type");
+        rewriter.replaceOp(op, value);
         return success();
     }
 };

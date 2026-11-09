@@ -163,3 +163,45 @@ module {
     p4hir.return %e : !empty
   }
 }
+
+// -----
+
+// Struct constants are built from their fields like any other struct, which LLVM
+// folds back into a constant. All-zero ones, e.g. default values, are a single
+// `llvm.mlir.zero`, nested or not.
+
+// CHECK-LABEL: @constants(
+// CHECK-NEXT:    %[[ONE:.*]] = llvm.mlir.constant(1 : i8) : i8
+// CHECK-NEXT:    %[[TRUE:.*]] = llvm.mlir.constant(true) : i1
+// CHECK-NEXT:    %[[P:.*]] = llvm.mlir.poison : !llvm.struct<packed (i8, i1)>
+// CHECK-NEXT:    %[[S0:.*]] = llvm.insertvalue %[[ONE]], %[[P]][0] : !llvm.struct<packed (i8, i1)>
+// CHECK-NEXT:    %[[S1:.*]] = llvm.insertvalue %[[TRUE]], %[[S0]][1] : !llvm.struct<packed (i8, i1)>
+// CHECK-NEXT:    %[[TWO:.*]] = llvm.mlir.constant(2 : i32) : i32
+// CHECK-NEXT:    %[[Z:.*]] = llvm.mlir.zero : !llvm.struct<packed (i8, i1)>
+// CHECK-NEXT:    %[[P2:.*]] = llvm.mlir.poison : !llvm.struct<packed (i32, struct<packed (i8, i1)>)>
+// CHECK-NEXT:    %[[N0:.*]] = llvm.insertvalue %[[TWO]], %[[P2]][0] : !llvm.struct<packed (i32, struct<packed (i8, i1)>)>
+// CHECK-NEXT:    %[[N1:.*]] = llvm.insertvalue %[[Z]], %[[N0]][1] : !llvm.struct<packed (i32, struct<packed (i8, i1)>)>
+// CHECK-NEXT:    %{{.*}} = llvm.mlir.zero : !llvm.struct<packed (i32, struct<packed (i8, i1)>)>
+// CHECK-NEXT:    %{{.*}} = llvm.mlir.zero : !llvm.struct<packed ()>
+
+!b8i = !p4hir.bit<8>
+!b32i = !p4hir.bit<32>
+!inner = !p4hir.struct<"inner", x: !b8i, y: !p4hir.bool>
+!outer = !p4hir.struct<"outer", a: !b32i, s: !inner>
+!empty = !p4hir.struct<"empty">
+#int0_b8i = #p4hir.int<0> : !b8i
+#int1_b8i = #p4hir.int<1> : !b8i
+#int0_b32i = #p4hir.int<0> : !b32i
+#int2_b32i = #p4hir.int<2> : !b32i
+#false = #p4hir.bool<false> : !p4hir.bool
+#true = #p4hir.bool<true> : !p4hir.bool
+
+module {
+  p4hir.func @constants() {
+    %flat = p4hir.const #p4hir.aggregate<[#int1_b8i, #true]> : !inner
+    %nested = p4hir.const #p4hir.aggregate<[#int2_b32i, #p4hir.aggregate<[#int0_b8i, #false]> : !inner]> : !outer
+    %zero = p4hir.const #p4hir.aggregate<[#int0_b32i, #p4hir.aggregate<[#int0_b8i, #false]> : !inner]> : !outer
+    %empty = p4hir.const #p4hir.aggregate<[]> : !empty
+    p4hir.return
+  }
+}
