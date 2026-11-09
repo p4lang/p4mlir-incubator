@@ -88,3 +88,78 @@ module {
     p4hir.return %r : !s
   }
 }
+
+// -----
+
+// A struct is built by inserting its fields in order into a poison value, and a
+// field is read with `llvm.extractvalue` at the same index.
+
+// CHECK-LABEL: @swap(
+// CHECK-NEXT:    %[[S:.*]] = builtin.unrealized_conversion_cast %arg0 : !s to !llvm.struct<packed (i8, i16)>
+// CHECK-NEXT:    %[[X:.*]] = llvm.extractvalue %[[S]][0] : !llvm.struct<packed (i8, i16)>
+// CHECK-NEXT:    %[[Y:.*]] = llvm.extractvalue %[[S]][1] : !llvm.struct<packed (i8, i16)>
+// CHECK-NEXT:    %[[P:.*]] = llvm.mlir.poison : !llvm.struct<packed (i16, i8)>
+// CHECK-NEXT:    %[[T0:.*]] = llvm.insertvalue %[[Y]], %[[P]][0] : !llvm.struct<packed (i16, i8)>
+// CHECK-NEXT:    %[[T1:.*]] = llvm.insertvalue %[[X]], %[[T0]][1] : !llvm.struct<packed (i16, i8)>
+// CHECK-NEXT:    builtin.unrealized_conversion_cast %[[T1]] : !llvm.struct<packed (i16, i8)> to !t
+
+!b8i = !p4hir.bit<8>
+!b16i = !p4hir.bit<16>
+!s = !p4hir.struct<"s", x: !b8i, y: !b16i>
+!t = !p4hir.struct<"t", y: !b16i, x: !b8i>
+
+module {
+  p4hir.func @swap(%s : !s) -> !t {
+    %x = p4hir.struct_extract %s["x"] : !s
+    %y = p4hir.struct_extract %s["y"] : !s
+    %t = p4hir.struct (%y, %x) : !t
+    p4hir.return %t : !t
+  }
+}
+
+// -----
+
+// Nested structs are built and read one level at a time. Tuples, which are structs
+// after `p4hir-tuple-to-struct`, are no different.
+
+// CHECK-LABEL: @nested(
+// CHECK-DAG:     %[[O:.*]] = builtin.unrealized_conversion_cast %arg0 : !outer to !llvm.struct<packed (i32, struct<packed (i8, i1)>)>
+// CHECK-DAG:     %[[V:.*]] = builtin.unrealized_conversion_cast %arg1 : !b8i to i8
+// CHECK:         %[[I:.*]] = llvm.extractvalue %[[O]][1] : !llvm.struct<packed (i32, struct<packed (i8, i1)>)>
+// CHECK-NEXT:    %[[Y:.*]] = llvm.extractvalue %[[I]][1] : !llvm.struct<packed (i8, i1)>
+// CHECK-NEXT:    %[[P:.*]] = llvm.mlir.poison : !llvm.struct<packed (i8, i1)>
+// CHECK-NEXT:    %[[T0:.*]] = llvm.insertvalue %[[V]], %[[P]][0] : !llvm.struct<packed (i8, i1)>
+// CHECK-NEXT:    %[[T1:.*]] = llvm.insertvalue %[[Y]], %[[T0]][1] : !llvm.struct<packed (i8, i1)>
+// CHECK-NEXT:    builtin.unrealized_conversion_cast %[[T1]] : !llvm.struct<packed (i8, i1)> to !_tupleToStruct
+
+!b8i = !p4hir.bit<8>
+!b32i = !p4hir.bit<32>
+!inner = !p4hir.struct<"inner", x: !b8i, y: !p4hir.bool>
+!outer = !p4hir.struct<"outer", a: !b32i, s: !inner>
+!tuple = !p4hir.struct<"_tupleToStruct", element_0: !b8i, element_1: !p4hir.bool>
+
+module {
+  p4hir.func @nested(%o : !outer, %v : !b8i) -> !tuple {
+    %inner = p4hir.struct_extract %o["s"] : !outer
+    %y = p4hir.struct_extract %inner["y"] : !inner
+    %t = p4hir.struct (%v, %y) : !tuple
+    p4hir.return %t : !tuple
+  }
+}
+
+// -----
+
+// An empty struct has no fields to insert.
+
+// CHECK-LABEL: @empty(
+// CHECK-NEXT:    %[[P:.*]] = llvm.mlir.poison : !llvm.struct<packed ()>
+// CHECK-NEXT:    builtin.unrealized_conversion_cast %[[P]] : !llvm.struct<packed ()> to !empty
+
+!empty = !p4hir.struct<"empty">
+
+module {
+  p4hir.func @empty() -> !empty {
+    %e = p4hir.struct () : !empty
+    p4hir.return %e : !empty
+  }
+}

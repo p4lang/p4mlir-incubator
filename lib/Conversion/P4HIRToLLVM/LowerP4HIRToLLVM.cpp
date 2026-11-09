@@ -14,6 +14,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "p4mlir/Conversion/P4HIRToLLVM/P4HIRToLLVM.h"
+#include "p4mlir/Dialect/P4HIR/Matchers.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Dialect.h"  // IWYU pragma: keep (required for Passes.cpp.inc)
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Types.h"
@@ -353,6 +354,72 @@ struct CastOpConversion : public ConvertOpToLLVMPattern<P4HIR::CastOp> {
     }
 };
 
+// Builds a value of the struct or array `type` from its elements, in order.
+Value createAggregate(OpBuilder &builder, Location loc, Type type, ValueRange elements) {
+    Value aggregate = LLVM::PoisonOp::create(builder, loc, type);
+    for (auto [index, element] : llvm::enumerate(elements))
+        aggregate = LLVM::InsertValueOp::create(builder, loc, aggregate, element,
+                                                static_cast<int64_t>(index));
+    return aggregate;
+}
+
+// Lowers `p4hir.struct` and `p4hir.array`, which list all the elements in order.
+template <typename Op>
+struct AggregateOpConversion : public ConvertOpToLLVMPattern<Op> {
+    using ConvertOpToLLVMPattern<Op>::ConvertOpToLLVMPattern;
+    using OpAdaptor = typename ConvertOpToLLVMPattern<Op>::OpAdaptor;
+
+    LogicalResult matchAndRewrite(Op op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto type = this->getTypeConverter()->convertType(op.getType());
+        if (!type) return rewriter.notifyMatchFailure(op, "unsupported aggregate type");
+
+        rewriter.replaceOp(op, createAggregate(rewriter, op.getLoc(), type, adaptor.getInput()));
+        return success();
+    }
+};
+
+struct StructExtractOpConversion : public ConvertOpToLLVMPattern<P4HIR::StructExtractOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::StructExtractOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        if (!isa<LLVM::LLVMStructType>(adaptor.getInput().getType()))
+            return rewriter.notifyMatchFailure(op, "unsupported struct type");
+
+        rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(op, adaptor.getInput(),
+                                                          op.getFieldIndex());
+        return success();
+    }
+};
+
+// Returns the value of `index` if it is a constant within the bounds of an array of `size`
+// elements.
+std::optional<uint64_t> getConstantIndexInBounds(Value index, uint64_t size) {
+    llvm::APSInt value;
+    if (!matchPattern(index, ::m_ConstantInt(&value))) return std::nullopt;
+    if (value.isNegative() || value.uge(size)) return std::nullopt;
+    return value.getZExtValue();
+}
+
+struct ArrayGetOpConversion : public ConvertOpToLLVMPattern<P4HIR::ArrayGetOp> {
+    using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+    LogicalResult matchAndRewrite(P4HIR::ArrayGetOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const override {
+        auto arrayType = dyn_cast<LLVM::LLVMArrayType>(adaptor.getInput().getType());
+        if (!arrayType) return rewriter.notifyMatchFailure(op, "unsupported array type");
+
+        // `llvm.extractvalue` only takes constant positions within the bounds of the array.
+        auto index = getConstantIndexInBounds(op.getIndex(), arrayType.getNumElements());
+        if (!index) return rewriter.notifyMatchFailure(op, "expected a constant in-bounds index");
+
+        rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(op, adaptor.getInput(),
+                                                          static_cast<int64_t>(*index));
+        return success();
+    }
+};
+
 // Returns the LLVM constant for the default value of `type`, or null if it has none.
 TypedAttr getDefaultValueAttr(Type type, const TypeConverter &converter) {
     if (auto defaultValueType = dyn_cast<P4HIR::HasDefaultValue>(type))
@@ -569,5 +636,7 @@ void P4::P4MLIR::populateP4HIRToLLVMConversionPatterns(LLVMTypeConverter &conver
                  BrOpConversion, CondBrOpConversion, ConcatOpConversion, SliceOpConversion,
                  CastOpConversion, ReadOpConversion, AssignOpConversion, LifetimeEndOpConversion>(
         converter);
+    patterns.add<AggregateOpConversion<P4HIR::StructOp>, AggregateOpConversion<P4HIR::ArrayOp>,
+                 StructExtractOpConversion, ArrayGetOpConversion>(converter);
     patterns.add<VariableOpConversion, LifetimeStartOpConversion>(converter, initializeVariables);
 }

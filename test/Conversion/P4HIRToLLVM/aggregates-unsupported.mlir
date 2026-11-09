@@ -38,3 +38,55 @@ module {
     p4hir.return
   }
 }
+
+// -----
+
+// `llvm.extractvalue` needs a constant position within the bounds of the array:
+// reads at a dynamic index and at a constant one out of bounds, possibly negative,
+// are left unconverted.
+
+// CHECK-LABEL: @get(
+// CHECK:         p4hir.array_get %{{.*}}[%{{.*}}] : !{{.*}}, !b32i
+// CHECK:         p4hir.array_get %{{.*}}[%{{.*}}] : !{{.*}}, !b32i
+// CHECK:         p4hir.array_get %{{.*}}[%{{.*}}] : !{{.*}}, !i8i
+
+!b8i = !p4hir.bit<8>
+!b32i = !p4hir.bit<32>
+!i8i = !p4hir.int<8>
+!arr = !p4hir.array<2 x !b8i>
+
+module {
+  p4hir.func @get(%arr : !arr, %i : !b32i) -> !b8i {
+    %dyn = p4hir.array_get %arr[%i] : !arr, !b32i
+    %c2 = p4hir.const #p4hir.int<2> : !b32i
+    %oob = p4hir.array_get %arr[%c2] : !arr, !b32i
+    %cm1 = p4hir.const #p4hir.int<-1> : !i8i
+    %neg = p4hir.array_get %arr[%cm1] : !arr, !i8i
+    %s0 = p4hir.binop(add, %dyn, %oob) : !b8i
+    %s1 = p4hir.binop(add, %s0, %neg) : !b8i
+    p4hir.return %s1 : !b8i
+  }
+}
+
+// -----
+
+// Building and reading headers, or structs containing them, is left unconverted.
+
+// CHECK-LABEL: @header(
+// CHECK:         p4hir.struct_extract %{{.*}}["h"] : !with_header
+// CHECK:         p4hir.struct_extract %{{.*}}["a"] : !h
+// CHECK:         p4hir.struct (%{{.*}}, %{{.*}}) : !h
+
+!b8i = !p4hir.bit<8>
+!validity_bit = !p4hir.validity.bit
+!h = !p4hir.header<"h", a: !b8i, __valid: !validity_bit>
+!with_header = !p4hir.struct<"with_header", x: !b8i, h: !h>
+
+module {
+  p4hir.func @header(%s : !with_header, %v : !validity_bit) -> !b8i {
+    %h = p4hir.struct_extract %s["h"] : !with_header
+    %a = p4hir.struct_extract %h["a"] : !h
+    %n = p4hir.struct (%a, %v) : !h
+    p4hir.return %a : !b8i
+  }
+}
