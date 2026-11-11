@@ -40,12 +40,6 @@ struct MakeHeadersToplevelPass
 
 using FieldLocation = IRUtils::LocationMapping::FieldLocation;
 
-enum CollectionsIndices : unsigned {
-    C_HEADERS = 0,
-    C_METADATA = 1,
-    C_COUNT = 2,
-};
-
 mlir::LogicalResult makeHeadersToplevel(mlir::FunctionOpInterface object,
                                         mlir::BlockArgument hdrsArg, mlir::BlockArgument metaArg) {
     auto *ctx = object.getContext();
@@ -58,13 +52,18 @@ mlir::LogicalResult makeHeadersToplevel(mlir::FunctionOpInterface object,
 
     auto hdrsType = P4HIR::unref<P4HIR::StructType>(hdrsArg.getType());
     auto metaType = P4HIR::unref<P4HIR::StructType>(metaArg.getType());
-    IRUtils::LocationMapping mapping({hdrsType, metaType}, C_COUNT);
+
+    IRUtils::LocationMapping mapping;
+    auto &hdrsSource = mapping.createSource(hdrsType);
+    auto &metaSource = mapping.createSource(metaType);
+    auto &newHdrsTarget = mapping.createTarget();
+    auto &newMetaTarget = mapping.createTarget();
 
     // Mark all header types.
     P4HIR::FieldPath::forEachFieldPath(hdrsType, [&](P4HIR::FieldPath path) {
         if (mlir::isa<P4HIR::HeaderType, P4HIR::HeaderUnionType, P4HIR::HeaderStackType>(
                 path.getType())) {
-            mapping.markForMapping(FieldLocation(C_HEADERS, path), C_HEADERS);
+            hdrsSource.addMapping(path, newHdrsTarget.loc());
             return mlir::WalkResult::skip();
         }
 
@@ -72,13 +71,10 @@ mlir::LogicalResult makeHeadersToplevel(mlir::FunctionOpInterface object,
     });
 
     // Collect sorted header paths.
-    auto hdrPaths = llvm::to_vector(mapping.getFromPaths(C_HEADERS));
-    llvm::sort(hdrPaths);
+    auto hdrPaths = hdrsSource.getMappedPaths();
 
     // Collect sorted metadata paths.
-    auto hdrsMetaPaths =
-        llvm::map_to_vector(mapping.getUnmapped(C_HEADERS), [](const auto &e) { return e.second; });
-    llvm::sort(hdrsMetaPaths);
+    auto hdrsMetaPaths = hdrsSource.getUnmappedPaths();
 
     LLVM_DEBUG({
         llvm::dbgs() << "Header paths:\n";
@@ -102,7 +98,8 @@ mlir::LogicalResult makeHeadersToplevel(mlir::FunctionOpInterface object,
         newMetaType = P4HIR::StructType::get(ctx, metaType.getName(), newMetaFields);
     }
 
-    mapping.setToTypes({newHdrsType, newMetaType});
+    newHdrsTarget.setRootType(newHdrsType);
+    newMetaTarget.setRootType(newMetaType);
 
     LLVM_DEBUG({
         llvm::dbgs() << "New headers type: " << newHdrsType << "\n";
@@ -110,29 +107,29 @@ mlir::LogicalResult makeHeadersToplevel(mlir::FunctionOpInterface object,
     });
 
     // Map original header paths to the new flattened ones.
-    mapping.addMapping(C_HEADERS, hdrPaths, C_HEADERS, P4HIR::FieldPath(newHdrsType));
+    auto newHdrPaths = llvm::to_vector(P4HIR::FieldPath(newHdrsType).children());
+    hdrsSource.addMappings(hdrPaths, newHdrsTarget.locs(newHdrPaths));
 
     auto newMetaPaths = llvm::to_vector(P4HIR::FieldPath(newMetaType).children());
 
     // Map original header metadata paths to the new flattened ones.
     if (!hdrsMetaPaths.empty()) {
         P4HIR::FieldPath newHdrsMetaPath = newMetaPaths.pop_back_val();
-        mapping.addMapping(C_HEADERS, hdrsMetaPaths, C_METADATA, newHdrsMetaPath);
+        auto newHdrsMetaPaths = llvm::to_vector(newHdrsMetaPath.children());
+        hdrsSource.addMappings(hdrsMetaPaths, newMetaTarget.locs(newHdrsMetaPaths));
     }
 
     // Map original metadata.
     auto metaPaths = llvm::to_vector(P4HIR::FieldPath(metaType).children());
-    mapping.addMapping(C_METADATA, metaPaths, C_METADATA, newMetaPaths);
+    metaSource.addMappings(metaPaths, newMetaTarget.locs(newMetaPaths));
 
     LLVM_DEBUG({
         llvm::dbgs() << "Mapping:\n";
-        for (auto [from, to] : mapping.getMapping(C_HEADERS)) {
-            auto desc = (to.first == C_HEADERS) ? "(hdrs)" : "(meta)";
-            llvm::dbgs() << "  " << from.second << " -> " << desc << " " << to.second << "\n";
-        }
+        mapping.dump();
     });
 
-    if (!mapping.verify()) return mlir::failure();
+    assert(mapping.isComplete() && "Unexpected mapping state");
+    assert(!mapping.hasSubfieldMappings() && "Unexpected mapping state");
 
     auto maybeNewArgs = IRUtils::duplicateFunctionLikeArgs(
         object, {hdrsArg, metaArg},
