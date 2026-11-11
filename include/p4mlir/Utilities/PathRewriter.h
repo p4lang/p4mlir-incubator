@@ -19,8 +19,9 @@ namespace P4::P4MLIR::IRUtils {
 template <class FieldPathOpsT>
 class PathRewriter {
  public:
-    using PathWalkerT = PathWalker<FieldPathOpsT>;
-    using OperandWithPathT = std::pair<mlir::OpOperand *, P4HIR::FieldPath>;
+    using FieldPathOps = FieldPathOpsT;
+    using PathWalkerT = PathWalker<FieldPathOps>;
+    using OperandWithPath = std::pair<mlir::OpOperand *, P4HIR::FieldPath>;
 
     /// Full constructor.
     PathRewriter(mlir::RewriterBase &rewriter, mlir::Value root, mlir::Type type,
@@ -51,7 +52,7 @@ class PathRewriter {
                                        P4HIR::FieldPath path) {
         mlir::Value val = getAccessibleValue(rewriter, where, value);
         for (auto field : path.fields())
-            val = FieldPathOpsT::buildFieldAccess(rewriter, loc, val, field);
+            val = FieldPathOps::buildFieldAccess(rewriter, loc, val, field);
         return val;
     }
 
@@ -66,7 +67,7 @@ class PathRewriter {
     /// then this should be done here. Return mlir::success() to continue the rewriting or
     /// mlir::failure() to interrupt it.
     virtual mlir::LogicalResult replaceUsesIn(mlir::Operation *op,
-                                              llvm::SmallVector<OperandWithPathT> operands) {
+                                              llvm::SmallVector<OperandWithPath> operands) {
         return mlir::success();
     }
 
@@ -86,8 +87,8 @@ class PathRewriter {
 
     /// Return a vector of operands in `op` that access a root value's field, coupled with the
     /// corresponding path.
-    llvm::SmallVector<OperandWithPathT> getOperandsWithPaths(mlir::Operation *op) {
-        llvm::SmallVector<OperandWithPathT> result;
+    llvm::SmallVector<OperandWithPath> getOperandsWithPaths(mlir::Operation *op) {
+        llvm::SmallVector<OperandWithPath> result;
         for (mlir::OpOperand &operand : op->getOpOperands())
             if (auto path = getPath(operand.get())) result.emplace_back(&operand, path);
         return result;

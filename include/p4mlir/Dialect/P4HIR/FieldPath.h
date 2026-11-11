@@ -5,6 +5,7 @@
 #ifndef P4MLIR_DIALECT_P4HIR_P4HIR_FIELDPATH_H
 #define P4MLIR_DIALECT_P4HIR_P4HIR_FIELDPATH_H
 
+#include "mlir/IR/Diagnostics.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_TypeInterfaces.h"
 
 namespace P4::P4MLIR::P4HIR {
@@ -359,6 +360,11 @@ struct FieldPath {
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FieldPath &path) {
     path.print(os);
     return os;
+}
+
+inline mlir::Diagnostic &operator<<(mlir::Diagnostic &diag, const FieldPath &path) {
+    diag << "'" << path.str() << "'";
+    return diag;
 }
 
 }  // namespace P4::P4MLIR::P4HIR

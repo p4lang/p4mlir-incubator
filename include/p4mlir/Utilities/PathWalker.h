@@ -14,6 +14,7 @@ namespace P4::P4MLIR::IRUtils {
 template <class FieldPathOpsT>
 class PathWalker {
  public:
+    using FieldPathOps = FieldPathOpsT;
     using NodeCallbackFn =
         std::function<mlir::WalkResult(mlir::Operation *, mlir::Value, P4HIR::FieldPath)>;
     using LeafCallbackFn = std::function<mlir::WalkResult(
@@ -72,7 +73,7 @@ class PathWalker {
                         return mlir::WalkResult::interrupt();
                 }
             } else {
-                auto [resValue, resPath] = FieldPathOpsT::getAccessedField(user, use, path);
+                auto [resValue, resPath] = FieldPathOps::getAccessedField(user, use, path);
                 if (resValue) {
                     if (walkImpl(resValue, resPath).wasInterrupted())
                         return mlir::WalkResult::interrupt();

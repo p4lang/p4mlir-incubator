@@ -4,7 +4,7 @@
 
 add_mlir_dialect_library(P4MLIRUtilities
   IRUtils.cpp
-  LocationRewriter.cpp
+  LocationMapping.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/p4mlir/Utilities
