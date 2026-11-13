@@ -131,7 +131,14 @@ mlir::LogicalResult localizeArg(llvm::ArrayRef<mlir::BlockArgument> args,
             IRUtils::duplicateFunctionLikeArgs(obj, {arg}, {P4HIR::ReferenceType::get(sharedType)});
         if (failed(maybeNewArg)) return mlir::failure();
 
-        llvm::SmallVector<mlir::Type> mappingTypes = {sharedType};
+        IRUtils::LocationMapping mapping;
+
+        // Map fields in the original argument to ones in the replacement.
+        auto &metaSource = mapping.createSource(P4HIR::unref(commonType));
+        auto &metaTarget = mapping.createTarget(sharedType);
+        auto newSharedFields = llvm::to_vector(P4HIR::FieldPath(sharedType).children());
+        metaSource.addMappings(sharedFields, metaTarget.locs(newSharedFields));
+
         llvm::SmallVector<mlir::Value> mappingValues = {(*maybeNewArg)[0]};
         mlir::IRRewriter rewriter(ctx);
 
@@ -147,7 +154,11 @@ mlir::LogicalResult localizeArg(llvm::ArrayRef<mlir::BlockArgument> args,
             // Create a local variable for fields that will be localized.
             auto localType =
                 IRUtils::createStructType(ctx, ("local_" + argNameTemplate), localFields);
-            mappingTypes.push_back(localType);
+
+            // Map fields in the original argument to the local variable.
+            auto &localTarget = mapping.createTarget(localType);
+            auto newLocalFields = llvm::to_vector(P4HIR::FieldPath(localType).children());
+            metaSource.addMappings(localFields, localTarget.locs(newLocalFields));
 
             rewriter.setInsertionPointToStart(&obj.getFunctionBody().front());
             auto localVar = P4HIR::VariableOp::create(rewriter, arg.getLoc(),
@@ -159,14 +170,6 @@ mlir::LogicalResult localizeArg(llvm::ArrayRef<mlir::BlockArgument> args,
                 for (auto path : localFields) llvm::dbgs() << "  " << path << "\n";
             });
         }
-
-        // Map fields in the original argument to ones in the replacement.
-        IRUtils::LocationMapping mapping({P4HIR::unref(commonType)}, mappingTypes);
-        mapping.addMapping(0, sharedFields, 0, P4HIR::FieldPath(sharedType));
-
-        // Map fields in the original argument to the local variable.
-        if (!localFields.empty())
-            mapping.addMapping(0, localFields, 1, P4HIR::FieldPath(mappingTypes.back()));
 
         if (failed(IRUtils::P4HIRLocationRewriter(rewriter, mapping, {arg}, mappingValues)
                        .transform()))
