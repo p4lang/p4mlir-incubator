@@ -21,7 +21,7 @@ module {
     // CHECK-NEXT: p4hir.soft_return %arg0 : !b8i
 
     %c10_b10i = p4hir.const #int10_b10i
-    %tuple = p4hir.tuple (%c10_b10i, %arg0) : tuple<!b10i, !b8i>
+    %tuple = p4hir.tuple(%c10_b10i, %arg0) : tuple<!b10i, !b8i>
     %t1 = p4hir.tuple_extract %tuple[1] : tuple<!b10i, !b8i>
     p4hir.soft_return %t1 : !b8i
     p4hir.return

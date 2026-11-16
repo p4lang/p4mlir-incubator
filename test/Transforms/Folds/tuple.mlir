@@ -24,7 +24,7 @@ module {
     %c1_b8i = p4hir.const #int1_b8i
     %c2_i12i = p4hir.const #int2_i12i
     %true = p4hir.const #true
-    %tuple = p4hir.tuple (%c1_b8i, %c2_i12i, %true) : tuple<!b8i, !i12i, !p4hir.bool>
+    %tuple = p4hir.tuple(%c1_b8i, %c2_i12i, %true) : tuple<!b8i, !i12i, !p4hir.bool>
     p4hir.soft_return %tuple : tuple<!b8i, !i12i, !p4hir.bool>
     p4hir.return
   }
@@ -38,8 +38,8 @@ module {
     %true = p4hir.const #true
     %c0_i2i = p4hir.const #int0_i2i
     %c0_i3i = p4hir.const #int0_i3i
-    %tuple = p4hir.tuple (%c0_i2i, %c0_i3i) : tuple<!i2i, !i3i>
-    %tuple_0 = p4hir.tuple (%c1_b8i, %true, %tuple) : tuple<!b8i, !p4hir.bool, tuple<!i2i, !i3i>>
+    %tuple = p4hir.tuple(%c0_i2i, %c0_i3i) : tuple<!i2i, !i3i>
+    %tuple_0 = p4hir.tuple(%c1_b8i, %true, %tuple) : tuple<!b8i, !p4hir.bool, tuple<!i2i, !i3i>>
     p4hir.soft_return %tuple_0 : tuple<!b8i, !p4hir.bool, tuple<!i2i, !i3i>>
     p4hir.return
   }
