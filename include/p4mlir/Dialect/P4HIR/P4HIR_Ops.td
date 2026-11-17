@@ -2202,7 +2202,7 @@ def BrOp : P4HIR_Op<"br",
     }]>
   ];
 
-  let arguments = (ins Variadic<AnyP4Type>:$destOperands);
+  let arguments = (ins Variadic<AnyType>:$destOperands);
   let successors = (successor AnySuccessor:$dest);
   let assemblyFormat = [{
     $dest (`(` $destOperands^ `:` type($destOperands) `)`)? attr-dict
@@ -2240,8 +2240,8 @@ def CondBrOp : P4HIR_Op<"cond_br",
   ];
 
   let arguments = (ins BooleanType:$cond,
-                       Variadic<AnyP4Type>:$destOperandsTrue,
-                       Variadic<AnyP4Type>:$destOperandsFalse);
+                       Variadic<AnyType>:$destOperandsTrue,
+                       Variadic<AnyType>:$destOperandsFalse);
   let successors = (successor AnySuccessor:$destTrue, AnySuccessor:$destFalse);
   let assemblyFormat = [{
     $cond
