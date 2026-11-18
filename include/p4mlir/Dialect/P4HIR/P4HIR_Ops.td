@@ -237,7 +237,8 @@ def AssignOp : P4HIR_Op<"assign", [
 }
 
 def AssignSliceOp : P4HIR_Op<"assign_slice",
-                    [DeclareOpInterfaceMethods<PromotableMemOpInterface>]> {
+                    [DeclareOpInterfaceMethods<PromotableMemOpInterface>,
+                     DeclareOpInterfaceMethods<SafeMemorySlotAccessOpInterface>]> {
   let summary = "Assign a bit slice of a referenced object";
   let description = [{
     `p4hir.assign_slice` assigns its value to bits `highBit` down to `lowBit` of
@@ -1362,6 +1363,7 @@ def SliceOp : P4HIR_Op<"slice",
 def ReadSliceOp : P4HIR_Op<"read_slice",
     [Pure,
      DeclareOpInterfaceMethods<PromotableMemOpInterface>,
+     DeclareOpInterfaceMethods<SafeMemorySlotAccessOpInterface>,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Extract a range or single bits from a referenced value";
   let description = [{

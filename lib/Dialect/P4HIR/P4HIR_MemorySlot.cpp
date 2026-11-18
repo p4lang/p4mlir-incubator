@@ -316,6 +316,12 @@ DeletionKind P4HIR::AssignSliceOp::removeBlockingUses(
     return DeletionKind::Delete;
 }
 
+LogicalResult P4HIR::AssignSliceOp::ensureOnlySafeAccesses(
+    const MemorySlot &slot, SmallVectorImpl<MemorySlot> &mustBeSafelyUsed,
+    const DataLayout &dataLayout) {
+    return success(getRef() == slot.ptr);
+}
+
 //===----------------------------------------------------------------------===//
 // Interfaces for ReadSliceOp
 //===----------------------------------------------------------------------===//
@@ -345,6 +351,12 @@ DeletionKind P4HIR::ReadSliceOp::removeBlockingUses(
                                          getHighBit(), getLowBit());
     getResult().replaceAllUsesWith(slice);
     return DeletionKind::Delete;
+}
+
+LogicalResult P4HIR::ReadSliceOp::ensureOnlySafeAccesses(
+    const MemorySlot &slot, SmallVectorImpl<MemorySlot> &mustBeSafelyUsed,
+    const DataLayout &dataLayout) {
+    return success(getInput() == slot.ptr);
 }
 
 //===----------------------------------------------------------------------===//
