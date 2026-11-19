@@ -35,7 +35,7 @@ module @p4_main {
     }
   }
   // CHECK-LABEL: p4hir.control @Caller
-  p4hir.control @Caller()() {
+  p4hir.control @Caller(%res: !p4hir.ref<!b8i> {p4hir.dir = #p4hir<dir out>, p4hir.param_name = "res"})() {
     // CHECK-DAG: %[[CONST_2:.*]] = p4hir.const #int2_b8i
 
     p4hir.instantiate @p4_main::@Callee () as @c
@@ -62,15 +62,17 @@ module @p4_main {
     // CHECK:         }
     // CHECK:       }
 
+    // The out argument is uninitialized on entry: it must not be copied in.
+    // CHECK:      p4hir.control_apply {
+    // CHECK-NEXT:   p4hir.assign %[[CONST_2]], %[[CALLEE_LOCAL_X_VAR]] : <!b8i>
+    // CHECK-NEXT:   %[[FINAL_X_VAL:.*]] = p4hir.read %[[CALLEE_LOCAL_X_VAR]] : <!b8i>
+    // CHECK-NEXT:   p4hir.assign %[[FINAL_X_VAL]], %arg0 : <!b8i>
     p4hir.control_apply {
       p4hir.scope {
-        // CHECK-DAG: p4hir.assign %[[CONST_2]], %[[CALLEE_LOCAL_X_VAR]] : <!b8i>
-        // CHECK-DAG: %[[FINAL_X_VAL:.*]] = p4hir.read %[[CALLEE_LOCAL_X_VAR]] : <!b8i>
-        // CHECK-DAG: p4hir.assign %[[FINAL_X_VAL]], %x_out_arg : <!b8i>
-
         %x_out_arg = p4hir.variable ["x_out_arg"] : <!b8i>
         p4hir.apply @c(%x_out_arg) : (!p4hir.ref<!b8i>) -> ()
         %val = p4hir.read %x_out_arg : <!b8i>
+        p4hir.assign %val, %res : <!b8i>
       }
     }
   }
