@@ -584,9 +584,17 @@ struct ControlOpInlineHelper : public InstantiateOpInlineHelper<P4HIR::ControlOp
 
                 if (mlir::isa<P4HIR::ReferenceType>(info.newVal.getType())) {
                     // If the argument is a reference type then we need to copy the new value to the
-                    // underlying storage.
-                    auto val = P4HIR::ReadOp::create(rewriter, applyOp.getLoc(), info.newVal);
-                    P4HIR::AssignOp::create(rewriter, applyOp.getLoc(), val, info.localStorage);
+                    // underlying storage. `out` arguments are uninitialized on entry, so we must
+                    // not copy them in: that would read the (possibly uninitialized) actual
+                    // argument at the call site.
+                    auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(info.origVal);
+                    bool isOutArg = blockArg && blockArg.getOwner() == calleeBlock &&
+                                    callee.getArgumentDirection(blockArg.getArgNumber()) ==
+                                        P4HIR::ParamDirection::Out;
+                    if (!isOutArg) {
+                        auto val = P4HIR::ReadOp::create(rewriter, applyOp.getLoc(), info.newVal);
+                        P4HIR::AssignOp::create(rewriter, applyOp.getLoc(), val, info.localStorage);
+                    }
                     // And use the underlying storage in the inlined control apply block.
                     callMapper.map(info.origVal, info.localStorage.getResult());
                 } else {
