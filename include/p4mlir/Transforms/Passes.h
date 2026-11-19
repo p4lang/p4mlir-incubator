@@ -50,6 +50,7 @@ std::unique_ptr<mlir::Pass> createInlineControlsPass();
 std::unique_ptr<mlir::Pass> createExpandEmitPass();
 std::unique_ptr<mlir::Pass> createExpandSliceReadAssignPass();
 std::unique_ptr<mlir::Pass> createSymbolDCEPass();
+std::unique_ptr<mlir::Pass> createFlattenStructsPass();
 
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"
