@@ -32,6 +32,7 @@ namespace P4::P4MLIR {
 #define GEN_PASS_DECL_EXPANDEMIT
 #define GEN_PASS_DECL_EXPANDSLICEREADASSIGN
 #define GEN_PASS_DECL_SYMBOLDCE
+#define GEN_PASS_DECL_EVALUATESTATICASSERT
 #include "p4mlir/Transforms/Passes.h.inc"
 
 std::unique_ptr<mlir::Pass> createPrintParsersGraphPass();
@@ -50,6 +51,7 @@ std::unique_ptr<mlir::Pass> createInlineControlsPass();
 std::unique_ptr<mlir::Pass> createExpandEmitPass();
 std::unique_ptr<mlir::Pass> createExpandSliceReadAssignPass();
 std::unique_ptr<mlir::Pass> createSymbolDCEPass();
+std::unique_ptr<mlir::Pass> createEvaluateStaticAssertPass();
 
 #define GEN_PASS_REGISTRATION
 #include "p4mlir/Transforms/Passes.h.inc"
