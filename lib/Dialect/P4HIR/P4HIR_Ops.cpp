@@ -269,7 +269,7 @@ LogicalResult P4HIR::CastOp::verify() {
     return success();
 }
 
-OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
+OpFoldResult P4HIR::CastOp::fold(FoldAdaptor adaptor) {
     // Identity.
     // cast(%a) : A -> A ==> %a
     if (getOperand().getType() == getType()) return getOperand();
@@ -282,8 +282,8 @@ OpFoldResult P4HIR::CastOp::fold(FoldAdaptor) {
         return getIntegerAttr(getType(), 0);
 
     // Casts of integer constants
-    if (auto inputConst = mlir::dyn_cast_if_present<ConstOp>(getOperand().getDefiningOp()))
-        if (auto castResult = P4HIR::foldConstantCast(getType(), inputConst.getValue()))
+    if (auto inputConst = adaptor.getSrc())
+        if (auto castResult = P4HIR::foldConstantCast(getType(), inputConst))
             return castResult;
 
     return {};

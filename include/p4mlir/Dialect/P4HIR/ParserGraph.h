@@ -40,6 +40,14 @@ struct llvm::GraphTraits<P4::P4MLIR::P4HIR::ParserOp> {
 };
 
 template <>
+struct llvm::GraphTraits<P4::P4MLIR::P4HIR::ParserStateOp>
+    : public llvm::GraphTraits<P4::P4MLIR::P4HIR::ParserOp> {
+    using NodeType = P4::P4MLIR::P4HIR::ParserStateOp;
+
+    static NodeRef getEntryNode(NodeType state) { return state; }
+};
+
+template <>
 struct llvm::DOTGraphTraits<P4::P4MLIR::P4HIR::ParserOp> : public llvm::DefaultDOTGraphTraits {
     using NodeType = P4::P4MLIR::P4HIR::ParserStateOp;
     using GraphType = P4::P4MLIR::P4HIR::ParserOp;
