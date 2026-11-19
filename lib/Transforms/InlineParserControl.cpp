@@ -20,8 +20,8 @@
 #include "mlir/Transforms/InliningUtils.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Ops.h"
 #include "p4mlir/Dialect/P4HIR/P4HIR_Symbols.h"
-#include "p4mlir/Transforms/IRUtils.h"
 #include "p4mlir/Transforms/Passes.h"
+#include "p4mlir/Utilities/IRUtils.h"
 
 #define DEBUG_TYPE "p4hir-inline-parsers"
 

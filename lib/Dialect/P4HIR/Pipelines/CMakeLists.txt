@@ -8,5 +8,6 @@ add_mlir_dialect_library(P4Pipelines
   LINK_LIBS PUBLIC
   P4HIRToCoreLib
   P4MLIRTransforms
+  P4MLIRUtilities
   MLIRPass
 )

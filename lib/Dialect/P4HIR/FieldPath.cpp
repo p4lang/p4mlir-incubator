@@ -13,12 +13,8 @@ using P4HIR::FieldPath;
 
 unsigned FieldIDs::getFieldID(P4HIR::IndexableTypeInterface itype, unsigned index) {
     assert((index < itype.getFieldCount()) && "Invalid field index");
-
-    for (auto [field, fieldID] : getFieldsWithIDs(itype))
-        if (field.getIndex() == index) return fieldID;
-
-    llvm_unreachable("Impossible state");
-    return 0;
+    auto [_, fieldID] = *std::next(getFieldsWithIDs(itype).begin(), index);
+    return fieldID;
 }
 
 FieldIDs::IndexingResult FieldIDs::indexInto(P4HIR::IndexableTypeInterface itype,
